@@ -23,6 +23,8 @@ pub struct Theme {
     pub playing: Color,
     /// The cursor and badge in visual mode.
     pub visual: Color,
+    /// Mistakes on the command line, and what's wrong with them.
+    pub error: Color,
     /// Background of selected steps.
     pub selection: Color,
     /// Background of rows on the beat, or `None` to leave them unshaded.
@@ -42,6 +44,7 @@ impl Theme {
             accent: Color::Yellow,
             playing: Color::Green,
             visual: Color::Blue,
+            error: Color::Red,
             selection: Color::DarkGray,
             beat_row: None,
             tracks: vec![

@@ -12,7 +12,7 @@
 mod command;
 mod keymap;
 
-pub use command::{COMMANDS, Completion, Param, Spec};
+pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
 pub use keymap::{Action, Binding, Key, Keymap, Menu};
 
 use lattice_core::{Grid, MAX_STEPS, Note, Step};
@@ -223,6 +223,15 @@ impl Editor {
     pub fn command_hint(&self) -> Option<String> {
         match &self.mode {
             Mode::Command(prompt) => command::hint(&prompt.line),
+            _ => None,
+        }
+    }
+
+    /// What's wrong with the command line so far. A word that more typing could make valid,
+    /// such as `4` on the way to `40`, isn't flagged until it can't.
+    pub fn command_problem(&self) -> Option<Problem> {
+        match &self.mode {
+            Mode::Command(prompt) => command::problem(&prompt.line),
             _ => None,
         }
     }
@@ -1068,10 +1077,40 @@ mod tests {
     fn commands_report_errors() {
         let mut e = editor();
         command(&mut e, "tr lots");
-        assert_eq!(e.message.as_deref(), Some("not a number: lots"));
+        assert_eq!(e.message.as_deref(), Some("semitones is -128 to 127"));
         command(&mut e, "bpm 1000");
-        assert!(e.message.unwrap().starts_with("expected a number"));
+        assert_eq!(e.message.as_deref(), Some("bpm is 20 to 400"));
         assert_eq!(e.mode, Mode::Normal);
+        command(&mut e, "bpm");
+        assert_eq!(
+            e.message.as_deref(),
+            Some("bpm is 20 to 400"),
+            "missing values are flagged on enter"
+        );
+        assert_eq!(e.bpm, 120.0);
+    }
+
+    #[test]
+    fn command_problems_show_while_typing() {
+        let mut e = editor();
+        assert_eq!(e.command_problem(), None, "not on the command line");
+        keys(&mut e, ":bpm 4");
+        assert_eq!(e.command_problem(), None, "could still become 40");
+        keys(&mut e, "000");
+        assert_eq!(
+            e.command_problem(),
+            Some(Problem {
+                range: 4..8,
+                message: "bpm is 20 to 400".into()
+            })
+        );
+        for _ in 0..3 {
+            e.handle(Key::Backspace);
+        }
+        keys(&mut e, "0 ");
+        assert_eq!(e.command_problem(), None);
+        e.handle(Key::Enter);
+        assert_eq!(e.bpm, 40.0);
     }
 
     #[test]

@@ -1,4 +1,10 @@
 //! The `:` command line.
+//!
+//! Each command's [`Spec`] says what values it takes, and lines are parsed against it in one
+//! place, [`parse`]: as they're typed, to point out mistakes early, and again when they run.
+
+use std::fmt::Debug;
+use std::ops::Range;
 
 use lattice_core::{Condition, MAX_STEPS, Rule, Step, Transform};
 
@@ -7,42 +13,100 @@ use crate::{Editor, Effect};
 /// What a command takes after its name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Param {
-    /// A value, shown by this placeholder until it's typed.
-    Value(&'static str),
+    Value(Value),
     /// An optional `every N [OFFSET]` or `pass K`, always last.
     Condition,
 }
+
+/// A value a command takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Value {
+    /// The placeholder shown until it's typed.
+    pub name: &'static str,
+    /// What messages call it.
+    pub what: &'static str,
+    pub kind: Kind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    /// A whole number from `min` to `max`, optionally signed. A `max` of [`ANY`] is no limit
+    /// worth mentioning.
+    Int { min: i64, max: i64 },
+    /// The rest of the line, as free text.
+    Text,
+}
+
+/// The largest number a condition takes.
+const ANY: i64 = u32::MAX as i64;
+
+/// How far a rule can rotate the pattern: a whole track at most, either way.
+const ROTATION: i64 = MAX_STEPS as i64;
+
+const fn int(name: &'static str, what: &'static str, min: i64, max: i64) -> Param {
+    Param::Value(Value {
+        name,
+        what,
+        kind: Kind::Int { min, max },
+    })
+}
+
+const fn text(name: &'static str, what: &'static str) -> Param {
+    Param::Value(Value {
+        name,
+        what,
+        kind: Kind::Text,
+    })
+}
+
+/// The values in a condition.
+const EVERY: Value = Value {
+    name: "N",
+    what: "every",
+    kind: Kind::Int { min: 1, max: ANY },
+};
+const OFFSET: Value = Value {
+    name: "OFFSET",
+    what: "offset",
+    kind: Kind::Int { min: 0, max: ANY },
+};
+const PASS: Value = Value {
+    name: "K",
+    what: "pass",
+    kind: Kind::Int { min: 0, max: ANY },
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Spec {
     pub name: &'static str,
     pub alias: Option<&'static str>,
     pub params: &'static [Param],
+    /// What the command does. [`Spec::description`] adds the range of its value.
     pub describe: &'static str,
 }
 
 const CONDITION: &str = "[every N [OFFSET] | pass K]";
 
-use Param::{Condition as When, Value};
+use Param::{Condition as When, Value as V};
 
 /// Every `:` command, in the order the completion list shows them before anything is typed.
 pub const COMMANDS: &[Spec] = &[
     Spec {
         name: "tr",
         alias: None,
-        params: &[Value("SEMITONES"), When],
+        params: &[int("SEMITONES", "semitones", -128, 127), When],
         describe: "rule: transpose",
     },
     Spec {
         name: "rot",
         alias: None,
-        params: &[Value("STEPS"), When],
+        params: &[int("STEPS", "steps", -ROTATION, ROTATION), When],
         describe: "rule: rotate the pattern",
     },
     Spec {
         name: "drift",
         alias: None,
-        params: &[Value("STEPS"), When],
+        params: &[int("STEPS", "steps", -ROTATION, ROTATION), When],
         describe: "rule: rotate further each time it applies",
     },
     Spec {
@@ -66,32 +130,32 @@ pub const COMMANDS: &[Spec] = &[
     Spec {
         name: "len",
         alias: None,
-        params: &[Value("STEPS")],
-        describe: "track length, 1 to 256",
+        params: &[int("STEPS", "length", 1, MAX_STEPS as i64)],
+        describe: "track length",
     },
     Spec {
         name: "name",
         alias: None,
-        params: &[Value("NAME")],
+        params: &[text("NAME", "name")],
         describe: "rename the track",
     },
     Spec {
         name: "bpm",
         alias: None,
-        params: &[Value("BPM")],
-        describe: "tempo, 20 to 400",
+        params: &[int("BPM", "bpm", 20, 400)],
+        describe: "tempo",
     },
     Spec {
         name: "step",
         alias: None,
-        params: &[Value("STEPS")],
-        describe: "steps to move after each note, 0 to 64",
+        params: &[int("STEPS", "auto-step", 0, 64)],
+        describe: "steps to move after each note",
     },
     Spec {
         name: "oct",
         alias: None,
-        params: &[Value("OCTAVE")],
-        describe: "keyboard octave, 0 to 9",
+        params: &[int("OCTAVE", "octave", 0, 9)],
+        describe: "keyboard octave",
     },
     Spec {
         name: "click",
@@ -132,11 +196,78 @@ impl Spec {
             .params
             .iter()
             .map(|p| match p {
-                Value(name) => name,
+                V(value) => value.name,
                 When => CONDITION,
             })
             .collect();
         words.join(" ")
+    }
+
+    /// What the command does, with the range of its value if that's limited: `tempo, 20 to 400`.
+    pub fn description(&self) -> String {
+        let range = self.params.iter().find_map(|p| match p {
+            V(Value {
+                kind: Kind::Int { min, max },
+                ..
+            }) if *max != ANY => Some(format!(", {min} to {max}")),
+            _ => None,
+        });
+        format!("{}{}", self.describe, range.unwrap_or_default())
+    }
+}
+
+impl Value {
+    /// What's wanted, for when it's missing or wrong: `bpm is 20 to 400`.
+    pub fn expected(&self) -> String {
+        let what = self.what;
+        match self.kind {
+            Kind::Int { min: 0, max: ANY } => format!("{what} is a whole number"),
+            Kind::Int { min, max: ANY } => format!("{what} is {min} or more"),
+            Kind::Int { min, max } => format!("{what} is {min} to {max}"),
+            Kind::Text => format!("expected a {what}"),
+        }
+    }
+
+    /// The number in `word`, if it is one and in range.
+    fn int(&self, word: &str) -> Option<i64> {
+        let Kind::Int { min, max } = self.kind else {
+            return None;
+        };
+        let digits = word.strip_prefix(['+', '-']).unwrap_or(word);
+        if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        word.trim_start_matches('+')
+            .parse()
+            .ok()
+            .filter(|n| (min..=max).contains(n))
+    }
+
+    /// Whether typing more could make `word` valid: a lone `-`, or `4` on the way to `40`.
+    fn could_become(&self, word: &str) -> bool {
+        let Kind::Int { min, max } = self.kind else {
+            return true;
+        };
+        let (negative, digits) = match word.strip_prefix('-') {
+            Some(digits) => (true, digits),
+            None => (false, word.strip_prefix('+').unwrap_or(word)),
+        };
+        if !digits.bytes().all(|b| b.is_ascii_digit()) {
+            return false;
+        }
+        let typed: i128 = digits.parse().unwrap_or(0);
+        let (min, max) = (i128::from(min), i128::from(max));
+        let limit = min.abs().max(max.abs());
+        // With `extra` more digits, the number lies somewhere in `low..=high`.
+        (0..20)
+            .skip(usize::from(digits.is_empty()))
+            .map(|extra| 10_i128.pow(extra))
+            .take_while(|scale| typed * scale <= limit)
+            .any(|scale| {
+                let (low, high) = (typed * scale, typed * scale + scale - 1);
+                let (low, high) = if negative { (-high, -low) } else { (low, high) };
+                low <= max && high >= min
+            })
     }
 }
 
@@ -202,7 +333,7 @@ pub fn hint(line: &str) -> Option<String> {
         .params
         .iter()
         .filter_map(|p| match p {
-            Value(name) => Some(*name),
+            V(value) => Some(value.name),
             When => None,
         })
         .collect();
@@ -248,39 +379,250 @@ pub fn hint(line: &str) -> Option<String> {
     (!hint.is_empty()).then_some(hint)
 }
 
+/// Something wrong on the command line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Problem {
+    /// The offending characters' positions in the line. Empty, at the end, for something missing.
+    pub range: Range<usize>,
+    pub message: String,
+}
+
+impl Problem {
+    fn new(range: Range<usize>, message: impl Into<String>) -> Self {
+        Self {
+            range,
+            message: message.into(),
+        }
+    }
+}
+
+/// What's wrong with `line` so far, as it's typed. Words that typing more could make valid,
+/// and values not typed yet, aren't problems until enter.
+pub fn problem(line: &str) -> Option<Problem> {
+    parse(line, true).err()
+}
+
+/// A line parsed against its command's [`Spec`], ready to run.
+struct Command {
+    spec: &'static Spec,
+    /// One per [`Param::Value`], in order.
+    args: Vec<Arg>,
+    when: Condition,
+}
+
+enum Arg {
+    Int(i64),
+    Text(String),
+}
+
+impl Command {
+    /// Value `i` as a number, already checked against its range.
+    fn int<T: TryFrom<i64>>(&self, i: usize) -> T
+    where
+        T::Error: Debug,
+    {
+        match &self.args[i] {
+            Arg::Int(n) => T::try_from(*n).expect("checked against its range"),
+            Arg::Text(_) => unreachable!("value {i} of {} is text", self.spec.name),
+        }
+    }
+
+    fn text(&self, i: usize) -> &str {
+        match &self.args[i] {
+            Arg::Text(text) => text,
+            Arg::Int(_) => unreachable!("value {i} of {} is a number", self.spec.name),
+        }
+    }
+}
+
+/// Parses `line` against its command's parameters. While `live` the line is still being typed:
+/// `Ok(None)` means nothing is wrong so far. Otherwise it's only `Ok(None)` if the line is empty.
+fn parse(line: &str, live: bool) -> Result<Option<Command>, Problem> {
+    let mut words = Words::new(line, live);
+    let Some((name, typing)) = words.next() else {
+        return Ok(None);
+    };
+    let spec = match find(name.text) {
+        Some(spec) => spec,
+        None if typing && !complete(name.text).is_empty() => return Ok(None),
+        None => return Err(Problem::new(name.range, "unknown command")),
+    };
+    let mut args = Vec::new();
+    let mut when = Condition::Always;
+    for param in spec.params {
+        match param {
+            V(value) => match words.value(value)? {
+                Some(arg) => args.push(arg),
+                None => return Ok(None),
+            },
+            When => match words.condition()? {
+                Some(condition) => when = condition,
+                None => return Ok(None),
+            },
+        }
+    }
+    if let Some((extra, _)) = words.next() {
+        return Err(Problem::new(extra.range, "too many arguments"));
+    }
+    Ok(Some(Command { spec, args, when }))
+}
+
+#[derive(Debug, Clone)]
+struct Word<'a> {
+    text: &'a str,
+    /// Character positions in the line.
+    range: Range<usize>,
+}
+
+/// The words of a line, read off one value at a time. While `live`, a missing value or a last
+/// word that could still become valid gives `Ok(None)`, to stop checking without a problem.
+struct Words<'a> {
+    words: Vec<Word<'a>>,
+    next: usize,
+    live: bool,
+    /// Whether the line ends in a space, so its last word is finished.
+    finished: bool,
+    /// The line's length in characters.
+    end: usize,
+}
+
+impl<'a> Words<'a> {
+    fn new(line: &'a str, live: bool) -> Self {
+        let mut words = Vec::new();
+        let mut start = None;
+        let end = line.chars().count();
+        // A space past the end finishes the last word.
+        let chars = line.char_indices().chain([(line.len(), ' ')]).enumerate();
+        for (i, (byte, c)) in chars {
+            match (start, c.is_whitespace()) {
+                (None, false) => start = Some((i, byte)),
+                (Some((from, from_byte)), true) => {
+                    words.push(Word {
+                        text: &line[from_byte..byte],
+                        range: from..i,
+                    });
+                    start = None;
+                }
+                _ => {}
+            }
+        }
+        Self {
+            words,
+            next: 0,
+            live,
+            finished: line.ends_with(char::is_whitespace),
+            end,
+        }
+    }
+
+    /// The next word, and whether it's still being typed.
+    fn next(&mut self) -> Option<(Word<'a>, bool)> {
+        let word = self.words.get(self.next)?.clone();
+        self.next += 1;
+        let typing = self.live && !self.finished && self.next == self.words.len();
+        Some((word, typing))
+    }
+
+    fn missing<T>(&self, value: &Value) -> Result<Option<T>, Problem> {
+        if self.live {
+            Ok(None)
+        } else {
+            Err(Problem::new(self.end..self.end, value.expected()))
+        }
+    }
+
+    fn value(&mut self, value: &Value) -> Result<Option<Arg>, Problem> {
+        Ok(match value.kind {
+            Kind::Int { .. } => self.int(value)?.map(Arg::Int),
+            Kind::Text => self.text(value)?.map(Arg::Text),
+        })
+    }
+
+    fn int(&mut self, value: &Value) -> Result<Option<i64>, Problem> {
+        let Some((word, typing)) = self.next() else {
+            return self.missing(value);
+        };
+        match value.int(word.text) {
+            Some(n) => Ok(Some(n)),
+            None if typing && value.could_become(word.text) => Ok(None),
+            None => Err(Problem::new(word.range, value.expected())),
+        }
+    }
+
+    /// The rest of the line, with single spaces between words.
+    fn text(&mut self, value: &Value) -> Result<Option<String>, Problem> {
+        let rest: Vec<&str> = std::iter::from_fn(|| self.next())
+            .map(|(word, _)| word.text)
+            .collect();
+        if rest.is_empty() {
+            return self.missing(value);
+        }
+        Ok(Some(rest.join(" ")))
+    }
+
+    /// An optional `every N [OFFSET]` or `pass K`.
+    fn condition(&mut self) -> Result<Option<Condition>, Problem> {
+        let whole = |n: i64| u32::try_from(n).expect("checked against its range");
+        let Some((word, typing)) = self.next() else {
+            return Ok(Some(Condition::Always));
+        };
+        match word.text {
+            "every" => {
+                let Some(n) = self.int(&EVERY)? else {
+                    return Ok(None);
+                };
+                let offset = if self.next < self.words.len() {
+                    match self.int(&OFFSET)? {
+                        Some(offset) => offset,
+                        None => return Ok(None),
+                    }
+                } else {
+                    0
+                };
+                Ok(Some(Condition::Every {
+                    n: whole(n),
+                    offset: whole(offset),
+                }))
+            }
+            "pass" => Ok(self.int(&PASS)?.map(|k| Condition::Pass(whole(k)))),
+            partial if typing && ["every", "pass"].iter().any(|k| k.starts_with(partial)) => {
+                Ok(None)
+            }
+            _ => Err(Problem::new(word.range, "expected every or pass")),
+        }
+    }
+}
+
 pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String> {
-    let mut words = line.split_whitespace();
-    let Some(command) = words.next() else {
+    let Some(command) = parse(line, false).map_err(|problem| problem.message)? else {
         return Ok(vec![]);
     };
-    let args: Vec<&str> = words.collect();
     let track = editor.cursor.track;
-    let spec = find(command).ok_or_else(|| format!("unknown command: {command}"))?;
 
-    match spec.name {
+    match command.spec.name {
         "quit" => Ok(vec![Effect::Quit]),
         "help" => {
             let names: Vec<&str> = COMMANDS.iter().map(|c| c.name).collect();
             Err(names.join(" · "))
         }
         "bpm" => {
-            let bpm: f64 = number(&args, 20.0, 400.0)?;
+            let bpm = f64::from(command.int::<u16>(0));
             editor.bpm = bpm;
             Ok(vec![Effect::Bpm(bpm)])
         }
         "len" => {
-            let len: usize = number(&args, 1, MAX_STEPS)?;
+            let len: usize = command.int(0);
             editor.checkpoint();
             editor.grid.tracks[track].steps.resize(len, Step::default());
             editor.clamp_selection();
             Ok(vec![Effect::TrackChanged(track)])
         }
         "step" => {
-            editor.auto_step = number(&args, 0, 64)?;
+            editor.auto_step = command.int(0);
             Ok(vec![])
         }
         "oct" => {
-            editor.octave = number(&args, 0, 9)?;
+            editor.octave = command.int(0);
             Ok(vec![])
         }
         "follow" => {
@@ -296,20 +638,21 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![Effect::Click(editor.click)])
         }
         "name" => {
-            let name = args.join(" ");
-            if name.is_empty() {
-                return Err("name what?".into());
-            }
-            editor.grid.tracks[track].name = name;
+            editor.grid.tracks[track].name = command.text(0).into();
             Ok(vec![])
         }
-        "rot" | "drift" | "rev" | "tr" => {
-            let (transform, rest) = transform(command, &args)?;
-            let when = condition(rest)?;
+        name @ ("rot" | "drift" | "rev" | "tr") => {
+            let transform = match name {
+                "rot" => Transform::Rotate(command.int(0)),
+                "drift" => Transform::Drift(command.int(0)),
+                "tr" => Transform::Transpose(command.int(0)),
+                _ => Transform::Reverse,
+            };
             editor.checkpoint();
-            editor.grid.tracks[track]
-                .rules
-                .push(Rule { transform, when });
+            editor.grid.tracks[track].rules.push(Rule {
+                transform,
+                when: command.when,
+            });
             Ok(vec![Effect::TrackChanged(track)])
         }
         "pop" => {
@@ -326,57 +669,6 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![Effect::TrackChanged(track)])
         }
         _ => unreachable!("every command in COMMANDS is handled"),
-    }
-}
-
-fn transform<'a>(command: &str, args: &'a [&'a str]) -> Result<(Transform, &'a [&'a str]), String> {
-    if command == "rev" {
-        return Ok((Transform::Reverse, args));
-    }
-    let (amount, rest) = args
-        .split_first()
-        .ok_or_else(|| format!("{command} needs an amount"))?;
-    let amount: i32 = amount
-        .trim_start_matches('+')
-        .parse()
-        .map_err(|_| format!("not a number: {amount}"))?;
-    let transform = match command {
-        "rot" => Transform::Rotate(amount),
-        "drift" => Transform::Drift(amount),
-        _ => Transform::Transpose(
-            i8::try_from(amount).map_err(|_| "transpose by -128 to 127".to_string())?,
-        ),
-    };
-    Ok((transform, rest))
-}
-
-fn condition(args: &[&str]) -> Result<Condition, String> {
-    let parse = |s: &str| s.parse::<u32>().map_err(|_| format!("not a number: {s}"));
-    match args {
-        [] => Ok(Condition::Always),
-        ["every", n] => Ok(Condition::Every {
-            n: parse(n)?.max(1),
-            offset: 0,
-        }),
-        ["every", n, offset] => Ok(Condition::Every {
-            n: parse(n)?.max(1),
-            offset: parse(offset)?,
-        }),
-        ["pass", k] => Ok(Condition::Pass(parse(k)?)),
-        _ => Err("conditions: every N [OFFSET] · pass K".into()),
-    }
-}
-
-fn number<T>(args: &[&str], min: T, max: T) -> Result<T, String>
-where
-    T: std::str::FromStr + PartialOrd + std::fmt::Display + Copy,
-{
-    let [arg] = args else {
-        return Err(format!("expected a number from {min} to {max}"));
-    };
-    match arg.parse::<T>() {
-        Ok(n) if n >= min && n <= max => Ok(n),
-        _ => Err(format!("expected a number from {min} to {max}")),
     }
 }
 
@@ -425,5 +717,98 @@ mod tests {
         assert_eq!(hint("bpm 9"), None);
         assert_eq!(hint("pop "), None);
         assert_eq!(hint("nope "), None);
+    }
+
+    /// The problem in `line` as it's typed, as the offending text and the message.
+    fn flagged(line: &str) -> Option<(String, String)> {
+        problem(line).map(|p| {
+            let word = line
+                .chars()
+                .skip(p.range.start)
+                .take(p.range.len())
+                .collect();
+            (word, p.message)
+        })
+    }
+
+    fn flag(word: &str, message: &str) -> Option<(String, String)> {
+        Some((word.into(), message.into()))
+    }
+
+    #[test]
+    fn partial_words_that_could_become_valid_are_not_flagged() {
+        for line in [
+            "",
+            "fo",
+            "rv",
+            "bpm",
+            "bpm ",
+            "bpm 4",
+            "bpm 40",
+            "bpm +",
+            "tr -",
+            "tr -12",
+            "tr +5",
+            "tr 5 ev",
+            "tr 5 every",
+            "tr 5 every ",
+            "tr 5 every 0",
+            "rev every 2 1",
+            "rev p",
+            "len 25",
+            "name",
+            "name My  lead",
+            "oct 9 ",
+        ] {
+            assert_eq!(flagged(line), None, "{line:?}");
+        }
+    }
+
+    #[test]
+    fn mistakes_are_flagged_once_they_cannot_become_valid() {
+        assert_eq!(flagged("bpm 1000"), flag("1000", "bpm is 20 to 400"));
+        assert_eq!(flagged("bpm 4 "), flag("4", "bpm is 20 to 400"));
+        assert_eq!(flagged("bpm -"), flag("-", "bpm is 20 to 400"));
+        assert_eq!(flagged("bpm 1x"), flag("1x", "bpm is 20 to 400"));
+        assert_eq!(flagged("oct 10"), flag("10", "octave is 0 to 9"));
+        assert_eq!(flagged("tr x"), flag("x", "semitones is -128 to 127"));
+        assert_eq!(flagged("tr -129"), flag("-129", "semitones is -128 to 127"));
+        assert_eq!(flagged("zz"), flag("zz", "unknown command"));
+        assert_eq!(flagged("fo "), flag("fo", "unknown command"));
+        assert_eq!(flagged("tr 5 x"), flag("x", "expected every or pass"));
+        assert_eq!(flagged("tr 5 every 0 "), flag("0", "every is 1 or more"));
+        assert_eq!(flagged("rev pass x"), flag("x", "pass is a whole number"));
+        assert_eq!(flagged("pop now"), flag("now", "too many arguments"));
+        assert_eq!(flagged("bpm 120 5"), flag("5", "too many arguments"));
+        assert_eq!(flagged("rev every 2 1 3"), flag("3", "too many arguments"));
+        assert_eq!(
+            problem(" bpm  5000").unwrap().range,
+            6..10,
+            "ranges count characters in the line"
+        );
+    }
+
+    #[test]
+    fn missing_values_are_problems_on_enter() {
+        let problem = |line| parse(line, false).err();
+        assert_eq!(problem("bpm"), Some(Problem::new(3..3, "bpm is 20 to 400")));
+        assert_eq!(problem("bpm 4").unwrap().message, "bpm is 20 to 400");
+        assert_eq!(
+            problem("tr 5 ev").unwrap().message,
+            "expected every or pass"
+        );
+        assert_eq!(problem("tr 5 every").unwrap().message, "every is 1 or more");
+        assert_eq!(problem("name ").unwrap().message, "expected a name");
+        assert_eq!(problem("fo").unwrap().message, "unknown command");
+        assert_eq!(problem("rev every 2 1"), None);
+        assert_eq!(problem(""), None);
+    }
+
+    #[test]
+    fn descriptions_show_ranges() {
+        assert_eq!(find("bpm").unwrap().description(), "tempo, 20 to 400");
+        assert_eq!(find("len").unwrap().description(), "track length, 1 to 256");
+        assert_eq!(find("name").unwrap().description(), "rename the track");
+        assert_eq!(find("rev").unwrap().description(), "rule: play backwards");
     }
 }
