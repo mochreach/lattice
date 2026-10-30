@@ -5,7 +5,7 @@ use ratatui::style::{Color, Modifier, Style};
 use terminal_colorsaurus::QueryOptions;
 
 /// How far beat rows move from the background towards the foreground.
-const BEAT_ROW_SHADE: f32 = 0.07;
+const BEAT_ROW_SHADE: f32 = 0.12;
 
 #[derive(Debug, Clone)]
 pub struct Theme {

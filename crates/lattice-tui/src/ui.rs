@@ -245,12 +245,20 @@ fn grid_row(
     } else {
         theme.faint
     };
-    let mut spans = vec![Span::styled(format!(" {row:02X} "), gutter_style)];
+    // Shade the whole row on the beat, gutter and gaps included, so it reads as one band.
+    let band = match theme.beat_row {
+        Some(bg) if on_beat => Style::new().bg(bg),
+        _ => Style::new(),
+    };
+    let mut spans = vec![Span::styled(
+        format!(" {row:02X} "),
+        gutter_style.patch(band),
+    )];
 
     let (sel_start, sel_end) = editor.selection();
     for (i, c) in columns.iter().enumerate() {
         let Some(step) = c.shown.get(row) else {
-            spans.push(Span::raw(" ".repeat(CELL + 1)));
+            spans.push(Span::styled(" ".repeat(CELL + 1), band));
             continue;
         };
 
@@ -276,9 +284,7 @@ fn grid_row(
         if editor.view == View::Live && c.track.steps.get(row) != Some(step) {
             style = style.add_modifier(Modifier::BOLD | Modifier::ITALIC);
         }
-        if on_beat && let Some(bg) = theme.beat_row {
-            style = style.bg(bg);
-        }
+        style = style.patch(band);
 
         let is_cursor = editor.cursor.track == i && editor.cursor.step == row;
         let selected = matches!(editor.mode, Mode::Visual { .. })
@@ -297,7 +303,7 @@ fn grid_row(
         }
 
         spans.push(Span::styled(fit(&text, CELL), style));
-        spans.push(Span::raw(" "));
+        spans.push(Span::styled(" ", band));
     }
     Line::from(spans)
 }
