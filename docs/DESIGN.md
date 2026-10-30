@@ -176,7 +176,7 @@ fundsp and similar libraries are still useful as references, and as reference ou
 | UI ↔ audio queues | rtrb | 0.4 |
 | MIDI | midir | 0.11 |
 | MIDI messages | wmidi | |
-| Song files | serde with toml or ron | |
+| Song files | serde, ron | 1.0, 0.12 |
 
 **Key-release events:** most terminals send key presses only. Kitty, foot, WezTerm, Ghostty and
 Alacritty also send releases through the kitty keyboard protocol. Note entry must work with
@@ -213,5 +213,60 @@ and edits such as transposing keep the selection so they can be repeated. Prefix
 open an infobox listing what can follow, which makes the keymap discoverable as it grows. Keys
 are data (`Keymap`, `Binding::Menu`), so new menus need no new code in the frontend.
 
-Next for the UI: saving and loading songs, adding and removing tracks, effect columns, a help
-screen, loading keymaps from a config file, and themes from a config file.
+## Song files
+
+Songs are saved as RON in `.lattice` files, written by `lattice_core::to_ron` and read by
+`from_ron`, which also rejects songs the editor and engine can't handle (no tracks, lengths outside
+1–256, and so on). A file holds the `Song`: its tempo, grids and arrangement. Tracks are written
+sparsely, as a length and a map from step index to the steps that aren't empty, and fields at
+their defaults (velocity 100, length 1, a rule that always applies) are left out, so a file reads
+much like the pattern does:
+
+```ron
+#![enable(implicit_some)]
+(
+    name: "demo",
+    bpm: 120.0,
+    grids: [
+        (
+            name: "demo",
+            steps_per_beat: 4,
+            tracks: [
+                (
+                    name: "bleep",
+                    length: 6,
+                    steps: {
+                        0: (note: (pitch: 79)),
+                        3: (note: (pitch: 75, velocity: 80, length: 2)),
+                    },
+                    rules: [
+                        (transform: Drift(1)),
+                        (transform: Reverse, when: Every(n: 2, offset: 1)),
+                    ],
+                ),
+            ],
+        ),
+    ],
+    order: [
+        0,
+    ],
+)
+```
+
+As principle 4 says, the editor makes no I/O decisions: `:w` and `:o` return `Effect::Save` and
+`Effect::Open`, and the frontend reads or writes the file, then calls `Editor::saved` or
+`Editor::load`. The editor keeps a copy of the song as last saved, and the song counts as
+modified whenever it differs, so undoing back to the saved state clears the `[+]` marker.
+
+Not in files yet:
+- **Instrument patches.** They're still defined in `lattice-tui`'s `demo.rs`, and track `i` plays
+  the demo's instrument `i`. A song can have fewer tracks than there are instruments (the rest
+  are silenced), but not more. Patches belong in the song once instruments can be chosen per
+  track.
+- **More than one grid.** Files can hold several, but only the first in the arrangement is
+  edited and saved back.
+- **Changing steps per beat while running.** The engine's clock is set up with it, so `:o` refuses a
+  song with a different value; opening it from the command line works.
+
+Next for the UI: adding and removing tracks, effect columns, a help screen, loading keymaps from
+a config file, and themes from a config file.
