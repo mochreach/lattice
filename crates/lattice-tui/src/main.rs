@@ -4,7 +4,7 @@ use std::io::BufRead;
 
 use anyhow::{Context, Result, bail};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use lattice_engine::Engine;
+use lattice_engine::{Engine, Instrument, Synth};
 
 // In debug builds, any allocation inside `assert_no_alloc` (the audio callback) aborts.
 #[cfg(debug_assertions)]
@@ -32,19 +32,31 @@ fn main() -> Result<()> {
     let sample_rate = config.sample_rate() as f32;
 
     let (grid, patches) = demo::song();
-    let mut engine = Engine::new(sample_rate, demo::BPM, &grid, &patches);
+    let instruments = patches
+        .into_iter()
+        .map(|p| Box::new(Synth::new(p, sample_rate)) as Box<dyn Instrument>)
+        .collect();
+    let mut engine = Engine::new(sample_rate, demo::BPM, &grid, instruments);
     engine.click_enabled = click;
-    let mut mono = vec![0.0f32; MAX_BLOCK];
+    let mut left = vec![0.0f32; MAX_BLOCK];
+    let mut right = vec![0.0f32; MAX_BLOCK];
 
     let stream = device.build_output_stream(
         config.into(),
         move |data: &mut [f32], _| {
             assert_no_alloc::assert_no_alloc(|| {
                 for chunk in data.chunks_mut(MAX_BLOCK * channels) {
-                    let mono = &mut mono[..chunk.len() / channels];
-                    engine.process(mono);
-                    for (frame, &sample) in chunk.chunks_exact_mut(channels).zip(mono.iter()) {
-                        frame.fill(sample);
+                    let frames = chunk.len() / channels;
+                    let (l, r) = (&mut left[..frames], &mut right[..frames]);
+                    engine.process(l, r);
+                    for ((frame, &l), &r) in chunk.chunks_exact_mut(channels).zip(&*l).zip(&*r) {
+                        if let [first, second, rest @ ..] = frame {
+                            *first = l;
+                            *second = r;
+                            rest.fill(0.0);
+                        } else {
+                            frame.fill(0.5 * (l + r));
+                        }
                     }
                 }
             });

@@ -64,26 +64,105 @@ Transforms include `Rotate`, `Drift` (rotation that builds up each pass), `Rever
 (Elektron-style `1:4`, `FILL`, `PRE`), and arrangement rules that replace the old global
 "repeat grid" flag.
 
-## Sound engine
+## Instruments and plugins
+
+**Plugin support is non-negotiable, and the standard is CLAP.** It's an open specification
+with a sample-accurate event model and per-note parameter changes, and it suits Linux. We'd
+rather build on and contribute to an open standard than depend on a closed one. Hosting uses
+`clack-host`. VST3 can come later; LV2 only if it's needed.
+
+**Built-in engines and hosted plugins share one interface,** modelled on CLAP's processing:
+
+```rust
+trait Instrument: Send {
+    fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]);
+}
+```
+
+The sequencer turns steps into events (note on/off, parameter changes) stamped with their sample
+offset in the block, and each instrument renders the whole block. This has several
+consequences:
+
+- **Effect columns:** a step's effect columns become timestamped parameter events, like Elektron
+  parameter locks, whether the target is a built-in engine or a plugin.
+- **Exporting:** the built-in engines can later be packaged as CLAP plugins with `clack-plugin`,
+  for use in other software.
+- **Plugin windows:** plugins with their own interfaces open them in separate windows alongside
+  the terminal.
+- **Crash isolation:** later, plugins may run in a separate process so a crashing one can't take
+  Lattice down.
+
+## Built-in engines: opinionated, with character
+
+Lattice is a personal instrument first. The built-in engines should be interesting and quirky,
+in the spirit of Teenage Engineering's gear: powerful enough, but not a wall of options.
+
+- **No generic synth with the usual controls.** Each engine's controls should be specific to
+  what it is. For example, rather than a sub-oscillator level, a control that sweeps through
+  different kinds of sub-oscillator. A filter or envelope appears only where it suits the
+  engine.
+- **A small set of main controls per engine,** each doing something characterful. Deeper
+  parameters can be opened up later without changing the main ones.
+- **Physical modelling is a priority:**
+  - modal synthesis (struck bars, bells, plates and glass)
+  - plucked and bowed strings (waveguides)
+  - membranes
+  - blown pipes
+- **References:** Mutable Instruments' Rings, Elements and Plaits (MIT-licensed) for
+  opinionated models with few controls, and the OP-1's engines for character.
+
+The current `Synth` is a plain test instrument for exercising the engine, not a flagship.
+
+## Performance
+
+How many voices and effects we can run, and on what hardware, depends on performance. So it's
+designed in from the start.
+
+**Targets:**
+- **Main target:** a laptop.
+- **Supported:** Raspberry Pi 4 (64-bit OS).
+- **Best effort:** Raspberry Pi 3, with fewer voices and effects. We don't compromise the
+  design to fit it.
+
+**Foundations:**
+- **SIMD across voices and partials.** Voice state is laid out as structure-of-arrays
+  (`f32x8` lanes from the `wide` crate), so eight voices, or a bank of resonator modes, are
+  computed together. `wide` compiles to AVX on x86, NEON on ARM, or scalar code where there's no
+  SIMD.
+- **Block processing, branch-free inner loops.** Blocks are at most 256 frames. Decisions such
+  as envelope stage changes are made outside the per-sample loop.
+- **Control rate.** Expensive maths (filter `tan()`, envelope stages) runs every 16 samples,
+  counted from an absolute sample clock so output doesn't depend on buffer size.
+- **Denormals flushed to zero** at the start of every callback (MXCSR on x86, FPCR on ARM).
+- **Silence skipping.** Idle instruments do almost no work.
+- **Benchmarks:** `cargo bench -p lattice-engine` reports what share of one core each
+  instrument needs. Run it on every target machine.
+- **Later:** tracks are independent until the mixer, so they can run in parallel on a
+  real-time thread pool (not rayon). Raise the audio thread to real-time priority. Limit the UI
+  to 30–60 redraws a second.
+- **Not GPUs.** Their latency and scheduling don't suit real-time audio at small buffer sizes.
+
+Lay the foundations now, and optimise only where benchmarks show a need.
+
+## DSP
 
 We write our own DSP rather than using fundsp. A tracker's signal flow is fixed:
 
 ```
-voices → track inserts → sends → master
+instruments → track inserts → sends → master
 ```
 
-So we don't need a dynamic audio graph, and owning the code makes the real-time
-guarantees easy to check. Things to get right:
+So we don't need a dynamic audio graph, and owning the code makes the real-time guarantees easy
+to check. Things to get right:
 
 - **Oscillators:** band-limited (PolyBLEP/PolyBLAMP), wavetables later.
 - **Envelopes:** triggered by events, never by watching a level.
 - **Filters:** a TPT/ZDF state-variable filter, later a ladder filter.
 - **Effects:** drive/waveshaping (with oversampling), delay, and a reverb (a Freeverb or FDN to
   start).
-- **Housekeeping:** parameter smoothing, denormal protection, polyphony with voice stealing.
+- **Housekeeping:** parameter smoothing, polyphony with voice stealing.
 
-fundsp and similar libraries are still useful as references, and as reference output in
-tests.
+fundsp and similar libraries are still useful as references, and as reference output in tests.
 
 ## Stack (versions as of October 2026)
 
@@ -92,6 +171,8 @@ tests.
 | Terminal UI | ratatui | 0.30 |
 | Terminal backend | crossterm, with the kitty keyboard protocol | 0.29 |
 | Audio output | cpal | 0.18 |
+| SIMD | wide | 1.7 |
+| Plugin hosting | clack-host (CLAP) | 0.2 |
 | UI ↔ audio queues | rtrb | 0.4 |
 | MIDI | midir | 0.11 |
 | MIDI messages | wmidi | |

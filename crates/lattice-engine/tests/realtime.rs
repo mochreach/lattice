@@ -2,7 +2,7 @@
 
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
 use lattice_core::{Condition, Grid, Rule, Step, Track, Transform};
-use lattice_engine::{AdsrParams, Engine, Patch, Wave};
+use lattice_engine::{AdsrParams, Engine, Instrument, Patch, Synth, Wave};
 
 #[global_allocator]
 static ALLOCATOR: AllocDisabler = AllocDisabler;
@@ -49,15 +49,17 @@ fn rendering_never_allocates() {
         resonance: 0.3,
         gain: 0.3,
     };
-    let mut engine = Engine::new(48_000.0, 174.0, &grid, &[patch]);
-    let mut buffer = vec![0.0; 256];
+    let synth: Box<dyn Instrument> = Box::new(Synth::new(patch, 48_000.0));
+    let mut engine = Engine::new(48_000.0, 174.0, &grid, vec![synth]);
+    let mut left = vec![0.0; 256];
+    let mut right = vec![0.0; 256];
 
     let mut peak = 0.0f32;
     assert_no_alloc(|| {
         // Ten seconds: many passes through the track, so transforms are realised repeatedly.
         for _ in 0..(48_000 * 10 / 256) {
-            engine.process(&mut buffer);
-            peak = buffer.iter().fold(peak, |p, x| p.max(x.abs()));
+            engine.process(&mut left, &mut right);
+            peak = left.iter().fold(peak, |p, x| p.max(x.abs()));
         }
     });
     assert!(peak > 0.05, "the synth should be audible, peak {peak}");

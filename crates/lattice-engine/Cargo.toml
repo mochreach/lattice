@@ -8,6 +8,11 @@ authors.workspace = true
 
 [dependencies]
 lattice-core.workspace = true
+wide = "1.7"
 
 [dev-dependencies]
 assert_no_alloc = "1.1"
+
+[[bench]]
+name = "voices"
+harness = false
