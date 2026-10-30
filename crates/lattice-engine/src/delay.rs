@@ -1,51 +1,14 @@
 //! A plain stereo feedback delay, with a lowpass in the feedback path so repeats darken as they
 //! fade.
 
+use lattice_core::FxKind;
+
 use crate::param::{ParamInfo, Smoothed};
 use crate::processor::{Event, EventKind, Processor, Segment, segments};
 
-/// The longest delay time, in seconds.
-const MAX_TIME: f32 = 2.0;
+pub use lattice_core::fx::delay::{FEEDBACK, MAX_TIME, MIX, TIME, TONE};
 
-pub const TIME: u32 = 0;
-pub const FEEDBACK: u32 = 1;
-pub const TONE: u32 = 2;
-pub const MIX: u32 = 3;
-
-const PARAMS: [ParamInfo; 4] = [
-    ParamInfo {
-        id: TIME,
-        name: "time",
-        min: 0.01,
-        max: MAX_TIME,
-        default: 0.375,
-        unit: "s",
-    },
-    ParamInfo {
-        id: FEEDBACK,
-        name: "feedback",
-        min: 0.0,
-        max: 0.95,
-        default: 0.45,
-        unit: "",
-    },
-    ParamInfo {
-        id: TONE,
-        name: "tone",
-        min: 200.0,
-        max: 16_000.0,
-        default: 4_000.0,
-        unit: "Hz",
-    },
-    ParamInfo {
-        id: MIX,
-        name: "mix",
-        min: 0.0,
-        max: 1.0,
-        default: 1.0,
-        unit: "",
-    },
-];
+const PARAMS: &[ParamInfo] = FxKind::Delay.params();
 
 pub struct Delay {
     sample_rate: f32,
@@ -78,6 +41,18 @@ impl Delay {
             low: [0.0; 2],
         };
         delay.set_tone(default(TONE));
+        delay
+    }
+
+    /// Starts at `values` (one per parameter, by id) rather than gliding to them.
+    pub fn with_values(sample_rate: f32, values: &[f32]) -> Self {
+        let mut delay = Self::new(sample_rate);
+        for (id, &value) in values.iter().enumerate() {
+            delay.set(id as u32, value);
+        }
+        delay.time.reset(delay.time.target());
+        delay.feedback.reset(delay.feedback.target());
+        delay.mix.reset(delay.mix.target());
         delay
     }
 
@@ -141,7 +116,7 @@ impl Processor for Delay {
     }
 
     fn params(&self) -> &[ParamInfo] {
-        &PARAMS
+        PARAMS
     }
 }
 
@@ -190,6 +165,16 @@ mod tests {
         let (first, second) = (peak(100), peak(200));
         assert!(first > 0.3, "{first}");
         assert!(second < first && second > 0.05, "{first} then {second}");
+    }
+
+    #[test]
+    fn starting_at_settings_skips_the_glide() {
+        let mut values: Vec<f32> = PARAMS.iter().map(|p| p.default).collect();
+        values[MIX as usize] = 0.0;
+        let mut delay = Delay::with_values(1_000.0, &values);
+        let (mut left, mut right) = (vec![1.0; 4], vec![1.0; 4]);
+        delay.process(&[], &mut left, &mut right);
+        assert_eq!(left, [1.0; 4], "dry from the first sample");
     }
 
     #[test]

@@ -2,6 +2,7 @@ mod audio;
 mod demo;
 mod file;
 mod keys;
+mod mixer;
 mod theme;
 mod tracks;
 mod ui;
@@ -15,6 +16,7 @@ use lattice_engine::{Command, Handle};
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{self, Event, KeyEventKind};
 
+use crate::mixer::Mixer;
 use crate::theme::Theme;
 use crate::tracks::Tracks;
 
@@ -37,7 +39,7 @@ enum Flow {
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (grid, palette) = demo::song();
-    let mut editor = Editor::new(grid, demo::BPM);
+    let mut editor = Editor::new(grid, demo::BPM).with_buses(demo::buses());
     // `lattice song.lattice` opens the song, or starts a new one there, like Helix.
     if let Some(path) = args
         .iter()
@@ -55,6 +57,8 @@ fn main() -> Result<()> {
     let patches = Tracks::patches(&palette, editor.grid.tracks.len());
     let mut audio = audio::start(&editor.grid, patches, editor.bpm)?;
     let mut tracks = Tracks::new(&editor, palette, audio.sample_rate);
+    let mut mixer = Mixer::new(audio.sample_rate);
+    mixer.sync(&editor, &mut audio.handle);
     if args.iter().any(|a| a == "--no-click") {
         editor.click = false;
         audio.handle.send(Command::SetClick(false));
@@ -66,6 +70,7 @@ fn main() -> Result<()> {
         &mut terminal,
         &mut editor,
         &mut tracks,
+        &mut mixer,
         &mut audio.handle,
         &theme,
     );
@@ -77,6 +82,7 @@ fn run(
     terminal: &mut DefaultTerminal,
     editor: &mut Editor,
     tracks: &mut Tracks,
+    mixer: &mut Mixer,
     handle: &mut Handle,
     theme: &Theme,
 ) -> Result<()> {
@@ -95,7 +101,7 @@ fn run(
                 && let Some(key) = keys::convert(key)
             {
                 for effect in editor.handle(key) {
-                    match apply(effect, editor, tracks, handle) {
+                    match apply(effect, editor, tracks, mixer, handle) {
                         Flow::Next => {}
                         Flow::Stop => break,
                         Flow::Quit => return Ok(()),
@@ -110,10 +116,17 @@ fn run(
 }
 
 /// Carries out an editor effect.
-fn apply(effect: Effect, editor: &mut Editor, tracks: &mut Tracks, handle: &mut Handle) -> Flow {
+fn apply(
+    effect: Effect,
+    editor: &mut Editor,
+    tracks: &mut Tracks,
+    mixer: &mut Mixer,
+    handle: &mut Handle,
+) -> Flow {
     let command = match effect {
-        Effect::TracksChanged => {
-            if !tracks.sync(editor, handle) {
+        // Effects follow their tracks, so the mixer syncs after the tracks do.
+        Effect::TracksChanged | Effect::MixerChanged => {
+            if !(tracks.sync(editor, handle) && mixer.sync(editor, handle)) {
                 editor.message = Some("audio engine is busy; tracks out of step".into());
             }
             return Flow::Next;
@@ -143,7 +156,7 @@ fn apply(effect: Effect, editor: &mut Editor, tracks: &mut Tracks, handle: &mut 
                 }
             };
         }
-        Effect::Open(path) => return open(path, editor, tracks, handle),
+        Effect::Open(path) => return open(path, editor, tracks, mixer, handle),
         Effect::Quit => return Flow::Quit,
     };
     if !handle.send(command) {
@@ -153,7 +166,13 @@ fn apply(effect: Effect, editor: &mut Editor, tracks: &mut Tracks, handle: &mut 
 }
 
 /// Replaces the song with the one at `path`, or a new one if there's no such file.
-fn open(path: PathBuf, editor: &mut Editor, tracks: &mut Tracks, handle: &mut Handle) -> Flow {
+fn open(
+    path: PathBuf,
+    editor: &mut Editor,
+    tracks: &mut Tracks,
+    mixer: &mut Mixer,
+    handle: &mut Handle,
+) -> Flow {
     let (song, new) = match file::open(&path, Some(editor.grid.steps_per_beat)) {
         Ok(opened) => opened,
         Err(e) => {
@@ -164,7 +183,7 @@ fn open(path: PathBuf, editor: &mut Editor, tracks: &mut Tracks, handle: &mut Ha
     let message = new.then(|| format!("{} (new file)", path.display()));
     tracks.restart_palette();
     for effect in editor.load(song, path) {
-        apply(effect, editor, tracks, handle);
+        apply(effect, editor, tracks, mixer, handle);
     }
     if message.is_some() {
         editor.message = message;

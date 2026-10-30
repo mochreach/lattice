@@ -877,6 +877,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                 name,
                 steps: vec![Step::default(); NEW_TRACK_STEPS],
                 mix: Default::default(),
+                effects: vec![],
                 rules: vec![],
             };
             editor.insert_track(editor.cursor().track + 1, track);

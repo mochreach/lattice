@@ -12,8 +12,8 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
-pub use lattice_core::MAX_TRACKS;
 use lattice_core::{Grid, MAX_STEPS, Mix, Step, Track, db_to_gain, realise_into};
+pub use lattice_core::{MAX_EFFECTS, MAX_TRACKS};
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
 
 use crate::click::Click;
@@ -30,8 +30,7 @@ const MAX_EVENTS: usize = 128;
 /// Notes a track can hold at once before the oldest is cut.
 const MAX_HELD: usize = 16;
 const COMMAND_QUEUE: usize = 256;
-/// Effects in one chain.
-pub const MAX_EFFECTS: usize = 8;
+
 const PREVIEW_SECONDS: f32 = 0.3;
 const CLICK_PITCH: u8 = 84;
 const CLICK_ACCENT_PITCH: u8 = 96;
@@ -89,6 +88,11 @@ pub enum Command {
         target: Target,
         id: u32,
         value: f32,
+    },
+    /// Set the send or master bus's level, in dB. Ignored for a track's chain.
+    SetBusLevel {
+        bus: Chain,
+        level: f32,
     },
 }
 
@@ -237,6 +241,8 @@ pub struct Status {
     /// Per track index: the loudest sample since the UI last looked, as `f32` bits. Levels are
     /// never negative, so comparing the bits compares the levels.
     peaks: [AtomicU32; MAX_TRACKS],
+    /// The same for the send and master buses, after their levels.
+    bus_peaks: [AtomicU32; 2],
 }
 
 impl Status {
@@ -245,6 +251,7 @@ impl Status {
             playing: AtomicBool::new(false),
             positions: std::array::from_fn(|_| AtomicU64::new(u64::MAX)),
             peaks: std::array::from_fn(|_| AtomicU32::new(0)),
+            bus_peaks: std::array::from_fn(|_| AtomicU32::new(0)),
         }
     }
 
@@ -263,6 +270,16 @@ impl Status {
         self.peaks
             .get(track)
             .map_or(0.0, |p| f32::from_bits(p.swap(0, Ordering::Relaxed)))
+    }
+
+    /// The loudest sample the send or master bus has played since the last call.
+    pub fn take_bus_peak(&self, bus: Chain) -> f32 {
+        let peak = match bus {
+            Chain::Send => &self.bus_peaks[0],
+            Chain::Master => &self.bus_peaks[1],
+            Chain::Track(track) => return self.take_peak(track),
+        };
+        f32::from_bits(peak.swap(0, Ordering::Relaxed))
     }
 
     fn add_peak(&self, track: usize, peak: f32) {
@@ -382,6 +399,9 @@ pub struct Engine {
     master_effects: Effects,
     send_left: Vec<f32>,
     send_right: Vec<f32>,
+    /// Bus levels, linear.
+    send_gain: Smoothed,
+    master_gain: Smoothed,
     click: Click,
     click_events: Vec<Event>,
     click_left: Vec<f32>,
@@ -438,6 +458,8 @@ impl Engine {
             master_effects: effects(),
             send_left: vec![0.0; MAX_BLOCK],
             send_right: vec![0.0; MAX_BLOCK],
+            send_gain: Smoothed::new(1.0, sample_rate),
+            master_gain: Smoothed::new(1.0, sample_rate),
             click: Click::new(sample_rate),
             click_events: Vec::with_capacity(MAX_EVENTS),
             click_left: vec![0.0; MAX_BLOCK],
@@ -559,6 +581,11 @@ impl Engine {
                         self.discard(Garbage::Effect(effect));
                     }
                 }
+                Command::SetBusLevel { bus, level } => match bus {
+                    Chain::Send => self.send_gain.set(db_to_gain(level)),
+                    Chain::Master => self.master_gain.set(db_to_gain(level)),
+                    Chain::Track(_) => {}
+                },
                 Command::SetParam { target, id, value } => {
                     let events = match target {
                         Target::Instrument(track) => {
@@ -679,9 +706,13 @@ impl Engine {
             self.status.add_peak(index, peak);
         }
         run_chain(&mut self.send_effects, sl, sr);
+        let peak = apply_gain(&mut self.send_gain, sl, sr);
+        self.status.bus_peaks[0].fetch_max(peak.to_bits(), Ordering::Relaxed);
         mix_into(left, sl);
         mix_into(right, sr);
         run_chain(&mut self.master_effects, left, right);
+        let peak = apply_gain(&mut self.master_gain, left, right);
+        self.status.bus_peaks[1].fetch_max(peak.to_bits(), Ordering::Relaxed);
         let (cl, cr) = (&mut self.click_left[..len], &mut self.click_right[..len]);
         self.click.process(&self.click_events, cl, cr);
         self.click_events.clear();
@@ -781,6 +812,18 @@ fn sort_by_offset(events: &mut [Event]) {
     }
 }
 
+/// Scales a stereo block by a gliding gain, returning its peak level afterwards.
+fn apply_gain(gain: &mut Smoothed, left: &mut [f32], right: &mut [f32]) -> f32 {
+    let mut peak = 0.0f32;
+    for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+        let g = gain.tick();
+        *l *= g;
+        *r *= g;
+        peak = peak.max(l.abs()).max(r.abs());
+    }
+    peak
+}
+
 fn mix_into(out: &mut [f32], src: &[f32]) {
     for (o, s) in out.iter_mut().zip(src) {
         *o += s;
@@ -818,6 +861,7 @@ mod tests {
                 })
                 .to_vec(),
             mix: Default::default(),
+            effects: vec![],
             rules: vec![Rule {
                 transform: Transform::Drift(1),
                 when: Condition::Always,
@@ -1181,6 +1225,33 @@ mod tests {
         );
         render_stereo(&mut engine, 1);
         assert!(engine.master_effects[2].events.is_empty(), "delivered");
+    }
+
+    #[test]
+    fn bus_levels_scale_the_buses_and_report_peaks() {
+        let sending = Mix {
+            send: 0.0,
+            ..Mix::default()
+        };
+        let (mut engine, mut handle) = mixer(&[sending]);
+        handle.send(Command::SetBusLevel {
+            bus: Chain::Send,
+            level: lattice_core::MIN_DB,
+        });
+        handle.send(Command::SetBusLevel {
+            bus: Chain::Master,
+            level: -6.0,
+        });
+        render_stereo(&mut engine, 30);
+        // Past the glide: start the meters afresh.
+        handle.status().take_bus_peak(Chain::Send);
+        handle.status().take_bus_peak(Chain::Master);
+        let (left, _) = render_stereo(&mut engine, 10);
+        // The send is silenced, leaving the track's 0.5, then the master halves it.
+        let master = 0.5 * db_to_gain(-6.0);
+        assert!((left[0] - master.tanh()).abs() < 1e-6);
+        assert_eq!(handle.status().take_bus_peak(Chain::Send), 0.0);
+        assert!((handle.status().take_bus_peak(Chain::Master) - master).abs() < 1e-6);
     }
 
     #[test]

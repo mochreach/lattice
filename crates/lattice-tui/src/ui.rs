@@ -810,6 +810,7 @@ mod tests {
             name: "t".into(),
             steps: vec![],
             mix: Mix::default(),
+            effects: vec![],
             rules: vec![],
         };
         let c = Column {

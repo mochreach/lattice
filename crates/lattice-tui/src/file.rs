@@ -44,6 +44,7 @@ fn new_song() -> Song {
         bpm: demo::BPM,
         grids: vec![demo::blank()],
         order: vec![0],
+        buses: demo::buses(),
     }
 }
 

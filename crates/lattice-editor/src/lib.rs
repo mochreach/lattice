@@ -21,7 +21,7 @@ pub use keymap::{Action, Binding, Key, Keymap, Menu};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use lattice_core::{Grid, MAX_STEPS, MAX_TRACKS, Note, Song, Step, Track};
+use lattice_core::{Buses, Grid, MAX_STEPS, MAX_TRACKS, Note, Song, Step, Track};
 
 use crate::pattern::Pattern;
 
@@ -101,6 +101,9 @@ pub enum Effect {
     /// add the new ones (each with the contents of its track). Any `TrackChanged` effects that
     /// follow use the new indices.
     TracksChanged,
+    /// Effect chains or bus levels changed: bring the engine's in line with the tracks' effects
+    /// and [`Editor::buses`].
+    MixerChanged,
     TogglePlay,
     Bpm(f64),
     Click(bool),
@@ -240,6 +243,7 @@ pub struct Infobox {
 #[derive(Debug, Clone)]
 struct Snapshot {
     grid: Grid,
+    buses: Buses,
     ids: Vec<TrackId>,
     selections: Vec<Selection>,
     primary: usize,
@@ -252,12 +256,15 @@ type Clip = Vec<Vec<Step>>;
 #[derive(Debug, Clone)]
 struct Saved {
     grid: Grid,
+    buses: Buses,
     bpm: f64,
 }
 
 #[derive(Debug, Clone)]
 pub struct Editor {
     pub grid: Grid,
+    /// The send and master buses.
+    pub buses: Buses,
     pub bpm: f64,
     /// Where the song is saved; `None` until it's given a file name.
     pub path: Option<PathBuf>,
@@ -319,9 +326,11 @@ impl Editor {
             next_id: tracks,
             saved: Saved {
                 grid: grid.clone(),
+                buses: Buses::default(),
                 bpm,
             },
             grid,
+            buses: Buses::default(),
             bpm,
             path: None,
             mode: Mode::Normal,
@@ -344,6 +353,13 @@ impl Editor {
         }
     }
 
+    /// Starts with these buses, as saved.
+    pub fn with_buses(mut self, buses: Buses) -> Self {
+        self.saved.buses = buses.clone();
+        self.buses = buses;
+        self
+    }
+
     /// Each track's id, in the order of `grid.tracks`.
     pub fn track_ids(&self) -> &[TrackId] {
         &self.ids
@@ -357,7 +373,7 @@ impl Editor {
     /// Whether the song differs from when it was last saved or opened, tracks added, removed
     /// and moved included. Undoing back to that point counts as unmodified.
     pub fn modified(&self) -> bool {
-        self.grid != self.saved.grid || self.bpm != self.saved.bpm
+        self.grid != self.saved.grid || self.buses != self.saved.buses || self.bpm != self.saved.bpm
     }
 
     /// The song to save, named after its file.
@@ -372,6 +388,7 @@ impl Editor {
             bpm: self.bpm,
             grids: vec![self.grid.clone()],
             order: vec![0],
+            buses: self.buses.clone(),
         }
     }
 
@@ -381,6 +398,7 @@ impl Editor {
         self.path = Some(path);
         self.saved = Saved {
             grid: self.grid.clone(),
+            buses: self.buses.clone(),
             bpm: self.bpm,
         };
     }
@@ -406,9 +424,11 @@ impl Editor {
         self.next_id += tracks;
         self.saved = Saved {
             grid: grid.clone(),
+            buses: song.buses.clone(),
             bpm: song.bpm,
         };
         self.grid = grid;
+        self.buses = song.buses;
         self.bpm = song.bpm;
         self.path = Some(path);
         self.selections = vec![Selection::default()];
@@ -419,7 +439,11 @@ impl Editor {
         self.undo.clear();
         self.redo.clear();
         // Every id is new, so the engine rebuilds every track with its contents.
-        vec![Effect::TracksChanged, Effect::Bpm(self.bpm)]
+        vec![
+            Effect::TracksChanged,
+            Effect::MixerChanged,
+            Effect::Bpm(self.bpm),
+        ]
     }
 
     /// A pending count typed before a command, e.g. the `4` in `4j`.
@@ -1394,6 +1418,7 @@ impl Editor {
     pub(crate) fn checkpoint(&mut self) {
         self.undo.push(Snapshot {
             grid: self.grid.clone(),
+            buses: self.buses.clone(),
             ids: self.ids.clone(),
             selections: self.selections.clone(),
             primary: self.primary,
@@ -1424,6 +1449,7 @@ impl Editor {
         let tracks_changed = snapshot.ids != self.ids;
         to.push(Snapshot {
             grid: std::mem::replace(&mut self.grid, snapshot.grid),
+            buses: std::mem::replace(&mut self.buses, snapshot.buses),
             ids: std::mem::replace(&mut self.ids, snapshot.ids),
             selections: std::mem::replace(&mut self.selections, snapshot.selections),
             primary: std::mem::replace(&mut self.primary, snapshot.primary),
@@ -1434,6 +1460,7 @@ impl Editor {
             .then_some(Effect::TracksChanged)
             .into_iter()
             .chain((0..self.grid.tracks.len()).map(Effect::TrackChanged))
+            .chain([Effect::MixerChanged])
             .collect()
     }
 }
@@ -1448,6 +1475,7 @@ mod tests {
             name: name.into(),
             steps: vec![Step::default(); len],
             mix: Default::default(),
+            effects: vec![],
             rules: vec![],
         };
         let grid = Grid {
@@ -1939,7 +1967,14 @@ mod tests {
         song.bpm = 140.0;
         song.grids[0].tracks.truncate(1);
         let effects = e.load(song, "new.lattice".into());
-        assert_eq!(effects, [Effect::TracksChanged, Effect::Bpm(140.0)]);
+        assert_eq!(
+            effects,
+            [
+                Effect::TracksChanged,
+                Effect::MixerChanged,
+                Effect::Bpm(140.0)
+            ]
+        );
         assert_eq!(e.grid.tracks.len(), 1);
         assert!(
             !before.contains(&e.track_ids()[0]),
@@ -2208,6 +2243,7 @@ mod tests {
         let all = |n| {
             std::iter::once(Effect::TracksChanged)
                 .chain((0..n).map(Effect::TrackChanged))
+                .chain([Effect::MixerChanged])
                 .collect::<Vec<_>>()
         };
         assert_eq!(keys(&mut e, "u"), all(3), "brings back the removed track");
@@ -2222,7 +2258,11 @@ mod tests {
         assert_eq!(e.cursor().track, 1);
         assert_eq!(
             keys(&mut e, "u"),
-            [Effect::TrackChanged(0), Effect::TrackChanged(1)]
+            [
+                Effect::TrackChanged(0),
+                Effect::TrackChanged(1),
+                Effect::MixerChanged
+            ]
         );
         assert_eq!(pitches(&e, 0)[0], None);
 

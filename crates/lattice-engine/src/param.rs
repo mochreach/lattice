@@ -1,25 +1,7 @@
-//! Parameters: how instruments and effects describe their controls, and smoothing so that
-//! changing one never clicks.
+//! Parameters: how instruments and effects describe their controls (shared with the song, in
+//! `lattice_core`), and smoothing so that changing one never clicks.
 
-/// One control on an instrument or effect, as in CLAP: values are in the parameter's own units,
-/// not normalised.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ParamInfo {
-    /// Stable within the processor; what [`crate::EventKind::Param`] refers to.
-    pub id: u32,
-    pub name: &'static str,
-    pub min: f32,
-    pub max: f32,
-    pub default: f32,
-    /// Shown after the value: `s`, `Hz`, `dB`, or empty.
-    pub unit: &'static str,
-}
-
-impl ParamInfo {
-    pub fn clamp(&self, value: f32) -> f32 {
-        value.clamp(self.min, self.max)
-    }
-}
+pub use lattice_core::ParamInfo;
 
 /// A value that glides to each new target over a fixed time instead of jumping, so level, pan
 /// and parameter changes don't click.
@@ -81,6 +63,11 @@ impl Smoothed {
 
     pub fn value(&self) -> f32 {
         self.value
+    }
+
+    /// Where it's gliding to, or the value once it's there.
+    pub fn target(&self) -> f32 {
+        self.target
     }
 }
 

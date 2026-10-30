@@ -9,6 +9,7 @@ use std::fmt;
 use ron::extensions::Extensions;
 use ron::ser::PrettyConfig;
 
+use crate::fx::MAX_EFFECTS;
 use crate::song::{Grid, MAX_DB, MAX_TRACKS, Song, Track};
 
 /// Nesting below which values go on one line: each step, note and rule fits on its own line.
@@ -63,6 +64,8 @@ fn check(song: &Song) -> Result<(), String> {
     if let Some(i) = song.order.iter().find(|&&i| i >= song.grids.len()) {
         return Err(format!("order refers to grid {i}, which doesn't exist"));
     }
+    song.buses.send.check("send")?;
+    song.buses.master.check("master")?;
     song.grids.iter().try_for_each(check_grid)
 }
 
@@ -89,6 +92,12 @@ fn check_track(track: &Track) -> Result<(), String> {
             track.name
         ));
     }
+    if track.effects.len() > MAX_EFFECTS {
+        return Err(format!(
+            "track {:?} has more than {MAX_EFFECTS} effects",
+            track.name
+        ));
+    }
     for (i, step) in track.steps.iter().enumerate() {
         if let Some(note) = step.note
             && (note.pitch > 127 || note.velocity > 127)
@@ -105,6 +114,7 @@ fn check_track(track: &Track) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fx::{self, Bus, Buses, Fx, FxKind};
     use crate::{Condition, Mix, Note, Rule, Step, Transform};
 
     fn song() -> Song {
@@ -112,6 +122,7 @@ mod tests {
             name: "bass".into(),
             steps: vec![Step::default(); 16],
             mix: Default::default(),
+            effects: vec![],
             rules: vec![
                 Rule {
                     transform: Transform::Transpose(5),
@@ -139,10 +150,14 @@ mod tests {
             velocity: 80,
             length: 2,
         });
+        let mut delay = Fx::new(FxKind::Delay);
+        delay.values[fx::delay::FEEDBACK as usize] = 0.7;
+        bass.effects.push(Fx::new(FxKind::Delay));
         let empty = Track {
             name: "empty".into(),
             steps: vec![Step::default(); 6],
             mix: Default::default(),
+            effects: vec![],
             rules: vec![],
         };
         Song {
@@ -154,6 +169,13 @@ mod tests {
                 tracks: vec![bass, empty],
             }],
             order: vec![0],
+            buses: Buses {
+                send: Bus {
+                    level: -2.0,
+                    effects: vec![delay],
+                },
+                master: Bus::default(),
+            },
         }
     }
 
@@ -177,8 +199,10 @@ mod tests {
         assert!(!text.contains("None"), "{text}");
         assert!(text.contains("level: -3.5,\n"), "{text}");
         assert!(text.contains("mute: true,\n"), "{text}");
+        assert!(text.contains("(kind: Delay),"), "{text}");
+        assert!(text.contains("\"feedback\": 0.7,"), "{text}");
         assert_eq!(text.matches("mix:").count(), 1, "{text}");
-        assert!(text.lines().count() < 40, "{text}");
+        assert!(text.lines().count() < 70, "{text}");
     }
 
     #[test]
@@ -224,5 +248,12 @@ mod tests {
         assert!(err.contains("past its length"), "{err}");
 
         assert!(matches!(from_ron("(name: 1)"), Err(FileError::Syntax(_))));
+
+        let text = to_ron(&song()).replace("\"feedback\": 0.7", "\"feedback\": 3");
+        let err = from_ron(&text).unwrap_err().to_string();
+        assert!(err.contains("feedback goes from 0 to 0.95"), "{err}");
+        let text = to_ron(&song()).replace("\"feedback\"", "\"wobble\"");
+        let err = from_ron(&text).unwrap_err().to_string();
+        assert!(err.contains("no \"wobble\" setting"), "{err}");
     }
 }

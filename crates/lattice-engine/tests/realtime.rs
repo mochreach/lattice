@@ -24,6 +24,7 @@ fn rendering_never_allocates() {
             })
             .collect(),
         mix: Default::default(),
+        effects: vec![],
         rules: vec![
             Rule {
                 transform: Transform::Drift(1),

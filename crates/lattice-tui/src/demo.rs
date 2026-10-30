@@ -1,6 +1,6 @@
 //! A short demo song for hearing the engine and the pattern transforms.
 
-use lattice_core::{Condition, Grid, Rule, Step, Track, Transform};
+use lattice_core::{Bus, Buses, Condition, Fx, FxKind, Grid, Rule, Step, Track, Transform};
 use lattice_engine::{AdsrParams, Patch, Wave};
 
 pub const BPM: f64 = 120.0;
@@ -58,6 +58,17 @@ fn chord_changes() -> Vec<Rule> {
     ]
 }
 
+/// What a song starts with: a delay on the send bus, for tracks to send to.
+pub fn buses() -> Buses {
+    Buses {
+        send: Bus {
+            effects: vec![Fx::new(FxKind::Delay)],
+            ..Bus::default()
+        },
+        master: Bus::default(),
+    }
+}
+
 /// A new, empty song for the demo's instruments: one bar on each track, named after them.
 pub fn blank() -> Grid {
     let (mut grid, _) = song();
@@ -74,6 +85,7 @@ pub fn song() -> (Grid, Vec<Patch>) {
         name: "bass".into(),
         steps: pattern("C2 . . C2 . . C3 . C2 . G2 C2 . . Bb2 ."),
         mix: Default::default(),
+        effects: vec![],
         rules: chord_changes(),
     };
 
@@ -86,6 +98,7 @@ pub fn song() -> (Grid, Vec<Patch>) {
         name: "arp".into(),
         steps: pattern("C4 Eb4 G4 C5 C4 Eb4 G4 C5 C4 Eb4 G4 C5 Bb4 G4 Eb4 G4"),
         mix: Default::default(),
+        effects: vec![],
         rules: arp_rules,
     };
 
@@ -94,6 +107,7 @@ pub fn song() -> (Grid, Vec<Patch>) {
         name: "bleep".into(),
         steps: pattern("G5 . . Eb5 . ."),
         mix: Default::default(),
+        effects: vec![],
         rules: vec![rule(Transform::Drift(1), Condition::Always)],
     };
 

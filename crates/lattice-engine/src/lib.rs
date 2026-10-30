@@ -10,6 +10,7 @@ pub mod delay;
 pub mod denormal;
 pub mod dsp;
 pub mod engine;
+pub mod fx;
 pub mod param;
 pub mod processor;
 pub mod synth;
