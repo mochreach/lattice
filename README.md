@@ -117,7 +117,8 @@ word that can no longer be right is underlined, and what was expected is shown o
 
 The header shows the song's file name, and `[+]` when it has unsaved changes.
 
-Each track's header shows its level and pan, `M` when it's muted and `S` when it's soloed, and a
+Each track's header shows its level as a fader bar (-60 to +6 dB) and its pan as a bar from the
+centre, each with its value written over it; `M` when it's muted and `S` when it's soloed; and a
 meter in place of the underline. Muted tracks, and tracks silenced by another's solo, are dimmed.
 Every track can send to a delay on the send bus; sends start off.
 

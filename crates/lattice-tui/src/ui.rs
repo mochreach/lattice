@@ -2,7 +2,9 @@
 
 use std::time::Instant;
 
-use lattice_core::{MAX_TRACKS, MIN_DB, Mix, Step, Track, realise};
+use std::ops::Range;
+
+use lattice_core::{MAX_DB, MAX_TRACKS, MIN_DB, Step, Track, realise};
 use lattice_editor::{
     BEATS_PER_BAR, Completion, Cursor, Editor, Infobox, Mode, PromptKind, Selection, View,
 };
@@ -419,12 +421,8 @@ fn header_lines(
                 })
                 .collect(),
         ),
-        line(
-            columns
-                .iter()
-                .map(|c| cell(mix_summary(&c.track.mix), theme.dim))
-                .collect(),
-        ),
+        line(columns.iter().flat_map(|c| level_bar(c, theme)).collect()),
+        line(columns.iter().flat_map(|c| pan_bar(c, theme)).collect()),
     ];
     let rule_rows = columns
         .iter()
@@ -448,20 +446,78 @@ fn header_lines(
     lines
 }
 
-/// Level and pan: `0dB C`, `-6.5dB L40`, `off R100`.
-fn mix_summary(mix: &Mix) -> String {
-    let level = if mix.level <= MIN_DB {
+/// The track's level as a fader: filled from the left, from -60 dB to +6 dB.
+fn level_bar(c: &Column, theme: &Theme) -> Vec<Span<'static>> {
+    let level = c.track.mix.level;
+    let filled = (level - MIN_DB) / (MAX_DB - MIN_DB) * CELL as f32;
+    bar(0.0..filled, &level_label(level), c, theme)
+}
+
+/// The track's pan: filled from the centre out to the side it's panned to.
+fn pan_bar(c: &Column, theme: &Theme) -> Vec<Span<'static>> {
+    let pan = c.track.mix.pan;
+    let centre = CELL as f32 / 2.0;
+    let to = centre + pan * centre;
+    bar(centre.min(to)..centre.max(to), &pan_label(pan), c, theme)
+}
+
+/// `0dB`, `-6.5dB`, or `off` at the bottom of the range.
+fn level_label(db: f32) -> String {
+    if db <= MIN_DB {
         "off".to_string()
     } else {
-        format!("{}dB", decibels(mix.level))
-    };
-    let pan = (mix.pan * 100.0).round() as i32;
-    let pan = match pan {
+        format!("{}dB", decibels(db))
+    }
+}
+
+/// `C`, `L40`, `R100`.
+fn pan_label(pan: f32) -> String {
+    match (pan * 100.0).round() as i32 {
         0 => "C".to_string(),
         p if p < 0 => format!("L{}", -p),
         p => format!("R{p}"),
-    };
-    format!("{level} {pan}")
+    }
+}
+
+/// Left-aligned eighths of a cell, from one eighth to seven.
+const LEFT_EIGHTHS: [char; 7] = ['▏', '▎', '▍', '▌', '▋', '▊', '▉'];
+
+/// A bar across a track's cells, filled over `fill` (in cells, to an eighth of one at the ends),
+/// with `label` centred over it. Filled cells are reverse video, so the label reads on either
+/// part. The unfilled part is shaded like the beat rows, to show the bar's extent.
+fn bar(fill: Range<f32>, label: &str, c: &Column, theme: &Theme) -> Vec<Span<'static>> {
+    let mut style = Style::new().fg(c.colour);
+    if !c.audible {
+        style = style.add_modifier(Modifier::DIM);
+    }
+    let empty = theme.beat_row.map_or(style, |bg| style.bg(bg));
+    let full = style.add_modifier(Modifier::REVERSED);
+    let label: Vec<char> = label.chars().take(CELL).collect();
+    let start = (CELL - label.len()) / 2;
+    let mut spans: Vec<Span<'static>> = (0..CELL)
+        .map(|i| {
+            let x = i as f32;
+            let covered = (fill.end.min(x + 1.0) - fill.start.max(x)).clamp(0.0, 1.0);
+            if let Some(&ch) = i.checked_sub(start).and_then(|k| label.get(k)) {
+                let style = if covered >= 0.5 { full } else { empty };
+                return Span::styled(ch.to_string(), style.add_modifier(Modifier::BOLD));
+            }
+            let (ch, style) = if covered >= 0.875 {
+                (' ', full)
+            } else if covered < 0.125 {
+                (' ', empty)
+            } else if fill.start > x {
+                // Filled from the right of the cell: only an eighth and a half exist.
+                (if covered < 0.3 { '▕' } else { '▐' }, empty)
+            } else {
+                let eighths = (covered * 8.0).round() as usize;
+                (LEFT_EIGHTHS[eighths.clamp(1, 7) - 1], empty)
+            };
+            Span::styled(ch.to_string(), style)
+        })
+        .collect();
+    spans.push(Span::raw(" "));
+    spans
 }
 
 /// A level to a tenth of a decibel, without the fraction when it's whole: `-6`, `-6.5`, `3`.
@@ -708,6 +764,7 @@ fn note_name(pitch: u8) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lattice_core::Mix;
 
     #[test]
     fn note_names() {
@@ -738,20 +795,55 @@ mod tests {
     }
 
     #[test]
-    fn mix_summaries() {
-        assert_eq!(mix_summary(&Mix::default()), "0dB C");
-        let mix = Mix {
-            level: -6.5,
-            pan: -0.4,
-            ..Mix::default()
+    fn mix_labels() {
+        assert_eq!(level_label(0.0), "0dB");
+        assert_eq!(level_label(-6.5), "-6.5dB");
+        assert_eq!(level_label(MIN_DB), "off");
+        assert_eq!(pan_label(0.0), "C");
+        assert_eq!(pan_label(-0.4), "L40");
+        assert_eq!(pan_label(1.0), "R100");
+    }
+
+    #[test]
+    fn bars_fill_to_an_eighth_with_the_label_on_top() {
+        let track = Track {
+            name: "t".into(),
+            steps: vec![],
+            mix: Mix::default(),
+            rules: vec![],
         };
-        assert_eq!(mix_summary(&mix), "-6.5dB L40");
-        let mix = Mix {
-            level: MIN_DB,
-            pan: 1.0,
-            ..Mix::default()
+        let c = Column {
+            index: 0,
+            track: &track,
+            shown: vec![],
+            tails: vec![],
+            playhead: None,
+            pass: None,
+            colour: Color::Red,
+            audible: true,
+            meter: 0.0,
         };
-        assert_eq!(mix_summary(&mix), "off R100");
+        let theme = Theme::terminal();
+        let text = |spans: Vec<Span>| {
+            spans
+                .iter()
+                .map(|s| s.content.to_string())
+                .collect::<String>()
+        };
+        let reversed = |spans: &[Span]| {
+            spans
+                .iter()
+                .map(|s| s.style.add_modifier.contains(Modifier::REVERSED))
+                .collect::<Vec<_>>()
+        };
+
+        let spans = bar(0.0..2.5, "ab", &c, &theme);
+        assert_eq!(text(spans.clone()), "  ▌ ab      ");
+        assert_eq!(reversed(&spans)[..4], [true, true, false, false]);
+        // From the centre to the right.
+        let spans = bar(5.5..11.0, "", &c, &theme);
+        assert_eq!(text(spans.clone()), "     ▐      ");
+        assert!(reversed(&spans)[6..11].iter().all(|&r| r));
     }
 
     #[test]
