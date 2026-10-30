@@ -186,10 +186,20 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         View::Source => "written",
         View::Live => "live",
     };
+    // Named like Helix's status line: `[scratch]` before the song has a file, `[+]` if modified.
+    let file = editor
+        .path
+        .as_deref()
+        .and_then(|p| p.file_name())
+        .map_or_else(|| "[scratch]".into(), |n| n.to_string_lossy().into_owned());
+    let modified = if editor.modified() { " [+]" } else { "" };
     Line::from(vec![
         Span::styled(" LATTICE ", theme.block(theme.accent)),
         Span::raw(" "),
         transport,
+        Span::raw("   "),
+        value(file),
+        Span::styled(modified, theme.text),
         label("   bpm "),
         value(format!("{:.0}", editor.bpm)),
         label("   oct "),

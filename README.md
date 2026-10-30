@@ -24,6 +24,7 @@ What we learned from it, and the plan for this version, are in
 nix develop               # or bring your own Rust toolchain plus alsa-lib
 cargo test
 cargo run --release       # opens the tracker with a demo song; add `-- --no-click` to mute the metronome
+cargo run --release -- song.lattice   # opens a song, or starts a new one there
 ```
 
 Debug builds abort if the audio callback ever allocates, which catches real-time mistakes early.
@@ -103,9 +104,14 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:len N` | track length (1–256) |
 | `:bpm N`, `:step N`, `:oct N` | tempo, auto-step, keyboard octave |
 | `:click`, `:follow` | toggle the metronome, following the playhead |
-| `:name NAME`, `:q` | rename the track, quit |
+| `:name NAME` | rename the track |
+| `:w [PATH]`, `:wq [PATH]` | save the song (to a `.lattice` file), save and quit |
+| `:o PATH`, `:o! PATH` | open a song, or start a new one at PATH; `!` discards unsaved changes |
+| `:q`, `:q!` | quit, refusing if there are unsaved changes; `!` quits anyway |
 | `:track-add [NAME]` (`:ta`) | add a 16-step track after this one (up to 16 tracks) |
 | `:track-remove` (`:trm`), `:track-move ±N` (`:tmv`) | remove this track, move it left or right |
+
+The header shows the song's file name, and `[+]` when it has unsaved changes.
 
 Tracks can be added, removed and moved while playing, and undo brings a removed track back with
 its notes and its instrument. When there are more than fit across the terminal, the grid scrolls

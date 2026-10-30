@@ -58,6 +58,17 @@ fn chord_changes() -> Vec<Rule> {
     ]
 }
 
+/// A new, empty song for the demo's instruments: one bar on each track, named after them.
+pub fn blank() -> Grid {
+    let (mut grid, _) = song();
+    for track in &mut grid.tracks {
+        track.steps = vec![Step::default(); 16];
+        track.rules.clear();
+    }
+    grid.name = "new".into();
+    grid
+}
+
 pub fn song() -> (Grid, Vec<Patch>) {
     let bass = Track {
         name: "bass".into(),

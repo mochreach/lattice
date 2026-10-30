@@ -2,9 +2,11 @@
 
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 use crate::song::{Step, Track};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Transform {
     /// Shift steps later by `n` (earlier if negative), wrapping around.
     Rotate(i32),
@@ -16,25 +18,28 @@ pub enum Transform {
 }
 
 /// Which passes a rule applies on. Passes count from 0.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum Condition {
+    #[default]
     Always,
     /// Passes where `pass % n == offset`.
-    Every {
-        n: u32,
-        offset: u32,
-    },
+    Every { n: u32, offset: u32 },
     /// Only the given pass.
     Pass(u32),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rule {
     pub transform: Transform,
+    #[serde(default, skip_serializing_if = "Condition::is_always")]
     pub when: Condition,
 }
 
 impl Condition {
+    fn is_always(&self) -> bool {
+        *self == Condition::Always
+    }
+
     pub fn holds(self, pass: u32) -> bool {
         match self {
             Condition::Always => true,

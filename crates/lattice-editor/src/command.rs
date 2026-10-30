@@ -5,6 +5,7 @@
 
 use std::fmt::Debug;
 use std::ops::Range;
+use std::path::PathBuf;
 
 use lattice_core::{Condition, MAX_STEPS, MAX_TRACKS, Rule, Step, Track, Transform};
 
@@ -221,10 +222,40 @@ pub const COMMANDS: &[Spec] = &[
         describe: "list the commands",
     },
     Spec {
+        name: "write",
+        alias: Some("w"),
+        params: &[optional_text("[PATH]", "path")],
+        describe: "save the song, optionally to a new file",
+    },
+    Spec {
+        name: "open",
+        alias: Some("o"),
+        params: &[text("PATH", "path")],
+        describe: "open a song, or start a new one there",
+    },
+    Spec {
+        name: "open!",
+        alias: Some("o!"),
+        params: &[text("PATH", "path")],
+        describe: "open a song, discarding unsaved changes",
+    },
+    Spec {
+        name: "write-quit",
+        alias: Some("wq"),
+        params: &[optional_text("[PATH]", "path")],
+        describe: "save the song and quit",
+    },
+    Spec {
         name: "quit",
         alias: Some("q"),
         params: &[],
-        describe: "quit",
+        describe: "quit, unless there are unsaved changes",
+    },
+    Spec {
+        name: "quit!",
+        alias: Some("q!"),
+        params: &[],
+        describe: "quit, discarding unsaved changes",
     },
 ];
 
@@ -688,6 +719,21 @@ impl<'a> Words<'a> {
     }
 }
 
+const UNSAVED_QUIT: &str = "unsaved changes: :w to save them, or :q! to quit anyway";
+const UNSAVED_OPEN: &str = "unsaved changes: :w to save them, or :o! to open anyway";
+
+/// The path typed, or else the song's own file.
+fn save_path(editor: &Editor, typed: &str) -> Result<PathBuf, String> {
+    if typed.is_empty() {
+        editor
+            .path
+            .clone()
+            .ok_or_else(|| "no file name yet: :w PATH".into())
+    } else {
+        Ok(typed.into())
+    }
+}
+
 pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String> {
     let Some(command) = parse(line, false).map_err(|problem| problem.message)? else {
         return Ok(vec![]);
@@ -695,7 +741,15 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
     let track = editor.cursor().track;
 
     match command.spec.name {
-        "quit" => Ok(vec![Effect::Quit]),
+        "quit" if editor.modified() => Err(UNSAVED_QUIT.into()),
+        "quit" | "quit!" => Ok(vec![Effect::Quit]),
+        "write" => Ok(vec![Effect::Save(save_path(editor, command.text(0))?)]),
+        "write-quit" => Ok(vec![
+            Effect::Save(save_path(editor, command.text(0))?),
+            Effect::Quit,
+        ]),
+        "open" if editor.modified() => Err(UNSAVED_OPEN.into()),
+        "open" | "open!" => Ok(vec![Effect::Open(command.text(0).into())]),
         "help" => {
             let names: Vec<&str> = COMMANDS.iter().map(|c| c.name).collect();
             Err(names.join(" · "))
@@ -825,7 +879,8 @@ mod tests {
         assert_eq!(names("").len(), COMMANDS.len());
         assert_eq!(names("")[..2], ["tr", "rot"], "table order before typing");
         assert_eq!(names("tr")[0], "tr");
-        assert_eq!(names("q"), ["quit"]);
+        assert_eq!(names("q")[..2], ["quit", "quit!"]);
+        assert_eq!(names("wq")[0], "write-quit", "aliases match exactly");
         assert_eq!(names("dr"), ["drift"]);
         assert!(names("fl").starts_with(&["follow"]));
         assert_eq!(names("zz"), Vec::<&str>::new());
@@ -856,6 +911,7 @@ mod tests {
         assert_eq!(hint("bpm ").as_deref(), Some("BPM"));
         assert_eq!(hint("bpm 9"), None);
         assert_eq!(hint("pop "), None);
+        assert_eq!(hint("w ").as_deref(), Some("[PATH]"));
         assert_eq!(hint("ta ").as_deref(), Some("[NAME]"));
         assert_eq!(hint("nope "), None);
     }

@@ -18,13 +18,17 @@ pub struct Tracks {
 }
 
 impl Tracks {
-    /// `patches[i]` is what the editor's track `i` is playing with.
+    /// The editor's tracks are playing with `patches` in turn, as from [`Tracks::patches`].
     pub fn new(editor: &Editor, patches: Vec<Patch>, sample_rate: f32) -> Self {
         let ids = editor.track_ids();
         assert!(!patches.is_empty());
         Self {
             sample_rate,
-            patches: ids.iter().copied().zip(patches.iter().copied()).collect(),
+            patches: ids
+                .iter()
+                .copied()
+                .zip(patches.iter().copied().cycle())
+                .collect(),
             palette: patches,
             next: ids.len(),
             engine: ids.to_vec(),
@@ -74,6 +78,17 @@ impl Tracks {
             self.engine.insert(index, id);
         }
         true
+    }
+
+    /// One of `palette` for each of `tracks` tracks, in turn: what a song starts with.
+    pub fn patches(palette: &[Patch], tracks: usize) -> Vec<Patch> {
+        palette.iter().copied().cycle().take(tracks).collect()
+    }
+
+    /// New tracks take the patches in turn from the first again, so an opened song's tracks
+    /// sound as they would if Lattice had started with it.
+    pub fn restart_palette(&mut self) {
+        self.next = 0;
     }
 
     fn patch(&mut self, id: TrackId) -> Patch {

@@ -1,10 +1,12 @@
 mod audio;
 mod demo;
+mod file;
 mod keys;
 mod theme;
 mod tracks;
 mod ui;
 
+use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -24,12 +26,36 @@ static ALLOCATOR: assert_no_alloc::AllocDisabler = assert_no_alloc::AllocDisable
 /// Redraw at least this often, so the playhead moves smoothly.
 const FRAME: Duration = Duration::from_millis(16);
 
+/// What to do after carrying out an effect.
+enum Flow {
+    Next,
+    /// Something failed; drop the effects that were to follow.
+    Stop,
+    Quit,
+}
+
 fn main() -> Result<()> {
-    let (grid, patches) = demo::song();
-    let mut audio = audio::start(&grid, patches.clone(), demo::BPM)?;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let (grid, palette) = demo::song();
     let mut editor = Editor::new(grid, demo::BPM);
-    let mut tracks = Tracks::new(&editor, patches, audio.sample_rate);
-    if std::env::args().any(|a| a == "--no-click") {
+    // `lattice song.lattice` opens the song, or starts a new one there, like Helix.
+    if let Some(path) = args
+        .iter()
+        .find(|a| !a.starts_with("--"))
+        .map(PathBuf::from)
+    {
+        let (song, new) = file::open(&path, None)?;
+        // The engine starts from the editor's song, so nothing needs sending yet.
+        editor.load(song, path.clone());
+        if new {
+            editor.message = Some(format!("{} (new file)", path.display()));
+        }
+    }
+
+    let patches = Tracks::patches(&palette, editor.grid.tracks.len());
+    let mut audio = audio::start(&editor.grid, patches, editor.bpm)?;
+    let mut tracks = Tracks::new(&editor, palette, audio.sample_rate);
+    if args.iter().any(|a| a == "--no-click") {
         editor.click = false;
         audio.handle.send(Command::SetClick(false));
     }
@@ -69,8 +95,10 @@ fn run(
                 && let Some(key) = keys::convert(key)
             {
                 for effect in editor.handle(key) {
-                    if !apply(effect, editor, tracks, handle) {
-                        return Ok(());
+                    match apply(effect, editor, tracks, handle) {
+                        Flow::Next => {}
+                        Flow::Stop => break,
+                        Flow::Quit => return Ok(()),
                     }
                 }
             }
@@ -81,14 +109,14 @@ fn run(
     }
 }
 
-/// Carries out an editor effect. Returns false to quit.
-fn apply(effect: Effect, editor: &mut Editor, tracks: &mut Tracks, handle: &mut Handle) -> bool {
+/// Carries out an editor effect.
+fn apply(effect: Effect, editor: &mut Editor, tracks: &mut Tracks, handle: &mut Handle) -> Flow {
     let command = match effect {
         Effect::TracksChanged => {
             if !tracks.sync(editor, handle) {
                 editor.message = Some("audio engine is busy; tracks out of step".into());
             }
-            return true;
+            return Flow::Next;
         }
         Effect::TrackChanged(index) => Command::SetTrack {
             index,
@@ -103,10 +131,43 @@ fn apply(effect: Effect, editor: &mut Editor, tracks: &mut Tracks, handle: &mut 
             pitch,
             velocity: 100,
         },
-        Effect::Quit => return false,
+        Effect::Save(path) => {
+            return match file::write(&path, &editor.song()) {
+                Ok(()) => {
+                    editor.saved(path);
+                    Flow::Next
+                }
+                Err(e) => {
+                    editor.message = Some(format!("{e:#}"));
+                    Flow::Stop
+                }
+            };
+        }
+        Effect::Open(path) => return open(path, editor, tracks, handle),
+        Effect::Quit => return Flow::Quit,
     };
     if !handle.send(command) {
         editor.message = Some("audio engine is busy; change dropped".into());
     }
-    true
+    Flow::Next
+}
+
+/// Replaces the song with the one at `path`, or a new one if there's no such file.
+fn open(path: PathBuf, editor: &mut Editor, tracks: &mut Tracks, handle: &mut Handle) -> Flow {
+    let (song, new) = match file::open(&path, Some(editor.grid.steps_per_beat)) {
+        Ok(opened) => opened,
+        Err(e) => {
+            editor.message = Some(format!("{e:#}"));
+            return Flow::Stop;
+        }
+    };
+    let message = new.then(|| format!("{} (new file)", path.display()));
+    tracks.restart_palette();
+    for effect in editor.load(song, path) {
+        apply(effect, editor, tracks, handle);
+    }
+    if message.is_some() {
+        editor.message = message;
+    }
+    Flow::Next
 }

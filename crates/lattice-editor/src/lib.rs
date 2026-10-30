@@ -7,9 +7,9 @@
 //! of them, and the view follows the primary one.
 //!
 //! The frontend turns its key events into [`Key`]s and calls [`Editor::handle`], which updates
-//! the song and selection and returns [`Effect`]s (send a track to the engine, play, quit) for
-//! the frontend to carry out. Nothing here knows about terminals or audio, so it's tested by
-//! feeding in key sequences.
+//! the song and selection and returns [`Effect`]s (send a track to the engine, play, save, quit)
+//! for the frontend to carry out. Nothing here knows about terminals, audio or files, so it's
+//! tested by feeding in key sequences.
 
 mod command;
 mod keymap;
@@ -18,7 +18,9 @@ mod pattern;
 pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
 pub use keymap::{Action, Binding, Key, Keymap, Menu};
 
-use lattice_core::{Grid, MAX_STEPS, Note, Step, Track};
+use std::path::{Path, PathBuf};
+
+use lattice_core::{Grid, MAX_STEPS, Note, Song, Step, Track};
 
 use crate::pattern::Pattern;
 
@@ -106,6 +108,12 @@ pub enum Effect {
         track: usize,
         pitch: u8,
     },
+    /// Write [`Editor::song`] here, then call [`Editor::saved`]. If the save fails, drop the
+    /// effects that follow it, so `:wq` doesn't quit.
+    Save(PathBuf),
+    /// Read the song here and pass it to [`Editor::load`], or start a new song if there's no such
+    /// file.
+    Open(PathBuf),
     Quit,
 }
 
@@ -239,10 +247,20 @@ struct Snapshot {
 /// What one selection copied: a column of steps per track.
 type Clip = Vec<Vec<Step>>;
 
+/// The song as last saved or opened, to tell whether it's been modified since.
+#[derive(Debug, Clone)]
+struct Saved {
+    grid: Grid,
+    bpm: f64,
+}
+
 #[derive(Debug, Clone)]
 pub struct Editor {
     pub grid: Grid,
     pub bpm: f64,
+    /// Where the song is saved; `None` until it's given a file name.
+    pub path: Option<PathBuf>,
+    saved: Saved,
     pub mode: Mode,
     pub view: View,
     /// Octave of the lower piano row in insert mode.
@@ -294,8 +312,13 @@ impl Editor {
         Self {
             ids: (0..tracks).map(TrackId).collect(),
             next_id: tracks,
+            saved: Saved {
+                grid: grid.clone(),
+                bpm,
+            },
             grid,
             bpm,
+            path: None,
             mode: Mode::Normal,
             view: View::Source,
             octave: 4,
@@ -317,6 +340,74 @@ impl Editor {
     /// Each track's id, in the order of `grid.tracks`.
     pub fn track_ids(&self) -> &[TrackId] {
         &self.ids
+    }
+
+    /// Whether the song differs from when it was last saved or opened, tracks added, removed
+    /// and moved included. Undoing back to that point counts as unmodified.
+    pub fn modified(&self) -> bool {
+        self.grid != self.saved.grid || self.bpm != self.saved.bpm
+    }
+
+    /// The song to save, named after its file.
+    pub fn song(&self) -> Song {
+        let name = self
+            .path
+            .as_deref()
+            .and_then(Path::file_stem)
+            .map_or_else(|| self.grid.name.clone(), |s| s.to_string_lossy().into());
+        Song {
+            name,
+            bpm: self.bpm,
+            grids: vec![self.grid.clone()],
+            order: vec![0],
+        }
+    }
+
+    /// The frontend has written [`Editor::song`] to `path`.
+    pub fn saved(&mut self, path: PathBuf) {
+        self.message = Some(format!("written {}", path.display()));
+        self.path = Some(path);
+        self.saved = Saved {
+            grid: self.grid.clone(),
+            bpm: self.bpm,
+        };
+    }
+
+    /// Replaces the song with one read from `path`, starting afresh: its tracks get new ids, there's
+    /// one selection at the top left, and the undo history is cleared. Only the first grid in the
+    /// song's order is edited so far. Returns the effects that send the new song to the engine.
+    pub fn load(&mut self, song: Song, path: PathBuf) -> Vec<Effect> {
+        let first = song.first_grid();
+        let others = song.grids.len().saturating_sub(1);
+        let Some(grid) = song.grids.into_iter().nth(first) else {
+            self.message = Some("the song has no grids".into());
+            return vec![];
+        };
+        assert!(!grid.tracks.is_empty(), "need at least one track");
+        self.message = Some(if others > 0 {
+            format!("opened {}; only its first grid so far", path.display())
+        } else {
+            format!("opened {}", path.display())
+        });
+        let tracks = grid.tracks.len() as u32;
+        self.ids = (self.next_id..self.next_id + tracks).map(TrackId).collect();
+        self.next_id += tracks;
+        self.saved = Saved {
+            grid: grid.clone(),
+            bpm: song.bpm,
+        };
+        self.grid = grid;
+        self.bpm = song.bpm;
+        self.path = Some(path);
+        self.selections = vec![Selection::default()];
+        self.primary = 0;
+        self.mode = Mode::Normal;
+        self.count = None;
+        self.pending = None;
+        self.undo.clear();
+        self.redo.clear();
+        // Every id is new, so the engine rebuilds every track with its contents.
+        vec![Effect::TracksChanged, Effect::Bpm(self.bpm)]
     }
 
     /// A pending count typed before a command, e.g. the `4` in `4j`.
@@ -1576,6 +1667,98 @@ mod tests {
         assert_eq!(command(&mut e, "bpm 122.5"), [Effect::Bpm(122.5)]);
         command(&mut e, "follow");
         assert!(!e.follow);
+    }
+
+    #[test]
+    fn edits_mark_the_song_modified_until_saved() {
+        let mut e = editor();
+        assert!(!e.modified());
+        notes(&mut e, "z");
+        assert!(e.modified());
+        keys(&mut e, "u");
+        assert!(!e.modified(), "undone back to how it was");
+        command(&mut e, "bpm 90");
+        assert!(e.modified(), "tempo is part of the song");
+        e.saved("song.lattice".into());
+        assert!(!e.modified());
+        assert_eq!(e.path, Some("song.lattice".into()));
+        assert_eq!(e.song().name, "song");
+        assert_eq!(e.song().bpm, 90.0);
+
+        command(&mut e, "track-add");
+        assert!(e.modified(), "adding a track");
+        keys(&mut e, "u");
+        assert!(!e.modified());
+        command(&mut e, "track-move 1");
+        assert!(e.modified(), "moving a track");
+        keys(&mut e, "u");
+        command(&mut e, "track-remove");
+        assert!(e.modified(), "removing a track");
+    }
+
+    #[test]
+    fn write_needs_a_file_name_once() {
+        let mut e = editor();
+        assert_eq!(command(&mut e, "w"), []);
+        assert_eq!(e.message.as_deref(), Some("no file name yet: :w PATH"));
+        assert_eq!(
+            command(&mut e, "w my song.lattice"),
+            [Effect::Save("my song.lattice".into())],
+            "paths can contain spaces"
+        );
+        e.saved("my song.lattice".into());
+        assert_eq!(
+            command(&mut e, "write"),
+            [Effect::Save("my song.lattice".into())]
+        );
+        assert_eq!(
+            command(&mut e, "wq other.lattice"),
+            [Effect::Save("other.lattice".into()), Effect::Quit]
+        );
+    }
+
+    #[test]
+    fn quit_and_open_refuse_to_lose_changes() {
+        let mut e = editor();
+        assert_eq!(command(&mut e, "q"), [Effect::Quit], "nothing to lose");
+        notes(&mut e, "z");
+        assert_eq!(command(&mut e, "q"), []);
+        assert!(e.message.as_ref().unwrap().starts_with("unsaved changes"));
+        assert_eq!(command(&mut e, "o b.lattice"), []);
+        assert!(e.message.as_ref().unwrap().starts_with("unsaved changes"));
+        assert_eq!(
+            command(&mut e, "o! b.lattice"),
+            [Effect::Open("b.lattice".into())]
+        );
+        assert_eq!(command(&mut e, "quit!"), [Effect::Quit]);
+        assert_eq!(command(&mut e, "q!"), [Effect::Quit]);
+        command(&mut e, "open!");
+        assert_eq!(e.message.as_deref(), Some("expected a path"));
+    }
+
+    #[test]
+    fn loading_replaces_the_song() {
+        let mut e = editor();
+        notes(&mut e, "zx");
+        keys(&mut e, "lC");
+        let before = e.track_ids().to_vec();
+        let mut song = editor().song();
+        song.bpm = 140.0;
+        song.grids[0].tracks.truncate(1);
+        let effects = e.load(song, "new.lattice".into());
+        assert_eq!(effects, [Effect::TracksChanged, Effect::Bpm(140.0)]);
+        assert_eq!(e.grid.tracks.len(), 1);
+        assert!(
+            !before.contains(&e.track_ids()[0]),
+            "loaded tracks get new ids"
+        );
+        assert_eq!(pitches(&e, 0)[0], None);
+        assert_eq!(e.selections().len(), 1);
+        assert_eq!(e.cursor(), Cursor::default());
+        assert!(!e.modified());
+        assert_eq!(e.path, Some("new.lattice".into()));
+        keys(&mut e, "u");
+        assert_eq!(e.message.as_deref(), Some("nothing to undo"));
     }
 
     fn steps(e: &Editor) -> Vec<(usize, usize)> {
