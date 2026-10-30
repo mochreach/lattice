@@ -11,6 +11,9 @@ name = "lattice"
 path = "src/main.rs"
 
 [dependencies]
+anyhow = "1"
+assert_no_alloc = "1.1"
+cpal = "0.18"
 lattice-core.workspace = true
 lattice-editor.workspace = true
 lattice-engine.workspace = true

@@ -7,4 +7,4 @@ pub mod song;
 pub mod transform;
 
 pub use song::{Grid, Note, Song, Step, Track};
-pub use transform::{Condition, Rule, Transform, realise};
+pub use transform::{Condition, Rule, Transform, realise, realise_into};

@@ -21,13 +21,29 @@ impl Clock {
         }
     }
 
+    /// Frames from the current position until the next step starts. Zero means a step is due
+    /// now: call [`Clock::take_step`] before rendering any further.
+    pub fn frames_until_step(&self) -> u64 {
+        self.step_position(self.next_step)
+            .saturating_sub(self.position)
+    }
+
+    /// Marks the step due at the current position as handled.
+    pub fn take_step(&mut self) {
+        self.next_step += 1;
+    }
+
+    /// Moves the position on by `frames` rendered samples.
+    pub fn skip(&mut self, frames: u64) {
+        self.position += frames;
+    }
+
     /// Advance by one block of `frames` samples, calling `on_step` with the offset into the
     /// block of every step that starts within it.
     pub fn advance(&mut self, frames: usize, mut on_step: impl FnMut(usize)) {
         let end = self.position + frames as u64;
         loop {
-            // Computed from the step index rather than summed, so rounding error can't build up.
-            let at = (self.next_step as f64 * self.samples_per_step).ceil() as u64;
+            let at = self.step_position(self.next_step);
             if at >= end {
                 break;
             }
@@ -35,6 +51,12 @@ impl Clock {
             self.next_step += 1;
         }
         self.position = end;
+    }
+
+    /// Absolute sample position of step `k`. Computed from the index rather than summed, so
+    /// rounding error can't build up.
+    fn step_position(&self, k: u64) -> u64 {
+        (k as f64 * self.samples_per_step).ceil() as u64
     }
 }
 

@@ -102,7 +102,7 @@ Alacritty also send releases through the kitty keyboard protocol. Note entry mus
 presses alone, so holding a key to sustain a note is an extra for terminals that support it. A
 MIDI keyboard avoids the problem entirely.
 
-## First milestone
+## First milestone (done October 2026)
 
 - One cpal stream, one polyphonic band-limited synth, and the sample-counted clock, checked
   against a metronome click.

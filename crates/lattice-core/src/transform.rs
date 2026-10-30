@@ -86,14 +86,21 @@ fn rotate(steps: &mut [Step], by: i64) {
 ///
 /// The written pattern is never modified, so the same track and pass always give the same result.
 pub fn realise(track: &Track, pass: u32) -> Vec<Step> {
-    let mut steps = track.steps.clone();
+    let mut steps = Vec::with_capacity(track.steps.len());
+    realise_into(track, pass, &mut steps);
+    steps
+}
+
+/// Like [`realise`], but writes into `out`, reusing its allocation. Doesn't allocate if `out`
+/// already has capacity for the track, so it's safe to call from the audio thread.
+pub fn realise_into(track: &Track, pass: u32, out: &mut Vec<Step>) {
+    out.clear();
+    out.extend_from_slice(&track.steps);
     for rule in &track.rules {
         if rule.when.holds(pass) {
-            rule.transform
-                .apply(&mut steps, rule.when.count_through(pass));
+            rule.transform.apply(out, rule.when.count_through(pass));
         }
     }
-    steps
 }
 
 #[cfg(test)]

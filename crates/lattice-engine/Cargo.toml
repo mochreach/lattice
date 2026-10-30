@@ -8,3 +8,6 @@ authors.workspace = true
 
 [dependencies]
 lattice-core.workspace = true
+
+[dev-dependencies]
+assert_no_alloc = "1.1"

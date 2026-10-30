@@ -21,6 +21,9 @@ What we learned from it, and the plan for this version, are in
 ## Building
 
 ```sh
-nix develop      # or bring your own Rust toolchain plus alsa-lib
+nix develop               # or bring your own Rust toolchain plus alsa-lib
 cargo test
+cargo run --release       # plays the demo song; add `-- --no-click` to mute the metronome
 ```
+
+Debug builds abort if the audio callback ever allocates, which catches real-time mistakes early.
