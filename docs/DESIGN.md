@@ -188,3 +188,17 @@ MIDI keyboard avoids the problem entirely.
 - One cpal stream, one polyphonic band-limited synth, and the sample-counted clock, checked
   against a metronome click.
 - `realise()` covered by tests for each transform and each pass number.
+
+## Second milestone (done October 2026): the terminal UI
+
+- `lattice-editor`: normal, insert, visual and command modes, counts, undo and redo, and
+  `:` commands for rules, length and tempo. It's tested with key sequences.
+- The engine has a transport and takes commands (play, stop, tempo, replace a track, preview a
+  note) over an `rtrb` queue. Replaced tracks go back to the UI thread to be freed. Playheads
+  and pass numbers are published through atomics.
+- `lattice-tui`: a ratatui grid with one colour per track and a playhead for each track (so
+  polymeter is visible), plus a live view that shows the pattern realised for the current pass
+  and highlights what the rules changed.
+
+Next for the UI: saving and loading songs, adding and removing tracks, effect columns, a help
+screen, and loading keymaps from a config file.

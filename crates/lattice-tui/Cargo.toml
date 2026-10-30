@@ -17,3 +17,4 @@ cpal = "0.18"
 lattice-core.workspace = true
 lattice-editor.workspace = true
 lattice-engine.workspace = true
+ratatui = "0.30"

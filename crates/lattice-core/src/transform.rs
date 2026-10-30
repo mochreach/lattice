@@ -1,5 +1,7 @@
 //! Non-destructive pattern transforms, applied each time a track loops.
 
+use std::fmt;
+
 use crate::song::{Step, Track};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,6 +105,35 @@ pub fn realise_into(track: &Track, pass: u32, out: &mut Vec<Step>) {
     }
 }
 
+/// Compact notation, as shown in the tracker: `rev/2+1`, `tr+5@3`, `drift+1`.
+impl fmt::Display for Transform {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Transform::Rotate(n) => write!(f, "rot{n:+}"),
+            Transform::Drift(n) => write!(f, "drift{n:+}"),
+            Transform::Reverse => write!(f, "rev"),
+            Transform::Transpose(n) => write!(f, "tr{n:+}"),
+        }
+    }
+}
+
+impl fmt::Display for Condition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Condition::Always => Ok(()),
+            Condition::Every { n, offset: 0 } => write!(f, "/{n}"),
+            Condition::Every { n, offset } => write!(f, "/{n}+{offset}"),
+            Condition::Pass(k) => write!(f, "@{k}"),
+        }
+    }
+}
+
+impl fmt::Display for Rule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", self.transform, self.when)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,6 +229,20 @@ mod tests {
             pitches(&realise(&t, 0)),
             [Some(60), Some(67), Some(64), None]
         );
+    }
+
+    #[test]
+    fn rules_display_compactly() {
+        let shown: Vec<String> = [
+            rule(Transform::Reverse, Condition::Every { n: 2, offset: 1 }),
+            rule(Transform::Transpose(5), Condition::Pass(3)),
+            rule(Transform::Drift(-1), Condition::Always),
+            rule(Transform::Rotate(2), Condition::Every { n: 4, offset: 0 }),
+        ]
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+        assert_eq!(shown, ["rev/2+1", "tr+5@3", "drift-1", "rot+2/4"]);
     }
 
     #[test]

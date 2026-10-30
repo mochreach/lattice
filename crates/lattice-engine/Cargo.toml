@@ -8,6 +8,7 @@ authors.workspace = true
 
 [dependencies]
 lattice-core.workspace = true
+rtrb = "0.4"
 wide = "1.7"
 
 [dev-dependencies]

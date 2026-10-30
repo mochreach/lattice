@@ -5,20 +5,44 @@
 
 #[derive(Debug, Clone)]
 pub struct Clock {
+    sample_rate: f64,
+    steps_per_beat: u32,
     samples_per_step: f64,
     /// Index of the next step to fire.
     next_step: u64,
     /// Absolute sample position of the start of the next block.
     position: u64,
+    /// Step `base_step` falls on sample `origin`; later steps are `samples_per_step` apart.
+    /// Moved forward on tempo changes, so they take effect from the next step.
+    origin: u64,
+    base_step: u64,
 }
 
 impl Clock {
     pub fn new(sample_rate: f64, bpm: f64, steps_per_beat: u32) -> Self {
         Self {
-            samples_per_step: sample_rate * 60.0 / (bpm * f64::from(steps_per_beat)),
+            sample_rate,
+            steps_per_beat,
+            samples_per_step: samples_per_step(sample_rate, bpm, steps_per_beat),
             next_step: 0,
             position: 0,
+            origin: 0,
+            base_step: 0,
         }
+    }
+
+    /// Changes tempo from the next step on, without moving that step.
+    pub fn set_bpm(&mut self, bpm: f64) {
+        self.origin = self.step_position(self.next_step);
+        self.base_step = self.next_step;
+        self.samples_per_step = samples_per_step(self.sample_rate, bpm, self.steps_per_beat);
+    }
+
+    /// Starts counting again from step 0, due immediately.
+    pub fn restart(&mut self) {
+        self.next_step = 0;
+        self.base_step = 0;
+        self.origin = self.position;
     }
 
     /// Frames from the current position until the next step starts. Zero means a step is due
@@ -56,8 +80,12 @@ impl Clock {
     /// Absolute sample position of step `k`. Computed from the index rather than summed, so
     /// rounding error can't build up.
     fn step_position(&self, k: u64) -> u64 {
-        (k as f64 * self.samples_per_step).ceil() as u64
+        self.origin + ((k - self.base_step) as f64 * self.samples_per_step).ceil() as u64
     }
+}
+
+fn samples_per_step(sample_rate: f64, bpm: f64, steps_per_beat: u32) -> f64 {
+    sample_rate * 60.0 / (bpm.max(1.0) * f64::from(steps_per_beat.max(1)))
 }
 
 #[cfg(test)]
@@ -92,6 +120,26 @@ mod tests {
         for block in [32, 333, 512, 4096] {
             assert_eq!(step_positions(block, 1_000_000), reference, "block {block}");
         }
+    }
+
+    #[test]
+    fn tempo_change_applies_from_the_next_step() {
+        let mut clock = Clock::new(48_000.0, 120.0, 4); // 6,000 samples per step
+        let mut steps = Vec::new();
+        clock.advance(7_000, |o| steps.push(o as u64));
+        clock.set_bpm(240.0); // 3,000 samples per step
+        clock.advance(10_000, |o| steps.push(7_000 + o as u64));
+        assert_eq!(steps, [0, 6_000, 12_000, 15_000]);
+    }
+
+    #[test]
+    fn restart_fires_step_zero_immediately() {
+        let mut clock = Clock::new(48_000.0, 120.0, 4);
+        clock.advance(1_000, |_| {});
+        clock.restart();
+        assert_eq!(clock.frames_until_step(), 0);
+        clock.take_step();
+        assert_eq!(clock.frames_until_step(), 6_000);
     }
 
     #[test]

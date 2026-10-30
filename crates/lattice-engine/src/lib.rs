@@ -14,6 +14,6 @@ pub mod synth;
 
 pub use clock::Clock;
 pub use dsp::{AdsrParams, Wave};
-pub use engine::Engine;
+pub use engine::{Command, Engine, Handle, MAX_TRACKS, Status};
 pub use instrument::{Event, EventKind, Instrument};
 pub use synth::{Patch, Synth};

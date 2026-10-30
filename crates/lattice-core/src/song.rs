@@ -1,5 +1,9 @@
 use crate::transform::Rule;
 
+/// Longest a track can be. The engine preallocates for this so edits never allocate on the audio
+/// thread.
+pub const MAX_STEPS: usize = 256;
+
 /// A note to play on a step.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Note {

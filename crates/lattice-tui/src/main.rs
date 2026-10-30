@@ -1,91 +1,87 @@
+mod audio;
 mod demo;
+mod keys;
+mod ui;
 
-use std::io::BufRead;
+use std::time::Duration;
 
-use anyhow::{Context, Result, bail};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use lattice_engine::{Engine, Instrument, Synth};
+use anyhow::Result;
+use lattice_editor::{Editor, Effect};
+use lattice_engine::{Command, Handle};
+use ratatui::DefaultTerminal;
+use ratatui::crossterm::event::{self, Event, KeyEventKind};
 
 // In debug builds, any allocation inside `assert_no_alloc` (the audio callback) aborts.
 #[cfg(debug_assertions)]
 #[global_allocator]
 static ALLOCATOR: assert_no_alloc::AllocDisabler = assert_no_alloc::AllocDisabler;
 
-/// Largest block the engine renders in one go; cpal buffers bigger than this are split.
-const MAX_BLOCK: usize = 4096;
+/// Redraw at least this often, so the playhead moves smoothly.
+const FRAME: Duration = Duration::from_millis(16);
 
 fn main() -> Result<()> {
-    let click = !std::env::args().any(|a| a == "--no-click");
-
-    let host = cpal::default_host();
-    let device = host
-        .default_output_device()
-        .context("no audio output device")?;
-    let config = device.default_output_config()?;
-    if config.sample_format() != cpal::SampleFormat::F32 {
-        bail!(
-            "output device wants {:?} samples; only f32 is supported so far",
-            config.sample_format()
-        );
-    }
-    let channels = usize::from(config.channels());
-    let sample_rate = config.sample_rate() as f32;
-
     let (grid, patches) = demo::song();
-    let instruments = patches
-        .into_iter()
-        .map(|p| Box::new(Synth::new(p, sample_rate)) as Box<dyn Instrument>)
-        .collect();
-    let mut engine = Engine::new(sample_rate, demo::BPM, &grid, instruments);
-    engine.click_enabled = click;
-    let mut left = vec![0.0f32; MAX_BLOCK];
-    let mut right = vec![0.0f32; MAX_BLOCK];
+    let mut audio = audio::start(&grid, patches, demo::BPM)?;
+    let mut editor = Editor::new(grid, demo::BPM);
+    if std::env::args().any(|a| a == "--no-click") {
+        editor.click = false;
+        audio.handle.send(Command::SetClick(false));
+    }
 
-    let stream = device.build_output_stream(
-        config.into(),
-        move |data: &mut [f32], _| {
-            assert_no_alloc::assert_no_alloc(|| {
-                for chunk in data.chunks_mut(MAX_BLOCK * channels) {
-                    let frames = chunk.len() / channels;
-                    let (l, r) = (&mut left[..frames], &mut right[..frames]);
-                    engine.process(l, r);
-                    for ((frame, &l), &r) in chunk.chunks_exact_mut(channels).zip(&*l).zip(&*r) {
-                        if let [first, second, rest @ ..] = frame {
-                            *first = l;
-                            *second = r;
-                            rest.fill(0.0);
-                        } else {
-                            frame.fill(0.5 * (l + r));
-                        }
+    let mut terminal = ratatui::init();
+    let result = run(&mut terminal, &mut editor, &mut audio.handle);
+    ratatui::restore();
+    result
+}
+
+fn run(terminal: &mut DefaultTerminal, editor: &mut Editor, handle: &mut Handle) -> Result<()> {
+    let mut view = ui::ViewState::default();
+    loop {
+        handle.collect_garbage();
+        terminal.draw(|frame| ui::draw(frame, editor, handle.status(), &mut view))?;
+
+        if !event::poll(FRAME)? {
+            continue;
+        }
+        // Handle everything that's waiting before drawing again.
+        loop {
+            if let Event::Key(key) = event::read()?
+                && key.kind != KeyEventKind::Release
+                && let Some(key) = keys::convert(key)
+            {
+                for effect in editor.handle(key) {
+                    if !apply(effect, editor, handle) {
+                        return Ok(());
                     }
                 }
-            });
-        },
-        |err| eprintln!("audio stream error: {err}"),
-        None,
-    )?;
-    stream.play()?;
-
-    println!(
-        "Playing the demo at {} bpm ({} Hz, {} channels){}.",
-        demo::BPM,
-        sample_rate,
-        channels,
-        if click {
-            " with a click on every beat"
-        } else {
-            ""
+            }
+            if !event::poll(Duration::ZERO)? {
+                break;
+            }
         }
-    );
-    for track in &grid.tracks {
-        println!(
-            "  {:<6} {} steps, {:?}",
-            track.name,
-            track.steps.len(),
-            track.rules
-        );
     }
-    println!("Press Enter to stop.");
-    std::io::stdin().lock().lines().next();
-    Ok(())
+}
+
+/// Carries out an editor effect. Returns false to quit.
+fn apply(effect: Effect, editor: &mut Editor, handle: &mut Handle) -> bool {
+    let command = match effect {
+        Effect::TrackChanged(index) => Command::SetTrack {
+            index,
+            track: Box::new(editor.grid.tracks[index].clone()),
+        },
+        Effect::TogglePlay if handle.status().playing() => Command::Stop,
+        Effect::TogglePlay => Command::Play,
+        Effect::Bpm(bpm) => Command::SetBpm(bpm),
+        Effect::Click(on) => Command::SetClick(on),
+        Effect::Preview { track, pitch } => Command::Preview {
+            track,
+            pitch,
+            velocity: 100,
+        },
+        Effect::Quit => return false,
+    };
+    if !handle.send(command) {
+        editor.message = Some("audio engine is busy; change dropped".into());
+    }
+    true
 }

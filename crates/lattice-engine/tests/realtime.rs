@@ -2,7 +2,7 @@
 
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
 use lattice_core::{Condition, Grid, Rule, Step, Track, Transform};
-use lattice_engine::{AdsrParams, Engine, Instrument, Patch, Synth, Wave};
+use lattice_engine::{AdsrParams, Command, Engine, Instrument, Patch, Synth, Wave};
 
 #[global_allocator]
 static ALLOCATOR: AllocDisabler = AllocDisabler;
@@ -50,7 +50,20 @@ fn rendering_never_allocates() {
         gain: 0.3,
     };
     let synth: Box<dyn Instrument> = Box::new(Synth::new(patch, 48_000.0));
-    let mut engine = Engine::new(48_000.0, 174.0, &grid, vec![synth]);
+    let replacement = Box::new(grid.tracks[0].clone());
+    let (mut engine, mut handle) = Engine::new(48_000.0, 174.0, &grid, vec![synth]);
+    // Commands are handled inside the no-allocation zone too.
+    handle.send(Command::Play);
+    handle.send(Command::SetBpm(140.0));
+    handle.send(Command::Preview {
+        track: 0,
+        pitch: 72,
+        velocity: 100,
+    });
+    handle.send(Command::SetTrack {
+        index: 0,
+        track: replacement,
+    });
     let mut left = vec![0.0; 256];
     let mut right = vec![0.0; 256];
 
@@ -62,6 +75,7 @@ fn rendering_never_allocates() {
             peak = left.iter().fold(peak, |p, x| p.max(x.abs()));
         }
     });
+    handle.collect_garbage();
     assert!(peak > 0.05, "the synth should be audible, peak {peak}");
     assert!(peak <= 1.0);
 }
