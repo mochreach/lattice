@@ -1,0 +1,109 @@
+# Lattice design notes
+
+## Lessons from the first attempt
+
+The iced prototype (`mochreach/lattice-legacy`, 2023 to January 2024) was reviewed in October 2026
+before this restart. What went wrong, so we don't repeat it:
+
+- **The clock lived in the UI.** Steps were driven by an iced timer subscription, and each step
+  reset to the time the tick happened to arrive (`last_step = now`). As a result, lateness
+  accumulated and tempo always ran slow. Notes then crossed two threads and landed at whatever
+  buffer boundary came next.
+- **One audio stream per instrument.** Each synth opened its own cpal output and slept in a loop.
+  Mixing was left to the OS, and there was no master bus.
+- **Level-sensitive triggers.** Instruments watched a shared `trig` value going from -1 to +1. A
+  note-off followed by a note-on in the same tick could cancel out, so repeated notes didn't
+  retrigger.
+- **The GUI went all the way down.** Song, grid, track and step each had an iced `view()` and
+  imported the UI's message type. The cursor computed pixel scroll offsets.
+- **Playback state lived inside the song data.** Playheads and repeat counters were part of the
+  model, and some of them ended up in save files.
+- **Ad hoc modes.** Visual mode, the help screen and the command bar were each a separate flag.
+  Keybindings were hard-coded maps, `example_config.toml` was never loaded, and there was no undo.
+
+What was worth keeping (as ideas, not code):
+
+- The `Song → Grid → Track → Step` structure, with a separate length for each track (polymeter).
+- Effects as columns on each step.
+- Typed editor actions with built-in help strings, and a chromatic keyboard layout for note entry.
+- Pending-operator modes, auto-step, follow-playhead, a command bar, and `.` to repeat.
+- Instrument parameters exposed as named controls, plus MIDI out to drive external gear.
+
+## Principles
+
+1. **The audio callback owns time.** The transport counts samples. Step boundaries are absolute
+   sample positions computed from a fractional samples-per-step value, so they never drift and
+   don't depend on buffer size. Each buffer is split at event boundaries so events are
+   sample-accurate.
+2. **Nothing blocks or allocates on the audio thread.** The UI talks to the engine through
+   lock-free queues (`rtrb`). Large objects such as replacement patterns are built off the audio
+   thread and handed over, and freed off the audio thread too. Debug builds wrap the callback in
+   `assert_no_alloc`.
+3. **Song data is pure.** `lattice-core` has no UI, audio or playback state. Playheads, pass
+   counters and arrangement position belong to the sequencer.
+4. **The editor is a library.** `lattice-editor` takes its own `Key` type and returns effects
+   (send MIDI, transport, save, quit) for the frontend to carry out. It is tested by feeding in
+   key sequences.
+5. **Deterministic playback.** Anything random is seeded from (song seed, grid, track, pass), so a
+   song sounds the same every time it plays.
+
+## Pattern transforms (the "playfield" idea)
+
+A track has a list of **rules**, each pairing a **transform** with a **condition**. Before
+each pass through the track, the sequencer calls
+
+```rust
+realise(track, pass) -> Vec<Step>
+```
+
+`realise` applies, in order, every rule whose condition holds for that pass. The written
+pattern is never changed. The UI can show either the realised pattern or the source.
+
+Transforms include `Rotate`, `Drift` (rotation that builds up each pass), `Reverse` and
+`Transpose`. Planned: seeded thinning and fills, octave jumps, swaps, per-step conditions
+(Elektron-style `1:4`, `FILL`, `PRE`), and arrangement rules that replace the old global
+"repeat grid" flag.
+
+## Sound engine
+
+We write our own DSP rather than using fundsp. A tracker's signal flow is fixed:
+
+```
+voices → track inserts → sends → master
+```
+
+So we don't need a dynamic audio graph, and owning the code makes the real-time
+guarantees easy to check. Things to get right:
+
+- **Oscillators:** band-limited (PolyBLEP/PolyBLAMP), wavetables later.
+- **Envelopes:** triggered by events, never by watching a level.
+- **Filters:** a TPT/ZDF state-variable filter, later a ladder filter.
+- **Effects:** drive/waveshaping (with oversampling), delay, and a reverb (a Freeverb or FDN to
+  start).
+- **Housekeeping:** parameter smoothing, denormal protection, polyphony with voice stealing.
+
+fundsp and similar libraries are still useful as references, and as reference output in
+tests.
+
+## Stack (versions as of October 2026)
+
+| Purpose | Crate | Version |
+| --- | --- | --- |
+| Terminal UI | ratatui | 0.30 |
+| Terminal backend | crossterm, with the kitty keyboard protocol | 0.29 |
+| Audio output | cpal | 0.18 |
+| UI ↔ audio queues | rtrb | 0.4 |
+| MIDI | midir | 0.11 |
+| MIDI messages | wmidi | |
+| Song files | serde with toml or ron | |
+
+**Key-release events:** most terminals send key presses only. Kitty, foot, WezTerm, Ghostty and
+Alacritty also send releases through the kitty keyboard protocol. Note entry must work with
+presses alone, so holding a key to sustain a note is an extra for terminals that support it. A
+MIDI keyboard avoids the problem entirely.
+
+## First milestone
+
+- One cpal stream, one polyphonic band-limited synth, and the sample-counted clock, checked
+  against a metronome click.
+- `realise()` covered by tests for each transform and each pass number.

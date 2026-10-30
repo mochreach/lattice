@@ -1,0 +1,203 @@
+//! Non-destructive pattern transforms, applied each time a track loops.
+
+use crate::song::{Step, Track};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Transform {
+    /// Shift steps later by `n` (earlier if negative), wrapping around.
+    Rotate(i32),
+    /// Rotate by `n` more on every pass where the rule holds, building up over time.
+    Drift(i32),
+    Reverse,
+    /// Shift every note by `n` semitones, clamped to the MIDI range.
+    Transpose(i8),
+}
+
+/// Which passes a rule applies on. Passes count from 0.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Condition {
+    Always,
+    /// Passes where `pass % n == offset`.
+    Every {
+        n: u32,
+        offset: u32,
+    },
+    /// Only the given pass.
+    Pass(u32),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rule {
+    pub transform: Transform,
+    pub when: Condition,
+}
+
+impl Condition {
+    pub fn holds(self, pass: u32) -> bool {
+        match self {
+            Condition::Always => true,
+            Condition::Every { n, offset } => n != 0 && pass % n == offset % n,
+            Condition::Pass(k) => pass == k,
+        }
+    }
+
+    /// How many passes in `0..=pass` this condition held on.
+    fn count_through(self, pass: u32) -> u32 {
+        match self {
+            Condition::Always => pass + 1,
+            Condition::Every { n: 0, .. } => 0,
+            Condition::Every { n, offset } => {
+                let offset = offset % n;
+                if pass < offset {
+                    0
+                } else {
+                    (pass - offset) / n + 1
+                }
+            }
+            Condition::Pass(k) => u32::from(pass >= k),
+        }
+    }
+}
+
+impl Transform {
+    fn apply(self, steps: &mut [Step], times: u32) {
+        match self {
+            Transform::Rotate(n) => rotate(steps, i64::from(n)),
+            Transform::Drift(n) => rotate(steps, i64::from(n) * i64::from(times)),
+            Transform::Reverse => steps.reverse(),
+            Transform::Transpose(n) => {
+                for note in steps.iter_mut().filter_map(|s| s.note.as_mut()) {
+                    note.pitch = (i16::from(note.pitch) + i16::from(n)).clamp(0, 127) as u8;
+                }
+            }
+        }
+    }
+}
+
+fn rotate(steps: &mut [Step], by: i64) {
+    if steps.is_empty() {
+        return;
+    }
+    let k = by.rem_euclid(steps.len() as i64) as usize;
+    steps.rotate_right(k);
+}
+
+/// The steps that actually play on the given pass through `track`.
+///
+/// The written pattern is never modified, so the same track and pass always give the same result.
+pub fn realise(track: &Track, pass: u32) -> Vec<Step> {
+    let mut steps = track.steps.clone();
+    for rule in &track.rules {
+        if rule.when.holds(pass) {
+            rule.transform
+                .apply(&mut steps, rule.when.count_through(pass));
+        }
+    }
+    steps
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pitches(steps: &[Step]) -> Vec<Option<u8>> {
+        steps.iter().map(|s| s.note.map(|n| n.pitch)).collect()
+    }
+
+    fn track(rules: Vec<Rule>) -> Track {
+        Track {
+            name: "test".into(),
+            steps: vec![
+                Step::note(60),
+                Step::default(),
+                Step::note(64),
+                Step::note(67),
+            ],
+            rules,
+        }
+    }
+
+    fn rule(transform: Transform, when: Condition) -> Rule {
+        Rule { transform, when }
+    }
+
+    #[test]
+    fn no_rules_plays_as_written() {
+        let t = track(vec![]);
+        assert_eq!(realise(&t, 0), t.steps);
+        assert_eq!(realise(&t, 7), t.steps);
+    }
+
+    #[test]
+    fn rotate_wraps_both_ways() {
+        let t = track(vec![rule(Transform::Rotate(1), Condition::Always)]);
+        assert_eq!(
+            pitches(&realise(&t, 0)),
+            [Some(67), Some(60), None, Some(64)]
+        );
+        let t = track(vec![rule(Transform::Rotate(-5), Condition::Always)]);
+        assert_eq!(
+            pitches(&realise(&t, 0)),
+            [None, Some(64), Some(67), Some(60)]
+        );
+    }
+
+    #[test]
+    fn drift_accumulates_per_pass() {
+        let t = track(vec![rule(Transform::Drift(1), Condition::Always)]);
+        assert_eq!(
+            pitches(&realise(&t, 0)),
+            [Some(67), Some(60), None, Some(64)]
+        );
+        assert_eq!(
+            pitches(&realise(&t, 1)),
+            [Some(64), Some(67), Some(60), None]
+        );
+        // A full cycle comes back to the written pattern.
+        assert_eq!(realise(&t, 3), t.steps);
+    }
+
+    #[test]
+    fn reverse_every_second_pass() {
+        let t = track(vec![rule(
+            Transform::Reverse,
+            Condition::Every { n: 2, offset: 1 },
+        )]);
+        assert_eq!(realise(&t, 0), t.steps);
+        assert_eq!(
+            pitches(&realise(&t, 1)),
+            [Some(67), Some(64), None, Some(60)]
+        );
+        assert_eq!(realise(&t, 2), t.steps);
+    }
+
+    #[test]
+    fn transpose_on_one_pass_clamps() {
+        let t = track(vec![rule(Transform::Transpose(64), Condition::Pass(2))]);
+        assert_eq!(realise(&t, 1), t.steps);
+        assert_eq!(
+            pitches(&realise(&t, 2)),
+            [Some(124), None, Some(127), Some(127)]
+        );
+    }
+
+    #[test]
+    fn rules_apply_in_order() {
+        let t = track(vec![
+            rule(Transform::Reverse, Condition::Always),
+            rule(Transform::Rotate(1), Condition::Always),
+        ]);
+        assert_eq!(
+            pitches(&realise(&t, 0)),
+            [Some(60), Some(67), Some(64), None]
+        );
+    }
+
+    #[test]
+    fn source_is_untouched() {
+        let t = track(vec![rule(Transform::Reverse, Condition::Always)]);
+        let before = t.clone();
+        realise(&t, 0);
+        assert_eq!(t, before);
+    }
+}

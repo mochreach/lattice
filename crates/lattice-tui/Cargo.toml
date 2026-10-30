@@ -1,0 +1,16 @@
+[package]
+name = "lattice-tui"
+description = "Terminal frontend for Lattice."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "lattice"
+path = "src/main.rs"
+
+[dependencies]
+lattice-core.workspace = true
+lattice-editor.workspace = true
+lattice-engine.workspace = true
