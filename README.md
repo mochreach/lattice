@@ -55,6 +55,7 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `v` | select mode: motions extend the selection |
 | `x` | select whole rows across every track; again to extend a row |
 | `%` | select everything |
+| `tt` | select every step of the tracks the selections reach |
 | `tm` `ts` | mute / solo every track the selections reach (not Helix's `t`, which has no use on a grid) |
 | `ta`, `th` `tl` | add a track after this one, move it left / right |
 | `ty`, `td` | copy the tracks the selections reach; remove them, copying them first |

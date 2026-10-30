@@ -72,6 +72,8 @@ pub enum Action {
     /// Select whole rows across every track, or extend a row selection downwards.
     SelectRows,
     SelectAll,
+    /// Select every step of the tracks the selections reach.
+    SelectTracks,
     Collapse,
     Flip,
     SelectMode,
@@ -159,6 +161,7 @@ impl Action {
             Action::PrevNote => "previous note",
             Action::SelectRows => "select rows",
             Action::SelectAll => "select everything",
+            Action::SelectTracks => "select whole tracks",
             Action::Collapse => "collapse selection",
             Action::Flip => "flip selection",
             Action::SelectMode => "select mode",
@@ -320,6 +323,7 @@ impl Default for Keymap {
         let track = Menu {
             title: "track",
             items: vec![
+                (Char('t'), SelectTracks),
                 (Char('m'), ToggleMute),
                 (Char('s'), ToggleSolo),
                 (Char('a'), AddTrack),

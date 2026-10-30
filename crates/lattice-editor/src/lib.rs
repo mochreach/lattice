@@ -823,6 +823,19 @@ impl Editor {
                 )],
                 0,
             ),
+            Action::SelectTracks => self.map_selections(|e, s| {
+                let region = s.region();
+                e.clamped(
+                    Cursor {
+                        track: region.first_track,
+                        step: 0,
+                    },
+                    Cursor {
+                        track: region.last_track,
+                        step: usize::MAX,
+                    },
+                )
+            }),
             Action::Collapse => self.map_selections(|_, s| Selection::point(s.cursor)),
             Action::Flip => self.map_selections(|_, s| Selection {
                 anchor: s.cursor,
@@ -1796,6 +1809,12 @@ mod tests {
         assert!(e.grid.tracks[0].mix.mute && !e.grid.tracks[1].mix.mute);
         keys(&mut e, "%ts");
         assert!(e.grid.tracks.iter().all(|t| t.mix.solo));
+
+        // `tt` selects whole tracks.
+        keys(&mut e, ";ghjjjtt");
+        let region = e.selections()[0].region();
+        assert_eq!((region.first_track, region.last_track), (0, 0));
+        assert_eq!((region.first_step, region.last_step), (0, 15));
 
         // `ty` and `tp` copy and paste whole tracks, keeping where each came from.
         keys(&mut e, "%ty");
