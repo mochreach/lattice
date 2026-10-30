@@ -108,9 +108,10 @@ pub enum Action {
     /// Insert mode: clear the step and move on.
     ClearAdvance,
     Yank,
-    PasteAfter,
-    PasteBefore,
-    ReplaceWithYanked,
+    /// Paste over the selection, from its first step: a tracker's paste.
+    Paste,
+    /// Paste at the selection, pushing the steps there down.
+    PasteInsert,
     /// Fill the selection with the next note played.
     Replace,
     Undo,
@@ -189,9 +190,8 @@ impl Action {
             Action::Clear => "delete without copying",
             Action::ClearAdvance => "clear step and move on",
             Action::Yank => "copy",
-            Action::PasteAfter => "paste after",
-            Action::PasteBefore => "paste before",
-            Action::ReplaceWithYanked => "replace with copied",
+            Action::Paste => "paste",
+            Action::PasteInsert => "paste, pushing the rest down",
             Action::Replace => "fill with a note",
             Action::Undo => "undo",
             Action::Redo => "redo",
@@ -379,9 +379,8 @@ impl Default for Keymap {
                 (Alt('d'), Clear),
                 (Key::Delete, Clear),
                 (Char('y'), Yank),
-                (Char('p'), PasteAfter),
-                (Char('P'), PasteBefore),
-                (Char('R'), ReplaceWithYanked),
+                (Char('p'), Paste),
+                (Char('P'), PasteInsert),
                 (Char('r'), Replace),
                 (Char('u'), Undo),
                 (Char('U'), Redo),

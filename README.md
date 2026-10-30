@@ -77,7 +77,7 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `d` `A-d` | delete (and copy), delete without copying |
 | `c` | delete and start inserting |
 | `y` | copy |
-| `p` `P` `R` | paste after, before, or over the selection |
+| `p` `P` | paste over the selection, from its first step; or insert there, pushing the notes below down (the end of the track falls off) |
 | `r` then a piano key | fill the selection with that note |
 | `^a` `^x` | note up / down a semitone |
 | `>` `<` | note up / down an octave |

@@ -224,6 +224,7 @@ enum Place {
     After,
     Before,
     Over,
+    Insert,
 }
 
 /// A key that's waiting for the next one.
@@ -783,9 +784,8 @@ impl Editor {
             Action::Delete
                 | Action::Clear
                 | Action::Yank
-                | Action::PasteAfter
-                | Action::PasteBefore
-                | Action::ReplaceWithYanked
+                | Action::Paste
+                | Action::PasteInsert
                 | Action::Replace
         ) && self.mode == Mode::Select
         {
@@ -955,9 +955,8 @@ impl Editor {
                     clips => format!("copied {} selections", clips.len()),
                 });
             }
-            Action::PasteAfter => return self.paste(Place::After, n),
-            Action::PasteBefore => return self.paste(Place::Before, n),
-            Action::ReplaceWithYanked => return self.paste(Place::Over, n),
+            Action::Paste => return self.paste(Place::Over, n),
+            Action::PasteInsert => return self.paste(Place::Insert, n),
             Action::Replace => self.pending = Some(Pending::Replace),
             Action::Undo => return self.restore(true),
             Action::Redo => return self.restore(false),
@@ -1293,9 +1292,11 @@ impl Editor {
         changed(columns.into_iter().map(|(t, _)| t))
     }
 
-    /// Writes a clip `n` times down from each selection, one column per track, then selects what
-    /// was written. As in Helix, the selections take the clips in order, and the last clip is
-    /// repeated if there are more selections than clips. Steps off the grid are skipped.
+    /// Writes a clip `n` times down from each selection's first step, one column per track, then
+    /// selects what was written. As in Helix, the selections take the clips in order, and the last
+    /// clip is repeated if there are more selections than clips. `Place::Over` writes over the
+    /// steps there; `Place::Insert` pushes them down first, and what's pushed past the end of the
+    /// track falls off. Steps off the grid are skipped.
     fn paste(&mut self, place: Place, n: usize) -> Vec<Effect> {
         if self
             .clipboard
@@ -1307,45 +1308,60 @@ impl Editor {
         }
         self.checkpoint();
         let mut tracks = vec![];
-        let mut selections = vec![];
-        for (i, s) in self.selections.clone().into_iter().enumerate() {
+        let mut selections = self.selections.clone();
+        // What each selection wrote: its tracks, its first step and how many rows.
+        let mut writes = vec![];
+        // Lowest first, so inserting doesn't move a step another selection has yet to paste at.
+        let mut order: Vec<usize> = (0..selections.len()).collect();
+        order.sort_by_key(|&i| std::cmp::Reverse(selections[i].region().first_step));
+        for i in order {
             let clip = &self.clipboard[i.min(self.clipboard.len() - 1)];
             let rows = clip.first().map_or(0, Vec::len);
             if rows == 0 {
-                selections.push(s);
                 continue;
             }
-            let region = s.region();
-            let total = (rows * n) as isize;
-            let step = match place {
-                Place::After => region.last_step as isize + 1,
-                Place::Before => region.first_step as isize - total,
-                Place::Over => region.first_step as isize,
-            };
-            let track = region.first_track;
+            let region = selections[i].region();
+            let (track, step, total) = (region.first_track, region.first_step, rows * n);
             for (j, column) in clip.iter().enumerate() {
                 let Some(steps) = self.grid.tracks.get_mut(track + j).map(|t| &mut t.steps) else {
                     break;
                 };
-                for (k, value) in column.iter().cycle().take(rows * n).enumerate() {
-                    if let Some(slot) = usize::try_from(step + k as isize)
-                        .ok()
-                        .and_then(|s| steps.get_mut(s))
-                    {
-                        *slot = value.clone();
+                if step >= steps.len() {
+                    continue;
+                }
+                let values = column.iter().cycle().take(total).cloned();
+                if place == Place::Insert {
+                    let len = steps.len();
+                    steps.splice(step..step, values);
+                    steps.truncate(len);
+                } else {
+                    for (slot, value) in steps[step..].iter_mut().zip(values) {
+                        *slot = value;
                     }
                 }
                 tracks.push(track + j);
             }
-            let first = step.max(0) as usize;
-            let last = (step + total - 1).max(0) as usize;
-            selections.push(self.clamped(
-                Cursor { track, step: first },
+            let last_track = track + clip.len() - 1;
+            writes.push((i, track..=last_track, step, total));
+        }
+        for &(i, ref span, step, total) in &writes {
+            // Moved down by what was inserted above it on the same track.
+            let shift: usize = writes
+                .iter()
+                .filter(|w| place == Place::Insert && w.1.contains(span.start()) && w.2 < step)
+                .map(|w| w.3)
+                .sum();
+            let first = step + shift;
+            selections[i] = self.clamped(
                 Cursor {
-                    track: track + clip.len() - 1,
-                    step: last,
+                    track: *span.start(),
+                    step: first,
                 },
-            ));
+                Cursor {
+                    track: *span.end(),
+                    step: first + total - 1,
+                },
+            );
         }
         self.set_selections(selections, self.primary);
         changed(tracks)
@@ -1609,11 +1625,53 @@ mod tests {
         let mut e = editor();
         notes(&mut e, "zxc");
         keys(&mut e, "ggvjjy");
-        keys(&mut e, "p");
-        assert_eq!(&pitches(&e, 0)[3..7], [Some(60), Some(62), Some(64), None]);
-        assert_eq!((e.selection().first_step, e.selection().last_step), (3, 5));
-        keys(&mut e, ";gg10jR");
-        assert_eq!(&pitches(&e, 0)[10..13], [Some(60), Some(62), Some(64)]);
+        keys(&mut e, ";gg10jp");
+        assert_eq!(
+            &pitches(&e, 0)[10..14],
+            [Some(60), Some(62), Some(64), None]
+        );
+        assert_eq!(
+            (e.selection().first_step, e.selection().last_step),
+            (10, 12)
+        );
+        keys(&mut e, ";gg");
+        notes(&mut e, "v");
+        keys(&mut e, "ggp");
+        assert_eq!(
+            &pitches(&e, 0)[..3],
+            [Some(60), Some(62), Some(64)],
+            "onto the first step"
+        );
+    }
+
+    #[test]
+    fn paste_inserting_pushes_the_rest_down() {
+        let mut e = editor();
+        notes(&mut e, "zx");
+        let len = e.grid.tracks[0].steps.len();
+        e.grid.tracks[0].steps[len - 1] = e.grid.tracks[0].steps[0].clone();
+        keys(&mut e, "ggvjy");
+        keys(&mut e, "ggP");
+        assert_eq!(
+            &pitches(&e, 0)[..4],
+            [Some(60), Some(62), Some(60), Some(62)],
+            "onto the first step, pushing the rest down"
+        );
+        assert_eq!(pitches(&e, 0)[len - 1], None, "the end falls off");
+        assert_eq!(e.grid.tracks[0].steps.len(), len);
+        assert_eq!((e.selection().first_step, e.selection().last_step), (0, 1));
+
+        // Two selections on one track: each lands where it was, and the lower one moves down
+        // by what went in above it.
+        keys(&mut e, ";gg");
+        e.handle(Key::Alt('d'));
+        keys(&mut e, "y4jC");
+        keys(&mut e, "4jP");
+        let s = e.selections();
+        assert_eq!(
+            (s[0].region().first_step, s[1].region().first_step),
+            (8, 10)
+        );
     }
 
     #[test]
@@ -1624,7 +1682,7 @@ mod tests {
         assert_eq!(&pitches(&e, 0)[..2], [None, None]);
         assert_eq!(e.anchor(), e.cursor());
         keys(&mut e, "4jp");
-        assert_eq!(&pitches(&e, 0)[5..7], [Some(60), Some(62)]);
+        assert_eq!(&pitches(&e, 0)[4..6], [Some(60), Some(62)]);
     }
 
     #[test]
@@ -2157,7 +2215,7 @@ mod tests {
         notes(&mut e, "zx");
         keys(&mut e, "ggCy");
         assert_eq!(e.message.as_deref(), Some("copied 2 selections"));
-        keys(&mut e, "4jCR");
+        keys(&mut e, "4jCp");
         assert_eq!(
             &pitches(&e, 0)[4..7],
             [Some(60), Some(62), Some(62)],
@@ -2165,7 +2223,7 @@ mod tests {
         );
         keys(&mut e, ",8jp");
         assert_eq!(
-            &pitches(&e, 0)[14..16],
+            &pitches(&e, 0)[13..15],
             [None, Some(60)],
             "one selection takes the first"
         );
