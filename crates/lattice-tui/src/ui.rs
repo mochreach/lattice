@@ -9,20 +9,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-const ORANGE: Color = Color::Rgb(255, 106, 19);
-const BLUE: Color = Color::Rgb(58, 134, 255);
-const GREEN: Color = Color::Rgb(32, 191, 107);
-const WHITE: Color = Color::Rgb(228, 228, 228);
-const PINK: Color = Color::Rgb(255, 77, 109);
-const PURPLE: Color = Color::Rgb(170, 120, 255);
-const TEXT: Color = Color::Rgb(200, 200, 200);
-const DIM: Color = Color::Rgb(110, 110, 110);
-const FAINT: Color = Color::Rgb(60, 60, 60);
-const BEAT_ROW: Color = Color::Rgb(26, 26, 26);
-const SELECTED: Color = Color::Rgb(72, 72, 72);
-
-/// Each track gets its own colour, like the OP-1's four knobs.
-const TRACK_COLOURS: [Color; 6] = [BLUE, GREEN, WHITE, ORANGE, PINK, PURPLE];
+use crate::theme::Theme;
 
 /// Width of the step-number column.
 const GUTTER: usize = 4;
@@ -35,45 +22,42 @@ pub struct ViewState {
     scroll: usize,
 }
 
-pub fn draw(frame: &mut Frame, editor: &Editor, status: &Status, view: &mut ViewState) {
+pub fn draw(
+    frame: &mut Frame,
+    editor: &Editor,
+    status: &Status,
+    theme: &Theme,
+    view: &mut ViewState,
+) {
     let [top, grid, bottom] = Layout::vertical([
         Constraint::Length(2),
         Constraint::Fill(1),
         Constraint::Length(1),
     ])
     .areas(frame.area());
-    frame.render_widget(Paragraph::new(header(editor, status)), top);
-    draw_grid(frame, grid, editor, status, view);
-    frame.render_widget(Paragraph::new(status_line(editor, bottom.width)), bottom);
+    frame.render_widget(Paragraph::new(header(editor, status, theme)), top);
+    draw_grid(frame, grid, editor, status, theme, view);
+    frame.render_widget(
+        Paragraph::new(status_line(editor, theme, bottom.width)),
+        bottom,
+    );
 }
 
-fn header(editor: &Editor, status: &Status) -> Line<'static> {
-    let label = |s: &'static str| Span::styled(s, Style::new().fg(DIM));
-    let value = |s: String| Span::styled(s, Style::new().fg(TEXT).add_modifier(Modifier::BOLD));
+fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
+    let label = |s: &'static str| Span::styled(s, theme.dim);
+    let value = |s: String| Span::styled(s, theme.text.add_modifier(Modifier::BOLD));
     let on_off = |on: bool| if on { "on" } else { "off" };
     let transport = if status.playing() {
-        Span::styled(
-            " ▶ PLAY ",
-            Style::new()
-                .fg(Color::Black)
-                .bg(GREEN)
-                .add_modifier(Modifier::BOLD),
-        )
+        Span::styled(" ▶ PLAY ", theme.block(theme.playing))
     } else {
-        Span::styled(" ■ STOP ", Style::new().fg(TEXT).bg(FAINT))
+        Span::styled(" ■ STOP ", theme.block(Color::DarkGray))
     };
     let view = match editor.view {
         View::Source => "written",
         View::Live => "live",
     };
     Line::from(vec![
-        Span::styled(
-            " LATTICE ",
-            Style::new()
-                .fg(Color::Black)
-                .bg(ORANGE)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Span::styled(" LATTICE ", theme.block(theme.accent)),
         Span::raw(" "),
         transport,
         label("   bpm "),
@@ -104,7 +88,13 @@ struct Column<'a> {
 }
 
 impl<'a> Column<'a> {
-    fn new(index: usize, track: &'a Track, editor: &Editor, status: &Status) -> Self {
+    fn new(
+        index: usize,
+        track: &'a Track,
+        editor: &Editor,
+        status: &Status,
+        theme: &Theme,
+    ) -> Self {
         let position = status.position(index);
         let shown = match editor.view {
             View::Source => track.steps.clone(),
@@ -128,7 +118,7 @@ impl<'a> Column<'a> {
             tails,
             playhead: position.map(|(step, _)| step),
             pass: position.map(|(_, pass)| pass),
-            colour: TRACK_COLOURS[index % TRACK_COLOURS.len()],
+            colour: theme.track(index),
         }
     }
 }
@@ -138,6 +128,7 @@ fn draw_grid(
     area: Rect,
     editor: &Editor,
     status: &Status,
+    theme: &Theme,
     view: &mut ViewState,
 ) {
     let columns: Vec<Column> = editor
@@ -145,16 +136,16 @@ fn draw_grid(
         .tracks
         .iter()
         .enumerate()
-        .map(|(i, t)| Column::new(i, t, editor, status))
+        .map(|(i, t)| Column::new(i, t, editor, status, theme))
         .collect();
-    let mut lines = header_lines(&columns);
+    let mut lines = header_lines(&columns, theme);
     let rows = (area.height as usize).saturating_sub(lines.len());
     let longest = columns.iter().map(|c| c.shown.len()).max().unwrap_or(0);
     scroll_to(view, editor, &columns, rows, longest, status.playing());
 
     let steps_per_beat = editor.grid.steps_per_beat.max(1) as usize;
     for row in (view.scroll..longest).take(rows) {
-        lines.push(grid_row(row, steps_per_beat, &columns, editor));
+        lines.push(grid_row(row, steps_per_beat, &columns, editor, theme));
     }
     frame.render_widget(Paragraph::new(lines), area);
 }
@@ -181,7 +172,7 @@ fn scroll_to(
 }
 
 /// Track names, lengths and passes, then the rules one per line, then an underline.
-fn header_lines(columns: &[Column]) -> Vec<Line<'static>> {
+fn header_lines(columns: &[Column], theme: &Theme) -> Vec<Line<'static>> {
     let cell = |text: String, style: Style| Span::styled(format!("{} ", fit(&text, CELL)), style);
     let line = |cells: Vec<Span<'static>>| {
         let mut spans = vec![Span::raw(" ".repeat(GUTTER))];
@@ -206,10 +197,7 @@ fn header_lines(columns: &[Column]) -> Vec<Line<'static>> {
                 .iter()
                 .map(|c| {
                     let pass = c.pass.map(|p| format!(" · pass {p}")).unwrap_or_default();
-                    cell(
-                        format!("{}{pass}", c.track.steps.len()),
-                        Style::new().fg(DIM),
-                    )
+                    cell(format!("{}{pass}", c.track.steps.len()), theme.dim)
                 })
                 .collect(),
         ),
@@ -226,7 +214,7 @@ fn header_lines(columns: &[Column]) -> Vec<Line<'static>> {
                 .iter()
                 .map(|c| match c.track.rules.get(k) {
                     Some(rule) => cell(rule.to_string(), Style::new().fg(c.colour)),
-                    None if k == 0 => cell("no rules".into(), Style::new().fg(FAINT)),
+                    None if k == 0 => cell("no rules".into(), theme.faint),
                     None => cell(String::new(), Style::new()),
                 })
                 .collect(),
@@ -246,15 +234,16 @@ fn grid_row(
     steps_per_beat: usize,
     columns: &[Column],
     editor: &Editor,
+    theme: &Theme,
 ) -> Line<'static> {
     let on_bar = row.is_multiple_of(steps_per_beat * BEATS_PER_BAR);
     let on_beat = row.is_multiple_of(steps_per_beat);
     let gutter_style = if on_bar {
-        Style::new().fg(TEXT).add_modifier(Modifier::BOLD)
+        theme.text.add_modifier(Modifier::BOLD)
     } else if on_beat {
-        Style::new().fg(DIM)
+        theme.text
     } else {
-        Style::new().fg(FAINT)
+        theme.faint
     };
     let mut spans = vec![Span::styled(format!(" {row:02X} "), gutter_style)];
 
@@ -281,14 +270,14 @@ fn grid_row(
                 " │".into(),
                 Style::new().fg(c.colour).add_modifier(Modifier::DIM),
             ),
-            None => (" ···".into(), Style::new().fg(FAINT)),
+            None => (" ···".into(), theme.faint),
         };
         // In the live view, highlight what the rules have changed.
         if editor.view == View::Live && c.track.steps.get(row) != Some(step) {
             style = style.add_modifier(Modifier::BOLD | Modifier::ITALIC);
         }
-        if on_beat {
-            style = style.bg(BEAT_ROW);
+        if on_beat && let Some(bg) = theme.beat_row {
+            style = style.bg(bg);
         }
 
         let is_cursor = editor.cursor.track == i && editor.cursor.step == row;
@@ -296,20 +285,15 @@ fn grid_row(
             && editor.cursor.track == i
             && (sel_start..=sel_end).contains(&row);
         if is_cursor {
-            let bg = match editor.mode {
-                Mode::Insert => ORANGE,
-                Mode::Visual { .. } => BLUE,
-                _ => TEXT,
-            };
-            style = style.fg(Color::Black).bg(bg).remove_modifier(Modifier::DIM);
+            style = theme.block(match editor.mode {
+                Mode::Insert => theme.accent,
+                Mode::Visual { .. } => theme.visual,
+                _ => Color::Reset,
+            });
         } else if c.playhead == Some(row) {
-            style = style
-                .fg(Color::Black)
-                .bg(c.colour)
-                .add_modifier(Modifier::BOLD)
-                .remove_modifier(Modifier::DIM);
+            style = theme.block(c.colour);
         } else if selected {
-            style = style.bg(SELECTED);
+            style = style.bg(theme.selection);
         }
 
         spans.push(Span::styled(fit(&text, CELL), style));
@@ -318,29 +302,23 @@ fn grid_row(
     Line::from(spans)
 }
 
-fn status_line(editor: &Editor, width: u16) -> Line<'static> {
-    let badge = |text: &'static str, bg: Color| {
-        Span::styled(
-            text,
-            Style::new()
-                .fg(Color::Black)
-                .bg(bg)
-                .add_modifier(Modifier::BOLD),
-        )
-    };
+fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
     let mut left = match &editor.mode {
-        Mode::Normal => vec![badge(" NORMAL ", DIM)],
-        Mode::Insert => vec![badge(" INSERT ", ORANGE)],
-        Mode::Visual { .. } => vec![badge(" VISUAL ", BLUE)],
+        Mode::Normal => vec![Span::styled(" NORMAL ", theme.block(Color::DarkGray))],
+        Mode::Insert => vec![Span::styled(" INSERT ", theme.block(theme.accent))],
+        Mode::Visual { .. } => vec![Span::styled(" VISUAL ", theme.block(theme.visual))],
         Mode::Command(line) => vec![
-            Span::styled(format!(":{line}"), Style::new().fg(TEXT)),
-            Span::styled(" ", Style::new().bg(TEXT)),
+            Span::styled(format!(":{line}"), theme.text),
+            Span::styled(" ", theme.text.add_modifier(Modifier::REVERSED)),
         ],
     };
     if let Some(message) = &editor.message {
-        left.push(Span::styled(format!(" {message}"), Style::new().fg(ORANGE)));
+        left.push(Span::styled(
+            format!(" {message}"),
+            Style::new().fg(theme.accent),
+        ));
     } else if let Some(count) = editor.count() {
-        left.push(Span::styled(format!(" {count}"), Style::new().fg(TEXT)));
+        left.push(Span::styled(format!(" {count}"), theme.text));
     }
 
     let hints = match editor.mode {
@@ -355,7 +333,7 @@ fn status_line(editor: &Editor, width: u16) -> Line<'static> {
     left.push(Span::raw(
         " ".repeat(room - hints.chars().count().min(room)),
     ));
-    left.push(Span::styled(hints, Style::new().fg(DIM)));
+    left.push(Span::styled(hints, theme.dim));
     Line::from(left)
 }
 

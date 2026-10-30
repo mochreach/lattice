@@ -200,5 +200,9 @@ MIDI keyboard avoids the problem entirely.
   polymeter is visible), plus a live view that shows the pattern realised for the current pass
   and highlights what the rules changed.
 
+Colours come from a `Theme`. The default uses the terminal's own 16-colour palette and default
+foreground and background. Highlighted blocks (cursor, playheads, badges) use reverse video, so they
+stay readable on light and dark terminals alike. Themes that set every colour can come later.
+
 Next for the UI: saving and loading songs, adding and removing tracks, effect columns, a help
-screen, and loading keymaps from a config file.
+screen, loading keymaps from a config file, and themes from a config file.

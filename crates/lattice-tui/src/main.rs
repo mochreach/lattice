@@ -1,6 +1,7 @@
 mod audio;
 mod demo;
 mod keys;
+mod theme;
 mod ui;
 
 use std::time::Duration;
@@ -10,6 +11,8 @@ use lattice_editor::{Editor, Effect};
 use lattice_engine::{Command, Handle};
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{self, Event, KeyEventKind};
+
+use crate::theme::Theme;
 
 // In debug builds, any allocation inside `assert_no_alloc` (the audio callback) aborts.
 #[cfg(debug_assertions)]
@@ -35,10 +38,11 @@ fn main() -> Result<()> {
 }
 
 fn run(terminal: &mut DefaultTerminal, editor: &mut Editor, handle: &mut Handle) -> Result<()> {
+    let theme = Theme::default();
     let mut view = ui::ViewState::default();
     loop {
         handle.collect_garbage();
-        terminal.draw(|frame| ui::draw(frame, editor, handle.status(), &mut view))?;
+        terminal.draw(|frame| ui::draw(frame, editor, handle.status(), &theme, &mut view))?;
 
         if !event::poll(FRAME)? {
             continue;
