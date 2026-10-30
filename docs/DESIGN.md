@@ -211,7 +211,9 @@ Not needed until there's something to release; this is the plan for when there i
   Raspberry Pi OS. Build against an older glibc (an older Ubuntu runner, or `cargo-zigbuild`) so
   binaries run on older distributions.
 - **Building from source** stays supported: `cargo install`, or a package in the Nix flake, with
-  `-C target-cpu=native` for a build tuned to the exact CPU.
+  `-C target-cpu=native` for a build tuned to the exact CPU. The repository's
+  `.cargo/config.toml` sets this for every local build, so release builds must set `RUSTFLAGS`
+  (which replaces it) to their CPU level.
 - **AVX2:** shipping a separate v3 build chosen by the installer replaces switching at runtime,
   which `wide` can't do (it picks SSE2 or AVX2 at compile time) and which would mean rewriting
   the DSP on a library such as `pulp`.

@@ -1,0 +1,5 @@
+# Local builds are tuned to this machine's CPU, so the DSP gets AVX2 and the like where there is
+# one. Binaries built this way may not run on other machines: release builds set RUSTFLAGS, which
+# replaces this, to pick a CPU level instead.
+[build]
+rustflags = ["-C", "target-cpu=native"]
