@@ -23,8 +23,13 @@ pub struct Theme {
     pub playing: Color,
     /// The cursor and badge in visual mode.
     pub visual: Color,
+    /// Mistakes on the command line, and what's wrong with them.
+    pub error: Color,
     /// Background of selected steps.
     pub selection: Color,
+    /// The cursors of selections other than the primary, over the selection's background. The
+    /// primary's cursor is a solid block, so these are only marked out, to keep it distinct.
+    pub secondary_cursor: Style,
     /// Background of rows on the beat, or `None` to leave them unshaded.
     pub beat_row: Option<Color>,
     /// Track colours, used in turn.
@@ -42,7 +47,9 @@ impl Theme {
             accent: Color::Yellow,
             playing: Color::Green,
             visual: Color::Blue,
+            error: Color::Red,
             selection: Color::DarkGray,
+            secondary_cursor: Style::new().add_modifier(Modifier::UNDERLINED | Modifier::BOLD),
             beat_row: None,
             tracks: vec![
                 Color::Blue,

@@ -9,7 +9,7 @@ use std::fmt;
 use ron::extensions::Extensions;
 use ron::ser::PrettyConfig;
 
-use crate::song::{Grid, Song, Track};
+use crate::song::{Grid, MAX_TRACKS, Song, Track};
 
 /// Nesting below which values go on one line: each step, note and rule fits on its own line.
 const DEPTH_LIMIT: usize = 6;
@@ -70,8 +70,12 @@ fn check_grid(grid: &Grid) -> Result<(), String> {
     if grid.steps_per_beat == 0 {
         return Err(format!("grid {:?} has 0 steps per beat", grid.name));
     }
-    if grid.tracks.is_empty() {
-        return Err(format!("grid {:?} has no tracks", grid.name));
+    if !(1..=MAX_TRACKS).contains(&grid.tracks.len()) {
+        return Err(format!(
+            "grid {:?} has {} tracks; grids have 1 to {MAX_TRACKS}",
+            grid.name,
+            grid.tracks.len()
+        ));
     }
     grid.tracks.iter().try_for_each(check_track)
 }
@@ -189,6 +193,12 @@ mod tests {
             from_ron(&to_ron(&bad)),
             Err(FileError::Invalid(_))
         ));
+
+        let mut bad = song();
+        let track = bad.grids[0].tracks[0].clone();
+        bad.grids[0].tracks.resize(MAX_TRACKS + 1, track);
+        let err = from_ron(&to_ron(&bad)).unwrap_err().to_string();
+        assert!(err.contains("17 tracks"), "{err}");
 
         let text = to_ron(&song()).replace("length: 16", "length: 2");
         let err = from_ron(&text).unwrap_err().to_string();

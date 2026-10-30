@@ -3,19 +3,20 @@ mod demo;
 mod file;
 mod keys;
 mod theme;
+mod tracks;
 mod ui;
 
 use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::Result;
-use lattice_core::Track;
 use lattice_editor::{Editor, Effect};
 use lattice_engine::{Command, Handle};
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{self, Event, KeyEventKind};
 
 use crate::theme::Theme;
+use crate::tracks::Tracks;
 
 // In debug builds, any allocation inside `assert_no_alloc` (the audio callback) aborts.
 #[cfg(debug_assertions)]
@@ -35,8 +36,7 @@ enum Flow {
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let (grid, patches) = demo::song();
-    let instruments = patches.len();
+    let (grid, palette) = demo::song();
     let mut editor = Editor::new(grid, demo::BPM);
     // `lattice song.lattice` opens the song, or starts a new one there, like Helix.
     if let Some(path) = args
@@ -44,7 +44,7 @@ fn main() -> Result<()> {
         .find(|a| !a.starts_with("--"))
         .map(PathBuf::from)
     {
-        let (song, new) = file::open(&path, instruments, None)?;
+        let (song, new) = file::open(&path, None)?;
         // The engine starts from the editor's song, so nothing needs sending yet.
         editor.load(song, path.clone());
         if new {
@@ -52,8 +52,9 @@ fn main() -> Result<()> {
         }
     }
 
-    let engine_grid = file::engine_grid(&editor.grid, instruments);
-    let mut audio = audio::start(&engine_grid, patches, editor.bpm)?;
+    let patches = Tracks::patches(&palette, editor.grid.tracks.len());
+    let mut audio = audio::start(&editor.grid, patches, editor.bpm)?;
+    let mut tracks = Tracks::new(&editor, palette, audio.sample_rate);
     if args.iter().any(|a| a == "--no-click") {
         editor.click = false;
         audio.handle.send(Command::SetClick(false));
@@ -64,8 +65,8 @@ fn main() -> Result<()> {
     let result = run(
         &mut terminal,
         &mut editor,
+        &mut tracks,
         &mut audio.handle,
-        instruments,
         &theme,
     );
     ratatui::restore();
@@ -75,8 +76,8 @@ fn main() -> Result<()> {
 fn run(
     terminal: &mut DefaultTerminal,
     editor: &mut Editor,
+    tracks: &mut Tracks,
     handle: &mut Handle,
-    instruments: usize,
     theme: &Theme,
 ) -> Result<()> {
     let mut view = ui::ViewState::default();
@@ -94,7 +95,7 @@ fn run(
                 && let Some(key) = keys::convert(key)
             {
                 for effect in editor.handle(key) {
-                    match apply(effect, editor, handle, instruments) {
+                    match apply(effect, editor, tracks, handle) {
                         Flow::Next => {}
                         Flow::Stop => break,
                         Flow::Quit => return Ok(()),
@@ -109,8 +110,14 @@ fn run(
 }
 
 /// Carries out an editor effect.
-fn apply(effect: Effect, editor: &mut Editor, handle: &mut Handle, instruments: usize) -> Flow {
+fn apply(effect: Effect, editor: &mut Editor, tracks: &mut Tracks, handle: &mut Handle) -> Flow {
     let command = match effect {
+        Effect::TracksChanged => {
+            if !tracks.sync(editor, handle) {
+                editor.message = Some("audio engine is busy; tracks out of step".into());
+            }
+            return Flow::Next;
+        }
         Effect::TrackChanged(index) => Command::SetTrack {
             index,
             track: Box::new(editor.grid.tracks[index].clone()),
@@ -136,7 +143,7 @@ fn apply(effect: Effect, editor: &mut Editor, handle: &mut Handle, instruments: 
                 }
             };
         }
-        Effect::Open(path) => return open(path, editor, handle, instruments),
+        Effect::Open(path) => return open(path, editor, tracks, handle),
         Effect::Quit => return Flow::Quit,
     };
     if !handle.send(command) {
@@ -146,8 +153,8 @@ fn apply(effect: Effect, editor: &mut Editor, handle: &mut Handle, instruments: 
 }
 
 /// Replaces the song with the one at `path`, or a new one if there's no such file.
-fn open(path: PathBuf, editor: &mut Editor, handle: &mut Handle, instruments: usize) -> Flow {
-    let (song, new) = match file::open(&path, instruments, Some(editor.grid.steps_per_beat)) {
+fn open(path: PathBuf, editor: &mut Editor, tracks: &mut Tracks, handle: &mut Handle) -> Flow {
+    let (song, new) = match file::open(&path, Some(editor.grid.steps_per_beat)) {
         Ok(opened) => opened,
         Err(e) => {
             editor.message = Some(format!("{e:#}"));
@@ -155,15 +162,9 @@ fn open(path: PathBuf, editor: &mut Editor, handle: &mut Handle, instruments: us
         }
     };
     let message = new.then(|| format!("{} (new file)", path.display()));
+    tracks.restart_palette();
     for effect in editor.load(song, path) {
-        apply(effect, editor, handle, instruments);
-    }
-    // Silence the instruments this song has no track for.
-    for index in editor.grid.tracks.len()..instruments {
-        handle.send(Command::SetTrack {
-            index,
-            track: Box::new(Track::default()),
-        });
+        apply(effect, editor, tracks, handle);
     }
     if message.is_some() {
         editor.message = message;

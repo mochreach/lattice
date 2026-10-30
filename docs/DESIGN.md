@@ -164,6 +164,34 @@ to check. Things to get right:
 
 fundsp and similar libraries are still useful as references, and as reference output in tests.
 
+## Releases (planned)
+
+Not needed until there's something to release; this is the plan for when there is.
+
+- **Prebuilt binaries on GitHub Releases**, built by GitHub Actions when a version tag is pushed,
+  one archive per target:
+
+  | Build | For |
+  | --- | --- |
+  | `x86_64-linux` | most Linux laptops and desktops (baseline, SSE2) |
+  | `x86_64-linux-v3` | the same with AVX2 (x86-64-v3), about 1.6× faster DSP |
+  | `aarch64-linux` | Raspberry Pi 4, and the Pi 3 on a 64-bit OS |
+  | `aarch64-macos`, `x86_64-macos` | Macs, if wanted |
+
+- **An install script on top** (`curl … | sh`) that checks the OS and architecture and downloads
+  the matching archive, and on x86_64 picks the v3 build if `/proc/cpuinfo` lists `avx2`.
+- **Use `dist`** (formerly cargo-dist) to generate the workflow, build matrix, checksums and
+  installers rather than writing them by hand. Check whether it can choose between CPU-level
+  variants such as v3; if not, extend its installer or write a small script of our own.
+- **Linux details:** binaries link the system ALSA library, which is fine on desktop Linux and
+  Raspberry Pi OS. Build against an older glibc (an older Ubuntu runner, or `cargo-zigbuild`) so
+  binaries run on older distributions.
+- **Building from source** stays supported: `cargo install`, or a package in the Nix flake, with
+  `-C target-cpu=native` for a build tuned to the exact CPU.
+- **AVX2:** shipping a separate v3 build chosen by the installer replaces switching at runtime,
+  which `wide` can't do (it picks SSE2 or AVX2 at compile time) and which would mean rewriting
+  the DSP on a library such as `pulp`.
+
 ## Stack (versions as of October 2026)
 
 | Purpose | Crate | Version |
@@ -213,6 +241,27 @@ and edits such as transposing keep the selection so they can be repeated. Prefix
 open an infobox listing what can follow, which makes the keymap discoverable as it grows. Keys
 are data (`Keymap`, `Binding::Menu`), so new menus need no new code in the frontend.
 
+There can be several selections, as in Helix: a list of rectangles, one of them primary, kept in
+order down the grid and merged when they overlap. Motions and edits apply to each, undo restores
+them all in one step, and yanking keeps one value per selection. `s` narrows the selections to the
+steps whose notes match a pattern, the grid's stand-in for Helix's regex; it reuses the command
+line's prompt and previews the result as you type. Helix's `C` copies a selection onto the next
+line; here it's the rows below, offset by the selection's height. There's no sideways copy onto
+the next track: a selection already spans tracks, so widening it does the same job.
+
+Tracks can be added, removed and moved while playing. The engine keeps room for `MAX_TRACKS` (16)
+players, each a boxed pattern, instrument and set of buffers. The UI thread builds a player and
+sends it over the command queue, and removed players go back over the garbage queue to be freed,
+so the audio thread never allocates or frees. Positions are published per track index, so the
+engine republishes them for every index that shifted. A track inserted mid-song joins in step, as
+though it had been playing from the start.
+
+The editor gives each track a `TrackId` that stays with it, including through undo, which
+snapshots the ids along with the grid. Changing the set or order of tracks produces
+`Effect::TracksChanged`, and the frontend works out the engine commands by comparing the engine's
+ids with the editor's. It keeps each id's instrument patch, so a track that undo brings back
+sounds as it did. New tracks take the demo patches in turn for now.
+
 ## Song files
 
 Songs are saved as RON in `.lattice` files, written by `lattice_core::to_ron` and read by
@@ -256,17 +305,18 @@ much like the pattern does:
 As principle 4 says, the editor makes no I/O decisions: `:w` and `:o` return `Effect::Save` and
 `Effect::Open`, and the frontend reads or writes the file, then calls `Editor::saved` or
 `Editor::load`. The editor keeps a copy of the song as last saved, and the song counts as
-modified whenever it differs, so undoing back to the saved state clears the `[+]` marker.
+modified whenever it differs, so undoing back to the saved state clears the `[+]` marker. Loading
+gives every track a new id and returns `Effect::TracksChanged`, so the frontend rebuilds the
+engine's tracks, however many the song has (up to `MAX_TRACKS`).
 
 Not in files yet:
-- **Instrument patches.** They're still defined in `lattice-tui`'s `demo.rs`, and track `i` plays
-  the demo's instrument `i`. A song can have fewer tracks than there are instruments (the rest
-  are silenced), but not more. Patches belong in the song once instruments can be chosen per
-  track.
+- **Instrument patches.** They're still defined in `lattice-tui`'s `demo.rs`, and a loaded song's
+  tracks take the demo patches in turn, as new tracks do. Patches belong in the song once
+  instruments can be chosen per track.
 - **More than one grid.** Files can hold several, but only the first in the arrangement is
   edited and saved back.
 - **Changing steps per beat while running.** The engine's clock is set up with it, so `:o` refuses a
   song with a different value; opening it from the command line works.
 
-Next for the UI: adding and removing tracks, effect columns, a help screen, loading keymaps from
-a config file, and themes from a config file.
+Next for the UI: effect columns, choosing a track's instrument, a help screen, loading
+keymaps from a config file, and themes from a config file.

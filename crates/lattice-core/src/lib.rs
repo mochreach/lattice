@@ -8,5 +8,5 @@ pub mod song;
 pub mod transform;
 
 pub use file::{FileError, from_ron, to_ron};
-pub use song::{Grid, MAX_STEPS, Note, Song, Step, Track};
+pub use song::{Grid, MAX_STEPS, MAX_TRACKS, Note, Song, Step, Track};
 pub use transform::{Condition, Rule, Transform, realise, realise_into};

@@ -37,6 +37,13 @@ tracks; with nothing selected it's just the cursor. Motions move the cursor and 
 selection onto it. In select mode (`v`) the same motions extend it instead. Counts work as in
 Helix (`4j`, `3+`). Prefix keys such as `g` show what can follow them in a box in the corner.
 
+As in Helix, there can be several selections at once. Every motion and action applies to each
+of them, and selections that come to overlap merge. The view follows the primary selection,
+whose cursor is the solid block. `y` copies one value per selection, and `p` hands them back out
+in order, repeating the last if there are more selections than values. So `%`, then `s C` and
+`ret`, then `^a` sharpens every C in the song. Patterns can list several notes (`C E G`), and
+`s` shows what it will select as you type.
+
 | Moving and selecting | |
 | --- | --- |
 | `h j k l`, arrows | move between tracks and steps |
@@ -49,6 +56,16 @@ Helix (`4j`, `3+`). Prefix keys such as `g` show what can follow them in a box i
 | `x` | select whole rows across every track; again to extend a row |
 | `%` | select everything |
 | `;` `A-;` | collapse the selection, flip which end the cursor is |
+
+| Multiple selections | |
+| --- | --- |
+| `C` `A-C` | copy the selection onto the rows just below / above it |
+| `s` | select the notes matching a pattern inside the selections: `C`, `C#`, `Eb4`, `C-4`, `*` |
+| `K` `A-K` | keep / remove the selections containing a matching note |
+| `A-s` | split the selections into rows |
+| `A--` | merge the selections into one |
+| `,` `A-,` | keep only the primary selection, remove it |
+| `(` `)` | make the previous / next selection primary |
 
 | Acting on the selection | |
 | --- | --- |
@@ -77,7 +94,8 @@ moves on. `⌫` clears a step, and `esc` returns to normal mode.
 
 On the **command line**, commands that fuzzy-match what you've typed are listed above it, and
 `tab` cycles through them. Once the command is named, the parameters still to type are shown
-faintly after the cursor, and shrink as you type over them.
+faintly after the cursor, and shrink as you type over them. Values are checked as you type: a
+word that can no longer be right is underlined, and what was expected is shown on the right.
 
 | Commands | |
 | --- | --- |
@@ -90,5 +108,11 @@ faintly after the cursor, and shrink as you type over them.
 | `:w [PATH]`, `:wq [PATH]` | save the song (to a `.lattice` file), save and quit |
 | `:o PATH`, `:o! PATH` | open a song, or start a new one at PATH; `!` discards unsaved changes |
 | `:q`, `:q!` | quit, refusing if there are unsaved changes; `!` quits anyway |
+| `:track-add [NAME]` (`:ta`) | add a 16-step track after this one (up to 16 tracks) |
+| `:track-remove` (`:trm`), `:track-move ±N` (`:tmv`) | remove this track, move it left or right |
 
 The header shows the song's file name, and `[+]` when it has unsaved changes.
+
+Tracks can be added, removed and moved while playing, and undo brings a removed track back with
+its notes and its instrument. When there are more than fit across the terminal, the grid scrolls
+sideways to keep the cursor's track in view, with `‹` `›` showing there are more.
