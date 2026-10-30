@@ -36,6 +36,13 @@ tracks; with nothing selected it's just the cursor. Motions move the cursor and 
 selection onto it. In select mode (`v`) the same motions extend it instead. Counts work as in
 Helix (`4j`, `3+`). Prefix keys such as `g` show what can follow them in a box in the corner.
 
+As in Helix, there can be several selections at once. Every motion and action applies to each
+of them, and selections that come to overlap merge. The view follows the primary selection,
+whose cursor is the solid block. `y` copies one value per selection, and `p` hands them back out
+in order, repeating the last if there are more selections than values. So `%`, then `s C` and
+`ret`, then `^a` sharpens every C in the song. Patterns can list several notes (`C E G`), and
+`s` shows what it will select as you type.
+
 | Moving and selecting | |
 | --- | --- |
 | `h j k l`, arrows | move between tracks and steps |
@@ -48,6 +55,16 @@ Helix (`4j`, `3+`). Prefix keys such as `g` show what can follow them in a box i
 | `x` | select whole rows across every track; again to extend a row |
 | `%` | select everything |
 | `;` `A-;` | collapse the selection, flip which end the cursor is |
+
+| Multiple selections | |
+| --- | --- |
+| `C` `A-C` | copy the selection onto the rows just below / above it |
+| `s` | select the notes matching a pattern inside the selections: `C`, `C#`, `Eb4`, `C-4`, `*` |
+| `K` `A-K` | keep / remove the selections containing a matching note |
+| `A-s` | split the selections into rows |
+| `A--` | merge the selections into one |
+| `,` `A-,` | keep only the primary selection, remove it |
+| `(` `)` | make the previous / next selection primary |
 
 | Acting on the selection | |
 | --- | --- |

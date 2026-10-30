@@ -692,7 +692,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
     let Some(command) = parse(line, false).map_err(|problem| problem.message)? else {
         return Ok(vec![]);
     };
-    let track = editor.cursor.track;
+    let track = editor.cursor().track;
 
     match command.spec.name {
         "quit" => Ok(vec![Effect::Quit]),
@@ -755,8 +755,8 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                 steps: vec![Step::default(); NEW_TRACK_STEPS],
                 rules: vec![],
             };
-            editor.insert_track(editor.cursor.track + 1, track);
-            editor.select_point(editor.cursor.track + 1, editor.cursor.step);
+            editor.insert_track(editor.cursor().track + 1, track);
+            editor.select_point(editor.cursor().track + 1, editor.cursor().step);
             Ok(vec![Effect::TracksChanged])
         }
         "track-remove" => {
@@ -765,7 +765,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             }
             editor.checkpoint();
             editor.remove_track(track);
-            editor.select_point(track, editor.cursor.step);
+            editor.select_point(track, editor.cursor().step);
             Ok(vec![Effect::TracksChanged])
         }
         "track-move" => {
@@ -778,7 +778,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             }
             editor.checkpoint();
             editor.move_track(track, to);
-            editor.select_point(to, editor.cursor.step);
+            editor.select_point(to, editor.cursor().step);
             Ok(vec![Effect::TracksChanged])
         }
         name @ ("rot" | "drift" | "rev" | "tr") => {

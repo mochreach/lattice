@@ -241,6 +241,14 @@ and edits such as transposing keep the selection so they can be repeated. Prefix
 open an infobox listing what can follow, which makes the keymap discoverable as it grows. Keys
 are data (`Keymap`, `Binding::Menu`), so new menus need no new code in the frontend.
 
+There can be several selections, as in Helix: a list of rectangles, one of them primary, kept in
+order down the grid and merged when they overlap. Motions and edits apply to each, undo restores
+them all in one step, and yanking keeps one value per selection. `s` narrows the selections to the
+steps whose notes match a pattern, the grid's stand-in for Helix's regex; it reuses the command
+line's prompt and previews the result as you type. Helix's `C` copies a selection onto the next
+line; here it's the rows below, offset by the selection's height. There's no sideways copy onto
+the next track: a selection already spans tracks, so widening it does the same job.
+
 Tracks can be added, removed and moved while playing. The engine keeps room for `MAX_TRACKS` (16)
 players, each a boxed pattern, instrument and set of buffers. The UI thread builds a player and
 sends it over the command queue, and removed players go back over the garbage queue to be freed,

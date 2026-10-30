@@ -1,7 +1,9 @@
 //! Drawing the tracker.
 
 use lattice_core::{Step, Track, realise};
-use lattice_editor::{BEATS_PER_BAR, Completion, Editor, Infobox, Mode, View};
+use lattice_editor::{
+    BEATS_PER_BAR, Completion, Cursor, Editor, Infobox, Mode, PromptKind, Selection, View,
+};
 use lattice_engine::Status;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -264,7 +266,7 @@ fn draw_grid(
     let tracks = editor.grid.tracks.len();
     // One column spare for the arrow that shows there are more tracks.
     let fits = ((area.width as usize).saturating_sub(GUTTER + 1) / (CELL + 1)).max(1);
-    scroll_tracks(view, editor.cursor.track, fits, tracks);
+    scroll_tracks(view, editor.cursor().track, fits, tracks);
     let columns: Vec<Column> = editor
         .grid
         .tracks
@@ -306,12 +308,13 @@ fn scroll_to(
     longest: usize,
     playing: bool,
 ) {
+    let cursor = editor.cursor();
     let followed = columns
         .iter()
-        .find(|c| c.index == editor.cursor.track)
+        .find(|c| c.index == cursor.track)
         .and_then(|c| c.playhead)
         .filter(|_| editor.follow && playing);
-    let target = followed.unwrap_or(editor.cursor.step);
+    let target = followed.unwrap_or(cursor.step);
     if target < view.scroll {
         view.scroll = target;
     } else if rows > 0 && target >= view.scroll + rows {
@@ -416,7 +419,13 @@ fn grid_row(
         gutter_style.patch(band),
     )];
 
-    let selection = editor.selection();
+    // The selections crossing this row, so each cell only checks those.
+    let here: Vec<&Selection> = editor
+        .selections()
+        .iter()
+        .filter(|s| (s.region().first_step..=s.region().last_step).contains(&row))
+        .collect();
+    let primary = editor.cursor();
     for c in columns {
         let i = c.index;
         let Some(step) = c.shown.get(row) else {
@@ -448,14 +457,21 @@ fn grid_row(
         }
         style = style.patch(band);
 
-        let is_cursor = editor.cursor.track == i && editor.cursor.step == row;
-        let selected = selection.contains(i, row);
-        if is_cursor {
-            style = theme.block(match editor.mode {
-                Mode::Insert => theme.accent,
-                Mode::Select => theme.visual,
-                _ => Color::Reset,
-            });
+        let at = |cursor: Cursor| cursor.track == i && cursor.step == row;
+        let mode_colour = match editor.mode {
+            Mode::Insert => theme.accent,
+            Mode::Select => theme.visual,
+            _ => Color::Reset,
+        };
+        let selected = here.iter().any(|s| s.region().contains(i, row));
+        if at(primary) {
+            style = theme.block(mode_colour);
+        } else if here.iter().any(|s| at(s.cursor)) {
+            // The other selections' cursors: marked, but not as a block like the primary's.
+            style = style.bg(theme.selection).patch(theme.secondary_cursor);
+            if mode_colour != Color::Reset {
+                style = style.fg(mode_colour);
+            }
         } else if c.playhead == Some(row) {
             style = theme.block(c.colour);
         } else if selected {
@@ -483,7 +499,10 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             let chars: Vec<char> = prompt.line.chars().collect();
             let part = |from: usize, to: usize| chars[from..to].iter().collect::<String>();
             vec![
-                Span::styled(format!(":{}", part(0, range.start)), theme.text),
+                Span::styled(
+                    format!("{}{}", prompt.kind.label(), part(0, range.start)),
+                    theme.text,
+                ),
                 Span::styled(
                     part(range.start, range.end),
                     theme
@@ -500,6 +519,14 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             ]
         }
     };
+    // Like Helix: which selection is primary, and how many there are.
+    let selections = editor.selections().len();
+    if selections > 1 {
+        left.push(Span::styled(
+            format!(" {}/{selections} sels", editor.primary() + 1),
+            theme.text,
+        ));
+    }
     if let Some(message) = &editor.message {
         left.push(Span::styled(
             format!(" {message}"),
@@ -522,6 +549,9 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             "hjkl extend · ; collapse · y copy · d delete · r fill · C-a C-x transpose".into(),
             theme.dim,
         ),
+        Mode::Command(prompt) if prompt.kind != PromptKind::Command => {
+            ("C C# Eb4 C-4 * · ret select · esc cancel".into(), theme.dim)
+        }
         // What's wrong with the line, if anything, in place of what the command does.
         Mode::Command(_) => match editor.command_problem() {
             Some(problem) => (problem.message, Style::new().fg(theme.error)),
