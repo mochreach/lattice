@@ -1,6 +1,6 @@
 //! The `:` command line.
 
-use lattice_core::{Condition, MAX_STEPS, Rule, Step, Transform};
+use lattice_core::{Condition, MAX_STEPS, MAX_TRACKS, Rule, Step, Track, Transform};
 
 use crate::{Editor, Effect};
 
@@ -22,6 +22,8 @@ pub struct Spec {
 }
 
 const CONDITION: &str = "[every N [OFFSET] | pass K]";
+/// Steps in a track added with `:track-add`.
+const NEW_TRACK_STEPS: usize = 16;
 
 use Param::{Condition as When, Value};
 
@@ -74,6 +76,24 @@ pub const COMMANDS: &[Spec] = &[
         alias: None,
         params: &[Value("NAME")],
         describe: "rename the track",
+    },
+    Spec {
+        name: "track-add",
+        alias: Some("ta"),
+        params: &[Value("[NAME]")],
+        describe: "add a track after this one",
+    },
+    Spec {
+        name: "track-remove",
+        alias: Some("trm"),
+        params: &[],
+        describe: "remove this track",
+    },
+    Spec {
+        name: "track-move",
+        alias: Some("tmv"),
+        params: &[Value("±TRACKS")],
+        describe: "move this track left or right",
     },
     Spec {
         name: "bpm",
@@ -303,6 +323,57 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             editor.grid.tracks[track].name = name;
             Ok(vec![])
         }
+        "track-add" => {
+            let tracks = &editor.grid.tracks;
+            if tracks.len() >= MAX_TRACKS {
+                return Err(format!("at most {MAX_TRACKS} tracks"));
+            }
+            let mut name = args.join(" ");
+            if name.is_empty() {
+                // The first `track N` not already taken.
+                name = (tracks.len() + 1..)
+                    .map(|n| format!("track {n}"))
+                    .find(|name| tracks.iter().all(|t| t.name != *name))
+                    .unwrap();
+            }
+            editor.checkpoint();
+            let track = Track {
+                name,
+                steps: vec![Step::default(); NEW_TRACK_STEPS],
+                rules: vec![],
+            };
+            editor.insert_track(editor.cursor.track + 1, track);
+            editor.select_point(editor.cursor.track + 1, editor.cursor.step);
+            Ok(vec![Effect::TracksChanged])
+        }
+        "track-remove" => {
+            if editor.grid.tracks.len() == 1 {
+                return Err("can't remove the only track".into());
+            }
+            editor.checkpoint();
+            editor.remove_track(track);
+            editor.select_point(track, editor.cursor.step);
+            Ok(vec![Effect::TracksChanged])
+        }
+        "track-move" => {
+            let [by] = args[..] else {
+                return Err("move by how many tracks? e.g. -1 or +2".into());
+            };
+            let by: isize = by
+                .trim_start_matches('+')
+                .parse()
+                .map_err(|_| format!("not a number: {by}"))?;
+            let to = track
+                .saturating_add_signed(by)
+                .min(editor.grid.tracks.len() - 1);
+            if to == track {
+                return Ok(vec![]);
+            }
+            editor.checkpoint();
+            editor.move_track(track, to);
+            editor.select_point(to, editor.cursor.step);
+            Ok(vec![Effect::TracksChanged])
+        }
         "rot" | "drift" | "rev" | "tr" => {
             let (transform, rest) = transform(command, &args)?;
             let when = condition(rest)?;
@@ -424,6 +495,7 @@ mod tests {
         assert_eq!(hint("bpm ").as_deref(), Some("BPM"));
         assert_eq!(hint("bpm 9"), None);
         assert_eq!(hint("pop "), None);
+        assert_eq!(hint("ta ").as_deref(), Some("[NAME]"));
         assert_eq!(hint("nope "), None);
     }
 }

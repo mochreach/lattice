@@ -12,6 +12,7 @@ const MAX_BLOCK: usize = 4096;
 pub struct Audio {
     _stream: cpal::Stream,
     pub handle: Handle,
+    pub sample_rate: f32,
 }
 
 pub fn start(grid: &Grid, patches: Vec<Patch>, bpm: f64) -> Result<Audio> {
@@ -66,5 +67,6 @@ pub fn start(grid: &Grid, patches: Vec<Patch>, bpm: f64) -> Result<Audio> {
     Ok(Audio {
         _stream: stream,
         handle,
+        sample_rate,
     })
 }
