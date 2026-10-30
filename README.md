@@ -55,6 +55,7 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `v` | select mode: motions extend the selection |
 | `x` | select whole rows across every track; again to extend a row |
 | `%` | select everything |
+| `tm` `ts` | mute / solo every track the selections reach (not Helix's `t`, which has no use on a grid) |
 | `;` `A-;` | collapse the selection, flip which end the cursor is |
 
 | Multiple selections | |
@@ -106,7 +107,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:click`, `:follow` | toggle the metronome, following the playhead |
 | `:name NAME` | rename the track |
 | `:level DB`, `:pan P`, `:send DB` | mixer, for every track the selections reach: level (-60 to 6 dB), pan (-100 left to 100 right), send to the delay (-60, off, to 6 dB) |
-| `:mute`, `:solo` | toggle mute or solo for every track the selections reach |
+| `:mute`, `:solo` | toggle mute or solo for every track the selections reach (also `tm`, `ts`) |
 | `:w [PATH]`, `:wq [PATH]` | save the song (to a `.lattice` file), save and quit |
 | `:o PATH`, `:o! PATH` | open a song, or start a new one at PATH; `!` discards unsaved changes |
 | `:q`, `:q!` | quit, refusing if there are unsaved changes; `!` quits anyway |

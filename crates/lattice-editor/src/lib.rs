@@ -914,6 +914,8 @@ impl Editor {
                 self.octave = self.octave.saturating_sub(1);
                 self.message = Some(format!("octave {}", self.octave));
             }
+            Action::ToggleMute => return command::run(self, "mute").unwrap_or_default(),
+            Action::ToggleSolo => return command::run(self, "solo").unwrap_or_default(),
             Action::TogglePlay => return vec![Effect::TogglePlay],
             Action::ToggleView => {
                 self.view = match self.view {
@@ -1706,6 +1708,13 @@ mod tests {
 
         keys(&mut e, "u");
         assert!(e.grid.tracks.iter().all(|t| !t.mix.solo), "undoable");
+        // `t` opens the track menu: `tm` mutes, `ts` solos.
+        keys(&mut e, ";gh");
+        assert_eq!(keys(&mut e, "tm"), [Effect::TrackChanged(0)]);
+        assert!(e.grid.tracks[0].mix.mute && !e.grid.tracks[1].mix.mute);
+        keys(&mut e, "%ts");
+        assert!(e.grid.tracks.iter().all(|t| t.mix.solo));
+
         e.handle(Key::Char(':'));
         keys(&mut e, "level 7");
         assert!(e.command_problem().is_some(), "6 dB at most");
