@@ -2,6 +2,7 @@ mod audio;
 mod demo;
 mod keys;
 mod theme;
+mod tracks;
 mod ui;
 
 use std::time::Duration;
@@ -13,6 +14,7 @@ use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{self, Event, KeyEventKind};
 
 use crate::theme::Theme;
+use crate::tracks::Tracks;
 
 // In debug builds, any allocation inside `assert_no_alloc` (the audio callback) aborts.
 #[cfg(debug_assertions)]
@@ -24,8 +26,9 @@ const FRAME: Duration = Duration::from_millis(16);
 
 fn main() -> Result<()> {
     let (grid, patches) = demo::song();
-    let mut audio = audio::start(&grid, patches, demo::BPM)?;
+    let mut audio = audio::start(&grid, patches.clone(), demo::BPM)?;
     let mut editor = Editor::new(grid, demo::BPM);
+    let mut tracks = Tracks::new(&editor, patches, audio.sample_rate);
     if std::env::args().any(|a| a == "--no-click") {
         editor.click = false;
         audio.handle.send(Command::SetClick(false));
@@ -33,7 +36,13 @@ fn main() -> Result<()> {
 
     let theme = Theme::detect();
     let mut terminal = ratatui::init();
-    let result = run(&mut terminal, &mut editor, &mut audio.handle, &theme);
+    let result = run(
+        &mut terminal,
+        &mut editor,
+        &mut tracks,
+        &mut audio.handle,
+        &theme,
+    );
     ratatui::restore();
     result
 }
@@ -41,6 +50,7 @@ fn main() -> Result<()> {
 fn run(
     terminal: &mut DefaultTerminal,
     editor: &mut Editor,
+    tracks: &mut Tracks,
     handle: &mut Handle,
     theme: &Theme,
 ) -> Result<()> {
@@ -59,7 +69,7 @@ fn run(
                 && let Some(key) = keys::convert(key)
             {
                 for effect in editor.handle(key) {
-                    if !apply(effect, editor, handle) {
+                    if !apply(effect, editor, tracks, handle) {
                         return Ok(());
                     }
                 }
@@ -72,8 +82,14 @@ fn run(
 }
 
 /// Carries out an editor effect. Returns false to quit.
-fn apply(effect: Effect, editor: &mut Editor, handle: &mut Handle) -> bool {
+fn apply(effect: Effect, editor: &mut Editor, tracks: &mut Tracks, handle: &mut Handle) -> bool {
     let command = match effect {
+        Effect::TracksChanged => {
+            if !tracks.sync(editor, handle) {
+                editor.message = Some("audio engine is busy; tracks out of step".into());
+            }
+            return true;
+        }
         Effect::TrackChanged(index) => Command::SetTrack {
             index,
             track: Box::new(editor.grid.tracks[index].clone()),

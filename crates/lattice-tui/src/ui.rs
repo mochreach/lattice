@@ -21,6 +21,8 @@ const CELL: usize = 11;
 #[derive(Debug, Default)]
 pub struct ViewState {
     scroll: usize,
+    /// The leftmost track shown, when they don't all fit.
+    first_track: usize,
 }
 
 pub fn draw(
@@ -100,7 +102,7 @@ fn draw_completions(
                 format!("{:<signature_width$}  ", c.spec.signature()),
                 theme.faint,
             ));
-            spans.push(Span::styled(c.spec.describe, theme.dim));
+            spans.push(Span::styled(c.spec.description(), theme.dim));
             let line = Line::from(spans);
             if selected == Some(i) {
                 line.style(Style::new().bg(theme.selection))
@@ -205,6 +207,7 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
 
 /// What one track column shows this frame.
 struct Column<'a> {
+    index: usize,
     track: &'a Track,
     /// Written or realised, depending on the view.
     shown: Vec<Step>,
@@ -241,6 +244,7 @@ impl<'a> Column<'a> {
             }
         }
         Self {
+            index,
             track,
             shown,
             tails,
@@ -259,14 +263,21 @@ fn draw_grid(
     theme: &Theme,
     view: &mut ViewState,
 ) {
+    let tracks = editor.grid.tracks.len();
+    // One column spare for the arrow that shows there are more tracks.
+    let fits = ((area.width as usize).saturating_sub(GUTTER + 1) / (CELL + 1)).max(1);
+    scroll_tracks(view, editor.cursor().track, fits, tracks);
     let columns: Vec<Column> = editor
         .grid
         .tracks
         .iter()
         .enumerate()
+        .skip(view.first_track)
+        .take(fits)
         .map(|(i, t)| Column::new(i, t, editor, status, theme))
         .collect();
-    let mut lines = header_lines(&columns, theme);
+    let hidden = (view.first_track > 0, view.first_track + fits < tracks);
+    let mut lines = header_lines(&columns, hidden, theme);
     let rows = (area.height as usize).saturating_sub(lines.len());
     let longest = columns.iter().map(|c| c.shown.len()).max().unwrap_or(0);
     scroll_to(view, editor, &columns, rows, longest, status.playing());
@@ -276,6 +287,16 @@ fn draw_grid(
         lines.push(grid_row(row, steps_per_beat, &columns, editor, theme));
     }
     frame.render_widget(Paragraph::new(lines), area);
+}
+
+/// Keeps the cursor's track on screen when there are more tracks than fit.
+fn scroll_tracks(view: &mut ViewState, cursor: usize, fits: usize, tracks: usize) {
+    if cursor < view.first_track {
+        view.first_track = cursor;
+    } else if cursor >= view.first_track + fits {
+        view.first_track = cursor + 1 - fits;
+    }
+    view.first_track = view.first_track.min(tracks.saturating_sub(fits));
 }
 
 /// Keeps the cursor on screen, or the playhead when following playback.
@@ -288,8 +309,10 @@ fn scroll_to(
     playing: bool,
 ) {
     let cursor = editor.cursor();
-    let followed = columns[cursor.track]
-        .playhead
+    let followed = columns
+        .iter()
+        .find(|c| c.index == cursor.track)
+        .and_then(|c| c.playhead)
         .filter(|_| editor.follow && playing);
     let target = followed.unwrap_or(cursor.step);
     if target < view.scroll {
@@ -300,8 +323,13 @@ fn scroll_to(
     view.scroll = view.scroll.min(longest.saturating_sub(rows));
 }
 
-/// Track names, lengths and passes, then the rules one per line, then an underline.
-fn header_lines(columns: &[Column], theme: &Theme) -> Vec<Line<'static>> {
+/// Track names, lengths and passes, then the rules one per line, then an underline. Arrows by
+/// the names show there are more tracks off to the (left, right).
+fn header_lines(
+    columns: &[Column],
+    (left, right): (bool, bool),
+    theme: &Theme,
+) -> Vec<Line<'static>> {
     let cell = |text: String, style: Style| Span::styled(format!("{} ", fit(&text, CELL)), style);
     let line = |cells: Vec<Span<'static>>| {
         let mut spans = vec![Span::raw(" ".repeat(GUTTER))];
@@ -309,18 +337,25 @@ fn header_lines(columns: &[Column], theme: &Theme) -> Vec<Line<'static>> {
         Line::from(spans)
     };
 
+    let mut names = line(
+        columns
+            .iter()
+            .map(|c| {
+                cell(
+                    c.track.name.to_uppercase(),
+                    Style::new().fg(c.colour).add_modifier(Modifier::BOLD),
+                )
+            })
+            .collect(),
+    );
+    if left {
+        names.spans[0] = Span::styled(fit(" ‹", GUTTER), theme.dim);
+    }
+    if right {
+        names.spans.push(Span::styled("›", theme.dim));
+    }
     let mut lines = vec![
-        line(
-            columns
-                .iter()
-                .map(|c| {
-                    cell(
-                        c.track.name.to_uppercase(),
-                        Style::new().fg(c.colour).add_modifier(Modifier::BOLD),
-                    )
-                })
-                .collect(),
-        ),
+        names,
         line(
             columns
                 .iter()
@@ -391,7 +426,8 @@ fn grid_row(
         .filter(|s| (s.region().first_step..=s.region().last_step).contains(&row))
         .collect();
     let primary = editor.cursor();
-    for (i, c) in columns.iter().enumerate() {
+    for c in columns {
+        let i = c.index;
         let Some(step) = c.shown.get(row) else {
             spans.push(Span::styled(" ".repeat(CELL + 1), band));
             continue;
@@ -458,11 +494,23 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             let hint = editor.command_hint().unwrap_or_default();
             let mut hint = hint.chars();
             let under_cursor = hint.next().unwrap_or(' ');
+            // A mistake is underlined in the error colour.
+            let range = editor.command_problem().map_or(0..0, |p| p.range);
+            let chars: Vec<char> = prompt.line.chars().collect();
+            let part = |from: usize, to: usize| chars[from..to].iter().collect::<String>();
             vec![
                 Span::styled(
-                    format!("{}{}", prompt.kind.label(), prompt.line),
+                    format!("{}{}", prompt.kind.label(), part(0, range.start)),
                     theme.text,
                 ),
+                Span::styled(
+                    part(range.start, range.end),
+                    theme
+                        .text
+                        .fg(theme.error)
+                        .add_modifier(Modifier::UNDERLINED),
+                ),
+                Span::styled(part(range.end, chars.len()), theme.text),
                 Span::styled(
                     under_cursor.to_string(),
                     theme.faint.add_modifier(Modifier::REVERSED),
@@ -488,18 +536,34 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
         left.push(Span::styled(format!(" {count}"), theme.text));
     }
 
-    let hints = match &editor.mode {
-        Mode::Normal => "v select · x rows · g goto · ] next · i insert · d delete · : command",
-        Mode::Insert => "z–m q–u notes · [ ] octave · ⌫ clear · esc done",
-        Mode::Select => "hjkl extend · ; collapse · y copy · d delete · r fill · C-a C-x transpose",
+    let (hints, style) = match &editor.mode {
+        Mode::Normal => (
+            "v select · x rows · g goto · ] next · i insert · d delete · : command".into(),
+            theme.dim,
+        ),
+        Mode::Insert => (
+            "z–m q–u notes · [ ] octave · ⌫ clear · esc done".into(),
+            theme.dim,
+        ),
+        Mode::Select => (
+            "hjkl extend · ; collapse · y copy · d delete · r fill · C-a C-x transpose".into(),
+            theme.dim,
+        ),
         Mode::Command(prompt) if prompt.kind != PromptKind::Command => {
-            "C C# Eb4 C-4 * · ret select · esc cancel"
+            ("C C# Eb4 C-4 * · ret select · esc cancel".into(), theme.dim)
         }
-        Mode::Command(_) => editor
-            .command_spec()
-            .map_or("tab complete · ret run · esc cancel", |spec| {
-                spec.describe
-            }),
+        // What's wrong with the line, if anything, in place of what the command does.
+        Mode::Command(_) => match editor.command_problem() {
+            Some(problem) => (problem.message, Style::new().fg(theme.error)),
+            None => (
+                editor
+                    .command_spec()
+                    .map_or("tab complete · ret run · esc cancel".into(), |spec| {
+                        spec.description()
+                    }),
+                theme.dim,
+            ),
+        },
     };
     let used: usize = left.iter().map(|s| s.content.chars().count()).sum();
     let room = (width as usize).saturating_sub(used + 1);
@@ -507,7 +571,7 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
     left.push(Span::raw(
         " ".repeat(room - hints.chars().count().min(room)),
     ));
-    left.push(Span::styled(hints, theme.dim));
+    left.push(Span::styled(hints, style));
     Line::from(left)
 }
 
@@ -543,6 +607,19 @@ mod tests {
         assert_eq!(note_name(70), "A#4");
         assert_eq!(note_name(1), "C#-");
         assert_eq!(note_name(127), "G-9");
+    }
+
+    #[test]
+    fn tracks_scroll_to_keep_the_cursor_in_view() {
+        let mut view = ViewState::default();
+        scroll_tracks(&mut view, 5, 3, 8);
+        assert_eq!(view.first_track, 3);
+        scroll_tracks(&mut view, 4, 3, 8);
+        assert_eq!(view.first_track, 3, "still in view");
+        scroll_tracks(&mut view, 1, 3, 8);
+        assert_eq!(view.first_track, 1);
+        scroll_tracks(&mut view, 1, 3, 2);
+        assert_eq!(view.first_track, 0, "everything fits again");
     }
 
     #[test]

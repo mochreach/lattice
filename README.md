@@ -93,7 +93,8 @@ moves on. `⌫` clears a step, and `esc` returns to normal mode.
 
 On the **command line**, commands that fuzzy-match what you've typed are listed above it, and
 `tab` cycles through them. Once the command is named, the parameters still to type are shown
-faintly after the cursor, and shrink as you type over them.
+faintly after the cursor, and shrink as you type over them. Values are checked as you type: a
+word that can no longer be right is underlined, and what was expected is shown on the right.
 
 | Commands | |
 | --- | --- |
@@ -103,3 +104,9 @@ faintly after the cursor, and shrink as you type over them.
 | `:bpm N`, `:step N`, `:oct N` | tempo, auto-step, keyboard octave |
 | `:click`, `:follow` | toggle the metronome, following the playhead |
 | `:name NAME`, `:q` | rename the track, quit |
+| `:track-add [NAME]` (`:ta`) | add a 16-step track after this one (up to 16 tracks) |
+| `:track-remove` (`:trm`), `:track-move ±N` (`:tmv`) | remove this track, move it left or right |
+
+Tracks can be added, removed and moved while playing, and undo brings a removed track back with
+its notes and its instrument. When there are more than fit across the terminal, the grid scrolls
+sideways to keep the cursor's track in view, with `‹` `›` showing there are more.

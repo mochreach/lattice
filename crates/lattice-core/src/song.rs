@@ -4,6 +4,10 @@ use crate::transform::Rule;
 /// thread.
 pub const MAX_STEPS: usize = 256;
 
+/// Most tracks a grid can have. The engine preallocates for this too, so tracks can be added
+/// while playing.
+pub const MAX_TRACKS: usize = 16;
+
 /// A note to play on a step.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Note {

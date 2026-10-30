@@ -221,5 +221,18 @@ line's prompt and previews the result as you type. Helix's `C` copies a selectio
 line; here it's the rows below, offset by the selection's height. There's no sideways copy onto
 the next track: a selection already spans tracks, so widening it does the same job.
 
-Next for the UI: saving and loading songs, adding and removing tracks, effect columns, a help
+Tracks can be added, removed and moved while playing. The engine keeps room for `MAX_TRACKS` (16)
+players, each a boxed pattern, instrument and set of buffers. The UI thread builds a player and
+sends it over the command queue, and removed players go back over the garbage queue to be freed,
+so the audio thread never allocates or frees. Positions are published per track index, so the
+engine republishes them for every index that shifted. A track inserted mid-song joins in step, as
+though it had been playing from the start.
+
+The editor gives each track a `TrackId` that stays with it, including through undo, which
+snapshots the ids along with the grid. Changing the set or order of tracks produces
+`Effect::TracksChanged`, and the frontend works out the engine commands by comparing the engine's
+ids with the editor's. It keeps each id's instrument patch, so a track that undo brings back
+sounds as it did. New tracks take the demo patches in turn for now.
+
+Next for the UI: saving and loading songs, effect columns, choosing a track's instrument, a help
 screen, loading keymaps from a config file, and themes from a config file.
