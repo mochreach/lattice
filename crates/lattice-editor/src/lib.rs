@@ -15,7 +15,7 @@ mod keymap;
 pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
 pub use keymap::{Action, Binding, Key, Keymap, Menu};
 
-use lattice_core::{Grid, MAX_STEPS, Note, Step};
+use lattice_core::{Grid, MAX_STEPS, Note, Step, Track};
 
 const UNDO_LIMIT: usize = 500;
 const PAGE: usize = 16;
@@ -58,6 +58,11 @@ pub enum View {
 pub enum Effect {
     /// The track at this index changed; send it to the engine.
     TrackChanged(usize),
+    /// Tracks were added, removed or reordered. Bring the engine's tracks in line with
+    /// [`Editor::track_ids`]: remove those whose ids have gone, move those that have moved, and
+    /// add the new ones (each with the contents of its track). Any `TrackChanged` effects that
+    /// follow use the new indices.
+    TracksChanged,
     TogglePlay,
     Bpm(f64),
     Click(bool),
@@ -68,6 +73,11 @@ pub enum Effect {
     },
     Quit,
 }
+
+/// Identifies a track while it's added, removed, moved and brought back by undo, so a frontend
+/// can keep each track's instrument with it. Never reused within an editor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TrackId(pub u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Cursor {
@@ -115,6 +125,7 @@ pub struct Infobox {
 #[derive(Debug, Clone)]
 struct Snapshot {
     grid: Grid,
+    ids: Vec<TrackId>,
     cursor: Cursor,
     anchor: Cursor,
 }
@@ -138,6 +149,9 @@ pub struct Editor {
     /// Feedback for the status line; cleared on the next key.
     pub message: Option<String>,
     pub keymap: Keymap,
+    /// One per track in `grid`, in the same order.
+    ids: Vec<TrackId>,
+    next_id: u32,
     count: Option<usize>,
     pending: Option<Pending>,
     /// One column of steps per track copied.
@@ -149,7 +163,10 @@ pub struct Editor {
 impl Editor {
     pub fn new(grid: Grid, bpm: f64) -> Self {
         assert!(!grid.tracks.is_empty(), "need at least one track");
+        let tracks = grid.tracks.len() as u32;
         Self {
+            ids: (0..tracks).map(TrackId).collect(),
+            next_id: tracks,
             grid,
             bpm,
             cursor: Cursor::default(),
@@ -168,6 +185,11 @@ impl Editor {
             undo: Vec::new(),
             redo: Vec::new(),
         }
+    }
+
+    /// Each track's id, in the order of `grid.tracks`.
+    pub fn track_ids(&self) -> &[TrackId] {
+        &self.ids
     }
 
     /// A pending count typed before a command, e.g. the `4` in `4j`.
@@ -742,10 +764,30 @@ impl Editor {
         self.select(self.anchor, self.cursor);
     }
 
+    /// Adds a track at `index`, with a new id.
+    pub(crate) fn insert_track(&mut self, index: usize, track: Track) {
+        self.grid.tracks.insert(index, track);
+        self.ids.insert(index, TrackId(self.next_id));
+        self.next_id += 1;
+    }
+
+    pub(crate) fn remove_track(&mut self, index: usize) {
+        self.grid.tracks.remove(index);
+        self.ids.remove(index);
+    }
+
+    pub(crate) fn move_track(&mut self, from: usize, to: usize) {
+        let track = self.grid.tracks.remove(from);
+        self.grid.tracks.insert(to, track);
+        let id = self.ids.remove(from);
+        self.ids.insert(to, id);
+    }
+
     /// Saves the current state for undo. Call before every change to the song.
     pub(crate) fn checkpoint(&mut self) {
         self.undo.push(Snapshot {
             grid: self.grid.clone(),
+            ids: self.ids.clone(),
             cursor: self.cursor,
             anchor: self.anchor,
         });
@@ -772,16 +814,21 @@ impl Editor {
             );
             return vec![];
         };
+        let tracks_changed = snapshot.ids != self.ids;
         to.push(Snapshot {
             grid: std::mem::replace(&mut self.grid, snapshot.grid),
+            ids: std::mem::replace(&mut self.ids, snapshot.ids),
             cursor: self.cursor,
             anchor: self.anchor,
         });
         self.cursor = snapshot.cursor;
         self.anchor = snapshot.anchor;
         self.mode = Mode::Normal;
-        (0..self.grid.tracks.len())
-            .map(Effect::TrackChanged)
+        // Line the tracks up first, so the indices that follow are the restored ones.
+        tracks_changed
+            .then_some(Effect::TracksChanged)
+            .into_iter()
+            .chain((0..self.grid.tracks.len()).map(Effect::TrackChanged))
             .collect()
     }
 }
@@ -789,7 +836,7 @@ impl Editor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lattice_core::{Condition, Rule, Track, Transform};
+    use lattice_core::{Condition, MAX_TRACKS, Rule, Transform};
 
     fn editor() -> Editor {
         let track = |name: &str, len| Track {
@@ -1124,5 +1171,106 @@ mod tests {
         assert_eq!(command(&mut e, "bpm 122.5"), [Effect::Bpm(122.5)]);
         command(&mut e, "follow");
         assert!(!e.follow);
+    }
+
+    fn names(e: &Editor) -> Vec<&str> {
+        e.grid.tracks.iter().map(|t| t.name.as_str()).collect()
+    }
+
+    #[test]
+    fn tracks_are_added_after_the_cursor() {
+        let mut e = editor();
+        keys(&mut e, "5j");
+        assert_eq!(command(&mut e, "track-add"), [Effect::TracksChanged]);
+        assert_eq!(names(&e), ["a", "track 3", "b"]);
+        assert_eq!(e.grid.tracks[1].steps.len(), 16);
+        assert_eq!(e.cursor, Cursor { track: 1, step: 5 }, "onto the new track");
+        assert_eq!(e.track_ids(), [TrackId(0), TrackId(2), TrackId(1)]);
+        command(&mut e, "ta drums and bass");
+        assert_eq!(names(&e), ["a", "track 3", "drums and bass", "b"]);
+        command(&mut e, "ta");
+        assert_eq!(names(&e)[3], "track 5");
+    }
+
+    #[test]
+    fn tracks_are_limited() {
+        let mut e = editor();
+        for _ in 2..MAX_TRACKS {
+            command(&mut e, "track-add");
+        }
+        assert_eq!(e.grid.tracks.len(), MAX_TRACKS);
+        assert_eq!(command(&mut e, "track-add"), []);
+        assert_eq!(e.message.as_deref(), Some("at most 16 tracks"));
+        assert_eq!(e.grid.tracks.len(), MAX_TRACKS);
+    }
+
+    #[test]
+    fn removing_a_track_keeps_the_cursor_on_the_grid() {
+        let mut e = editor();
+        keys(&mut e, "l12j");
+        assert_eq!(command(&mut e, "track-remove"), [Effect::TracksChanged]);
+        assert_eq!(names(&e), ["a"]);
+        assert_eq!(e.track_ids(), [TrackId(0)]);
+        assert_eq!(e.cursor, Cursor { track: 0, step: 7 });
+        assert_eq!(e.anchor, e.cursor);
+        assert_eq!(command(&mut e, "trm"), []);
+        assert_eq!(e.message.as_deref(), Some("can't remove the only track"));
+        assert_eq!(names(&e), ["a"]);
+    }
+
+    #[test]
+    fn moving_tracks() {
+        let mut e = editor();
+        command(&mut e, "ta c");
+        assert_eq!(command(&mut e, "track-move -1"), [Effect::TracksChanged]);
+        assert_eq!(names(&e), ["c", "a", "b"]);
+        assert_eq!(e.cursor.track, 0, "the cursor goes with it");
+        command(&mut e, "tmv +5");
+        assert_eq!(names(&e), ["a", "b", "c"]);
+        assert_eq!(command(&mut e, "tmv 1"), [], "already at the end");
+        command(&mut e, "tmv left");
+        assert_eq!(e.message.as_deref(), Some("tracks to move is -16 to 16"));
+    }
+
+    #[test]
+    fn undo_and_redo_across_adding_and_removing_tracks() {
+        let mut e = editor();
+        notes(&mut e, "z");
+        keys(&mut e, "l");
+        command(&mut e, "ta c");
+        command(&mut e, "track-move -2");
+        keys(&mut e, "l");
+        command(&mut e, "track-remove");
+        assert_eq!(names(&e), ["c", "b"]);
+        let ids = |e: &Editor| e.track_ids().to_vec();
+        assert_eq!(ids(&e), [TrackId(2), TrackId(1)]);
+
+        let all = |n| {
+            std::iter::once(Effect::TracksChanged)
+                .chain((0..n).map(Effect::TrackChanged))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(keys(&mut e, "u"), all(3), "brings back the removed track");
+        assert_eq!(names(&e), ["c", "a", "b"]);
+        assert_eq!(ids(&e), [TrackId(2), TrackId(0), TrackId(1)], "with its id");
+        assert_eq!(pitches(&e, 1)[0], Some(60), "and its notes");
+        assert_eq!(e.cursor.track, 1);
+        keys(&mut e, "u");
+        assert_eq!(names(&e), ["a", "b", "c"]);
+        keys(&mut e, "u");
+        assert_eq!(names(&e), ["a", "b"]);
+        assert_eq!(e.cursor.track, 1);
+        assert_eq!(
+            keys(&mut e, "u"),
+            [Effect::TrackChanged(0), Effect::TrackChanged(1)]
+        );
+        assert_eq!(pitches(&e, 0)[0], None);
+
+        keys(&mut e, "UUU");
+        assert_eq!(names(&e), ["c", "a", "b"]);
+        assert_eq!(keys(&mut e, "U"), all(2));
+        assert_eq!(names(&e), ["c", "b"]);
+        assert_eq!(ids(&e), [TrackId(2), TrackId(1)]);
+        assert_eq!(e.cursor.track, 1);
     }
 }

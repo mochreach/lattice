@@ -6,7 +6,7 @@
 use std::fmt::Debug;
 use std::ops::Range;
 
-use lattice_core::{Condition, MAX_STEPS, Rule, Step, Transform};
+use lattice_core::{Condition, MAX_STEPS, MAX_TRACKS, Rule, Step, Track, Transform};
 
 use crate::{Editor, Effect};
 
@@ -37,6 +37,8 @@ pub enum Kind {
     Decimal { min: i64, max: i64 },
     /// The rest of the line, as free text.
     Text,
+    /// The rest of the line, which may be empty.
+    OptionalText,
 }
 
 /// The largest number a condition takes.
@@ -58,6 +60,14 @@ const fn decimal(name: &'static str, what: &'static str, min: i64, max: i64) -> 
         name,
         what,
         kind: Kind::Decimal { min, max },
+    })
+}
+
+const fn optional_text(name: &'static str, what: &'static str) -> Param {
+    Param::Value(Value {
+        name,
+        what,
+        kind: Kind::OptionalText,
     })
 }
 
@@ -96,6 +106,8 @@ pub struct Spec {
 }
 
 const CONDITION: &str = "[every N [OFFSET] | pass K]";
+/// Steps in a track added with `:track-add`.
+const NEW_TRACK_STEPS: usize = 16;
 
 use Param::{Condition as When, Value as V};
 
@@ -148,6 +160,29 @@ pub const COMMANDS: &[Spec] = &[
         alias: None,
         params: &[text("NAME", "name")],
         describe: "rename the track",
+    },
+    Spec {
+        name: "track-add",
+        alias: Some("ta"),
+        params: &[optional_text("[NAME]", "name")],
+        describe: "add a track after this one",
+    },
+    Spec {
+        name: "track-remove",
+        alias: Some("trm"),
+        params: &[],
+        describe: "remove this track",
+    },
+    Spec {
+        name: "track-move",
+        alias: Some("tmv"),
+        params: &[int(
+            "±TRACKS",
+            "tracks to move",
+            -(MAX_TRACKS as i64),
+            MAX_TRACKS as i64,
+        )],
+        describe: "move this track left or right",
     },
     Spec {
         name: "bpm",
@@ -236,7 +271,7 @@ impl Value {
             Kind::Int { min, max } | Kind::Decimal { min, max } => {
                 format!("{what} is {min} to {max}")
             }
-            Kind::Text => format!("expected a {what}"),
+            Kind::Text | Kind::OptionalText => format!("expected a {what}"),
         }
     }
 
@@ -286,7 +321,7 @@ impl Value {
                 };
                 return as_int.int(whole).is_some() || as_int.could_become(whole);
             }
-            Kind::Text => return true,
+            Kind::Text | Kind::OptionalText => return true,
         };
         let (negative, digits) = match word.strip_prefix('-') {
             Some(digits) => (true, digits),
@@ -583,7 +618,7 @@ impl<'a> Words<'a> {
         Ok(match value.kind {
             Kind::Int { .. } => self.int(value)?.map(Arg::Int),
             Kind::Decimal { .. } => self.decimal(value)?.map(Arg::Decimal),
-            Kind::Text => self.text(value)?.map(Arg::Text),
+            Kind::Text | Kind::OptionalText => self.text(value)?.map(Arg::Text),
         })
     }
 
@@ -614,7 +649,7 @@ impl<'a> Words<'a> {
         let rest: Vec<&str> = std::iter::from_fn(|| self.next())
             .map(|(word, _)| word.text)
             .collect();
-        if rest.is_empty() {
+        if rest.is_empty() && value.kind != Kind::OptionalText {
             return self.missing(value);
         }
         Ok(Some(rest.join(" ")))
@@ -701,6 +736,51 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             editor.grid.tracks[track].name = command.text(0).into();
             Ok(vec![])
         }
+        "track-add" => {
+            let tracks = &editor.grid.tracks;
+            if tracks.len() >= MAX_TRACKS {
+                return Err(format!("at most {MAX_TRACKS} tracks"));
+            }
+            let mut name = command.text(0).to_string();
+            if name.is_empty() {
+                // The first `track N` not already taken.
+                name = (tracks.len() + 1..)
+                    .map(|n| format!("track {n}"))
+                    .find(|name| tracks.iter().all(|t| t.name != *name))
+                    .unwrap();
+            }
+            editor.checkpoint();
+            let track = Track {
+                name,
+                steps: vec![Step::default(); NEW_TRACK_STEPS],
+                rules: vec![],
+            };
+            editor.insert_track(editor.cursor.track + 1, track);
+            editor.select_point(editor.cursor.track + 1, editor.cursor.step);
+            Ok(vec![Effect::TracksChanged])
+        }
+        "track-remove" => {
+            if editor.grid.tracks.len() == 1 {
+                return Err("can't remove the only track".into());
+            }
+            editor.checkpoint();
+            editor.remove_track(track);
+            editor.select_point(track, editor.cursor.step);
+            Ok(vec![Effect::TracksChanged])
+        }
+        "track-move" => {
+            let by: isize = command.int(0);
+            let to = track
+                .saturating_add_signed(by)
+                .min(editor.grid.tracks.len() - 1);
+            if to == track {
+                return Ok(vec![]);
+            }
+            editor.checkpoint();
+            editor.move_track(track, to);
+            editor.select_point(to, editor.cursor.step);
+            Ok(vec![Effect::TracksChanged])
+        }
         name @ ("rot" | "drift" | "rev" | "tr") => {
             let transform = match name {
                 "rot" => Transform::Rotate(command.int(0)),
@@ -776,6 +856,7 @@ mod tests {
         assert_eq!(hint("bpm ").as_deref(), Some("BPM"));
         assert_eq!(hint("bpm 9"), None);
         assert_eq!(hint("pop "), None);
+        assert_eq!(hint("ta ").as_deref(), Some("[NAME]"));
         assert_eq!(hint("nope "), None);
     }
 

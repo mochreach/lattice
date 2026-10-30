@@ -2,11 +2,13 @@
 //!
 //! The UI thread talks to the engine through a [`Handle`]: commands go over a lock-free queue,
 //! and playback position comes back through atomics in [`Status`]. Nothing on the audio side
-//! blocks or allocates. Replaced patterns are sent back to the UI thread to be freed.
+//! blocks or allocates. Replaced patterns and removed tracks are sent back to the UI thread to be
+//! freed.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
+pub use lattice_core::MAX_TRACKS;
 use lattice_core::{Grid, MAX_STEPS, Step, Track, realise_into};
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
 
@@ -15,7 +17,6 @@ use crate::clock::Clock;
 use crate::denormal;
 use crate::instrument::{Event, EventKind, Instrument};
 
-pub const MAX_TRACKS: usize = 16;
 const BEATS_PER_BAR: u64 = 4;
 /// Largest block rendered in one go. Longer host buffers are split.
 const MAX_BLOCK: usize = 256;
@@ -41,6 +42,21 @@ pub enum Command {
         index: usize,
         track: Box<Track>,
     },
+    /// Insert a track and its instrument at `index` (or at the end, if past it), moving later
+    /// tracks along. Joins in step with the others. Build the player off the audio thread with
+    /// [`TrackPlayer::new`]; it's sent straight back if there are already `MAX_TRACKS` tracks.
+    InsertTrack {
+        index: usize,
+        player: Box<TrackPlayer>,
+    },
+    /// Remove the track at `index`, moving later tracks back. It goes back to the UI thread,
+    /// instrument and all, to be freed.
+    RemoveTrack(usize),
+    /// Move a track to another index, keeping its instrument and any notes still sounding.
+    MoveTrack {
+        from: usize,
+        to: usize,
+    },
     /// Audition a note on a track's instrument.
     Preview {
         track: usize,
@@ -52,8 +68,8 @@ pub enum Command {
 /// Playback state the audio thread publishes for the UI.
 pub struct Status {
     playing: AtomicBool,
-    /// Per track: `pass << 32 | step`, or `u64::MAX` when stopped. One atomic, so the step and
-    /// pass are always read together.
+    /// Per track index: `pass << 32 | step`, or `u64::MAX` when stopped or not yet played. One
+    /// atomic, so the step and pass are always read together.
     positions: [AtomicU64; MAX_TRACKS],
 }
 
@@ -75,8 +91,8 @@ impl Status {
         (packed != u64::MAX).then_some(((packed & 0xffff_ffff) as usize, (packed >> 32) as u32))
     }
 
-    fn set_position(&self, track: usize, step: usize, pass: u32) {
-        self.positions[track].store(u64::from(pass) << 32 | step as u64, Ordering::Relaxed);
+    fn set_position(&self, track: usize, packed: u64) {
+        self.positions[track].store(packed, Ordering::Relaxed);
     }
 
     fn set_stopped(&self) {
@@ -87,10 +103,18 @@ impl Status {
     }
 }
 
+/// What the audio thread has finished with, sent back to be freed on the UI thread. Only ever
+/// dropped, never read.
+#[allow(dead_code)]
+enum Garbage {
+    Track(Box<Track>),
+    Player(Box<TrackPlayer>),
+}
+
 /// The UI thread's end of the engine.
 pub struct Handle {
     commands: Producer<Command>,
-    garbage: Consumer<Box<Track>>,
+    garbage: Consumer<Garbage>,
     status: Arc<Status>,
 }
 
@@ -104,7 +128,7 @@ impl Handle {
         &self.status
     }
 
-    /// Frees patterns the audio thread has finished with. Call regularly.
+    /// Frees patterns and tracks the audio thread has finished with. Call regularly.
     pub fn collect_garbage(&mut self) {
         while self.garbage.pop().is_ok() {}
     }
@@ -116,7 +140,8 @@ struct Held {
     steps_left: u16,
 }
 
-struct TrackPlayer {
+/// A track as the engine plays it: the pattern, its instrument and the buffers to play it with.
+pub struct TrackPlayer {
     track: Track,
     instrument: Box<dyn Instrument>,
     /// The track as realised for the current pass.
@@ -129,6 +154,36 @@ struct TrackPlayer {
     preview: Option<(u8, usize)>,
     left: Vec<f32>,
     right: Vec<f32>,
+    /// What was last published to [`Status`], so it can be published again if the track moves.
+    position: u64,
+}
+
+impl TrackPlayer {
+    /// Allocates, so call it off the audio thread, then send the player with
+    /// [`Command::InsertTrack`].
+    pub fn new(track: Track, instrument: Box<dyn Instrument>) -> Box<Self> {
+        Box::new(Self {
+            track,
+            instrument,
+            steps: Vec::with_capacity(MAX_STEPS),
+            playhead: 0,
+            pass: 0,
+            events: Vec::with_capacity(MAX_EVENTS),
+            held: Vec::with_capacity(MAX_HELD),
+            preview: None,
+            left: vec![0.0; MAX_BLOCK],
+            right: vec![0.0; MAX_BLOCK],
+            position: u64::MAX,
+        })
+    }
+}
+
+impl std::fmt::Debug for TrackPlayer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TrackPlayer")
+            .field("track", &self.track.name)
+            .finish_non_exhaustive()
+    }
 }
 
 pub struct Engine {
@@ -136,7 +191,10 @@ pub struct Engine {
     playing: bool,
     steps_per_beat: u64,
     step_index: u64,
-    tracks: Vec<TrackPlayer>,
+    /// Boxed, so players arrive and leave without being moved out of their boxes, which would
+    /// free the boxes here. Room for `MAX_TRACKS`.
+    #[allow(clippy::vec_box)]
+    tracks: Vec<Box<TrackPlayer>>,
     click: Click,
     click_events: Vec<Event>,
     click_left: Vec<f32>,
@@ -144,7 +202,7 @@ pub struct Engine {
     click_enabled: bool,
     preview_samples: usize,
     commands: Consumer<Command>,
-    garbage: Producer<Box<Track>>,
+    garbage: Producer<Garbage>,
     status: Arc<Status>,
 }
 
@@ -165,23 +223,14 @@ impl Engine {
         assert!(grid.tracks.len() <= MAX_TRACKS, "too many tracks");
         assert!(grid.tracks.iter().all(|t| t.steps.len() <= MAX_STEPS));
 
-        let tracks = grid
-            .tracks
-            .iter()
-            .zip(instruments)
-            .map(|(track, instrument)| TrackPlayer {
-                track: track.clone(),
-                instrument,
-                steps: Vec::with_capacity(MAX_STEPS),
-                playhead: 0,
-                pass: 0,
-                events: Vec::with_capacity(MAX_EVENTS),
-                held: Vec::with_capacity(MAX_HELD),
-                preview: None,
-                left: vec![0.0; MAX_BLOCK],
-                right: vec![0.0; MAX_BLOCK],
-            })
-            .collect();
+        // Room for every track up front, so inserting one never reallocates.
+        let mut tracks = Vec::with_capacity(MAX_TRACKS);
+        tracks.extend(
+            grid.tracks
+                .iter()
+                .zip(instruments)
+                .map(|(track, instrument)| TrackPlayer::new(track.clone(), instrument)),
+        );
         let (command_tx, command_rx) = RingBuffer::new(COMMAND_QUEUE);
         let (garbage_tx, garbage_rx) = RingBuffer::new(COMMAND_QUEUE);
         let status = Arc::new(Status::new());
@@ -226,6 +275,7 @@ impl Engine {
             }
             t.playhead = 0;
             t.pass = 0;
+            t.position = u64::MAX;
         }
         self.step_index = 0;
         self.playing = false;
@@ -262,9 +312,22 @@ impl Engine {
                         // Re-realise so the edit is heard on this pass, not the next.
                         realise_into(&t.track, t.pass, &mut t.steps);
                     }
-                    if let Err(PushError::Full(track)) = self.garbage.push(track) {
-                        // Never free on the audio thread; leaking is the lesser evil.
-                        std::mem::forget(track);
+                    self.discard(Garbage::Track(track));
+                }
+                Command::InsertTrack { index, player } => self.insert_track(index, player),
+                Command::RemoveTrack(index) => {
+                    if index < self.tracks.len() {
+                        let player = self.tracks.remove(index);
+                        self.discard(Garbage::Player(player));
+                        self.publish_positions(index);
+                    }
+                }
+                Command::MoveTrack { from, to } => {
+                    if from < self.tracks.len() && to < self.tracks.len() {
+                        // Within capacity, so neither reallocates.
+                        let player = self.tracks.remove(from);
+                        self.tracks.insert(to, player);
+                        self.publish_positions(from.min(to));
                     }
                 }
                 Command::Preview {
@@ -281,6 +344,39 @@ impl Engine {
                     }
                 }
             }
+        }
+    }
+
+    fn insert_track(&mut self, index: usize, mut player: Box<TrackPlayer>) {
+        if self.tracks.len() == MAX_TRACKS || player.track.steps.len() > MAX_STEPS {
+            self.discard(Garbage::Player(player));
+            return;
+        }
+        // Join in step, as though the track had been playing from the start.
+        let len = player.track.steps.len() as u64;
+        if self.playing && len > 0 {
+            player.playhead = (self.step_index % len) as usize;
+            player.pass = (self.step_index / len) as u32;
+        }
+        realise_into(&player.track, player.pass, &mut player.steps);
+        let index = index.min(self.tracks.len());
+        self.tracks.insert(index, player);
+        self.publish_positions(index);
+    }
+
+    /// Publishes every position from track `from` on, after tracks have moved between indices.
+    fn publish_positions(&self, from: usize) {
+        for index in from..MAX_TRACKS {
+            let packed = self.tracks.get(index).map_or(u64::MAX, |t| t.position);
+            self.status.set_position(index, packed);
+        }
+    }
+
+    /// Sends something back to the UI thread to be freed.
+    fn discard(&mut self, garbage: Garbage) {
+        if let Err(PushError::Full(garbage)) = self.garbage.push(garbage) {
+            // Never free on the audio thread; leaking is the lesser evil.
+            std::mem::forget(garbage);
         }
     }
 
@@ -368,7 +464,8 @@ impl Engine {
             if t.playhead == 0 {
                 realise_into(&t.track, t.pass, &mut t.steps);
             }
-            self.status.set_position(index, t.playhead, t.pass);
+            t.position = u64::from(t.pass) << 32 | t.playhead as u64;
+            self.status.set_position(index, t.position);
             if let Some(note) = t.steps[t.playhead].note {
                 // Retriggering a held pitch, or out of room: end the old note first.
                 let existing = t.held.iter().position(|h| h.pitch == note.pitch);
@@ -562,6 +659,79 @@ mod tests {
         let audio = render(&mut engine, 256, 48_000);
         assert!(audio.iter().all(|&x| x == 0.0));
         assert!(handle.garbage.pop().is_ok(), "old track sent back");
+    }
+
+    fn silent() -> Box<dyn Instrument> {
+        struct Silent;
+        impl Instrument for Silent {
+            fn process(&mut self, _: &[Event], left: &mut [f32], right: &mut [f32]) {
+                left.fill(0.0);
+                right.fill(0.0);
+            }
+        }
+        Box::new(Silent)
+    }
+
+    #[test]
+    fn tracks_are_inserted_and_removed_while_playing() {
+        let (mut engine, mut handle) = with_synth(48_000.0);
+        // Ten steps in, as above: the seven-step lead is on step 2 of pass 1.
+        render(&mut engine, 256, 5_413 * 9 + 100);
+        let mut four = lead();
+        four.steps.truncate(4);
+        handle.send(Command::InsertTrack {
+            index: 0,
+            player: TrackPlayer::new(four, silent()),
+        });
+        render(&mut engine, 1, 1);
+        assert_eq!(engine.tracks.capacity(), MAX_TRACKS);
+        assert_eq!(engine.tracks[0].track.steps.len(), 4);
+        // Not played yet, but already in step: ten steps in, it starts on step 2 of pass 2.
+        assert_eq!(handle.status().position(0), None);
+        assert_eq!(
+            handle.status().position(1),
+            Some((2, 1)),
+            "the lead's position moved up with it"
+        );
+        assert_eq!((engine.tracks[0].playhead, engine.tracks[0].pass), (2, 2));
+        render(&mut engine, 256, 5_413);
+        assert_eq!(handle.status().position(0), Some((2, 2)));
+        assert_eq!(handle.status().position(1), Some((3, 1)));
+
+        handle.send(Command::MoveTrack { from: 0, to: 1 });
+        render(&mut engine, 1, 1);
+        assert_eq!(engine.tracks[1].track.steps.len(), 4);
+        assert_eq!(handle.status().position(0), Some((3, 1)));
+        assert_eq!(handle.status().position(1), Some((2, 2)));
+
+        handle.send(Command::RemoveTrack(0));
+        render(&mut engine, 1, 1);
+        assert_eq!(engine.tracks.len(), 1);
+        assert_eq!(handle.status().position(0), Some((2, 2)));
+        assert_eq!(handle.status().position(1), None, "nothing left at index 1");
+        assert!(
+            matches!(handle.garbage.pop(), Ok(Garbage::Player(_))),
+            "removed track sent back"
+        );
+        // Removing past the end does nothing.
+        handle.send(Command::RemoveTrack(5));
+        render(&mut engine, 1, 1);
+        assert_eq!(engine.tracks.len(), 1);
+    }
+
+    #[test]
+    fn inserting_past_the_limit_sends_the_track_back() {
+        let (mut engine, mut handle) = with_synth(48_000.0);
+        for _ in 0..MAX_TRACKS {
+            handle.send(Command::InsertTrack {
+                index: usize::MAX,
+                player: TrackPlayer::new(lead(), silent()),
+            });
+        }
+        render(&mut engine, 256, 256);
+        assert_eq!(engine.tracks.len(), MAX_TRACKS);
+        assert!(matches!(handle.garbage.pop(), Ok(Garbage::Player(_))));
+        assert!(handle.garbage.pop().is_err());
     }
 
     #[test]

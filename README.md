@@ -87,3 +87,9 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:bpm N`, `:step N`, `:oct N` | tempo, auto-step, keyboard octave |
 | `:click`, `:follow` | toggle the metronome, following the playhead |
 | `:name NAME`, `:q` | rename the track, quit |
+| `:track-add [NAME]` (`:ta`) | add a 16-step track after this one (up to 16 tracks) |
+| `:track-remove` (`:trm`), `:track-move ±N` (`:tmv`) | remove this track, move it left or right |
+
+Tracks can be added, removed and moved while playing, and undo brings a removed track back with
+its notes and its instrument. When there are more than fit across the terminal, the grid scrolls
+sideways to keep the cursor's track in view, with `‹` `›` showing there are more.

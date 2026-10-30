@@ -2,7 +2,7 @@
 
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
 use lattice_core::{Condition, Grid, Rule, Step, Track, Transform};
-use lattice_engine::{AdsrParams, Command, Engine, Instrument, Patch, Synth, Wave};
+use lattice_engine::{AdsrParams, Command, Engine, Instrument, Patch, Synth, TrackPlayer, Wave};
 
 #[global_allocator]
 static ALLOCATOR: AllocDisabler = AllocDisabler;
@@ -50,6 +50,15 @@ fn rendering_never_allocates() {
         gain: 0.3,
     };
     let synth: Box<dyn Instrument> = Box::new(Synth::new(patch, 48_000.0));
+    // Tracks to add while playing, built here on the "UI thread".
+    let mut players: Vec<_> = (0..2)
+        .map(|_| {
+            TrackPlayer::new(
+                grid.tracks[0].clone(),
+                Box::new(Synth::new(patch, 48_000.0)),
+            )
+        })
+        .collect();
     let replacement = Box::new(grid.tracks[0].clone());
     let (mut engine, mut handle) = Engine::new(48_000.0, 174.0, &grid, vec![synth]);
     // Commands are handled inside the no-allocation zone too.
@@ -70,7 +79,30 @@ fn rendering_never_allocates() {
     let mut peak = 0.0f32;
     assert_no_alloc(|| {
         // Ten seconds: many passes through the track, so transforms are realised repeatedly.
-        for _ in 0..(48_000 * 10 / 256) {
+        // Tracks come and go along the way; sending commands doesn't allocate either.
+        for block in 0..(48_000 * 10 / 256) {
+            match block {
+                200 => {
+                    handle.send(Command::InsertTrack {
+                        index: 0,
+                        player: players.pop().unwrap(),
+                    });
+                }
+                400 => {
+                    handle.send(Command::MoveTrack { from: 0, to: 1 });
+                }
+                600 => {
+                    handle.send(Command::RemoveTrack(1));
+                    handle.send(Command::InsertTrack {
+                        index: 1,
+                        player: players.pop().unwrap(),
+                    });
+                }
+                800 => {
+                    handle.send(Command::RemoveTrack(0));
+                }
+                _ => {}
+            }
             engine.process(&mut left, &mut right);
             peak = left.iter().fold(peak, |p, x| p.max(x.abs()));
         }
