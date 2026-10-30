@@ -201,7 +201,7 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         value(file),
         Span::styled(modified, theme.text),
         label("   bpm "),
-        value(format!("{:.0}", editor.bpm)),
+        value(bpm(editor.bpm)),
         label("   oct "),
         value(editor.octave.to_string()),
         label("   step "),
@@ -585,6 +585,12 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
     Line::from(left)
 }
 
+/// The tempo without a fractional part unless it has one: `120`, `122.5`.
+fn bpm(bpm: f64) -> String {
+    let s = format!("{bpm:.2}");
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
 /// Pads or truncates to exactly `width` characters.
 fn fit(text: &str, width: usize) -> String {
     let mut s: String = text.chars().take(width).collect();
@@ -630,6 +636,13 @@ mod tests {
         assert_eq!(view.first_track, 1);
         scroll_tracks(&mut view, 1, 3, 2);
         assert_eq!(view.first_track, 0, "everything fits again");
+    }
+
+    #[test]
+    fn tempo_shows_fractions_only_when_there_are_some() {
+        assert_eq!(bpm(120.0), "120");
+        assert_eq!(bpm(122.5), "122.5");
+        assert_eq!(bpm(100.25), "100.25");
     }
 
     #[test]
