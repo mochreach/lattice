@@ -113,6 +113,25 @@ in the spirit of Teenage Engineering's gear: powerful enough, but not a wall of 
 
 The current `Synth` is a plain test instrument for exercising the engine, not a flagship.
 
+**Names.** Each engine is named with an indirect nod to a pioneer of electronic music: a studio,
+a record or an idea rather than the person's name, so it doesn't read as an endorsement. The name
+should hint at the engine's character. The docs can say where each name comes from. Candidates:
+
+| Name | Nod to | Engine idea |
+| --- | --- | --- |
+| Folly | Tower Folly, Daphne Oram's studio | drawn wavetables |
+| Maida | Maida Vale, home of the Radiophonic Workshop (Delia Derbyshire) | test oscillators and tape |
+| Switched | *Switched-On Bach* (Wendy Carlos) | big modular, ladder filter |
+| Nemo | Nemo Studios (Vangelis) | expressive brass and pads, shaped by pressure |
+| Oxygen | *Oxygène* (Jean-Michel Jarre) | string machine and phaser |
+| Seven | *Seven Waves* (Suzanne Ciani) | west-coast: wavefolding, low-pass gates, plucks |
+| Oblique | Oblique Strategies (Brian Eno) | generative pads that evolve on their own |
+| Snowflake | *Snowflakes Are Dancing* (Isao Tomita) | orchestral imitation, whistles and choirs |
+| Kepler | Laurie Spiegel's piece on the Voyager Golden Record | harmonic, slow-moving tones |
+| Klang | Kling Klang (Kraftwerk) | vocoder and speech |
+
+Physical-modelling engines (bars, strings, membranes, pipes) will want names in the same spirit.
+
 ## Performance
 
 How many voices and effects we can run, and on what hardware, depends on performance. So it's
