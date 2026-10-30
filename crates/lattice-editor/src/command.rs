@@ -33,6 +33,8 @@ pub enum Kind {
     /// A whole number from `min` to `max`, optionally signed. A `max` of [`ANY`] is no limit
     /// worth mentioning.
     Int { min: i64, max: i64 },
+    /// A number from `min` to `max` that may have a fractional part, such as a tempo of 122.5.
+    Decimal { min: i64, max: i64 },
     /// The rest of the line, as free text.
     Text,
 }
@@ -48,6 +50,14 @@ const fn int(name: &'static str, what: &'static str, min: i64, max: i64) -> Para
         name,
         what,
         kind: Kind::Int { min, max },
+    })
+}
+
+const fn decimal(name: &'static str, what: &'static str, min: i64, max: i64) -> Param {
+    Param::Value(Value {
+        name,
+        what,
+        kind: Kind::Decimal { min, max },
     })
 }
 
@@ -142,7 +152,7 @@ pub const COMMANDS: &[Spec] = &[
     Spec {
         name: "bpm",
         alias: None,
-        params: &[int("BPM", "bpm", 20, 400)],
+        params: &[decimal("BPM", "bpm", 20, 400)],
         describe: "tempo",
     },
     Spec {
@@ -207,7 +217,7 @@ impl Spec {
     pub fn description(&self) -> String {
         let range = self.params.iter().find_map(|p| match p {
             V(Value {
-                kind: Kind::Int { min, max },
+                kind: Kind::Int { min, max } | Kind::Decimal { min, max },
                 ..
             }) if *max != ANY => Some(format!(", {min} to {max}")),
             _ => None,
@@ -223,7 +233,9 @@ impl Value {
         match self.kind {
             Kind::Int { min: 0, max: ANY } => format!("{what} is a whole number"),
             Kind::Int { min, max: ANY } => format!("{what} is {min} or more"),
-            Kind::Int { min, max } => format!("{what} is {min} to {max}"),
+            Kind::Int { min, max } | Kind::Decimal { min, max } => {
+                format!("{what} is {min} to {max}")
+            }
             Kind::Text => format!("expected a {what}"),
         }
     }
@@ -243,10 +255,38 @@ impl Value {
             .filter(|n| (min..=max).contains(n))
     }
 
-    /// Whether typing more could make `word` valid: a lone `-`, or `4` on the way to `40`.
+    /// The number in `word`, if it is one and in range, fractional part and all.
+    fn decimal(&self, word: &str) -> Option<f64> {
+        let Kind::Decimal { min, max } = self.kind else {
+            return None;
+        };
+        let (whole, fraction) = word.split_once('.').unwrap_or((word, ""));
+        let digits = |s: &str| s.bytes().all(|b| b.is_ascii_digit());
+        if whole.is_empty() || !digits(whole) || !digits(fraction) {
+            return None;
+        }
+        word.parse()
+            .ok()
+            .filter(|n| (min as f64..=max as f64).contains(n))
+    }
+
+    /// Whether typing more could make `word` valid: a lone `-`, `4` on the way to `40`, or
+    /// `122.` on the way to `122.5`.
     fn could_become(&self, word: &str) -> bool {
-        let Kind::Int { min, max } = self.kind else {
-            return true;
+        let (min, max) = match self.kind {
+            Kind::Int { min, max } => (min, max),
+            Kind::Decimal { min, max } => {
+                let (whole, fraction) = word.split_once('.').unwrap_or((word, ""));
+                if !fraction.bytes().all(|b| b.is_ascii_digit()) {
+                    return false;
+                }
+                let as_int = Value {
+                    kind: Kind::Int { min, max },
+                    ..*self
+                };
+                return as_int.int(whole).is_some() || as_int.could_become(whole);
+            }
+            Kind::Text => return true,
         };
         let (negative, digits) = match word.strip_prefix('-') {
             Some(digits) => (true, digits),
@@ -412,6 +452,7 @@ struct Command {
 
 enum Arg {
     Int(i64),
+    Decimal(f64),
     Text(String),
 }
 
@@ -423,14 +464,21 @@ impl Command {
     {
         match &self.args[i] {
             Arg::Int(n) => T::try_from(*n).expect("checked against its range"),
-            Arg::Text(_) => unreachable!("value {i} of {} is text", self.spec.name),
+            _ => unreachable!("value {i} of {} isn't a whole number", self.spec.name),
+        }
+    }
+
+    fn decimal(&self, i: usize) -> f64 {
+        match &self.args[i] {
+            Arg::Decimal(n) => *n,
+            _ => unreachable!("value {i} of {} isn't a decimal", self.spec.name),
         }
     }
 
     fn text(&self, i: usize) -> &str {
         match &self.args[i] {
             Arg::Text(text) => text,
-            Arg::Int(_) => unreachable!("value {i} of {} is a number", self.spec.name),
+            _ => unreachable!("value {i} of {} is a number", self.spec.name),
         }
     }
 }
@@ -534,6 +582,7 @@ impl<'a> Words<'a> {
     fn value(&mut self, value: &Value) -> Result<Option<Arg>, Problem> {
         Ok(match value.kind {
             Kind::Int { .. } => self.int(value)?.map(Arg::Int),
+            Kind::Decimal { .. } => self.decimal(value)?.map(Arg::Decimal),
             Kind::Text => self.text(value)?.map(Arg::Text),
         })
     }
@@ -543,6 +592,17 @@ impl<'a> Words<'a> {
             return self.missing(value);
         };
         match value.int(word.text) {
+            Some(n) => Ok(Some(n)),
+            None if typing && value.could_become(word.text) => Ok(None),
+            None => Err(Problem::new(word.range, value.expected())),
+        }
+    }
+
+    fn decimal(&mut self, value: &Value) -> Result<Option<f64>, Problem> {
+        let Some((word, typing)) = self.next() else {
+            return self.missing(value);
+        };
+        match value.decimal(word.text) {
             Some(n) => Ok(Some(n)),
             None if typing && value.could_become(word.text) => Ok(None),
             None => Err(Problem::new(word.range, value.expected())),
@@ -606,7 +666,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Err(names.join(" · "))
         }
         "bpm" => {
-            let bpm = f64::from(command.int::<u16>(0));
+            let bpm = command.decimal(0);
             editor.bpm = bpm;
             Ok(vec![Effect::Bpm(bpm)])
         }
@@ -807,6 +867,20 @@ mod tests {
     #[test]
     fn descriptions_show_ranges() {
         assert_eq!(find("bpm").unwrap().description(), "tempo, 20 to 400");
+    }
+
+    #[test]
+    fn tempo_can_be_fractional() {
+        assert_eq!(problem("bpm 122.5"), None);
+        assert_eq!(problem("bpm 122."), None, "on the way to 122.5");
+        assert_eq!(
+            problem("bpm 122.x"),
+            Some(Problem::new(4..9, "bpm is 20 to 400"))
+        );
+        assert_eq!(
+            problem("bpm 500.5 "),
+            Some(Problem::new(4..9, "bpm is 20 to 400"))
+        );
         assert_eq!(find("len").unwrap().description(), "track length, 1 to 256");
         assert_eq!(find("name").unwrap().description(), "rename the track");
         assert_eq!(find("rev").unwrap().description(), "rule: play backwards");

@@ -1121,6 +1121,7 @@ mod tests {
         assert_eq!(e.grid.tracks[0].steps.len(), 4);
         assert_eq!(e.cursor.step, 3);
         assert_eq!(command(&mut e, "bpm 90"), [Effect::Bpm(90.0)]);
+        assert_eq!(command(&mut e, "bpm 122.5"), [Effect::Bpm(122.5)]);
         command(&mut e, "follow");
         assert!(!e.follow);
     }
