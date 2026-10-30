@@ -144,9 +144,9 @@ mod tests {
 
     #[test]
     fn repeats_arrive_at_the_delay_time_and_fade() {
-        let events = [param(TIME, 0.1), param(TONE, 16_000.0)];
-        // Set before any audio, so time and feedback start gliding from their defaults: let
-        // them settle first.
+        let events = [param(TIME, 0.1), param(TONE, 16_000.0), param(MIX, 1.0)];
+        // Set before any audio, so they start gliding from their defaults: let them settle
+        // first.
         let mut delay = Delay::new(1_000.0);
         let (mut l, mut r) = (vec![0.0; 100], vec![0.0; 100]);
         delay.process(&events, &mut l, &mut r);
@@ -180,8 +180,8 @@ mod tests {
     #[test]
     fn mix_at_zero_passes_the_input_through() {
         let dry = impulse(&[param(MIX, 0.0)], 2_000);
-        // Starting from fully wet, the dry signal glides in over 20 samples.
-        assert!((dry[0] - 0.05).abs() < 1e-6, "{}", dry[0]);
+        // Starting from the default mix, the rest of the dry signal glides in over 20 samples.
+        assert!((dry[0] - 0.715).abs() < 1e-6, "{}", dry[0]);
         assert_eq!(dry[1_500], 0.0);
     }
 

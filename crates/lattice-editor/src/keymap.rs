@@ -63,6 +63,8 @@ pub enum Action {
     LastStep,
     FirstTrack,
     LastTrack,
+    GotoMixer,
+    GotoPattern,
     NextBeat,
     PrevBeat,
     NextBar,
@@ -153,6 +155,8 @@ impl Action {
             Action::LastStep => "last step",
             Action::FirstTrack => "first track",
             Action::LastTrack => "last track",
+            Action::GotoMixer => "mixer page",
+            Action::GotoPattern => "pattern page",
             Action::NextBeat => "next beat",
             Action::PrevBeat => "previous beat",
             Action::NextBar => "next bar",
@@ -299,6 +303,8 @@ impl Default for Keymap {
                 (Char('e'), LastStep),
                 (Char('h'), FirstTrack),
                 (Char('l'), LastTrack),
+                (Char('m'), GotoMixer),
+                (Char('p'), GotoPattern),
             ],
         };
 

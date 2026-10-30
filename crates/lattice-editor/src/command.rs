@@ -168,31 +168,43 @@ pub const COMMANDS: &[Spec] = &[
         name: "level",
         alias: None,
         params: &[decimal("DB", "level", MIN_DB as i64, MAX_DB as i64)],
-        describe: "mixer: the selected tracks' level in dB",
+        describe: "mixer: level in dB, of the selected tracks or strip",
     },
     Spec {
         name: "pan",
         alias: None,
         params: &[int("PAN", "pan", -100, 100)],
-        describe: "mixer: pan the selected tracks, left to right",
+        describe: "mixer: pan, left to right",
     },
     Spec {
         name: "send",
         alias: None,
         params: &[decimal("DB", "send", MIN_DB as i64, MAX_DB as i64)],
-        describe: "mixer: the selected tracks' send to the delay, in dB",
+        describe: "mixer: send to the send bus, in dB",
     },
     Spec {
         name: "mute",
         alias: None,
         params: &[],
-        describe: "mixer: mute or unmute the selected tracks",
+        describe: "mixer: mute or unmute",
     },
     Spec {
         name: "solo",
         alias: None,
         params: &[],
-        describe: "mixer: solo or unsolo the selected tracks",
+        describe: "mixer: solo or unsolo",
+    },
+    Spec {
+        name: "set",
+        alias: None,
+        params: &[text("VALUE", "value")],
+        describe: "mixer: set the value under the cursor",
+    },
+    Spec {
+        name: "fx-add",
+        alias: None,
+        params: &[text("EFFECT", "effect")],
+        describe: "add an effect (delay) after the one under the cursor",
     },
     Spec {
         name: "track-add",
@@ -769,13 +781,13 @@ fn save_path(editor: &Editor, typed: &str) -> Result<PathBuf, String> {
 }
 
 /// Changes the mixer settings of every track the selections reach, as one undo step.
-fn mix(editor: &mut Editor, change: impl Fn(&mut Mix)) -> Vec<Effect> {
-    let tracks = editor.selected_tracks();
+fn mix(editor: &mut Editor, change: impl Fn(&mut Mix)) -> Result<Vec<Effect>, String> {
+    let tracks = editor.mix_targets()?;
     editor.checkpoint();
     for &t in &tracks {
         change(&mut editor.grid.tracks[t].mix);
     }
-    tracks.into_iter().map(Effect::TrackChanged).collect()
+    Ok(tracks.into_iter().map(Effect::TrackChanged).collect())
 }
 
 pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String> {
@@ -836,29 +848,42 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         "level" => {
             let level = command.decimal(0) as f32;
-            Ok(mix(editor, |mix| mix.level = level))
+            match editor.bus_under_cursor() {
+                Some(bus) => Ok(editor.set_bus_level(bus, level)),
+                None => mix(editor, |mix| mix.level = level),
+            }
         }
         "pan" => {
             let pan = command.int::<i32>(0) as f32 / 100.0;
-            Ok(mix(editor, |mix| mix.pan = pan))
+            mix(editor, |mix| mix.pan = pan)
         }
         "send" => {
             let send = command.decimal(0) as f32;
-            Ok(mix(editor, |mix| mix.send = send))
+            mix(editor, |mix| mix.send = send)
         }
         "mute" | "solo" => {
             let solo = command.spec.name == "solo";
             let flag = |mix: Mix| if solo { mix.solo } else { mix.mute };
             // Toggled together: if any selected track is off, they all go on.
-            let on = (editor.selected_tracks().iter()).any(|&t| !flag(editor.grid.tracks[t].mix));
-            Ok(mix(editor, |mix| {
+            let on = (editor.mix_targets()?.iter()).any(|&t| !flag(editor.grid.tracks[t].mix));
+            mix(editor, |mix| {
                 if solo {
                     mix.solo = on;
                 } else {
                     mix.mute = on;
                 }
-            }))
+            })
         }
+        "set" => {
+            let word = command.text(0);
+            let value: f32 = word
+                .parse()
+                .ok()
+                .filter(|v: &f32| v.is_finite())
+                .ok_or_else(|| format!("{word:?} isn't a number"))?;
+            editor.set_mixer_value(value)
+        }
+        "fx-add" => editor.add_effect(command.text(0)),
         "track-add" => {
             let tracks = &editor.grid.tracks;
             if tracks.len() >= MAX_TRACKS {

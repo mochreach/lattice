@@ -1,5 +1,6 @@
 //! A short demo song for hearing the engine and the pattern transforms.
 
+use lattice_core::fx::delay;
 use lattice_core::{Bus, Buses, Condition, Fx, FxKind, Grid, Rule, Step, Track, Transform};
 use lattice_engine::{AdsrParams, Patch, Wave};
 
@@ -60,9 +61,12 @@ fn chord_changes() -> Vec<Rule> {
 
 /// What a song starts with: a delay on the send bus, for tracks to send to.
 pub fn buses() -> Buses {
+    // A send bus carries only what's sent to it, so its delay is all echo.
+    let mut delay = Fx::new(FxKind::Delay);
+    delay.values[delay::MIX as usize] = 1.0;
     Buses {
         send: Bus {
-            effects: vec![Fx::new(FxKind::Delay)],
+            effects: vec![delay],
             ..Bus::default()
         },
         master: Bus::default(),

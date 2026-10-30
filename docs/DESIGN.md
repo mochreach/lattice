@@ -313,8 +313,26 @@ master bus → master effects → + click → tanh
   with `fetch_max`; the UI swaps it for 0 each frame and lets its meter fall at 30 dB/s.
 
 For now the only effect is a plain stereo delay (time, feedback, a lowpass in the feedback path,
-and mix), which the TUI puts on the send bus at start-up. Effect chains aren't in song files yet,
-and there's no view for editing them or their parameters; that comes with the mixer/effects view.
+and mix). New songs get one on the send bus, set fully wet; anywhere else it starts at 30% mix.
+
+The chains and the bus levels are part of the song (`Track::effects`, `Song::buses`), so they're
+saved and undone with everything else. An effect is stored as its kind and its parameter values,
+in the parameter's own units; `ParamInfo` (range, default, unit, linear or log curve) lives in
+`lattice-core`, so the editor can show and nudge values without knowing about DSP. After a change
+the TUI's `Mixer` brings the engine in line by diffing each chain: it keeps the slots that still
+match at either end, removes and inserts the ones between, and sends `SetParam` for values that
+differ.
+
+### The mixer page
+
+`gm` swaps the grid for a page of strips (`gp` goes back): a column per track, then the send and
+master buses, which always stay in view while the tracks scroll. Rows are level, pan, send, a
+meter, and the effects in each chain; below them is a panel with the settings of the effect under
+the cursor. `hjkl` move between strips and rows, `^a` `^x` nudge the value under the cursor (0.5
+dB, 5% of pan, or 1% of a setting's range, with counts), and `c` opens the command line with
+`set ` ready for an exact value. `:fx-add` inserts after the cursor and `d` removes the effect
+under it. The `t` menu still works on the cursor's track. The mixer cursor is the editor's state,
+like the pattern's, and isn't saved.
 
 ## Song files
 
@@ -364,7 +382,6 @@ gives every track a new id and returns `Effect::TracksChanged`, so the frontend 
 engine's tracks, however many the song has (up to `MAX_TRACKS`).
 
 Not in files yet:
-- **Effect chains and their parameters.** Only each track's mixer strip is saved.
 - **Instrument patches.** They're still defined in `lattice-tui`'s `demo.rs`, and a loaded song's
   tracks take the demo patches in turn, as new tracks do. Patches belong in the song once
   instruments can be chosen per track.

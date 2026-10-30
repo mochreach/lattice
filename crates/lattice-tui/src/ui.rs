@@ -2,28 +2,26 @@
 
 use std::time::Instant;
 
-use std::ops::Range;
-
-use lattice_core::{MAX_DB, MAX_TRACKS, MIN_DB, Step, Track, realise};
+use lattice_core::{MAX_TRACKS, Step, Track, realise};
 use lattice_editor::{
-    BEATS_PER_BAR, Completion, Cursor, Editor, Infobox, Mode, PromptKind, Selection, View,
+    BEATS_PER_BAR, Completion, Cursor, Editor, Infobox, Mode, Page, PromptKind, Selection, View,
 };
-use lattice_engine::Status;
+use lattice_engine::{Chain, Status};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Padding, Paragraph};
 
+use crate::bars;
+use crate::mixer_page;
 use crate::theme::Theme;
 
 /// Width of the step-number column.
-const GUTTER: usize = 4;
+pub(crate) const GUTTER: usize = 4;
 /// Width of a track's cells, not counting the gap after them.
-const CELL: usize = 11;
+pub(crate) const CELL: usize = 11;
 
-/// The quietest level a meter shows, in dB.
-const METER_FLOOR: f32 = -48.0;
 /// How fast a meter falls after a peak.
 const METER_FALL_DB_PER_SECOND: f32 = 30.0;
 
@@ -33,8 +31,12 @@ pub struct ViewState {
     /// The leftmost track shown, when they don't all fit.
     first_track: usize,
     /// Each track's meter, as a linear level, falling between peaks.
-    meters: [f32; MAX_TRACKS],
+    pub(crate) meters: [f32; MAX_TRACKS],
+    /// The send and master buses' meters.
+    pub(crate) bus_meters: [f32; 2],
     metered: Option<Instant>,
+    /// The leftmost track strip on the mixer page, when they don't all fit.
+    pub(crate) first_strip: usize,
 }
 
 impl ViewState {
@@ -48,6 +50,12 @@ impl ViewState {
         let fall = 10f32.powf(-METER_FALL_DB_PER_SECOND * elapsed / 20.0);
         for (track, meter) in self.meters.iter_mut().enumerate() {
             *meter = (*meter * fall).max(status.take_peak(track));
+        }
+        for (bus, meter) in [Chain::Send, Chain::Master]
+            .into_iter()
+            .zip(&mut self.bus_meters)
+        {
+            *meter = (*meter * fall).max(status.take_bus_peak(bus));
         }
     }
 }
@@ -67,7 +75,10 @@ pub fn draw(
     .areas(frame.area());
     frame.render_widget(Paragraph::new(header(editor, status, theme)), top);
     view.update_meters(status);
-    draw_grid(frame, grid, editor, status, theme, view);
+    match editor.page {
+        Page::Pattern => draw_grid(frame, grid, editor, status, theme, view),
+        Page::Mixer => mixer_page::draw(frame, grid, editor, theme, view),
+    }
     frame.render_widget(
         Paragraph::new(status_line(editor, theme, bottom.width)),
         bottom,
@@ -223,6 +234,10 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
     let modified = if editor.modified() { " [+]" } else { "" };
     Line::from(vec![
         Span::styled(" LATTICE ", theme.block(theme.accent)),
+        match editor.page {
+            Page::Pattern => Span::raw(" "),
+            Page::Mixer => Span::styled(" MIXER ", theme.block(theme.visual)),
+        },
         Span::raw(" "),
         transport,
         Span::raw("   "),
@@ -260,6 +275,16 @@ struct Column<'a> {
 }
 
 impl<'a> Column<'a> {
+    /// The track's colour, dimmed when it can't be heard.
+    fn style(&self) -> Style {
+        let style = Style::new().fg(self.colour);
+        if self.audible {
+            style
+        } else {
+            style.add_modifier(Modifier::DIM)
+        }
+    }
+
     fn new(
         index: usize,
         track: &'a Track,
@@ -421,8 +446,18 @@ fn header_lines(
                 })
                 .collect(),
         ),
-        line(columns.iter().flat_map(|c| level_bar(c, theme)).collect()),
-        line(columns.iter().flat_map(|c| pan_bar(c, theme)).collect()),
+        line(
+            columns
+                .iter()
+                .flat_map(|c| spaced(bars::level(c.track.mix.level, CELL, c.style(), theme)))
+                .collect(),
+        ),
+        line(
+            columns
+                .iter()
+                .flat_map(|c| spaced(bars::pan(c.track.mix.pan, CELL, c.style(), theme)))
+                .collect(),
+        ),
     ];
     let rule_rows = columns
         .iter()
@@ -442,112 +477,18 @@ fn header_lines(
                 .collect(),
         ));
     }
-    lines.push(line(columns.iter().flat_map(|c| meter(c, theme)).collect()));
+    lines.push(line(
+        columns
+            .iter()
+            .flat_map(|c| spaced(bars::meter(c.meter, CELL, c.colour, theme)))
+            .collect(),
+    ));
     lines
 }
 
-/// The track's level as a fader: filled from the left, from -60 dB to +6 dB.
-fn level_bar(c: &Column, theme: &Theme) -> Vec<Span<'static>> {
-    let level = c.track.mix.level;
-    let filled = (level - MIN_DB) / (MAX_DB - MIN_DB) * CELL as f32;
-    bar(0.0..filled, &level_label(level), c, theme)
-}
-
-/// The track's pan: filled from the centre out to the side it's panned to.
-fn pan_bar(c: &Column, theme: &Theme) -> Vec<Span<'static>> {
-    let pan = c.track.mix.pan;
-    let centre = CELL as f32 / 2.0;
-    let to = centre + pan * centre;
-    bar(centre.min(to)..centre.max(to), &pan_label(pan), c, theme)
-}
-
-/// `0dB`, `-6.5dB`, or `off` at the bottom of the range.
-fn level_label(db: f32) -> String {
-    if db <= MIN_DB {
-        "off".to_string()
-    } else {
-        format!("{}dB", decibels(db))
-    }
-}
-
-/// `C`, `L40`, `R100`.
-fn pan_label(pan: f32) -> String {
-    match (pan * 100.0).round() as i32 {
-        0 => "C".to_string(),
-        p if p < 0 => format!("L{}", -p),
-        p => format!("R{p}"),
-    }
-}
-
-/// Left-aligned eighths of a cell, from one eighth to seven.
-const LEFT_EIGHTHS: [char; 7] = ['▏', '▎', '▍', '▌', '▋', '▊', '▉'];
-
-/// A bar across a track's cells, filled over `fill` (in cells, to an eighth of one at the ends),
-/// with `label` centred over it. Filled cells are reverse video, so the label reads on either
-/// part. The unfilled part is shaded like the beat rows, to show the bar's extent.
-fn bar(fill: Range<f32>, label: &str, c: &Column, theme: &Theme) -> Vec<Span<'static>> {
-    let mut style = Style::new().fg(c.colour);
-    if !c.audible {
-        style = style.add_modifier(Modifier::DIM);
-    }
-    let empty = theme.beat_row.map_or(style, |bg| style.bg(bg));
-    let full = style.add_modifier(Modifier::REVERSED);
-    let label: Vec<char> = label.chars().take(CELL).collect();
-    let start = (CELL - label.len()) / 2;
-    let mut spans: Vec<Span<'static>> = (0..CELL)
-        .map(|i| {
-            let x = i as f32;
-            let covered = (fill.end.min(x + 1.0) - fill.start.max(x)).clamp(0.0, 1.0);
-            if let Some(&ch) = i.checked_sub(start).and_then(|k| label.get(k)) {
-                let style = if covered >= 0.5 { full } else { empty };
-                return Span::styled(ch.to_string(), style.add_modifier(Modifier::BOLD));
-            }
-            let (ch, style) = if covered >= 0.875 {
-                (' ', full)
-            } else if covered < 0.125 {
-                (' ', empty)
-            } else if fill.start > x {
-                // Filled from the right of the cell: only an eighth and a half exist.
-                (if covered < 0.3 { '▕' } else { '▐' }, empty)
-            } else {
-                let eighths = (covered * 8.0).round() as usize;
-                (LEFT_EIGHTHS[eighths.clamp(1, 7) - 1], empty)
-            };
-            Span::styled(ch.to_string(), style)
-        })
-        .collect();
-    spans.push(Span::raw(" "));
-    spans
-}
-
-/// A level to a tenth of a decibel, without the fraction when it's whole: `-6`, `-6.5`, `3`.
-fn decibels(db: f32) -> String {
-    let tenths = (db * 10.0).round() as i32;
-    if tenths % 10 == 0 {
-        (tenths / 10).to_string()
-    } else {
-        format!("{:.1}", tenths as f32 / 10.0)
-    }
-}
-
-/// The underline under a track's header, lit from the left as loud as the track is playing.
-fn meter(c: &Column, theme: &Theme) -> [Span<'static>; 3] {
-    let db = 20.0 * c.meter.max(1e-6).log10();
-    let lit = (((db - METER_FLOOR) / -METER_FLOOR).clamp(0.0, 1.0) * CELL as f32).round() as usize;
-    // Red once it reaches full scale, where the output starts to saturate.
-    let colour = if c.meter >= 1.0 {
-        theme.error
-    } else {
-        c.colour
-    };
-    [
-        Span::styled("━".repeat(lit), Style::new().fg(colour)),
-        Span::styled(
-            "─".repeat(CELL - lit),
-            Style::new().fg(c.colour).add_modifier(Modifier::DIM),
-        ),
-        Span::raw(" "),
-    ]
+/// Spans followed by the gap between columns.
+fn spaced(spans: impl IntoIterator<Item = Span<'static>>) -> Vec<Span<'static>> {
+    spans.into_iter().chain([Span::raw(" ")]).collect()
 }
 
 fn grid_row(
@@ -695,6 +636,10 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
     }
 
     let (hints, style) = match &editor.mode {
+        Mode::Normal if editor.page == Page::Mixer => (
+            "hjkl move · C-a C-x adjust · c set · :fx-add · d remove · gp pattern".into(),
+            theme.dim,
+        ),
         Mode::Normal => (
             "v select · x rows · g goto · ] next · i insert · d delete · : command".into(),
             theme.dim,
@@ -740,7 +685,7 @@ fn bpm(bpm: f64) -> String {
 }
 
 /// Pads or truncates to exactly `width` characters.
-fn fit(text: &str, width: usize) -> String {
+pub(crate) fn fit(text: &str, width: usize) -> String {
     let mut s: String = text.chars().take(width).collect();
     let len = s.chars().count();
     s.extend(std::iter::repeat_n(' ', width - len));
@@ -764,7 +709,6 @@ fn note_name(pitch: u8) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lattice_core::Mix;
 
     #[test]
     fn note_names() {
@@ -792,59 +736,6 @@ mod tests {
         assert_eq!(bpm(120.0), "120");
         assert_eq!(bpm(122.5), "122.5");
         assert_eq!(bpm(100.25), "100.25");
-    }
-
-    #[test]
-    fn mix_labels() {
-        assert_eq!(level_label(0.0), "0dB");
-        assert_eq!(level_label(-6.5), "-6.5dB");
-        assert_eq!(level_label(MIN_DB), "off");
-        assert_eq!(pan_label(0.0), "C");
-        assert_eq!(pan_label(-0.4), "L40");
-        assert_eq!(pan_label(1.0), "R100");
-    }
-
-    #[test]
-    fn bars_fill_to_an_eighth_with_the_label_on_top() {
-        let track = Track {
-            name: "t".into(),
-            steps: vec![],
-            mix: Mix::default(),
-            effects: vec![],
-            rules: vec![],
-        };
-        let c = Column {
-            index: 0,
-            track: &track,
-            shown: vec![],
-            tails: vec![],
-            playhead: None,
-            pass: None,
-            colour: Color::Red,
-            audible: true,
-            meter: 0.0,
-        };
-        let theme = Theme::terminal();
-        let text = |spans: Vec<Span>| {
-            spans
-                .iter()
-                .map(|s| s.content.to_string())
-                .collect::<String>()
-        };
-        let reversed = |spans: &[Span]| {
-            spans
-                .iter()
-                .map(|s| s.style.add_modifier.contains(Modifier::REVERSED))
-                .collect::<Vec<_>>()
-        };
-
-        let spans = bar(0.0..2.5, "ab", &c, &theme);
-        assert_eq!(text(spans.clone()), "  ▌ ab      ");
-        assert_eq!(reversed(&spans)[..4], [true, true, false, false]);
-        // From the centre to the right.
-        let spans = bar(5.5..11.0, "", &c, &theme);
-        assert_eq!(text(spans.clone()), "     ▐      ");
-        assert!(reversed(&spans)[6..11].iter().all(|&r| r));
     }
 
     #[test]

@@ -13,10 +13,12 @@
 
 mod command;
 mod keymap;
+mod mixer;
 mod pattern;
 
 pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
 pub use keymap::{Action, Binding, Key, Keymap, Menu};
+pub use mixer::{MixerCursor, Page, Row, Strip};
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -271,6 +273,9 @@ pub struct Editor {
     saved: Saved,
     pub mode: Mode,
     pub view: View,
+    pub page: Page,
+    /// Where the cursor is on the mixer page; see [`Editor::mixer_cursor`].
+    mixer: MixerCursor,
     /// Octave of the lower piano row in insert mode.
     pub octave: u8,
     /// Steps to move after entering a note.
@@ -335,6 +340,8 @@ impl Editor {
             path: None,
             mode: Mode::Normal,
             view: View::Source,
+            page: Page::Pattern,
+            mixer: MixerCursor::default(),
             octave: 4,
             auto_step: 1,
             follow: true,
@@ -766,6 +773,11 @@ impl Editor {
     }
 
     fn act(&mut self, action: Action, n: usize) -> Vec<Effect> {
+        if self.page == Page::Mixer
+            && let Some(effects) = self.mixer_act(action, n)
+        {
+            return effects;
+        }
         if matches!(
             action,
             Action::Delete
@@ -972,6 +984,11 @@ impl Editor {
             Action::PasteTracksBefore => return self.paste_tracks(Place::Before),
             Action::MoveTrackLeft => return self.run_command("track-move -1"),
             Action::MoveTrackRight => return self.run_command("track-move 1"),
+            Action::GotoMixer => {
+                self.page = Page::Mixer;
+                self.mode = Mode::Normal;
+            }
+            Action::GotoPattern => self.page = Page::Pattern,
             Action::TogglePlay => return vec![Effect::TogglePlay],
             Action::ToggleView => {
                 self.view = match self.view {
@@ -1684,7 +1701,7 @@ mod tests {
     #[test]
     fn tab_completes_commands() {
         let mut e = editor();
-        keys(&mut e, ":f");
+        keys(&mut e, ":fo");
         assert_eq!(e.completions()[0].spec.name, "follow");
         e.handle(Key::Tab);
         let Mode::Command(prompt) = &e.mode else {

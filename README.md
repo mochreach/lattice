@@ -90,6 +90,7 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `space` | play / stop |
 | `tab` | show the pattern as written, or as it's playing this pass |
 | `:` | command line |
+| `gm` `gp` | the mixer page, back to the pattern |
 
 One deliberate departure from Helix: `space` is play / stop, as in every DAW, rather than a menu.
 
@@ -110,7 +111,9 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:bpm N`, `:step N`, `:oct N` | tempo, auto-step, keyboard octave |
 | `:click`, `:follow` | toggle the metronome, following the playhead |
 | `:name NAME` | rename the track |
-| `:level DB`, `:pan P`, `:send DB` | mixer, for every track the selections reach: level (-60 to 6 dB), pan (-100 left to 100 right), send to the delay (-60, off, to 6 dB) |
+| `:level DB`, `:pan P`, `:send DB` | mixer, for every track the selections reach: level (-60 to 6 dB), pan (-100 left to 100 right), send to the send bus (-60, off, to 6 dB); on the mixer page, `:level` sets a bus too |
+| `:set VALUE` | on the mixer page, set the value under the cursor (also `c`) |
+| `:fx-add EFFECT` | add an effect (only `delay` so far) after the mixer cursor, or at the end of this track's chain |
 | `:mute`, `:solo` | toggle mute or solo for every track the selections reach (also `tm`, `ts`) |
 | `:w [PATH]`, `:wq [PATH]` | save the song (to a `.lattice` file), save and quit |
 | `:o PATH`, `:o! PATH` | open a song, or start a new one at PATH; `!` discards unsaved changes |
@@ -124,6 +127,12 @@ Each track's header shows its level as a fader bar (-60 to +6 dB) and its pan as
 centre, each with its value written over it; `M` when it's muted and `S` when it's soloed; and a
 meter in place of the underline. Muted tracks, and tracks silenced by another's solo, are dimmed.
 Every track can send to a delay on the send bus; sends start off.
+
+The **mixer page** (`gm`) has a strip for each track and for the send and master buses: level,
+pan, send, a meter and its effects, with the settings of the effect under the cursor below.
+`h j k l` move, `^a` `^x` nudge the value under the cursor (with counts, so `10^a`), `c` types an
+exact one, `:fx-add delay` adds an effect after the cursor and `d` removes it. `tm` `ts` still
+mute and solo, and `gp` goes back to the pattern. Effects and bus levels are saved in the song.
 
 Tracks can be added, removed and moved while playing, and undo brings a removed track back with
 its notes and its instrument. When there are more than fit across the terminal, the grid scrolls

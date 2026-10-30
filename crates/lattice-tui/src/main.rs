@@ -1,8 +1,10 @@
 mod audio;
+mod bars;
 mod demo;
 mod file;
 mod keys;
 mod mixer;
+mod mixer_page;
 mod theme;
 mod tracks;
 mod ui;
