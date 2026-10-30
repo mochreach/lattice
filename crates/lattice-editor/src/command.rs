@@ -254,7 +254,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         return Ok(vec![]);
     };
     let args: Vec<&str> = words.collect();
-    let track = editor.cursor.track;
+    let track = editor.cursor().track;
     let spec = find(command).ok_or_else(|| format!("unknown command: {command}"))?;
 
     match spec.name {

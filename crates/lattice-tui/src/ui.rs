@@ -1,7 +1,9 @@
 //! Drawing the tracker.
 
 use lattice_core::{Step, Track, realise};
-use lattice_editor::{BEATS_PER_BAR, Completion, Editor, Infobox, Mode, View};
+use lattice_editor::{
+    BEATS_PER_BAR, Completion, Cursor, Editor, Infobox, Mode, PromptKind, Selection, View,
+};
 use lattice_engine::Status;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -285,10 +287,11 @@ fn scroll_to(
     longest: usize,
     playing: bool,
 ) {
-    let followed = columns[editor.cursor.track]
+    let cursor = editor.cursor();
+    let followed = columns[cursor.track]
         .playhead
         .filter(|_| editor.follow && playing);
-    let target = followed.unwrap_or(editor.cursor.step);
+    let target = followed.unwrap_or(cursor.step);
     if target < view.scroll {
         view.scroll = target;
     } else if rows > 0 && target >= view.scroll + rows {
@@ -381,7 +384,13 @@ fn grid_row(
         gutter_style.patch(band),
     )];
 
-    let selection = editor.selection();
+    // The selections crossing this row, so each cell only checks those.
+    let here: Vec<&Selection> = editor
+        .selections()
+        .iter()
+        .filter(|s| (s.region().first_step..=s.region().last_step).contains(&row))
+        .collect();
+    let primary = editor.cursor();
     for (i, c) in columns.iter().enumerate() {
         let Some(step) = c.shown.get(row) else {
             spans.push(Span::styled(" ".repeat(CELL + 1), band));
@@ -412,14 +421,21 @@ fn grid_row(
         }
         style = style.patch(band);
 
-        let is_cursor = editor.cursor.track == i && editor.cursor.step == row;
-        let selected = selection.contains(i, row);
-        if is_cursor {
-            style = theme.block(match editor.mode {
-                Mode::Insert => theme.accent,
-                Mode::Select => theme.visual,
-                _ => Color::Reset,
-            });
+        let at = |cursor: Cursor| cursor.track == i && cursor.step == row;
+        let mode_colour = match editor.mode {
+            Mode::Insert => theme.accent,
+            Mode::Select => theme.visual,
+            _ => Color::Reset,
+        };
+        let selected = here.iter().any(|s| s.region().contains(i, row));
+        if at(primary) {
+            style = theme.block(mode_colour);
+        } else if here.iter().any(|s| at(s.cursor)) {
+            // The other selections' cursors: marked, but not as a block like the primary's.
+            style = style.bg(theme.selection).patch(theme.secondary_cursor);
+            if mode_colour != Color::Reset {
+                style = style.fg(mode_colour);
+            }
         } else if c.playhead == Some(row) {
             style = theme.block(c.colour);
         } else if selected {
@@ -443,7 +459,10 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             let mut hint = hint.chars();
             let under_cursor = hint.next().unwrap_or(' ');
             vec![
-                Span::styled(format!(":{}", prompt.line), theme.text),
+                Span::styled(
+                    format!("{}{}", prompt.kind.label(), prompt.line),
+                    theme.text,
+                ),
                 Span::styled(
                     under_cursor.to_string(),
                     theme.faint.add_modifier(Modifier::REVERSED),
@@ -452,6 +471,14 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             ]
         }
     };
+    // Like Helix: which selection is primary, and how many there are.
+    let selections = editor.selections().len();
+    if selections > 1 {
+        left.push(Span::styled(
+            format!(" {}/{selections} sels", editor.primary() + 1),
+            theme.text,
+        ));
+    }
     if let Some(message) = &editor.message {
         left.push(Span::styled(
             format!(" {message}"),
@@ -465,6 +492,9 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
         Mode::Normal => "v select · x rows · g goto · ] next · i insert · d delete · : command",
         Mode::Insert => "z–m q–u notes · [ ] octave · ⌫ clear · esc done",
         Mode::Select => "hjkl extend · ; collapse · y copy · d delete · r fill · C-a C-x transpose",
+        Mode::Command(prompt) if prompt.kind != PromptKind::Command => {
+            "C C# Eb4 C-4 * · ret select · esc cancel"
+        }
         Mode::Command(_) => editor
             .command_spec()
             .map_or("tab complete · ret run · esc cancel", |spec| {
