@@ -914,8 +914,12 @@ impl Editor {
                 self.octave = self.octave.saturating_sub(1);
                 self.message = Some(format!("octave {}", self.octave));
             }
-            Action::ToggleMute => return command::run(self, "mute").unwrap_or_default(),
-            Action::ToggleSolo => return command::run(self, "solo").unwrap_or_default(),
+            Action::ToggleMute => return self.run_command("mute"),
+            Action::ToggleSolo => return self.run_command("solo"),
+            Action::AddTrack => return self.run_command("track-add"),
+            Action::RemoveTrack => return self.run_command("track-remove"),
+            Action::MoveTrackLeft => return self.run_command("track-move -1"),
+            Action::MoveTrackRight => return self.run_command("track-move 1"),
             Action::TogglePlay => return vec![Effect::TogglePlay],
             Action::ToggleView => {
                 self.view = match self.view {
@@ -926,6 +930,14 @@ impl Editor {
             Action::Quit => return vec![Effect::Quit],
         }
         vec![]
+    }
+
+    /// Runs a command line for a key, showing any error as `:` would.
+    fn run_command(&mut self, line: &str) -> Vec<Effect> {
+        command::run(self, line).unwrap_or_else(|message| {
+            self.message = Some(message);
+            vec![]
+        })
     }
 
     fn track_len(&self, track: usize) -> usize {
@@ -1714,6 +1726,21 @@ mod tests {
         assert!(e.grid.tracks[0].mix.mute && !e.grid.tracks[1].mix.mute);
         keys(&mut e, "%ts");
         assert!(e.grid.tracks.iter().all(|t| t.mix.solo));
+
+        // And `ta`, `td`, `th`, `tl` add, remove and move tracks.
+        keys(&mut e, ";gh");
+        assert_eq!(keys(&mut e, "ta"), [Effect::TracksChanged]);
+        assert_eq!(e.grid.tracks.len(), 3);
+        assert_eq!(e.cursor().track, 1, "on the new track");
+        keys(&mut e, "tl");
+        assert_eq!(e.grid.tracks[2].name, "track 3");
+        keys(&mut e, "th");
+        assert_eq!(e.grid.tracks[1].name, "track 3");
+        keys(&mut e, "td");
+        assert_eq!(e.grid.tracks.len(), 2);
+        keys(&mut e, "tdtd");
+        assert_eq!(e.grid.tracks.len(), 1);
+        assert!(e.message.is_some(), "can't remove the only track");
 
         e.handle(Key::Char(':'));
         keys(&mut e, "level 7");

@@ -122,6 +122,10 @@ pub enum Action {
     /// Mute or unmute every track the selections reach.
     ToggleMute,
     ToggleSolo,
+    AddTrack,
+    RemoveTrack,
+    MoveTrackLeft,
+    MoveTrackRight,
     TogglePlay,
     ToggleView,
     Quit,
@@ -190,6 +194,10 @@ impl Action {
             Action::KeyboardOctaveDown => "keyboard octave down",
             Action::ToggleMute => "mute / unmute",
             Action::ToggleSolo => "solo / unsolo",
+            Action::AddTrack => "add a track after this one",
+            Action::RemoveTrack => "remove this track",
+            Action::MoveTrackLeft => "move track left",
+            Action::MoveTrackRight => "move track right",
             Action::TogglePlay => "play / stop",
             Action::ToggleView => "written or playing pattern",
             Action::Quit => "quit",
@@ -304,7 +312,14 @@ impl Default for Keymap {
         // Not Helix's `t` (select till a character), which has no use on a grid.
         let track = Menu {
             title: "track",
-            items: vec![(Char('m'), ToggleMute), (Char('s'), ToggleSolo)],
+            items: vec![
+                (Char('m'), ToggleMute),
+                (Char('s'), ToggleSolo),
+                (Char('a'), AddTrack),
+                (Char('d'), RemoveTrack),
+                (Char('h'), MoveTrackLeft),
+                (Char('l'), MoveTrackRight),
+            ],
         };
 
         let normal = common
