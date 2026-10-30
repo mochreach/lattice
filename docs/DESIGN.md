@@ -202,7 +202,9 @@ MIDI keyboard avoids the problem entirely.
 
 Colours come from a `Theme`. The default uses the terminal's own 16-colour palette and default
 foreground and background. Highlighted blocks (cursor, playheads, badges) use reverse video, so they
-stay readable on light and dark terminals alike. Themes that set every colour can come later.
+stay readable on light and dark terminals alike. At startup Lattice asks the terminal for its actual
+background and foreground colours (OSC 10/11) and shades beat rows a few percent from one towards
+the other; if the terminal doesn't answer, beat rows are left unshaded. Themes that set every colour can come later.
 
 Next for the UI: saving and loading songs, adding and removing tracks, effect columns, a help
 screen, loading keymaps from a config file, and themes from a config file.

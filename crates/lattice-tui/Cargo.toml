@@ -18,3 +18,4 @@ lattice-core.workspace = true
 lattice-editor.workspace = true
 lattice-engine.workspace = true
 ratatui = "0.30"
+terminal-colorsaurus = "1.0.3"

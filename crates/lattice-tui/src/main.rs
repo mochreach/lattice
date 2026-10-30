@@ -31,18 +31,23 @@ fn main() -> Result<()> {
         audio.handle.send(Command::SetClick(false));
     }
 
+    let theme = Theme::detect();
     let mut terminal = ratatui::init();
-    let result = run(&mut terminal, &mut editor, &mut audio.handle);
+    let result = run(&mut terminal, &mut editor, &mut audio.handle, &theme);
     ratatui::restore();
     result
 }
 
-fn run(terminal: &mut DefaultTerminal, editor: &mut Editor, handle: &mut Handle) -> Result<()> {
-    let theme = Theme::default();
+fn run(
+    terminal: &mut DefaultTerminal,
+    editor: &mut Editor,
+    handle: &mut Handle,
+    theme: &Theme,
+) -> Result<()> {
     let mut view = ui::ViewState::default();
     loop {
         handle.collect_garbage();
-        terminal.draw(|frame| ui::draw(frame, editor, handle.status(), &theme, &mut view))?;
+        terminal.draw(|frame| ui::draw(frame, editor, handle.status(), theme, &mut view))?;
 
         if !event::poll(FRAME)? {
             continue;
