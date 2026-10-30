@@ -63,6 +63,10 @@ pub enum Action {
     LastStep,
     FirstTrack,
     LastTrack,
+    NextBeat,
+    PrevBeat,
+    NextBar,
+    PrevBar,
     NextNote,
     PrevNote,
     /// Select whole rows across every track, or extend a row selection downwards.
@@ -119,6 +123,10 @@ impl Action {
             Action::LastStep => "last step",
             Action::FirstTrack => "first track",
             Action::LastTrack => "last track",
+            Action::NextBeat => "next beat",
+            Action::PrevBeat => "previous beat",
+            Action::NextBar => "next bar",
+            Action::PrevBar => "previous bar",
             Action::NextNote => "next note",
             Action::PrevNote => "previous note",
             Action::SelectRows => "select rows",
@@ -230,8 +238,6 @@ impl Default for Keymap {
             (Esc, Escape),
             (Char(' '), TogglePlay),
             (Tab, ToggleView),
-            (Char('['), KeyboardOctaveDown),
-            (Char(']'), KeyboardOctaveUp),
             (Ctrl('c'), Quit),
         ];
 
@@ -242,6 +248,23 @@ impl Default for Keymap {
                 (Char('e'), LastStep),
                 (Char('h'), FirstTrack),
                 (Char('l'), LastTrack),
+            ],
+        };
+
+        let next = Menu {
+            title: "next",
+            items: vec![
+                (Char('b'), NextBeat),
+                (Char('m'), NextBar),
+                (Char('n'), NextNote),
+            ],
+        };
+        let previous = Menu {
+            title: "previous",
+            items: vec![
+                (Char('b'), PrevBeat),
+                (Char('m'), PrevBar),
+                (Char('n'), PrevNote),
             ],
         };
 
@@ -286,12 +309,21 @@ impl Default for Keymap {
                 (Char('-'), Shorter),
             ])
             .map(|(key, action)| (key, Binding::Action(action)))
-            .chain([(Char('g'), Binding::Menu(goto))])
+            .chain([
+                (Char('g'), Binding::Menu(goto)),
+                (Char(']'), Binding::Menu(next)),
+                (Char('['), Binding::Menu(previous)),
+            ])
             .collect();
 
         let insert = common
             .into_iter()
-            .chain([(Backspace, ClearAdvance), (Key::Delete, ClearAdvance)])
+            .chain([
+                (Backspace, ClearAdvance),
+                (Key::Delete, ClearAdvance),
+                (Char('['), KeyboardOctaveDown),
+                (Char(']'), KeyboardOctaveUp),
+            ])
             .collect();
 
         Self {

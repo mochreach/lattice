@@ -42,6 +42,8 @@ Helix (`4j`, `3+`). Prefix keys such as `g` show what can follow them in a box i
 | `w` `b` | next / previous note |
 | `^u` `^d`, `^b` `^f` | up / down half a page, a page |
 | `gg` `ge` `gh` `gl` | first step, last step, first track, last track |
+| `]b` `[b`, `]m` `[m` | next / previous beat, bar |
+| `]n` `[n` | next / previous note, like `w` `b` |
 | `v` | select mode: motions extend the selection |
 | `x` | select whole rows across every track; again to extend a row |
 | `%` | select everything |
@@ -64,15 +66,17 @@ Helix (`4j`, `3+`). Prefix keys such as `g` show what can follow them in a box i
 | --- | --- |
 | `space` | play / stop |
 | `tab` | show the pattern as written, or as it's playing this pass |
-| `[` `]` | keyboard octave |
 | `:` | command line |
 
-Two deliberate departures from Helix: `space` is play / stop, as in every DAW, rather than a
-menu, and `[` `]` change the keyboard octave.
+One deliberate departure from Helix: `space` is play / stop, as in every DAW, rather than a menu.
 
 In **insert mode**, the bottom two letter rows are a piano: `z`–`m` from C in the current
-octave, `q`–`u` an octave up. Each note is entered and the cursor moves on. `⌫` clears a step,
-and `esc` returns to normal mode.
+octave, `q`–`u` an octave up, and `[` `]` change the octave. Each note is entered and the cursor
+moves on. `⌫` clears a step, and `esc` returns to normal mode.
+
+On the **command line**, commands that fuzzy-match what you've typed are listed above it, and
+`tab` cycles through them. Once the command is named, the parameters still to type are shown
+faintly after the cursor, and shrink as you type over them.
 
 | Commands | |
 | --- | --- |

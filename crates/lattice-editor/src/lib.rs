@@ -12,7 +12,7 @@
 mod command;
 mod keymap;
 
-pub use command::HELP;
+pub use command::{COMMANDS, Completion, Param, Spec};
 pub use keymap::{Action, Binding, Key, Keymap, Menu};
 
 use lattice_core::{Grid, MAX_STEPS, Note, Step};
@@ -20,6 +20,7 @@ use lattice_core::{Grid, MAX_STEPS, Note, Step};
 const UNDO_LIMIT: usize = 500;
 const PAGE: usize = 16;
 const DEFAULT_VELOCITY: u8 = 100;
+pub const BEATS_PER_BAR: usize = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mode {
@@ -29,7 +30,17 @@ pub enum Mode {
     /// Typing on the piano keys enters notes.
     Insert,
     /// Typing a `:` command.
-    Command(String),
+    Command(Prompt),
+}
+
+/// The `:` command line being typed.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Prompt {
+    pub line: String,
+    /// The completion `tab` has filled in, while cycling through them.
+    pub selected: Option<usize>,
+    /// What was typed before cycling, which completions are matched against.
+    typed: String,
 }
 
 /// Which version of the pattern the grid shows.
@@ -199,6 +210,31 @@ impl Editor {
         }
     }
 
+    /// Commands matching what's typed on the command line, best first. Empty once the command
+    /// name is finished.
+    pub fn completions(&self) -> Vec<Completion> {
+        match &self.mode {
+            Mode::Command(prompt) if !prompt.line.contains(' ') => command::complete(&prompt.typed),
+            _ => vec![],
+        }
+    }
+
+    /// Placeholders for the parameters still to type, shown faintly after the cursor.
+    pub fn command_hint(&self) -> Option<String> {
+        match &self.mode {
+            Mode::Command(prompt) => command::hint(&prompt.line),
+            _ => None,
+        }
+    }
+
+    /// The command named on the command line, once there is one.
+    pub fn command_spec(&self) -> Option<&'static Spec> {
+        match &self.mode {
+            Mode::Command(prompt) => command::find(prompt.line.split(' ').next()?),
+            _ => None,
+        }
+    }
+
     pub fn handle(&mut self, key: Key) -> Vec<Effect> {
         self.message = None;
         match self.mode {
@@ -210,7 +246,16 @@ impl Editor {
 
     fn normal_key(&mut self, key: Key) -> Vec<Effect> {
         match self.pending.take() {
-            Some(Pending::Replace) => return self.replace(key),
+            Some(Pending::Replace) => {
+                // Octave keys work while choosing the note.
+                if let Some(&action @ (Action::KeyboardOctaveUp | Action::KeyboardOctaveDown)) =
+                    self.keymap.insert.get(&key)
+                {
+                    self.pending = Some(Pending::Replace);
+                    return self.act(action, 1);
+                }
+                return self.replace(key);
+            }
             Some(Pending::Menu(prefix)) => {
                 let n = self.count.take().unwrap_or(1);
                 let action = match self.keymap.normal.get(&prefix) {
@@ -279,19 +324,35 @@ impl Editor {
     }
 
     fn command_key(&mut self, key: Key) -> Vec<Effect> {
-        let Mode::Command(line) = &mut self.mode else {
+        let Mode::Command(prompt) = &mut self.mode else {
             return vec![];
         };
         match key {
             Key::Esc => self.mode = Mode::Normal,
             Key::Backspace => {
-                if line.pop().is_none() {
+                if prompt.line.pop().is_none() {
                     self.mode = Mode::Normal;
+                } else {
+                    prompt.typed = prompt.line.clone();
+                    prompt.selected = None;
                 }
             }
-            Key::Char(c) => line.push(c),
+            Key::Char(c) => {
+                prompt.line.push(c);
+                prompt.typed = prompt.line.clone();
+                prompt.selected = None;
+            }
+            // Cycle through the completions, filling each in.
+            Key::Tab if !prompt.line.contains(' ') => {
+                let completions = command::complete(&prompt.typed);
+                if !completions.is_empty() {
+                    let next = prompt.selected.map_or(0, |i| (i + 1) % completions.len());
+                    prompt.selected = Some(next);
+                    prompt.line = completions[next].spec.name.into();
+                }
+            }
             Key::Enter => {
-                let line = std::mem::take(line);
+                let line = std::mem::take(&mut prompt.line);
                 self.mode = Mode::Normal;
                 match command::run(self, &line) {
                     Ok(effects) => return effects,
@@ -334,6 +395,16 @@ impl Editor {
             Action::LastStep => self.move_to(self.cursor.track, usize::MAX),
             Action::FirstTrack => self.move_to(0, self.cursor.step),
             Action::LastTrack => self.move_to(last_track, self.cursor.step),
+            Action::NextBeat => self.move_to(self.cursor.track, self.next_multiple(self.beat(), n)),
+            Action::PrevBeat => self.move_to(self.cursor.track, self.prev_multiple(self.beat(), n)),
+            Action::NextBar => self.move_to(
+                self.cursor.track,
+                self.next_multiple(self.beat() * BEATS_PER_BAR, n),
+            ),
+            Action::PrevBar => self.move_to(
+                self.cursor.track,
+                self.prev_multiple(self.beat() * BEATS_PER_BAR, n),
+            ),
             Action::NextNote => {
                 for _ in 0..n {
                     if let Some(step) = self.find_note(true) {
@@ -386,7 +457,7 @@ impl Editor {
                 self.insert_at(region.first_track, region.first_step);
                 return effects;
             }
-            Action::CommandLine => self.mode = Mode::Command(String::new()),
+            Action::CommandLine => self.mode = Mode::Command(Prompt::default()),
             Action::Escape => self.mode = Mode::Normal,
             Action::Delete | Action::Clear => {
                 if action == Action::Delete {
@@ -504,6 +575,21 @@ impl Editor {
             .saturating_add_signed(tracks)
             .min(last_track);
         self.move_to(track, self.cursor.step.saturating_add_signed(steps));
+    }
+
+    fn beat(&self) -> usize {
+        (self.grid.steps_per_beat as usize).max(1)
+    }
+
+    /// The `n`th step after the cursor that's a multiple of `unit`.
+    fn next_multiple(&self, unit: usize, n: usize) -> usize {
+        (self.cursor.step / unit + n) * unit
+    }
+
+    /// The `n`th step before the cursor that's a multiple of `unit`.
+    fn prev_multiple(&self, unit: usize, n: usize) -> usize {
+        let start = self.cursor.step.div_ceil(unit);
+        start.saturating_sub(n) * unit
     }
 
     /// The next or previous step with a note on the cursor's track.
@@ -878,6 +964,53 @@ mod tests {
         assert_eq!(e.infobox().unwrap().title, "replace");
         keys(&mut e, "q");
         assert_eq!(&pitches(&e, 0)[..4], [Some(72), Some(72), Some(72), None]);
+    }
+
+    #[test]
+    fn beats_and_bars() {
+        let mut e = editor();
+        keys(&mut e, "]b");
+        assert_eq!(e.cursor.step, 4);
+        keys(&mut e, "j]b");
+        assert_eq!(e.cursor.step, 8);
+        keys(&mut e, "[b");
+        assert_eq!(e.cursor.step, 4);
+        keys(&mut e, "j[b");
+        assert_eq!(e.cursor.step, 4, "back to the start of this beat first");
+        keys(&mut e, "]m");
+        assert_eq!(e.cursor.step, 15, "clamped to the track");
+        keys(&mut e, "[m");
+        assert_eq!(e.cursor.step, 0);
+        keys(&mut e, "2]b");
+        assert_eq!(e.cursor.step, 8);
+        assert_eq!(
+            e.octave, 4,
+            "brackets don't change the octave in normal mode"
+        );
+        keys(&mut e, "i]");
+        assert_eq!(e.octave, 5);
+    }
+
+    #[test]
+    fn tab_completes_commands() {
+        let mut e = editor();
+        keys(&mut e, ":f");
+        assert_eq!(e.completions()[0].spec.name, "follow");
+        e.handle(Key::Tab);
+        let Mode::Command(prompt) = &e.mode else {
+            panic!("left command mode")
+        };
+        assert_eq!(prompt.line, "follow");
+        assert_eq!(
+            e.completions()[0].spec.name,
+            "follow",
+            "list stays while cycling"
+        );
+        keys(&mut e, " ");
+        assert!(e.completions().is_empty());
+        assert_eq!(e.command_spec().unwrap().name, "follow");
+        e.handle(Key::Enter);
+        assert!(!e.follow);
     }
 
     #[test]

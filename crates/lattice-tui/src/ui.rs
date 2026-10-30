@@ -1,7 +1,7 @@
 //! Drawing the tracker.
 
 use lattice_core::{Step, Track, realise};
-use lattice_editor::{Editor, HELP, Infobox, Mode, View};
+use lattice_editor::{BEATS_PER_BAR, Completion, Editor, Infobox, Mode, View};
 use lattice_engine::Status;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -15,7 +15,6 @@ use crate::theme::Theme;
 const GUTTER: usize = 4;
 /// Width of a track's cells, not counting the gap after them.
 const CELL: usize = 11;
-const BEATS_PER_BAR: usize = 4;
 
 #[derive(Debug, Default)]
 pub struct ViewState {
@@ -44,6 +43,87 @@ pub fn draw(
     if let Some(infobox) = editor.infobox() {
         draw_infobox(frame, grid, &infobox, theme);
     }
+    if let Mode::Command(prompt) = &editor.mode {
+        let completions = editor.completions();
+        if !completions.is_empty() {
+            draw_completions(frame, grid, &completions, prompt.selected, theme);
+        }
+    }
+}
+
+/// Most completions shown at once.
+const COMPLETIONS: usize = 10;
+
+/// Commands matching what's typed, above the command line, with the matched letters picked out.
+fn draw_completions(
+    frame: &mut Frame,
+    area: Rect,
+    completions: &[Completion],
+    selected: Option<usize>,
+    theme: &Theme,
+) {
+    let name_width = completions
+        .iter()
+        .map(|c| c.spec.name.len())
+        .max()
+        .unwrap_or(0);
+    let signature_width = completions
+        .iter()
+        .map(|c| c.spec.signature().chars().count())
+        .max()
+        .unwrap_or(0);
+    // Keep the selected one in view while cycling.
+    let first = selected.map_or(0, |s| (s + 1).saturating_sub(COMPLETIONS));
+    let lines: Vec<Line> = completions
+        .iter()
+        .enumerate()
+        .skip(first)
+        .take(COMPLETIONS)
+        .map(|(i, c)| {
+            let mut spans: Vec<Span> = c
+                .spec
+                .name
+                .char_indices()
+                .map(|(j, ch)| {
+                    let style = if c.matched.contains(&j) {
+                        Style::new().fg(theme.accent).add_modifier(Modifier::BOLD)
+                    } else {
+                        theme.text
+                    };
+                    Span::styled(ch.to_string(), style)
+                })
+                .collect();
+            spans.push(Span::raw(" ".repeat(name_width - c.spec.name.len() + 2)));
+            spans.push(Span::styled(
+                format!("{:<signature_width$}  ", c.spec.signature()),
+                theme.faint,
+            ));
+            spans.push(Span::styled(c.spec.describe, theme.dim));
+            let line = Line::from(spans);
+            if selected == Some(i) {
+                line.style(Style::new().bg(theme.selection))
+            } else {
+                line
+            }
+        })
+        .collect();
+    let width = (lines.iter().map(Line::width).max().unwrap_or(0) as u16 + 4).min(area.width);
+    let height = (lines.len() as u16 + 2).min(area.height);
+    let corner = Rect {
+        x: area.x,
+        y: area.bottom().saturating_sub(height),
+        width,
+        height,
+    };
+    frame.render_widget(Clear, corner);
+    frame.render_widget(
+        Paragraph::new(lines).block(
+            Block::bordered()
+                .border_style(theme.dim)
+                .padding(Padding::horizontal(1)),
+        ),
+        corner,
+    );
 }
 
 /// Like Helix's: the keys that can follow a prefix key, in the bottom-right corner above the
@@ -357,10 +437,20 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
         Mode::Normal => vec![Span::styled(" NORMAL ", theme.block(Color::DarkGray))],
         Mode::Insert => vec![Span::styled(" INSERT ", theme.block(theme.accent))],
         Mode::Select => vec![Span::styled(" SELECT ", theme.block(theme.visual))],
-        Mode::Command(line) => vec![
-            Span::styled(format!(":{line}"), theme.text),
-            Span::styled(" ", theme.text.add_modifier(Modifier::REVERSED)),
-        ],
+        Mode::Command(prompt) => {
+            // The parameters still to type sit faintly after the cursor, to be typed over.
+            let hint = editor.command_hint().unwrap_or_default();
+            let mut hint = hint.chars();
+            let under_cursor = hint.next().unwrap_or(' ');
+            vec![
+                Span::styled(format!(":{}", prompt.line), theme.text),
+                Span::styled(
+                    under_cursor.to_string(),
+                    theme.faint.add_modifier(Modifier::REVERSED),
+                ),
+                Span::styled(hint.collect::<String>(), theme.faint),
+            ]
+        }
     };
     if let Some(message) = &editor.message {
         left.push(Span::styled(
@@ -371,11 +461,15 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
         left.push(Span::styled(format!(" {count}"), theme.text));
     }
 
-    let hints = match editor.mode {
-        Mode::Normal => "v select · x rows · g goto · i insert · d delete · : command · space play",
+    let hints = match &editor.mode {
+        Mode::Normal => "v select · x rows · g goto · ] next · i insert · d delete · : command",
         Mode::Insert => "z–m q–u notes · [ ] octave · ⌫ clear · esc done",
         Mode::Select => "hjkl extend · ; collapse · y copy · d delete · r fill · C-a C-x transpose",
-        Mode::Command(_) => HELP,
+        Mode::Command(_) => editor
+            .command_spec()
+            .map_or("tab complete · ret run · esc cancel", |spec| {
+                spec.describe
+            }),
     };
     let used: usize = left.iter().map(|s| s.content.chars().count()).sum();
     let room = (width as usize).saturating_sub(used + 1);
