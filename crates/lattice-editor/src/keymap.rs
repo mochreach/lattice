@@ -1,12 +1,14 @@
-//! Keys, the actions they trigger, and the default bindings.
+//! Keys, the actions they trigger, and the default bindings, modelled on Helix.
 
 use std::collections::HashMap;
+use std::fmt;
 
 /// A key press, independent of any terminal library. Shifted letters arrive as uppercase chars.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Key {
     Char(char),
     Ctrl(char),
+    Alt(char),
     Esc,
     Enter,
     Backspace,
@@ -22,25 +24,70 @@ pub enum Key {
     End,
 }
 
+impl fmt::Display for Key {
+    /// Helix-style names: `g`, `C-a`, `A-;`, `esc`.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Key::Char(' ') => f.write_str("space"),
+            Key::Char(c) => write!(f, "{c}"),
+            Key::Ctrl(c) => write!(f, "C-{c}"),
+            Key::Alt(c) => write!(f, "A-{c}"),
+            Key::Esc => f.write_str("esc"),
+            Key::Enter => f.write_str("ret"),
+            Key::Backspace => f.write_str("backspace"),
+            Key::Delete => f.write_str("del"),
+            Key::Tab => f.write_str("tab"),
+            Key::Up => f.write_str("up"),
+            Key::Down => f.write_str("down"),
+            Key::Left => f.write_str("left"),
+            Key::Right => f.write_str("right"),
+            Key::PageUp => f.write_str("pageup"),
+            Key::PageDown => f.write_str("pagedown"),
+            Key::Home => f.write_str("home"),
+            Key::End => f.write_str("end"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     Left,
     Right,
     Up,
     Down,
-    Top,
-    Bottom,
+    HalfPageUp,
+    HalfPageDown,
     PageUp,
     PageDown,
+    FirstStep,
+    LastStep,
+    FirstTrack,
+    LastTrack,
+    NextNote,
+    PrevNote,
+    /// Select whole rows across every track, or extend a row selection downwards.
+    SelectRows,
+    SelectAll,
+    Collapse,
+    Flip,
+    SelectMode,
     Insert,
-    Visual,
+    Append,
+    Change,
     CommandLine,
     Escape,
+    /// Copy, then clear.
+    Delete,
+    /// Clear without copying.
     Clear,
     /// Insert mode: clear the step and move on.
     ClearAdvance,
     Yank,
-    Paste,
+    PasteAfter,
+    PasteBefore,
+    ReplaceWithYanked,
+    /// Fill the selection with the next note played.
+    Replace,
     Undo,
     Redo,
     NoteUp,
@@ -53,30 +100,45 @@ pub enum Action {
     KeyboardOctaveDown,
     TogglePlay,
     ToggleView,
-    ToggleFollow,
     Quit,
 }
 
 impl Action {
-    /// One-line description, for help and hints.
+    /// One-line description, for the infobox and help.
     pub fn describe(self) -> &'static str {
         match self {
             Action::Left => "previous track",
             Action::Right => "next track",
             Action::Up => "previous step",
             Action::Down => "next step",
-            Action::Top => "first step",
-            Action::Bottom => "last step",
-            Action::PageUp => "up 16 steps",
-            Action::PageDown => "down 16 steps",
-            Action::Insert => "insert mode: play notes into the track",
-            Action::Visual => "select steps",
+            Action::HalfPageUp => "up half a page",
+            Action::HalfPageDown => "down half a page",
+            Action::PageUp => "up a page",
+            Action::PageDown => "down a page",
+            Action::FirstStep => "first step",
+            Action::LastStep => "last step",
+            Action::FirstTrack => "first track",
+            Action::LastTrack => "last track",
+            Action::NextNote => "next note",
+            Action::PrevNote => "previous note",
+            Action::SelectRows => "select rows",
+            Action::SelectAll => "select everything",
+            Action::Collapse => "collapse selection",
+            Action::Flip => "flip selection",
+            Action::SelectMode => "select mode",
+            Action::Insert => "insert at start",
+            Action::Append => "insert after end",
+            Action::Change => "clear and insert",
             Action::CommandLine => "command line",
             Action::Escape => "back to normal mode",
-            Action::Clear => "clear steps",
+            Action::Delete => "delete (and copy)",
+            Action::Clear => "delete without copying",
             Action::ClearAdvance => "clear step and move on",
-            Action::Yank => "copy steps",
-            Action::Paste => "paste steps",
+            Action::Yank => "copy",
+            Action::PasteAfter => "paste after",
+            Action::PasteBefore => "paste before",
+            Action::ReplaceWithYanked => "replace with copied",
+            Action::Replace => "fill with a note",
             Action::Undo => "undo",
             Action::Redo => "redo",
             Action::NoteUp => "note up a semitone",
@@ -88,11 +150,24 @@ impl Action {
             Action::KeyboardOctaveUp => "keyboard octave up",
             Action::KeyboardOctaveDown => "keyboard octave down",
             Action::TogglePlay => "play / stop",
-            Action::ToggleView => "show written or playing pattern",
-            Action::ToggleFollow => "follow the playhead",
+            Action::ToggleView => "written or playing pattern",
             Action::Quit => "quit",
         }
     }
+}
+
+/// A prefix key's menu, shown in the infobox while it waits for the next key.
+#[derive(Debug, Clone)]
+pub struct Menu {
+    pub title: &'static str,
+    /// In display order.
+    pub items: Vec<(Key, Action)>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Binding {
+    Action(Action),
+    Menu(Menu),
 }
 
 /// The two-row piano layout used by most trackers: Z–M is the lower octave, Q–U the upper.
@@ -130,9 +205,10 @@ const PIANO: [(char, u8); 29] = [
 
 #[derive(Debug, Clone)]
 pub struct Keymap {
-    pub normal: HashMap<Key, Action>,
+    /// Normal and select mode. Select mode uses the same keys; motions extend instead of move.
+    pub normal: HashMap<Key, Binding>,
     pub insert: HashMap<Key, Action>,
-    /// Insert mode: key → semitones above the keyboard octave's C.
+    /// Insert mode and `r`: key → semitones above the keyboard octave's C.
     pub piano: HashMap<char, u8>,
 }
 
@@ -149,8 +225,8 @@ impl Default for Keymap {
             (Key::Down, Action::Down),
             (Key::PageUp, Action::PageUp),
             (Key::PageDown, Action::PageDown),
-            (Home, Top),
-            (End, Bottom),
+            (Home, FirstStep),
+            (End, LastStep),
             (Esc, Escape),
             (Char(' '), TogglePlay),
             (Tab, ToggleView),
@@ -159,6 +235,16 @@ impl Default for Keymap {
             (Ctrl('c'), Quit),
         ];
 
+        let goto = Menu {
+            title: "goto",
+            items: vec![
+                (Char('g'), FirstStep),
+                (Char('e'), LastStep),
+                (Char('h'), FirstTrack),
+                (Char('l'), LastTrack),
+            ],
+        };
+
         let normal = common
             .into_iter()
             .chain([
@@ -166,20 +252,31 @@ impl Default for Keymap {
                 (Char('l'), Action::Right),
                 (Char('k'), Action::Up),
                 (Char('j'), Action::Down),
-                (Char('g'), Top),
-                (Char('G'), Bottom),
-                (Ctrl('u'), Action::PageUp),
-                (Ctrl('d'), Action::PageDown),
+                (Ctrl('u'), HalfPageUp),
+                (Ctrl('d'), HalfPageDown),
+                (Ctrl('b'), Action::PageUp),
+                (Ctrl('f'), Action::PageDown),
+                (Char('w'), NextNote),
+                (Char('b'), PrevNote),
+                (Char('x'), SelectRows),
+                (Char('%'), SelectAll),
+                (Char(';'), Collapse),
+                (Alt(';'), Flip),
+                (Char('v'), SelectMode),
                 (Char('i'), Insert),
-                (Char('v'), Visual),
+                (Char('a'), Append),
+                (Char('c'), Change),
                 (Char(':'), CommandLine),
-                (Char('x'), Clear),
-                (Char('d'), Clear),
-                (Delete, Clear),
+                (Char('d'), Action::Delete),
+                (Alt('d'), Clear),
+                (Key::Delete, Clear),
                 (Char('y'), Yank),
-                (Char('p'), Paste),
+                (Char('p'), PasteAfter),
+                (Char('P'), PasteBefore),
+                (Char('R'), ReplaceWithYanked),
+                (Char('r'), Replace),
                 (Char('u'), Undo),
-                (Ctrl('r'), Redo),
+                (Char('U'), Redo),
                 (Ctrl('a'), NoteUp),
                 (Ctrl('x'), NoteDown),
                 (Char('>'), NoteOctaveUp),
@@ -187,13 +284,14 @@ impl Default for Keymap {
                 (Char('+'), Longer),
                 (Char('='), Longer),
                 (Char('-'), Shorter),
-                (Char('f'), ToggleFollow),
             ])
+            .map(|(key, action)| (key, Binding::Action(action)))
+            .chain([(Char('g'), Binding::Menu(goto))])
             .collect();
 
         let insert = common
             .into_iter()
-            .chain([(Backspace, ClearAdvance), (Delete, ClearAdvance)])
+            .chain([(Backspace, ClearAdvance), (Key::Delete, ClearAdvance)])
             .collect();
 
         Self {

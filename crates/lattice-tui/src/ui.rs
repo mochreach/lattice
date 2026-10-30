@@ -1,13 +1,13 @@
 //! Drawing the tracker.
 
 use lattice_core::{Step, Track, realise};
-use lattice_editor::{Editor, HELP, Mode, View};
+use lattice_editor::{Editor, HELP, Infobox, Mode, View};
 use lattice_engine::Status;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block, Clear, Padding, Paragraph};
 
 use crate::theme::Theme;
 
@@ -40,6 +40,52 @@ pub fn draw(
     frame.render_widget(
         Paragraph::new(status_line(editor, theme, bottom.width)),
         bottom,
+    );
+    if let Some(infobox) = editor.infobox() {
+        draw_infobox(frame, grid, &infobox, theme);
+    }
+}
+
+/// Like Helix's: the keys that can follow a prefix key, in the bottom-right corner above the
+/// status line.
+fn draw_infobox(frame: &mut Frame, area: Rect, infobox: &Infobox, theme: &Theme) {
+    let key_width = infobox
+        .items
+        .iter()
+        .map(|(key, _)| key.chars().count())
+        .max()
+        .unwrap_or(0);
+    let lines: Vec<Line> = infobox
+        .items
+        .iter()
+        .map(|(key, description)| {
+            Line::from(vec![
+                Span::styled(
+                    format!("{key:<key_width$}"),
+                    Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(format!("  {description}"), theme.text),
+            ])
+        })
+        .collect();
+    let content = lines.iter().map(Line::width).max().unwrap_or(0);
+    let width = (content.max(infobox.title.len()) as u16 + 4).min(area.width);
+    let height = (lines.len() as u16 + 2).min(area.height);
+    let corner = Rect {
+        x: area.right().saturating_sub(width + 1),
+        y: area.bottom().saturating_sub(height),
+        width,
+        height,
+    };
+    frame.render_widget(Clear, corner);
+    frame.render_widget(
+        Paragraph::new(lines).block(
+            Block::bordered()
+                .title(format!(" {} ", infobox.title))
+                .border_style(theme.dim)
+                .padding(Padding::horizontal(1)),
+        ),
+        corner,
     );
 }
 
@@ -255,7 +301,7 @@ fn grid_row(
         gutter_style.patch(band),
     )];
 
-    let (sel_start, sel_end) = editor.selection();
+    let selection = editor.selection();
     for (i, c) in columns.iter().enumerate() {
         let Some(step) = c.shown.get(row) else {
             spans.push(Span::styled(" ".repeat(CELL + 1), band));
@@ -287,13 +333,11 @@ fn grid_row(
         style = style.patch(band);
 
         let is_cursor = editor.cursor.track == i && editor.cursor.step == row;
-        let selected = matches!(editor.mode, Mode::Visual { .. })
-            && editor.cursor.track == i
-            && (sel_start..=sel_end).contains(&row);
+        let selected = selection.contains(i, row);
         if is_cursor {
             style = theme.block(match editor.mode {
                 Mode::Insert => theme.accent,
-                Mode::Visual { .. } => theme.visual,
+                Mode::Select => theme.visual,
                 _ => Color::Reset,
             });
         } else if c.playhead == Some(row) {
@@ -312,7 +356,7 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
     let mut left = match &editor.mode {
         Mode::Normal => vec![Span::styled(" NORMAL ", theme.block(Color::DarkGray))],
         Mode::Insert => vec![Span::styled(" INSERT ", theme.block(theme.accent))],
-        Mode::Visual { .. } => vec![Span::styled(" VISUAL ", theme.block(theme.visual))],
+        Mode::Select => vec![Span::styled(" SELECT ", theme.block(theme.visual))],
         Mode::Command(line) => vec![
             Span::styled(format!(":{line}"), theme.text),
             Span::styled(" ", theme.text.add_modifier(Modifier::REVERSED)),
@@ -328,9 +372,9 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
     }
 
     let hints = match editor.mode {
-        Mode::Normal => "i insert · v select · : command · space play · tab live · u undo",
+        Mode::Normal => "v select · x rows · g goto · i insert · d delete · : command · space play",
         Mode::Insert => "z–m q–u notes · [ ] octave · ⌫ clear · esc done",
-        Mode::Visual { .. } => "y copy · d clear · ^a ^x transpose · < > octave · + - length",
+        Mode::Select => "hjkl extend · ; collapse · y copy · d delete · r fill · C-a C-x transpose",
         Mode::Command(_) => HELP,
     };
     let used: usize = left.iter().map(|s| s.content.chars().count()).sum();

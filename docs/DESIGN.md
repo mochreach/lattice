@@ -191,7 +191,7 @@ MIDI keyboard avoids the problem entirely.
 
 ## Second milestone (done October 2026): the terminal UI
 
-- `lattice-editor`: normal, insert, visual and command modes, counts, undo and redo, and
+- `lattice-editor`: normal, insert, select and command modes, counts, undo and redo, and
   `:` commands for rules, length and tempo. It's tested with key sequences.
 - The engine has a transport and takes commands (play, stop, tempo, replace a track, preview a
   note) over an `rtrb` queue. Replaced tracks go back to the UI thread to be freed. Playheads
@@ -204,7 +204,14 @@ Colours come from a `Theme`. The default uses the terminal's own 16-colour palet
 foreground and background. Highlighted blocks (cursor, playheads, badges) use reverse video, so they
 stay readable on light and dark terminals alike. At startup Lattice asks the terminal for its actual
 background and foreground colours (OSC 10/11) and shades beat rows a few percent from one towards
-the other; if the terminal doesn't answer, beat rows are left unshaded. Themes that set every colour can come later.
+the other, and the selection further; if the terminal doesn't answer, beat rows are left
+unshaded and the selection is dark grey. Themes that set every colour can come later.
+
+Editing follows Helix rather than vim: select, then act. The selection is always present, a
+rectangle across tracks and steps, so every action shows what it will touch before it happens,
+and edits such as transposing keep the selection so they can be repeated. Prefix keys (`g`, `r`)
+open an infobox listing what can follow, which makes the keymap discoverable as it grows. Keys
+are data (`Keymap`, `Binding::Menu`), so new menus need no new code in the frontend.
 
 Next for the UI: saving and loading songs, adding and removing tracks, effect columns, a help
 screen, loading keymaps from a config file, and themes from a config file.

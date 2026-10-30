@@ -6,6 +6,8 @@ use terminal_colorsaurus::QueryOptions;
 
 /// How far beat rows move from the background towards the foreground.
 const BEAT_ROW_SHADE: f32 = 0.12;
+/// The same for selected steps.
+const SELECTION_SHADE: f32 = 0.3;
 
 #[derive(Debug, Clone)]
 pub struct Theme {
@@ -53,18 +55,19 @@ impl Theme {
         }
     }
 
-    /// The terminal theme, plus shading for beat rows mixed from the terminal's actual background
+    /// The terminal theme, plus shading for beat rows and the selection mixed from the terminal's actual background
     /// and foreground colours. The palette alone has no subtle shade of the background. Must run
     /// before the terminal UI starts, as it reads the terminal's reply from stdin. If the terminal
-    /// doesn't say what its colours are, beat rows stay unshaded.
+    /// doesn't say what its colours are, beat rows stay unshaded and the selection is dark grey.
     pub fn detect() -> Self {
         let mut theme = Self::terminal();
         if let Ok(palette) = terminal_colorsaurus::color_palette(QueryOptions::default()) {
-            theme.beat_row = Some(mix(
+            let (background, foreground) = (
                 palette.background.scale_to_8bit(),
                 palette.foreground.scale_to_8bit(),
-                BEAT_ROW_SHADE,
-            ));
+            );
+            theme.beat_row = Some(mix(background, foreground, BEAT_ROW_SHADE));
+            theme.selection = mix(background, foreground, SELECTION_SHADE);
         }
         theme
     }

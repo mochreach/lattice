@@ -1,6 +1,6 @@
 # Lattice
 
-The keyboard hacker's audio tracker: a vim-flavoured terminal tracker in Rust, with a
+The keyboard hacker's audio tracker: a Helix-flavoured terminal tracker in Rust, with a
 sample-accurate sequencer, a hand-written sound engine, and transforms that reshape
 the pattern each time it loops.
 
@@ -30,25 +30,45 @@ Debug builds abort if the audio callback ever allocates, which catches real-time
 
 ## Keys
 
-Vim-flavoured. Counts work in normal mode (`4j`, `3+`).
+Modelled on [Helix](https://helix-editor.com): select first, then act, so you see what will
+change before it does. There is always a selection, a rectangle of steps across one or more
+tracks; with nothing selected it's just the cursor. Motions move the cursor and collapse the
+selection onto it. In select mode (`v`) the same motions extend it instead. Counts work as in
+Helix (`4j`, `3+`). Prefix keys such as `g` show what can follow them in a box in the corner.
 
-| Normal mode | |
+| Moving and selecting | |
 | --- | --- |
 | `h j k l`, arrows | move between tracks and steps |
-| `g` `G`, `^u` `^d` | first / last step, up / down 16 |
-| `space` | play / stop |
-| `tab` | show the pattern as written, or as it's playing this pass |
-| `i` | insert mode |
-| `v` | select steps (then `y`, `d`, `^a`, `^x`, `<`, `>`, `+`, `-`) |
-| `x` / `d` | clear |
-| `y` `p` | copy, paste |
+| `w` `b` | next / previous note |
+| `^u` `^d`, `^b` `^f` | up / down half a page, a page |
+| `gg` `ge` `gh` `gl` | first step, last step, first track, last track |
+| `v` | select mode: motions extend the selection |
+| `x` | select whole rows across every track; again to extend a row |
+| `%` | select everything |
+| `;` `A-;` | collapse the selection, flip which end the cursor is |
+
+| Acting on the selection | |
+| --- | --- |
+| `d` `A-d` | delete (and copy), delete without copying |
+| `c` | delete and start inserting |
+| `y` | copy |
+| `p` `P` `R` | paste after, before, or over the selection |
+| `r` then a piano key | fill the selection with that note |
 | `^a` `^x` | note up / down a semitone |
 | `>` `<` | note up / down an octave |
 | `+` `-` | longer / shorter note |
+| `i` `a` | insert at the start, or after the end |
+| `u` `U` | undo, redo |
+
+| Everywhere | |
+| --- | --- |
+| `space` | play / stop |
+| `tab` | show the pattern as written, or as it's playing this pass |
 | `[` `]` | keyboard octave |
-| `u` `^r` | undo, redo |
-| `f` | follow the playhead |
 | `:` | command line |
+
+Two deliberate departures from Helix: `space` is play / stop, as in every DAW, rather than a
+menu, and `[` `]` change the keyboard octave.
 
 In **insert mode**, the bottom two letter rows are a piano: `z`–`m` from C in the current
 octave, `q`–`u` an octave up. Each note is entered and the cursor moves on. `⌫` clears a step,
@@ -60,4 +80,5 @@ and `esc` returns to normal mode.
 | `:pop`, `:clear` | remove the last rule, or all of them |
 | `:len N` | track length (1–256) |
 | `:bpm N`, `:step N`, `:oct N` | tempo, auto-step, keyboard octave |
-| `:click`, `:name NAME`, `:q` | toggle the metronome, rename the track, quit |
+| `:click`, `:follow` | toggle the metronome, following the playhead |
+| `:name NAME`, `:q` | rename the track, quit |

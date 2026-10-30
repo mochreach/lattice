@@ -4,7 +4,7 @@ use lattice_core::{Condition, MAX_STEPS, Rule, Step, Transform};
 
 use crate::{Editor, Effect};
 
-pub const HELP: &str = "q · bpm N · len N · step N · oct N · click · name NAME · \
+pub const HELP: &str = "q · bpm N · len N · step N · oct N · click · follow · name NAME · \
 rot N | drift N | rev | tr N  [every N [OFFSET] | pass K] · pop · clear";
 
 pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String> {
@@ -27,7 +27,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             let len: usize = number(&args, 1, MAX_STEPS)?;
             editor.checkpoint();
             editor.grid.tracks[track].steps.resize(len, Step::default());
-            editor.cursor.step = editor.cursor.step.min(len - 1);
+            editor.clamp_selection();
             Ok(vec![Effect::TrackChanged(track)])
         }
         "step" => {
@@ -36,6 +36,14 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         "oct" => {
             editor.octave = number(&args, 0, 9)?;
+            Ok(vec![])
+        }
+        "follow" => {
+            editor.follow = !editor.follow;
+            editor.message = Some(format!(
+                "follow {}",
+                if editor.follow { "on" } else { "off" }
+            ));
             Ok(vec![])
         }
         "click" => {

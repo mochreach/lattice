@@ -4,8 +4,10 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 /// Converts a crossterm key event into the editor's own key type.
 pub fn convert(event: KeyEvent) -> Option<Key> {
     let ctrl = event.modifiers.contains(KeyModifiers::CONTROL);
+    let alt = event.modifiers.contains(KeyModifiers::ALT);
     Some(match event.code {
         KeyCode::Char(c) if ctrl => Key::Ctrl(c.to_ascii_lowercase()),
+        KeyCode::Char(c) if alt => Key::Alt(c),
         KeyCode::Char(c) => Key::Char(c),
         KeyCode::Esc => Key::Esc,
         KeyCode::Enter => Key::Enter,
