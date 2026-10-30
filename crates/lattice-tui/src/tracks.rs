@@ -64,7 +64,7 @@ impl Tracks {
                     index,
                     player: TrackPlayer::new(
                         editor.grid.tracks[index].clone(),
-                        Box::new(Synth::new(self.patch(id), self.sample_rate)),
+                        Box::new(Synth::new(self.patch(editor, id), self.sample_rate)),
                         self.sample_rate,
                     ),
                 },
@@ -92,8 +92,16 @@ impl Tracks {
         self.next = 0;
     }
 
-    fn patch(&mut self, id: TrackId) -> Patch {
+    /// The track's patch: a pasted track's is the one it was copied from, and a new track takes
+    /// the next from the palette.
+    fn patch(&mut self, editor: &Editor, id: TrackId) -> Patch {
+        let copied =
+            std::iter::successors(editor.copied_from(id), |&from| editor.copied_from(from))
+                .find_map(|from| self.patches.get(&from).copied());
         *self.patches.entry(id).or_insert_with(|| {
+            if let Some(patch) = copied {
+                return patch;
+            }
             self.next += 1;
             self.palette[(self.next - 1) % self.palette.len()]
         })
@@ -165,5 +173,26 @@ mod tests {
             6,
             "one patch for each track ever made"
         );
+    }
+
+    #[test]
+    fn pasted_tracks_keep_the_patch_they_were_copied_from() {
+        let (grid, patches) = crate::demo::song();
+        let mut editor = Editor::new(grid, 120.0);
+        let mut tracks = Tracks::new(&editor, patches, 48_000.0);
+        let mut engine = editor.track_ids().to_vec();
+        for key in "glty".chars() {
+            editor.handle(Key::Char(key));
+        }
+        // Paste the last track twice, the second time copying the first copy.
+        for key in "tptyghtP".chars() {
+            editor.handle(Key::Char(key));
+            sync(&mut tracks, &editor, &mut engine);
+        }
+        let ids = editor.track_ids();
+        let last = ids[ids.len() - 2];
+        let patch = |id| format!("{:?}", tracks.patches[&id]);
+        assert_eq!(patch(ids[0]), patch(last));
+        assert_eq!(patch(ids[ids.len() - 1]), patch(last));
     }
 }

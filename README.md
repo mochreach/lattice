@@ -56,7 +56,9 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `x` | select whole rows across every track; again to extend a row |
 | `%` | select everything |
 | `tm` `ts` | mute / solo every track the selections reach (not Helix's `t`, which has no use on a grid) |
-| `ta` `td`, `th` `tl` | add a track after this one, remove this one, move it left / right |
+| `ta`, `th` `tl` | add a track after this one, move it left / right |
+| `ty`, `td` | copy the tracks the selections reach; remove them, copying them first |
+| `tp` `tP` | paste copied tracks after / before this one, with their notes, rules, mix and instrument |
 | `;` `A-;` | collapse the selection, flip which end the cursor is |
 
 | Multiple selections | |
@@ -113,7 +115,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:o PATH`, `:o! PATH` | open a song, or start a new one at PATH; `!` discards unsaved changes |
 | `:q`, `:q!` | quit, refusing if there are unsaved changes; `!` quits anyway |
 | `:track-add [NAME]` (`:ta`) | add a 16-step track after this one (up to 16 tracks; also `ta`) |
-| `:track-remove` (`:trm`), `:track-move ±N` (`:tmv`) | remove this track, move it left or right (also `td`, `th` `tl`) |
+| `:track-remove` (`:trm`), `:track-move ±N` (`:tmv`) | remove this track, move it left or right (also `th` `tl`) |
 
 The header shows the song's file name, and `[+]` when it has unsaved changes.
 

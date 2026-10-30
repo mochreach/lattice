@@ -18,9 +18,10 @@ mod pattern;
 pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
 pub use keymap::{Action, Binding, Key, Keymap, Menu};
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use lattice_core::{Grid, MAX_STEPS, Note, Song, Step, Track};
+use lattice_core::{Grid, MAX_STEPS, MAX_TRACKS, Note, Song, Step, Track};
 
 use crate::pattern::Pattern;
 
@@ -283,6 +284,10 @@ pub struct Editor {
     pending: Option<Pending>,
     /// One clip per selection copied.
     clipboard: Vec<Clip>,
+    /// Whole tracks copied, with the id of the track each was copied from.
+    track_clipboard: Vec<(TrackId, Track)>,
+    /// For each pasted track, the track it was copied from.
+    origins: HashMap<TrackId, TrackId>,
     undo: Vec<Snapshot>,
     redo: Vec<Snapshot>,
 }
@@ -332,6 +337,8 @@ impl Editor {
             count: None,
             pending: None,
             clipboard: Vec::new(),
+            track_clipboard: Vec::new(),
+            origins: HashMap::new(),
             undo: Vec::new(),
             redo: Vec::new(),
         }
@@ -340,6 +347,11 @@ impl Editor {
     /// Each track's id, in the order of `grid.tracks`.
     pub fn track_ids(&self) -> &[TrackId] {
         &self.ids
+    }
+
+    /// The track a pasted track was copied from, so a frontend can give it the same instrument.
+    pub fn copied_from(&self, id: TrackId) -> Option<TrackId> {
+        self.origins.get(&id).copied()
     }
 
     /// Whether the song differs from when it was last saved or opened, tracks added, removed
@@ -917,7 +929,10 @@ impl Editor {
             Action::ToggleMute => return self.run_command("mute"),
             Action::ToggleSolo => return self.run_command("solo"),
             Action::AddTrack => return self.run_command("track-add"),
-            Action::RemoveTrack => return self.run_command("track-remove"),
+            Action::RemoveTrack => return self.delete_tracks(),
+            Action::YankTracks => self.yank_tracks(),
+            Action::PasteTracksAfter => return self.paste_tracks(Place::After),
+            Action::PasteTracksBefore => return self.paste_tracks(Place::Before),
             Action::MoveTrackLeft => return self.run_command("track-move -1"),
             Action::MoveTrackRight => return self.run_command("track-move 1"),
             Action::TogglePlay => return vec![Effect::TogglePlay],
@@ -930,6 +945,61 @@ impl Editor {
             Action::Quit => return vec![Effect::Quit],
         }
         vec![]
+    }
+
+    /// Copies every track the selections reach.
+    fn yank_tracks(&mut self) {
+        self.track_clipboard = self
+            .selected_tracks()
+            .into_iter()
+            .map(|t| (self.ids[t], self.grid.tracks[t].clone()))
+            .collect();
+        self.message = Some(match self.track_clipboard.len() {
+            1 => "copied 1 track".into(),
+            n => format!("copied {n} tracks"),
+        });
+    }
+
+    /// Copies, then removes, every track the selections reach, leaving the cursor on the track
+    /// that took the first one's place.
+    fn delete_tracks(&mut self) -> Vec<Effect> {
+        let tracks = self.selected_tracks();
+        if tracks.len() == self.grid.tracks.len() {
+            self.message = Some("can't remove every track".into());
+            return vec![];
+        }
+        self.yank_tracks();
+        self.checkpoint();
+        for &t in tracks.iter().rev() {
+            self.remove_track(t);
+        }
+        let first = tracks[0].min(self.grid.tracks.len() - 1);
+        self.select_point(first, self.cursor().step);
+        vec![Effect::TracksChanged]
+    }
+
+    /// Pastes the copied tracks after or before the cursor's track, and moves onto the first.
+    fn paste_tracks(&mut self, place: Place) -> Vec<Effect> {
+        if self.track_clipboard.is_empty() {
+            self.message = Some("no tracks copied".into());
+            return vec![];
+        }
+        if self.grid.tracks.len() + self.track_clipboard.len() > MAX_TRACKS {
+            self.message = Some(format!("at most {MAX_TRACKS} tracks"));
+            return vec![];
+        }
+        let cursor = self.cursor();
+        let at = match place {
+            Place::Before => cursor.track,
+            _ => cursor.track + 1,
+        };
+        self.checkpoint();
+        for (i, (from, track)) in self.track_clipboard.clone().into_iter().enumerate() {
+            self.insert_track(at + i, track);
+            self.origins.insert(self.ids[at + i], from);
+        }
+        self.select_point(at, cursor.step);
+        vec![Effect::TracksChanged]
     }
 
     /// Runs a command line for a key, showing any error as `:` would.
@@ -1726,6 +1796,32 @@ mod tests {
         assert!(e.grid.tracks[0].mix.mute && !e.grid.tracks[1].mix.mute);
         keys(&mut e, "%ts");
         assert!(e.grid.tracks.iter().all(|t| t.mix.solo));
+
+        // `ty` and `tp` copy and paste whole tracks, keeping where each came from.
+        keys(&mut e, "%ty");
+        assert_eq!(e.message.as_deref(), Some("copied 2 tracks"));
+        keys(&mut e, ";gltp");
+        assert_eq!(e.grid.tracks.len(), 4);
+        assert_eq!(e.cursor().track, 2, "on the first pasted track");
+        let names: Vec<&str> = e.grid.tracks.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, ["a", "b", "a", "b"]);
+        let ids = e.track_ids().to_vec();
+        assert_eq!(e.copied_from(ids[3]), Some(ids[1]));
+        assert_eq!(e.copied_from(ids[1]), None);
+        keys(&mut e, "ghtP");
+        assert_eq!(e.grid.tracks.len(), 6);
+        assert_eq!(e.grid.tracks[0].name, "a");
+        assert_eq!(e.cursor().track, 0);
+        keys(&mut e, "%td");
+        assert_eq!(e.message.as_deref(), Some("can't remove every track"));
+        // `td` copies what it removes.
+        keys(&mut e, ";ghtd");
+        assert_eq!(e.grid.tracks.len(), 5);
+        keys(&mut e, "gltp");
+        assert_eq!(e.grid.tracks.len(), 6);
+        assert_eq!(e.grid.tracks[5].name, "a");
+        keys(&mut e, "uuuu");
+        assert_eq!(e.grid.tracks.len(), 2, "all undone");
 
         // And `ta`, `td`, `th`, `tl` add, remove and move tracks.
         keys(&mut e, ";gh");
