@@ -76,7 +76,8 @@ moves on. `⌫` clears a step, and `esc` returns to normal mode.
 
 On the **command line**, commands that fuzzy-match what you've typed are listed above it, and
 `tab` cycles through them. Once the command is named, the parameters still to type are shown
-faintly after the cursor, and shrink as you type over them.
+faintly after the cursor, and shrink as you type over them. Values are checked as you type: a
+word that can no longer be right is underlined, and what was expected is shown on the right.
 
 | Commands | |
 | --- | --- |

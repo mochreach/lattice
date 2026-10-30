@@ -98,7 +98,7 @@ fn draw_completions(
                 format!("{:<signature_width$}  ", c.spec.signature()),
                 theme.faint,
             ));
-            spans.push(Span::styled(c.spec.describe, theme.dim));
+            spans.push(Span::styled(c.spec.description(), theme.dim));
             let line = Line::from(spans);
             if selected == Some(i) {
                 line.style(Style::new().bg(theme.selection))
@@ -442,8 +442,20 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             let hint = editor.command_hint().unwrap_or_default();
             let mut hint = hint.chars();
             let under_cursor = hint.next().unwrap_or(' ');
+            // A mistake is underlined in the error colour.
+            let range = editor.command_problem().map_or(0..0, |p| p.range);
+            let chars: Vec<char> = prompt.line.chars().collect();
+            let part = |from: usize, to: usize| chars[from..to].iter().collect::<String>();
             vec![
-                Span::styled(format!(":{}", prompt.line), theme.text),
+                Span::styled(format!(":{}", part(0, range.start)), theme.text),
+                Span::styled(
+                    part(range.start, range.end),
+                    theme
+                        .text
+                        .fg(theme.error)
+                        .add_modifier(Modifier::UNDERLINED),
+                ),
+                Span::styled(part(range.end, chars.len()), theme.text),
                 Span::styled(
                     under_cursor.to_string(),
                     theme.faint.add_modifier(Modifier::REVERSED),
@@ -461,15 +473,31 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
         left.push(Span::styled(format!(" {count}"), theme.text));
     }
 
-    let hints = match &editor.mode {
-        Mode::Normal => "v select · x rows · g goto · ] next · i insert · d delete · : command",
-        Mode::Insert => "z–m q–u notes · [ ] octave · ⌫ clear · esc done",
-        Mode::Select => "hjkl extend · ; collapse · y copy · d delete · r fill · C-a C-x transpose",
-        Mode::Command(_) => editor
-            .command_spec()
-            .map_or("tab complete · ret run · esc cancel", |spec| {
-                spec.describe
-            }),
+    let (hints, style) = match &editor.mode {
+        Mode::Normal => (
+            "v select · x rows · g goto · ] next · i insert · d delete · : command".into(),
+            theme.dim,
+        ),
+        Mode::Insert => (
+            "z–m q–u notes · [ ] octave · ⌫ clear · esc done".into(),
+            theme.dim,
+        ),
+        Mode::Select => (
+            "hjkl extend · ; collapse · y copy · d delete · r fill · C-a C-x transpose".into(),
+            theme.dim,
+        ),
+        // What's wrong with the line, if anything, in place of what the command does.
+        Mode::Command(_) => match editor.command_problem() {
+            Some(problem) => (problem.message, Style::new().fg(theme.error)),
+            None => (
+                editor
+                    .command_spec()
+                    .map_or("tab complete · ret run · esc cancel".into(), |spec| {
+                        spec.description()
+                    }),
+                theme.dim,
+            ),
+        },
     };
     let used: usize = left.iter().map(|s| s.content.chars().count()).sum();
     let room = (width as usize).saturating_sub(used + 1);
@@ -477,7 +505,7 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
     left.push(Span::raw(
         " ".repeat(room - hints.chars().count().min(room)),
     ));
-    left.push(Span::styled(hints, theme.dim));
+    left.push(Span::styled(hints, style));
     Line::from(left)
 }
 
