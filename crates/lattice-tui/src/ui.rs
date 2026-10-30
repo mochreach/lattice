@@ -232,13 +232,15 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         .and_then(|p| p.file_name())
         .map_or_else(|| "[scratch]".into(), |n| n.to_string_lossy().into_owned());
     let modified = if editor.modified() { " [+]" } else { "" };
+    let page = match editor.page {
+        Page::Pattern => " PATTERN ",
+        Page::Mixer => " MIXER ",
+    };
     Line::from(vec![
         Span::styled(" LATTICE ", theme.block(theme.accent)),
-        match editor.page {
-            Page::Pattern => Span::raw(" "),
-            Page::Mixer => Span::styled(" MIXER ", theme.block(theme.visual)),
-        },
-        Span::raw(" "),
+        Span::styled(page, theme.block(theme.visual)),
+        // Padded to the longest page's name, so the transport stays put.
+        Span::raw(" ".repeat(1 + " PATTERN ".len() - page.len())),
         transport,
         Span::raw("   "),
         value(file),
