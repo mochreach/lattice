@@ -1,7 +1,7 @@
 use std::f32::consts::TAU;
 
 use crate::dsp::decay_coef;
-use crate::instrument::{Event, EventKind, Instrument, Segment, segments};
+use crate::processor::{Event, EventKind, Processor, Segment, segments};
 
 /// Metronome click: a short decaying blip at the note's pitch.
 #[derive(Debug, Clone)]
@@ -39,7 +39,7 @@ impl Click {
     }
 }
 
-impl Instrument for Click {
+impl Processor for Click {
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]) {
         segments(events, left.len(), |segment| match segment {
             Segment::Render(range) => self.render(&mut left[range.clone()], &mut right[range]),

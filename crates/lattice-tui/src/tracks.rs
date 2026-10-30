@@ -65,6 +65,7 @@ impl Tracks {
                     player: TrackPlayer::new(
                         editor.grid.tracks[index].clone(),
                         Box::new(Synth::new(self.patch(id), self.sample_rate)),
+                        self.sample_rate,
                     ),
                 },
             };

@@ -1282,6 +1282,18 @@ impl Editor {
     }
 
     /// Saves the current state for undo. Call before every change to the song.
+    /// Every track a selection reaches, in order.
+    pub(crate) fn selected_tracks(&self) -> Vec<usize> {
+        let mut tracks: Vec<usize> = self
+            .selections()
+            .iter()
+            .flat_map(|s| s.region().first_track..=s.region().last_track)
+            .collect();
+        tracks.sort_unstable();
+        tracks.dedup();
+        tracks
+    }
+
     pub(crate) fn checkpoint(&mut self) {
         self.undo.push(Snapshot {
             grid: self.grid.clone(),
@@ -1338,6 +1350,7 @@ mod tests {
         let track = |name: &str, len| Track {
             name: name.into(),
             steps: vec![Step::default(); len],
+            mix: Default::default(),
             rules: vec![],
         };
         let grid = Grid {
@@ -1667,6 +1680,35 @@ mod tests {
         assert_eq!(command(&mut e, "bpm 122.5"), [Effect::Bpm(122.5)]);
         command(&mut e, "follow");
         assert!(!e.follow);
+    }
+
+    #[test]
+    fn mixer_commands_change_every_selected_track() {
+        let mut e = editor();
+        let all = [Effect::TrackChanged(0), Effect::TrackChanged(1)];
+        keys(&mut e, "%");
+        assert_eq!(command(&mut e, "level -6.5"), all);
+        assert_eq!(command(&mut e, "pan -40"), all);
+        assert_eq!(command(&mut e, "send -12"), all);
+        let mix = e.grid.tracks[1].mix;
+        assert_eq!((mix.level, mix.pan, mix.send), (-6.5, -0.4, -12.0));
+
+        // Just the cursor's track, then both: one was already muted, so both end up muted.
+        keys(&mut e, ";gh");
+        assert_eq!(command(&mut e, "mute"), [Effect::TrackChanged(0)]);
+        keys(&mut e, "%");
+        command(&mut e, "mute");
+        assert!(e.grid.tracks.iter().all(|t| t.mix.mute));
+        command(&mut e, "mute");
+        assert!(e.grid.tracks.iter().all(|t| !t.mix.mute));
+        command(&mut e, "solo");
+        assert!(e.grid.tracks.iter().all(|t| t.mix.solo));
+
+        keys(&mut e, "u");
+        assert!(e.grid.tracks.iter().all(|t| !t.mix.solo), "undoable");
+        e.handle(Key::Char(':'));
+        keys(&mut e, "level 7");
+        assert!(e.command_problem().is_some(), "6 dB at most");
     }
 
     #[test]

@@ -9,7 +9,7 @@ use std::fmt;
 use ron::extensions::Extensions;
 use ron::ser::PrettyConfig;
 
-use crate::song::{Grid, MAX_TRACKS, Song, Track};
+use crate::song::{Grid, MAX_DB, MAX_TRACKS, Song, Track};
 
 /// Nesting below which values go on one line: each step, note and rule fits on its own line.
 const DEPTH_LIMIT: usize = 6;
@@ -81,6 +81,14 @@ fn check_grid(grid: &Grid) -> Result<(), String> {
 }
 
 fn check_track(track: &Track) -> Result<(), String> {
+    let mix = track.mix;
+    let level = |db: f32| db.is_finite() && db <= MAX_DB;
+    if !(level(mix.level) && level(mix.send) && (-1.0..=1.0).contains(&mix.pan)) {
+        return Err(format!(
+            "track {:?}: levels go up to {MAX_DB} dB and pan from -1 to 1",
+            track.name
+        ));
+    }
     for (i, step) in track.steps.iter().enumerate() {
         if let Some(note) = step.note
             && (note.pitch > 127 || note.velocity > 127)
@@ -97,12 +105,13 @@ fn check_track(track: &Track) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Condition, Note, Rule, Step, Transform};
+    use crate::{Condition, Mix, Note, Rule, Step, Transform};
 
     fn song() -> Song {
         let mut bass = Track {
             name: "bass".into(),
             steps: vec![Step::default(); 16],
+            mix: Default::default(),
             rules: vec![
                 Rule {
                     transform: Transform::Transpose(5),
@@ -118,6 +127,12 @@ mod tests {
                 },
             ],
         };
+        bass.mix = Mix {
+            level: -3.5,
+            pan: 0.25,
+            mute: true,
+            ..Mix::default()
+        };
         bass.steps[0] = Step::note(36);
         bass.steps[3].note = Some(Note {
             pitch: 43,
@@ -127,6 +142,7 @@ mod tests {
         let empty = Track {
             name: "empty".into(),
             steps: vec![Step::default(); 6],
+            mix: Default::default(),
             rules: vec![],
         };
         Song {
@@ -159,6 +175,9 @@ mod tests {
         );
         assert!(text.contains("(transform: Reverse),"), "{text}");
         assert!(!text.contains("None"), "{text}");
+        assert!(text.contains("level: -3.5,\n"), "{text}");
+        assert!(text.contains("mute: true,\n"), "{text}");
+        assert_eq!(text.matches("mix:").count(), 1, "{text}");
         assert!(text.lines().count() < 40, "{text}");
     }
 

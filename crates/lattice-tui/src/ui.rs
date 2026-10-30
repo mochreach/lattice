@@ -1,6 +1,8 @@
 //! Drawing the tracker.
 
-use lattice_core::{Step, Track, realise};
+use std::time::Instant;
+
+use lattice_core::{MAX_TRACKS, MIN_DB, Mix, Step, Track, realise};
 use lattice_editor::{
     BEATS_PER_BAR, Completion, Cursor, Editor, Infobox, Mode, PromptKind, Selection, View,
 };
@@ -18,11 +20,34 @@ const GUTTER: usize = 4;
 /// Width of a track's cells, not counting the gap after them.
 const CELL: usize = 11;
 
+/// The quietest level a meter shows, in dB.
+const METER_FLOOR: f32 = -48.0;
+/// How fast a meter falls after a peak.
+const METER_FALL_DB_PER_SECOND: f32 = 30.0;
+
 #[derive(Debug, Default)]
 pub struct ViewState {
     scroll: usize,
     /// The leftmost track shown, when they don't all fit.
     first_track: usize,
+    /// Each track's meter, as a linear level, falling between peaks.
+    meters: [f32; MAX_TRACKS],
+    metered: Option<Instant>,
+}
+
+impl ViewState {
+    /// Takes the peaks since the last frame, and lets the meters fall.
+    fn update_meters(&mut self, status: &Status) {
+        let now = Instant::now();
+        let elapsed = self
+            .metered
+            .map_or(0.0, |then| now.duration_since(then).as_secs_f32());
+        self.metered = Some(now);
+        let fall = 10f32.powf(-METER_FALL_DB_PER_SECOND * elapsed / 20.0);
+        for (track, meter) in self.meters.iter_mut().enumerate() {
+            *meter = (*meter * fall).max(status.take_peak(track));
+        }
+    }
 }
 
 pub fn draw(
@@ -39,6 +64,7 @@ pub fn draw(
     ])
     .areas(frame.area());
     frame.render_widget(Paragraph::new(header(editor, status, theme)), top);
+    view.update_meters(status);
     draw_grid(frame, grid, editor, status, theme, view);
     frame.render_widget(
         Paragraph::new(status_line(editor, theme, bottom.width)),
@@ -226,6 +252,9 @@ struct Column<'a> {
     playhead: Option<usize>,
     pass: Option<u32>,
     colour: Color,
+    /// Not muted, and not silenced by another track's solo.
+    audible: bool,
+    meter: f32,
 }
 
 impl<'a> Column<'a> {
@@ -235,8 +264,10 @@ impl<'a> Column<'a> {
         editor: &Editor,
         status: &Status,
         theme: &Theme,
+        meter: f32,
     ) -> Self {
         let position = status.position(index);
+        let any_solo = editor.grid.tracks.iter().any(|t| t.mix.solo);
         let shown = match editor.view {
             View::Source => track.steps.clone(),
             View::Live => realise(track, position.map_or(0, |(_, pass)| pass)),
@@ -261,6 +292,8 @@ impl<'a> Column<'a> {
             playhead: position.map(|(step, _)| step),
             pass: position.map(|(_, pass)| pass),
             colour: theme.track(index),
+            audible: !track.mix.mute && (track.mix.solo || !any_solo),
+            meter,
         }
     }
 }
@@ -284,7 +317,7 @@ fn draw_grid(
         .enumerate()
         .skip(view.first_track)
         .take(fits)
-        .map(|(i, t)| Column::new(i, t, editor, status, theme))
+        .map(|(i, t)| Column::new(i, t, editor, status, theme, view.meters[i]))
         .collect();
     let hidden = (view.first_track > 0, view.first_track + fits < tracks);
     let mut lines = header_lines(&columns, hidden, theme);
@@ -333,8 +366,9 @@ fn scroll_to(
     view.scroll = view.scroll.min(longest.saturating_sub(rows));
 }
 
-/// Track names, lengths and passes, then the rules one per line, then an underline. Arrows by
-/// the names show there are more tracks off to the (left, right).
+/// Track names with mute and solo flags, lengths and passes, level and pan, then the rules one
+/// per line, then a meter underlining it all. Arrows by the names show there are more tracks
+/// off to the (left, right).
 fn header_lines(
     columns: &[Column],
     (left, right): (bool, bool),
@@ -350,11 +384,21 @@ fn header_lines(
     let mut names = line(
         columns
             .iter()
-            .map(|c| {
-                cell(
-                    c.track.name.to_uppercase(),
-                    Style::new().fg(c.colour).add_modifier(Modifier::BOLD),
-                )
+            .flat_map(|c| {
+                let mut style = Style::new().fg(c.colour).add_modifier(Modifier::BOLD);
+                if !c.audible {
+                    style = style.add_modifier(Modifier::DIM);
+                }
+                let mix = c.track.mix;
+                let (flag, flag_style) = match (mix.mute, mix.solo) {
+                    (true, _) => ("M", Style::new().fg(theme.error)),
+                    (false, true) => ("S", Style::new().fg(theme.accent)),
+                    _ => (" ", Style::new()),
+                };
+                [
+                    Span::styled(fit(&c.track.name.to_uppercase(), CELL - 1), style),
+                    Span::styled(format!("{flag} "), flag_style.add_modifier(Modifier::BOLD)),
+                ]
             })
             .collect(),
     );
@@ -373,6 +417,12 @@ fn header_lines(
                     let pass = c.pass.map(|p| format!(" · pass {p}")).unwrap_or_default();
                     cell(format!("{}{pass}", c.track.steps.len()), theme.dim)
                 })
+                .collect(),
+        ),
+        line(
+            columns
+                .iter()
+                .map(|c| cell(mix_summary(&c.track.mix), theme.dim))
                 .collect(),
         ),
     ];
@@ -394,13 +444,54 @@ fn header_lines(
                 .collect(),
         ));
     }
-    lines.push(line(
-        columns
-            .iter()
-            .map(|c| cell("─".repeat(CELL), Style::new().fg(c.colour)))
-            .collect(),
-    ));
+    lines.push(line(columns.iter().flat_map(|c| meter(c, theme)).collect()));
     lines
+}
+
+/// Level and pan: `0dB C`, `-6.5dB L40`, `off R100`.
+fn mix_summary(mix: &Mix) -> String {
+    let level = if mix.level <= MIN_DB {
+        "off".to_string()
+    } else {
+        format!("{}dB", decibels(mix.level))
+    };
+    let pan = (mix.pan * 100.0).round() as i32;
+    let pan = match pan {
+        0 => "C".to_string(),
+        p if p < 0 => format!("L{}", -p),
+        p => format!("R{p}"),
+    };
+    format!("{level} {pan}")
+}
+
+/// A level to a tenth of a decibel, without the fraction when it's whole: `-6`, `-6.5`, `3`.
+fn decibels(db: f32) -> String {
+    let tenths = (db * 10.0).round() as i32;
+    if tenths % 10 == 0 {
+        (tenths / 10).to_string()
+    } else {
+        format!("{:.1}", tenths as f32 / 10.0)
+    }
+}
+
+/// The underline under a track's header, lit from the left as loud as the track is playing.
+fn meter(c: &Column, theme: &Theme) -> [Span<'static>; 3] {
+    let db = 20.0 * c.meter.max(1e-6).log10();
+    let lit = (((db - METER_FLOOR) / -METER_FLOOR).clamp(0.0, 1.0) * CELL as f32).round() as usize;
+    // Red once it reaches full scale, where the output starts to saturate.
+    let colour = if c.meter >= 1.0 {
+        theme.error
+    } else {
+        c.colour
+    };
+    [
+        Span::styled("━".repeat(lit), Style::new().fg(colour)),
+        Span::styled(
+            "─".repeat(CELL - lit),
+            Style::new().fg(c.colour).add_modifier(Modifier::DIM),
+        ),
+        Span::raw(" "),
+    ]
 }
 
 fn grid_row(
@@ -450,10 +541,11 @@ fn grid_row(
                 } else {
                     String::new()
                 };
-                (
-                    format!(" {} {length:>4}  ", note_name(note.pitch)),
-                    Style::new().fg(c.colour),
-                )
+                let mut style = Style::new().fg(c.colour);
+                if !c.audible {
+                    style = style.add_modifier(Modifier::DIM);
+                }
+                (format!(" {} {length:>4}  ", note_name(note.pitch)), style)
             }
             None if c.tails[row] => (
                 " │".into(),
@@ -643,6 +735,23 @@ mod tests {
         assert_eq!(bpm(120.0), "120");
         assert_eq!(bpm(122.5), "122.5");
         assert_eq!(bpm(100.25), "100.25");
+    }
+
+    #[test]
+    fn mix_summaries() {
+        assert_eq!(mix_summary(&Mix::default()), "0dB C");
+        let mix = Mix {
+            level: -6.5,
+            pan: -0.4,
+            ..Mix::default()
+        };
+        assert_eq!(mix_summary(&mix), "-6.5dB L40");
+        let mix = Mix {
+            level: MIN_DB,
+            pan: 1.0,
+            ..Mix::default()
+        };
+        assert_eq!(mix_summary(&mix), "off R100");
     }
 
     #[test]

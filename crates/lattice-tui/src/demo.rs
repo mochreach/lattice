@@ -73,6 +73,7 @@ pub fn song() -> (Grid, Vec<Patch>) {
     let bass = Track {
         name: "bass".into(),
         steps: pattern("C2 . . C2 . . C3 . C2 . G2 C2 . . Bb2 ."),
+        mix: Default::default(),
         rules: chord_changes(),
     };
 
@@ -84,6 +85,7 @@ pub fn song() -> (Grid, Vec<Patch>) {
     let arp = Track {
         name: "arp".into(),
         steps: pattern("C4 Eb4 G4 C5 C4 Eb4 G4 C5 C4 Eb4 G4 C5 Bb4 G4 Eb4 G4"),
+        mix: Default::default(),
         rules: arp_rules,
     };
 
@@ -91,6 +93,7 @@ pub fn song() -> (Grid, Vec<Patch>) {
     let bleep = Track {
         name: "bleep".into(),
         steps: pattern("G5 . . Eb5 . ."),
+        mix: Default::default(),
         rules: vec![rule(Transform::Drift(1), Condition::Always)],
     };
 

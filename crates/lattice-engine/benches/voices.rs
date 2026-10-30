@@ -4,7 +4,7 @@
 use std::hint::black_box;
 use std::time::Instant;
 
-use lattice_engine::{AdsrParams, Event, EventKind, Instrument, Patch, Synth, Wave};
+use lattice_engine::{AdsrParams, Event, EventKind, Patch, Processor, Synth, Wave};
 
 const SAMPLE_RATE: f32 = 48_000.0;
 const BLOCK: usize = 128;
@@ -48,7 +48,7 @@ fn main() {
 
 /// Renders `SECONDS` of audio in `BLOCK`-sized buffers; returns how many times faster than real
 /// time that was.
-fn budget(instrument: &mut dyn Instrument, first_events: &[Event]) -> f64 {
+fn budget(instrument: &mut dyn Processor, first_events: &[Event]) -> f64 {
     let mut left = vec![0.0; BLOCK];
     let mut right = vec![0.0; BLOCK];
     let blocks = SECONDS * SAMPLE_RATE as usize / BLOCK;

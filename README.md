@@ -105,6 +105,8 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:bpm N`, `:step N`, `:oct N` | tempo, auto-step, keyboard octave |
 | `:click`, `:follow` | toggle the metronome, following the playhead |
 | `:name NAME` | rename the track |
+| `:level DB`, `:pan P`, `:send DB` | mixer, for every track the selections reach: level (-60 to 6 dB), pan (-100 left to 100 right), send to the delay (-60, off, to 6 dB) |
+| `:mute`, `:solo` | toggle mute or solo for every track the selections reach |
 | `:w [PATH]`, `:wq [PATH]` | save the song (to a `.lattice` file), save and quit |
 | `:o PATH`, `:o! PATH` | open a song, or start a new one at PATH; `!` discards unsaved changes |
 | `:q`, `:q!` | quit, refusing if there are unsaved changes; `!` quits anyway |
@@ -112,6 +114,10 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:track-remove` (`:trm`), `:track-move ±N` (`:tmv`) | remove this track, move it left or right |
 
 The header shows the song's file name, and `[+]` when it has unsaved changes.
+
+Each track's header shows its level and pan, `M` when it's muted and `S` when it's soloed, and a
+meter in place of the underline. Muted tracks, and tracks silenced by another's solo, are dimmed.
+Every track can send to a delay on the send bus; sends start off.
 
 Tracks can be added, removed and moved while playing, and undo brings a removed track back with
 its notes and its instrument. When there are more than fit across the terminal, the grid scrolls

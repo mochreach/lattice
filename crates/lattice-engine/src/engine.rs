@@ -1,21 +1,26 @@
 //! The sequencer and mixer, driven entirely from the audio callback.
 //!
+//! Signal path: each track's instrument, then its effects, then its mixer strip (level, pan,
+//! mute and solo) into the master bus, with a post-fader send into the send bus. The send bus
+//! runs its own effects into the master bus, which runs its effects, then the click is added.
+//!
 //! The UI thread talks to the engine through a [`Handle`]: commands go over a lock-free queue,
 //! and playback position comes back through atomics in [`Status`]. Nothing on the audio side
 //! blocks or allocates. Replaced patterns and removed tracks are sent back to the UI thread to be
 //! freed.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 pub use lattice_core::MAX_TRACKS;
-use lattice_core::{Grid, MAX_STEPS, Step, Track, realise_into};
+use lattice_core::{Grid, MAX_STEPS, Mix, Step, Track, db_to_gain, realise_into};
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
 
 use crate::click::Click;
 use crate::clock::Clock;
 use crate::denormal;
-use crate::instrument::{Event, EventKind, Instrument};
+use crate::param::Smoothed;
+use crate::processor::{Event, EventKind, Processor};
 
 const BEATS_PER_BAR: u64 = 4;
 /// Largest block rendered in one go. Longer host buffers are split.
@@ -25,6 +30,8 @@ const MAX_EVENTS: usize = 128;
 /// Notes a track can hold at once before the oldest is cut.
 const MAX_HELD: usize = 16;
 const COMMAND_QUEUE: usize = 256;
+/// Effects in one chain.
+pub const MAX_EFFECTS: usize = 8;
 const PREVIEW_SECONDS: f32 = 0.3;
 const CLICK_PITCH: u8 = 84;
 const CLICK_ACCENT_PITCH: u8 = 96;
@@ -63,6 +70,162 @@ pub enum Command {
         pitch: u8,
         velocity: u8,
     },
+    /// Insert an effect into a chain at `index` (or at the end, if past it). Build it off the
+    /// audio thread with [`EffectSlot::new`]; it's sent straight back if the chain is full or
+    /// doesn't exist.
+    InsertEffect {
+        chain: Chain,
+        index: usize,
+        effect: Box<EffectSlot>,
+    },
+    /// Remove an effect from a chain. It goes back to the UI thread to be freed.
+    RemoveEffect {
+        chain: Chain,
+        index: usize,
+    },
+    /// Set an instrument's or effect's parameter, in its own units (see
+    /// [`Processor::params`]).
+    SetParam {
+        target: Target,
+        id: u32,
+        value: f32,
+    },
+}
+
+/// A chain of effects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Chain {
+    /// After a track's instrument, before its mixer strip.
+    Track(usize),
+    /// The send bus, fed by every track's send.
+    Send,
+    /// The master bus, after everything is mixed.
+    Master,
+}
+
+/// Something with parameters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Target {
+    Instrument(usize),
+    Effect { chain: Chain, slot: usize },
+}
+
+/// An effect in a chain, with room for the events it receives.
+pub struct EffectSlot {
+    processor: Box<dyn Processor>,
+    events: Vec<Event>,
+}
+
+impl EffectSlot {
+    /// Allocates, so call it off the audio thread, then send it with
+    /// [`Command::InsertEffect`].
+    pub fn new(processor: Box<dyn Processor>) -> Box<Self> {
+        Box::new(Self {
+            processor,
+            events: Vec::with_capacity(MAX_EVENTS),
+        })
+    }
+}
+
+impl std::fmt::Debug for EffectSlot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EffectSlot").finish_non_exhaustive()
+    }
+}
+
+/// Room for `MAX_EFFECTS`, boxed for the same reason tracks are.
+#[allow(clippy::vec_box)]
+type Effects = Vec<Box<EffectSlot>>;
+
+fn effects() -> Effects {
+    Vec::with_capacity(MAX_EFFECTS)
+}
+
+/// Runs a block through each effect in turn.
+fn run_chain(effects: &mut [Box<EffectSlot>], left: &mut [f32], right: &mut [f32]) {
+    for slot in effects {
+        sort_by_offset(&mut slot.events);
+        slot.processor.process(&slot.events, left, right);
+        slot.events.clear();
+    }
+}
+
+/// A track's mixer strip: its level, pan and send, gliding to each new setting.
+#[derive(Debug, Clone, Copy)]
+struct Strip {
+    /// Linear, and 0 when muted or another track is soloed.
+    gain: Smoothed,
+    pan: Smoothed,
+    send: Smoothed,
+}
+
+impl Strip {
+    fn new(sample_rate: f32) -> Self {
+        let smoothed = |value| Smoothed::new(value, sample_rate);
+        Self {
+            gain: smoothed(0.0),
+            pan: smoothed(0.0),
+            send: smoothed(0.0),
+        }
+    }
+
+    fn targets(mix: &Mix, any_solo: bool) -> [f32; 3] {
+        let audible = !mix.mute && (mix.solo || !any_solo);
+        let gain = if audible { db_to_gain(mix.level) } else { 0.0 };
+        [gain, mix.pan, db_to_gain(mix.send)]
+    }
+
+    fn set(&mut self, mix: &Mix, any_solo: bool) {
+        let [gain, pan, send] = Self::targets(mix, any_solo);
+        self.gain.set(gain);
+        self.pan.set(pan);
+        self.send.set(send);
+    }
+
+    /// Starts at the settings rather than gliding to them, for a track that isn't sounding yet.
+    fn reset(&mut self, mix: &Mix, any_solo: bool) {
+        let [gain, pan, send] = Self::targets(mix, any_solo);
+        self.gain.reset(gain);
+        self.pan.reset(pan);
+        self.send.reset(send);
+    }
+
+    /// Mixes a track's block into the master and send buses, returning its peak level.
+    fn apply(&mut self, track: [&[f32]; 2], master: [&mut [f32]; 2], send: [&mut [f32]; 2]) -> f32 {
+        let [tl, tr] = track;
+        let [ml, mr] = master;
+        let [sl, sr] = send;
+        let settled = self.gain.is_settled() && self.pan.is_settled() && self.send.is_settled();
+        // Constant gains for the whole block unless something is gliding: pan needs a cosine.
+        let mut gains = self.gains();
+        let mut peak = 0.0f32;
+        for i in 0..tl.len() {
+            if !settled {
+                gains = self.gains();
+            }
+            let [gl, gr, send] = gains;
+            let (l, r) = (tl[i] * gl, tr[i] * gr);
+            ml[i] += l;
+            mr[i] += r;
+            sl[i] += l * send;
+            sr[i] += r * send;
+            peak = peak.max(l.abs()).max(r.abs());
+        }
+        peak
+    }
+
+    /// The next left and right gains and send level. Balance-style pan: the centre is unity,
+    /// and panning turns the other side down.
+    #[inline]
+    fn gains(&mut self) -> [f32; 3] {
+        let gain = self.gain.tick();
+        let pan = self.pan.tick();
+        let send = self.send.tick();
+        // Clamped: in f32, a quarter turn's cosine is a hair below 0.
+        let away = (pan.abs() * std::f32::consts::FRAC_PI_2).cos().max(0.0);
+        let (l, r) = if pan > 0.0 { (away, 1.0) } else { (1.0, away) };
+        [gain * l, gain * r, send]
+    }
 }
 
 /// Playback state the audio thread publishes for the UI.
@@ -71,6 +234,9 @@ pub struct Status {
     /// Per track index: `pass << 32 | step`, or `u64::MAX` when stopped or not yet played. One
     /// atomic, so the step and pass are always read together.
     positions: [AtomicU64; MAX_TRACKS],
+    /// Per track index: the loudest sample since the UI last looked, as `f32` bits. Levels are
+    /// never negative, so comparing the bits compares the levels.
+    peaks: [AtomicU32; MAX_TRACKS],
 }
 
 impl Status {
@@ -78,6 +244,7 @@ impl Status {
         Self {
             playing: AtomicBool::new(false),
             positions: std::array::from_fn(|_| AtomicU64::new(u64::MAX)),
+            peaks: std::array::from_fn(|_| AtomicU32::new(0)),
         }
     }
 
@@ -89,6 +256,17 @@ impl Status {
     pub fn position(&self, track: usize) -> Option<(usize, u32)> {
         let packed = self.positions.get(track)?.load(Ordering::Relaxed);
         (packed != u64::MAX).then_some(((packed & 0xffff_ffff) as usize, (packed >> 32) as u32))
+    }
+
+    /// The loudest sample `track` has played since the last call, after its mixer strip.
+    pub fn take_peak(&self, track: usize) -> f32 {
+        self.peaks
+            .get(track)
+            .map_or(0.0, |p| f32::from_bits(p.swap(0, Ordering::Relaxed)))
+    }
+
+    fn add_peak(&self, track: usize, peak: f32) {
+        self.peaks[track].fetch_max(peak.to_bits(), Ordering::Relaxed);
     }
 
     fn set_position(&self, track: usize, packed: u64) {
@@ -109,6 +287,7 @@ impl Status {
 enum Garbage {
     Track(Box<Track>),
     Player(Box<TrackPlayer>),
+    Effect(Box<EffectSlot>),
 }
 
 /// The UI thread's end of the engine.
@@ -143,7 +322,9 @@ struct Held {
 /// A track as the engine plays it: the pattern, its instrument and the buffers to play it with.
 pub struct TrackPlayer {
     track: Track,
-    instrument: Box<dyn Instrument>,
+    instrument: Box<dyn Processor>,
+    effects: Effects,
+    strip: Strip,
     /// The track as realised for the current pass.
     steps: Vec<Step>,
     playhead: usize,
@@ -161,10 +342,12 @@ pub struct TrackPlayer {
 impl TrackPlayer {
     /// Allocates, so call it off the audio thread, then send the player with
     /// [`Command::InsertTrack`].
-    pub fn new(track: Track, instrument: Box<dyn Instrument>) -> Box<Self> {
+    pub fn new(track: Track, instrument: Box<dyn Processor>, sample_rate: f32) -> Box<Self> {
         Box::new(Self {
             track,
             instrument,
+            effects: effects(),
+            strip: Strip::new(sample_rate),
             steps: Vec::with_capacity(MAX_STEPS),
             playhead: 0,
             pass: 0,
@@ -195,6 +378,10 @@ pub struct Engine {
     /// free the boxes here. Room for `MAX_TRACKS`.
     #[allow(clippy::vec_box)]
     tracks: Vec<Box<TrackPlayer>>,
+    send_effects: Effects,
+    master_effects: Effects,
+    send_left: Vec<f32>,
+    send_right: Vec<f32>,
     click: Click,
     click_events: Vec<Event>,
     click_left: Vec<f32>,
@@ -213,7 +400,7 @@ impl Engine {
         sample_rate: f32,
         bpm: f64,
         grid: &Grid,
-        instruments: Vec<Box<dyn Instrument>>,
+        instruments: Vec<Box<dyn Processor>>,
     ) -> (Self, Handle) {
         assert_eq!(
             grid.tracks.len(),
@@ -229,8 +416,14 @@ impl Engine {
             grid.tracks
                 .iter()
                 .zip(instruments)
-                .map(|(track, instrument)| TrackPlayer::new(track.clone(), instrument)),
+                .map(|(track, instrument)| {
+                    TrackPlayer::new(track.clone(), instrument, sample_rate)
+                }),
         );
+        let any_solo = grid.tracks.iter().any(|t| t.mix.solo);
+        for t in &mut tracks {
+            t.strip.reset(&t.track.mix, any_solo);
+        }
         let (command_tx, command_rx) = RingBuffer::new(COMMAND_QUEUE);
         let (garbage_tx, garbage_rx) = RingBuffer::new(COMMAND_QUEUE);
         let status = Arc::new(Status::new());
@@ -241,6 +434,10 @@ impl Engine {
             steps_per_beat: u64::from(grid.steps_per_beat.max(1)),
             step_index: 0,
             tracks,
+            send_effects: effects(),
+            master_effects: effects(),
+            send_left: vec![0.0; MAX_BLOCK],
+            send_right: vec![0.0; MAX_BLOCK],
             click: Click::new(sample_rate),
             click_events: Vec::with_capacity(MAX_EVENTS),
             click_left: vec![0.0; MAX_BLOCK],
@@ -343,7 +540,54 @@ impl Engine {
                         t.preview = Some((pitch, self.preview_samples));
                     }
                 }
+                Command::InsertEffect {
+                    chain,
+                    index,
+                    effect,
+                } => match self.chain_mut(chain) {
+                    Some(effects) if effects.len() < MAX_EFFECTS => {
+                        // Within capacity, so it never reallocates.
+                        effects.insert(index.min(effects.len()), effect);
+                    }
+                    _ => self.discard(Garbage::Effect(effect)),
+                },
+                Command::RemoveEffect { chain, index } => {
+                    if let Some(effects) = self.chain_mut(chain)
+                        && index < effects.len()
+                    {
+                        let effect = effects.remove(index);
+                        self.discard(Garbage::Effect(effect));
+                    }
+                }
+                Command::SetParam { target, id, value } => {
+                    let events = match target {
+                        Target::Instrument(track) => {
+                            self.tracks.get_mut(track).map(|t| &mut t.events)
+                        }
+                        Target::Effect { chain, slot } => self
+                            .chain_mut(chain)
+                            .and_then(|effects| effects.get_mut(slot))
+                            .map(|slot| &mut slot.events),
+                    };
+                    if let Some(events) = events {
+                        push(
+                            events,
+                            Event {
+                                offset: 0,
+                                kind: EventKind::Param { id, value },
+                            },
+                        );
+                    }
+                }
             }
+        }
+    }
+
+    fn chain_mut(&mut self, chain: Chain) -> Option<&mut Effects> {
+        match chain {
+            Chain::Track(index) => self.tracks.get_mut(index).map(|t| &mut t.effects),
+            Chain::Send => Some(&mut self.send_effects),
+            Chain::Master => Some(&mut self.master_effects),
         }
     }
 
@@ -352,6 +596,8 @@ impl Engine {
             self.discard(Garbage::Player(player));
             return;
         }
+        let any_solo = self.tracks.iter().any(|t| t.track.mix.solo);
+        player.strip.reset(&player.track.mix, any_solo);
         // Join in step, as though the track had been playing from the start.
         let len = player.track.steps.len() as u64;
         if self.playing && len > 0 {
@@ -416,14 +662,26 @@ impl Engine {
         // Render and mix.
         left.fill(0.0);
         right.fill(0.0);
-        for t in &mut self.tracks {
+        let (sl, sr) = (&mut self.send_left[..len], &mut self.send_right[..len]);
+        sl.fill(0.0);
+        sr.fill(0.0);
+        let any_solo = self.tracks.iter().any(|t| t.track.mix.solo);
+        for (index, t) in self.tracks.iter_mut().enumerate() {
             sort_by_offset(&mut t.events);
             let (tl, tr) = (&mut t.left[..len], &mut t.right[..len]);
+            tl.fill(0.0);
+            tr.fill(0.0);
             t.instrument.process(&t.events, tl, tr);
             t.events.clear();
-            mix_into(left, tl);
-            mix_into(right, tr);
+            run_chain(&mut t.effects, tl, tr);
+            t.strip.set(&t.track.mix, any_solo);
+            let peak = t.strip.apply([tl, tr], [left, right], [sl, sr]);
+            self.status.add_peak(index, peak);
         }
+        run_chain(&mut self.send_effects, sl, sr);
+        mix_into(left, sl);
+        mix_into(right, sr);
+        run_chain(&mut self.master_effects, left, right);
         let (cl, cr) = (&mut self.click_left[..len], &mut self.click_right[..len]);
         self.click.process(&self.click_events, cl, cr);
         self.click_events.clear();
@@ -559,6 +817,7 @@ mod tests {
                     }
                 })
                 .to_vec(),
+            mix: Default::default(),
             rules: vec![Rule {
                 transform: Transform::Drift(1),
                 when: Condition::Always,
@@ -585,7 +844,7 @@ mod tests {
             resonance: 0.4,
             gain: 0.3,
         };
-        let synth: Box<dyn Instrument> = Box::new(Synth::new(patch, sample_rate));
+        let synth: Box<dyn Processor> = Box::new(Synth::new(patch, sample_rate));
         let (mut engine, handle) = Engine::new(sample_rate, 133.0, &grid, vec![synth]);
         engine.play();
         (engine, handle)
@@ -661,9 +920,9 @@ mod tests {
         assert!(handle.garbage.pop().is_ok(), "old track sent back");
     }
 
-    fn silent() -> Box<dyn Instrument> {
+    fn silent() -> Box<dyn Processor> {
         struct Silent;
-        impl Instrument for Silent {
+        impl Processor for Silent {
             fn process(&mut self, _: &[Event], left: &mut [f32], right: &mut [f32]) {
                 left.fill(0.0);
                 right.fill(0.0);
@@ -681,7 +940,7 @@ mod tests {
         four.steps.truncate(4);
         handle.send(Command::InsertTrack {
             index: 0,
-            player: TrackPlayer::new(four, silent()),
+            player: TrackPlayer::new(four, silent(), 48_000.0),
         });
         render(&mut engine, 1, 1);
         assert_eq!(engine.tracks.capacity(), MAX_TRACKS);
@@ -725,7 +984,7 @@ mod tests {
         for _ in 0..MAX_TRACKS {
             handle.send(Command::InsertTrack {
                 index: usize::MAX,
-                player: TrackPlayer::new(lead(), silent()),
+                player: TrackPlayer::new(lead(), silent(), 48_000.0),
             });
         }
         render(&mut engine, 256, 256);
@@ -746,6 +1005,182 @@ mod tests {
         let audio = render(&mut engine, 256, 48_000);
         assert!(audio[..4_800].iter().any(|x| x.abs() > 0.05));
         assert!(audio[40_000..].iter().all(|&x| x == 0.0));
+    }
+
+    /// A steady 0.5 on both channels, for checking the mixer.
+    fn dc() -> Box<dyn Processor> {
+        struct Dc;
+        impl Processor for Dc {
+            fn process(&mut self, _: &[Event], left: &mut [f32], right: &mut [f32]) {
+                left.fill(0.5);
+                right.fill(0.5);
+            }
+        }
+        Box::new(Dc)
+    }
+
+    /// Tracks of steady 0.5, stopped and without the click, so only the mixer shapes the sound.
+    fn mixer(mixes: &[Mix]) -> (Engine, Handle) {
+        let tracks: Vec<Track> = mixes.iter().map(|&mix| Track { mix, ..lead() }).collect();
+        let grid = Grid {
+            name: "mix".into(),
+            steps_per_beat: 4,
+            tracks,
+        };
+        let instruments = mixes.iter().map(|_| dc()).collect();
+        let (mut engine, handle) = Engine::new(1_000.0, 120.0, &grid, instruments);
+        engine.click_enabled = false;
+        (engine, handle)
+    }
+
+    fn render_stereo(engine: &mut Engine, total: usize) -> (Vec<f32>, Vec<f32>) {
+        let mut left = vec![0.0; total];
+        let mut right = vec![0.0; total];
+        engine.process(&mut left, &mut right);
+        (left, right)
+    }
+
+    fn set_mix(handle: &mut Handle, index: usize, mix: Mix) {
+        handle.send(Command::SetTrack {
+            index,
+            track: Box::new(Track { mix, ..lead() }),
+        });
+    }
+
+    #[test]
+    fn level_and_pan_shape_each_side() {
+        let half_left = Mix {
+            level: -6.0,
+            pan: -0.5,
+            ..Mix::default()
+        };
+        let (mut engine, _) = mixer(&[half_left]);
+        let (left, right) = render_stereo(&mut engine, 10);
+        let gain = db_to_gain(-6.0);
+        // Balance law: the near side is untouched, the far side follows a quarter cosine.
+        assert!((left[0] - (0.5 * gain).tanh()).abs() < 1e-6);
+        let far = 0.5 * gain * std::f32::consts::FRAC_PI_4.cos();
+        assert!((right[0] - far.tanh()).abs() < 1e-6);
+    }
+
+    #[test]
+    fn mute_glides_out_without_a_click_and_reports_peaks() {
+        let (mut engine, mut handle) = mixer(&[Mix::default()]);
+        render_stereo(&mut engine, 10);
+        assert_eq!(handle.status().take_peak(0), 0.5);
+        assert_eq!(handle.status().take_peak(0), 0.0, "taking resets it");
+
+        set_mix(
+            &mut handle,
+            0,
+            Mix {
+                mute: true,
+                ..Mix::default()
+            },
+        );
+        // 1 kHz: a 20-sample glide.
+        let (left, _) = render_stereo(&mut engine, 30);
+        assert!(left.windows(2).all(|w| w[1] <= w[0] && w[0] - w[1] < 0.03));
+        assert!(left[0] > 0.4);
+        assert_eq!(left[19..], [0.0; 11]);
+    }
+
+    #[test]
+    fn solo_silences_every_other_track() {
+        let soloed = Mix {
+            solo: true,
+            pan: -1.0,
+            ..Mix::default()
+        };
+        let right_only = Mix {
+            pan: 1.0,
+            ..Mix::default()
+        };
+        let (mut engine, mut handle) = mixer(&[soloed, right_only]);
+        let (left, right) = render_stereo(&mut engine, 10);
+        assert!(left[0] > 0.4);
+        assert_eq!(right[0], 0.0, "starts silent rather than gliding out");
+
+        set_mix(&mut handle, 0, Mix::default());
+        let (_, right) = render_stereo(&mut engine, 30);
+        assert!(right[29] > 0.4, "unsoloed: the other track comes back");
+    }
+
+    #[test]
+    fn sends_reach_the_send_bus_effects() {
+        let sending = Mix {
+            send: 0.0,
+            ..Mix::default()
+        };
+        let (mut engine, mut handle) = mixer(&[sending]);
+        // A track that sends, through a send bus that just doubles: 0.5 dry plus 1.0 sent.
+        struct Double;
+        impl Processor for Double {
+            fn process(&mut self, _: &[Event], left: &mut [f32], right: &mut [f32]) {
+                left.iter_mut()
+                    .chain(right.iter_mut())
+                    .for_each(|x| *x *= 2.0);
+            }
+        }
+        handle.send(Command::InsertEffect {
+            chain: Chain::Send,
+            index: 0,
+            effect: EffectSlot::new(Box::new(Double)),
+        });
+        let (left, _) = render_stereo(&mut engine, 10);
+        assert!((left[0] - 1.5f32.tanh()).abs() < 1e-6);
+
+        handle.send(Command::RemoveEffect {
+            chain: Chain::Send,
+            index: 0,
+        });
+        let (left, _) = render_stereo(&mut engine, 10);
+        assert!((left[0] - 1.0f32.tanh()).abs() < 1e-6);
+        assert!(matches!(handle.garbage.pop(), Ok(Garbage::Effect(_))));
+    }
+
+    #[test]
+    fn params_reach_effects_and_full_chains_send_effects_back() {
+        let (mut engine, mut handle) = mixer(&[Mix::default()]);
+        for _ in 0..=MAX_EFFECTS {
+            handle.send(Command::InsertEffect {
+                chain: Chain::Master,
+                index: 0,
+                effect: EffectSlot::new(Box::new(crate::Delay::new(1_000.0))),
+            });
+        }
+        handle.send(Command::InsertEffect {
+            chain: Chain::Track(3),
+            index: 0,
+            effect: EffectSlot::new(silent()),
+        });
+        render_stereo(&mut engine, 1);
+        assert_eq!(engine.master_effects.len(), MAX_EFFECTS);
+        assert!(matches!(handle.garbage.pop(), Ok(Garbage::Effect(_))));
+        assert!(
+            matches!(handle.garbage.pop(), Ok(Garbage::Effect(_))),
+            "no track 3"
+        );
+
+        let target = Target::Effect {
+            chain: Chain::Master,
+            slot: 2,
+        };
+        handle.send(Command::SetParam {
+            target,
+            id: crate::delay::MIX,
+            value: 0.5,
+        });
+        engine.run_commands();
+        assert_eq!(
+            engine.master_effects[2].events,
+            [Event {
+                offset: 0,
+                kind: EventKind::Param { id: 3, value: 0.5 }
+            }]
+        );
+        render_stereo(&mut engine, 1);
+        assert!(engine.master_effects[2].events.is_empty(), "delivered");
     }
 
     #[test]

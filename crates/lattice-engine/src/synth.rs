@@ -9,7 +9,7 @@ use std::f32::consts::PI;
 use wide::f32x8;
 
 use crate::dsp::{AdsrParams, Wave, decay_coef};
-use crate::instrument::{Event, EventKind, Instrument, Segment, segments};
+use crate::processor::{Event, EventKind, Processor, Segment, segments};
 
 const VOICES: usize = 8;
 /// Samples between control-rate updates (envelope stages, filter coefficients).
@@ -222,7 +222,7 @@ impl Synth {
     }
 }
 
-impl Instrument for Synth {
+impl Processor for Synth {
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]) {
         segments(events, left.len(), |segment| match segment {
             Segment::Render(range) => {

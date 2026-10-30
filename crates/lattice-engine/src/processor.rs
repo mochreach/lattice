@@ -1,9 +1,13 @@
-//! The interface every sound source implements: built-in engines and, later, hosted CLAP plugins.
+//! The interface every instrument and effect implements: built-in engines, built-in effects and,
+//! later, hosted CLAP plugins.
 //!
-//! It mirrors CLAP's processing model: an instrument renders a whole block at a time, and
-//! receives a list of events stamped with their sample offset within that block.
+//! It mirrors CLAP's processing model: a processor renders a whole block at a time, and receives
+//! a list of events stamped with their sample offset within that block. Parameters are described
+//! by [`ParamInfo`] and changed by [`EventKind::Param`] events, in their own units, as in CLAP.
 
 use std::ops::Range;
+
+pub use crate::param::ParamInfo;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Event {
@@ -21,18 +25,24 @@ pub enum EventKind {
     NoteOff {
         pitch: u8,
     },
-    /// Set an instrument parameter; `value` is normalised to 0–1.
+    /// Set a parameter, by its [`ParamInfo::id`], to `value` in the parameter's own units.
     Param {
         id: u32,
         value: f32,
     },
 }
 
-pub trait Instrument: Send {
-    /// Renders `left.len()` frames, overwriting `left` and `right`, applying `events` (sorted by
-    /// offset) at their exact sample offsets. Called on the audio thread, so it must be real-time
-    /// safe: no allocation, no locks, no I/O.
+pub trait Processor: Send {
+    /// Processes `left.len()` frames in place, applying `events` (sorted by offset) at their
+    /// exact sample offsets. On entry `left` and `right` hold the input, which is silence for an
+    /// instrument; on return they hold the output. Called on the audio thread, so it must be
+    /// real-time safe: no allocation, no locks, no I/O.
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]);
+
+    /// The parameters [`EventKind::Param`] events can set.
+    fn params(&self) -> &[ParamInfo] {
+        &[]
+    }
 }
 
 pub enum Segment<'a> {

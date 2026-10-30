@@ -7,7 +7,9 @@ use std::fmt::Debug;
 use std::ops::Range;
 use std::path::PathBuf;
 
-use lattice_core::{Condition, MAX_STEPS, MAX_TRACKS, Rule, Step, Track, Transform};
+use lattice_core::{
+    Condition, MAX_DB, MAX_STEPS, MAX_TRACKS, MIN_DB, Mix, Rule, Step, Track, Transform,
+};
 
 use crate::{Editor, Effect};
 
@@ -161,6 +163,36 @@ pub const COMMANDS: &[Spec] = &[
         alias: None,
         params: &[text("NAME", "name")],
         describe: "rename the track",
+    },
+    Spec {
+        name: "level",
+        alias: None,
+        params: &[decimal("DB", "level", MIN_DB as i64, MAX_DB as i64)],
+        describe: "mixer: the selected tracks' level in dB",
+    },
+    Spec {
+        name: "pan",
+        alias: None,
+        params: &[int("PAN", "pan", -100, 100)],
+        describe: "mixer: pan the selected tracks, left to right",
+    },
+    Spec {
+        name: "send",
+        alias: None,
+        params: &[decimal("DB", "send", MIN_DB as i64, MAX_DB as i64)],
+        describe: "mixer: the selected tracks' send to the delay, in dB",
+    },
+    Spec {
+        name: "mute",
+        alias: None,
+        params: &[],
+        describe: "mixer: mute or unmute the selected tracks",
+    },
+    Spec {
+        name: "solo",
+        alias: None,
+        params: &[],
+        describe: "mixer: solo or unsolo the selected tracks",
     },
     Spec {
         name: "track-add",
@@ -326,12 +358,14 @@ impl Value {
         let Kind::Decimal { min, max } = self.kind else {
             return None;
         };
-        let (whole, fraction) = word.split_once('.').unwrap_or((word, ""));
+        let unsigned = word.strip_prefix(['+', '-']).unwrap_or(word);
+        let (whole, fraction) = unsigned.split_once('.').unwrap_or((unsigned, ""));
         let digits = |s: &str| s.bytes().all(|b| b.is_ascii_digit());
         if whole.is_empty() || !digits(whole) || !digits(fraction) {
             return None;
         }
-        word.parse()
+        word.trim_start_matches('+')
+            .parse()
             .ok()
             .filter(|n| (min as f64..=max as f64).contains(n))
     }
@@ -734,6 +768,16 @@ fn save_path(editor: &Editor, typed: &str) -> Result<PathBuf, String> {
     }
 }
 
+/// Changes the mixer settings of every track the selections reach, as one undo step.
+fn mix(editor: &mut Editor, change: impl Fn(&mut Mix)) -> Vec<Effect> {
+    let tracks = editor.selected_tracks();
+    editor.checkpoint();
+    for &t in &tracks {
+        change(&mut editor.grid.tracks[t].mix);
+    }
+    tracks.into_iter().map(Effect::TrackChanged).collect()
+}
+
 pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String> {
     let Some(command) = parse(line, false).map_err(|problem| problem.message)? else {
         return Ok(vec![]);
@@ -790,6 +834,31 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             editor.grid.tracks[track].name = command.text(0).into();
             Ok(vec![])
         }
+        "level" => {
+            let level = command.decimal(0) as f32;
+            Ok(mix(editor, |mix| mix.level = level))
+        }
+        "pan" => {
+            let pan = command.int::<i32>(0) as f32 / 100.0;
+            Ok(mix(editor, |mix| mix.pan = pan))
+        }
+        "send" => {
+            let send = command.decimal(0) as f32;
+            Ok(mix(editor, |mix| mix.send = send))
+        }
+        "mute" | "solo" => {
+            let solo = command.spec.name == "solo";
+            let flag = |mix: Mix| if solo { mix.solo } else { mix.mute };
+            // Toggled together: if any selected track is off, they all go on.
+            let on = (editor.selected_tracks().iter()).any(|&t| !flag(editor.grid.tracks[t].mix));
+            Ok(mix(editor, |mix| {
+                if solo {
+                    mix.solo = on;
+                } else {
+                    mix.mute = on;
+                }
+            }))
+        }
         "track-add" => {
             let tracks = &editor.grid.tracks;
             if tracks.len() >= MAX_TRACKS {
@@ -807,6 +876,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             let track = Track {
                 name,
                 steps: vec![Step::default(); NEW_TRACK_STEPS],
+                mix: Default::default(),
                 rules: vec![],
             };
             editor.insert_track(editor.cursor().track + 1, track);

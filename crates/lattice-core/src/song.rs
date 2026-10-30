@@ -78,6 +78,72 @@ pub struct Track {
     pub steps: Vec<Step>,
     /// Transforms applied, in order, to realise the track for each pass.
     pub rules: Vec<Rule>,
+    pub mix: Mix,
+}
+
+/// Quietest level in decibels; at or below it, a level or send is silent.
+pub const MIN_DB: f32 = -60.0;
+/// Loudest level in decibels.
+pub const MAX_DB: f32 = 6.0;
+
+/// How a track sits in the mix: its channel strip.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Mix {
+    /// Level in decibels, [`MIN_DB`] (silent) to [`MAX_DB`].
+    #[serde(skip_serializing_if = "is_zero")]
+    pub level: f32,
+    /// -1 is hard left, 1 hard right.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub pan: f32,
+    /// Level sent to the send bus after the track's level and pan, in decibels; [`MIN_DB`]
+    /// sends nothing.
+    #[serde(skip_serializing_if = "is_min_db")]
+    pub send: f32,
+    #[serde(skip_serializing_if = "is_false")]
+    pub mute: bool,
+    /// While any track is soloed, only soloed tracks are heard.
+    #[serde(skip_serializing_if = "is_false")]
+    pub solo: bool,
+}
+
+impl Default for Mix {
+    fn default() -> Self {
+        Self {
+            level: 0.0,
+            pan: 0.0,
+            send: MIN_DB,
+            mute: false,
+            solo: false,
+        }
+    }
+}
+
+impl Mix {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// Decibels to a linear gain, silent at or below [`MIN_DB`].
+pub fn db_to_gain(db: f32) -> f32 {
+    if db <= MIN_DB {
+        0.0
+    } else {
+        10f32.powf(db / 20.0)
+    }
+}
+
+fn is_zero(x: &f32) -> bool {
+    *x == 0.0
+}
+
+fn is_min_db(x: &f32) -> bool {
+    *x <= MIN_DB
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 /// How a [`Track`] is written to a file.
@@ -90,6 +156,8 @@ struct SparseTrack {
     steps: BTreeMap<usize, Step>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     rules: Vec<Rule>,
+    #[serde(default, skip_serializing_if = "Mix::is_default")]
+    mix: Mix,
 }
 
 impl From<Track> for SparseTrack {
@@ -104,6 +172,7 @@ impl From<Track> for SparseTrack {
                 .filter(|(_, step)| !step.is_empty())
                 .collect(),
             rules: track.rules,
+            mix: track.mix,
         }
     }
 }
@@ -132,6 +201,7 @@ impl TryFrom<SparseTrack> for Track {
             name: sparse.name,
             steps,
             rules: sparse.rules,
+            mix: sparse.mix,
         })
     }
 }

@@ -2,7 +2,10 @@
 
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
 use lattice_core::{Condition, Grid, Rule, Step, Track, Transform};
-use lattice_engine::{AdsrParams, Command, Engine, Instrument, Patch, Synth, TrackPlayer, Wave};
+use lattice_engine::{
+    AdsrParams, Chain, Command, Delay, EffectSlot, Engine, Patch, Processor, Synth, Target,
+    TrackPlayer, Wave, delay,
+};
 
 #[global_allocator]
 static ALLOCATOR: AllocDisabler = AllocDisabler;
@@ -20,6 +23,7 @@ fn rendering_never_allocates() {
                 }
             })
             .collect(),
+        mix: Default::default(),
         rules: vec![
             Rule {
                 transform: Transform::Drift(1),
@@ -49,17 +53,24 @@ fn rendering_never_allocates() {
         resonance: 0.3,
         gain: 0.3,
     };
-    let synth: Box<dyn Instrument> = Box::new(Synth::new(patch, 48_000.0));
+    let synth: Box<dyn Processor> = Box::new(Synth::new(patch, 48_000.0));
     // Tracks to add while playing, built here on the "UI thread".
     let mut players: Vec<_> = (0..2)
         .map(|_| {
             TrackPlayer::new(
                 grid.tracks[0].clone(),
                 Box::new(Synth::new(patch, 48_000.0)),
+                48_000.0,
             )
         })
         .collect();
     let replacement = Box::new(grid.tracks[0].clone());
+    let mut muted = grid.tracks[0].clone();
+    muted.mix.mute = true;
+    muted.mix.send = 0.0;
+    let mut muted = Some(Box::new(muted));
+    let mut send_delay = Some(EffectSlot::new(Box::new(Delay::new(48_000.0))));
+    let mut track_delay = Some(EffectSlot::new(Box::new(Delay::new(48_000.0))));
     let (mut engine, mut handle) = Engine::new(48_000.0, 174.0, &grid, vec![synth]);
     // Commands are handled inside the no-allocation zone too.
     handle.send(Command::Play);
@@ -98,16 +109,48 @@ fn rendering_never_allocates() {
                         player: players.pop().unwrap(),
                     });
                 }
+                700 => {
+                    handle.send(Command::InsertEffect {
+                        chain: Chain::Send,
+                        index: 0,
+                        effect: send_delay.take().unwrap(),
+                    });
+                    handle.send(Command::InsertEffect {
+                        chain: Chain::Track(0),
+                        index: 0,
+                        effect: track_delay.take().unwrap(),
+                    });
+                    handle.send(Command::SetParam {
+                        target: Target::Effect {
+                            chain: Chain::Send,
+                            slot: 0,
+                        },
+                        id: delay::TIME,
+                        value: 0.2,
+                    });
+                }
                 800 => {
                     handle.send(Command::RemoveTrack(0));
+                    handle.send(Command::RemoveEffect {
+                        chain: Chain::Send,
+                        index: 0,
+                    });
+                }
+                1_000 => {
+                    handle.send(Command::SetTrack {
+                        index: 0,
+                        track: muted.take().unwrap(),
+                    });
                 }
                 _ => {}
             }
             engine.process(&mut left, &mut right);
             peak = left.iter().fold(peak, |p, x| p.max(x.abs()));
+            handle.status().take_peak(0);
         }
     });
     handle.collect_garbage();
+    assert!(left.iter().all(|&x| x == 0.0), "muted by the end");
     assert!(peak > 0.05, "the synth should be audible, peak {peak}");
     assert!(peak <= 1.0);
 }

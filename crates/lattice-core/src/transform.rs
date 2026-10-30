@@ -156,6 +156,7 @@ mod tests {
                 Step::note(64),
                 Step::note(67),
             ],
+            mix: Default::default(),
             rules,
         }
     }

@@ -71,17 +71,22 @@ with a sample-accurate event model and per-note parameter changes, and it suits 
 rather build on and contribute to an open standard than depend on a closed one. Hosting uses
 `clack-host`. VST3 can come later; LV2 only if it's needed.
 
-**Built-in engines and hosted plugins share one interface,** modelled on CLAP's processing:
+**Built-in engines, effects and hosted plugins share one interface,** modelled on CLAP's
+processing:
 
 ```rust
-trait Instrument: Send {
+trait Processor: Send {
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]);
+    fn params(&self) -> &[ParamInfo] { &[] }
 }
 ```
 
-The sequencer turns steps into events (note on/off, parameter changes) stamped with their sample
-offset in the block, and each instrument renders the whole block. This has several
-consequences:
+The buffers hold the input on entry (silence, for an instrument) and the output on return. The
+sequencer turns steps into events (note on/off, parameter changes) stamped with their sample
+offset in the block, and each processor renders the whole block. Parameters are described by
+`ParamInfo` (id, name, range, default, unit) and set by `Param` events in their own units, as in
+CLAP, not normalised. Processors smooth their own parameters (`Smoothed`, a 20 ms linear glide) so
+changes never click. This has several consequences:
 
 - **Effect columns:** a step's effect columns become timestamped parameter events, like Elektron
   parameter locks, whether the target is a built-in engine or a plugin.
@@ -281,6 +286,36 @@ snapshots the ids along with the grid. Changing the set or order of tracks produ
 ids with the editor's. It keeps each id's instrument patch, so a track that undo brings back
 sounds as it did. New tracks take the demo patches in turn for now.
 
+## Mixer and effects
+
+The signal path, all inside `Engine::process`:
+
+```
+instrument → track effects → strip (level, pan, mute/solo) ─┬────────────────→ master bus
+                                                            └→ send ──→ send bus effects ─┘
+master bus → master effects → + click → tanh
+```
+
+- **Strips** are per track and stored in the song (`Track::mix`: level and send in dB, pan from -1
+  to 1, mute, solo), so they're saved, undone and synced like the notes: `SetTrack` carries them,
+  and the engine glides each strip to its settings once per block. Mute and solo go through the
+  same smoothed gain, so they fade in and out over 20 ms instead of clicking. A send at -60 dB is
+  off, which is the default.
+- **Pan** is a balance control: centred is unity gain on both sides, and panning turns the other
+  side down along a quarter cosine. Instruments are stereo, so a constant-power law would only
+  make centred tracks quieter.
+- **The send is post-fader,** so muting a track mutes its echoes too.
+- **Effect chains** (up to `MAX_EFFECTS`, 8) exist per track and on the send and master buses.
+  `InsertEffect` and `RemoveEffect` work like tracks do: the slot is built off the audio thread
+  and sent over, and removed ones come back over the garbage queue. `SetParam` targets an
+  instrument or an effect slot and arrives as a `Param` event at the start of the next block.
+- **Meters:** each track's peak after its strip is published as `f32` bits in an `AtomicU32`
+  with `fetch_max`; the UI swaps it for 0 each frame and lets its meter fall at 30 dB/s.
+
+For now the only effect is a plain stereo delay (time, feedback, a lowpass in the feedback path,
+and mix), which the TUI puts on the send bus at start-up. Effect chains aren't in song files yet,
+and there's no view for editing them or their parameters; that comes with the mixer/effects view.
+
 ## Song files
 
 Songs are saved as RON in `.lattice` files, written by `lattice_core::to_ron` and read by
@@ -329,6 +364,7 @@ gives every track a new id and returns `Effect::TracksChanged`, so the frontend 
 engine's tracks, however many the song has (up to `MAX_TRACKS`).
 
 Not in files yet:
+- **Effect chains and their parameters.** Only each track's mixer strip is saved.
 - **Instrument patches.** They're still defined in `lattice-tui`'s `demo.rs`, and a loaded song's
   tracks take the demo patches in turn, as new tracks do. Patches belong in the song once
   instruments can be chosen per track.

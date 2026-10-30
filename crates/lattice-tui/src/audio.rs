@@ -3,7 +3,7 @@
 use anyhow::{Context, Result, bail};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use lattice_core::Grid;
-use lattice_engine::{Engine, Handle, Instrument, Patch, Synth};
+use lattice_engine::{Chain, Command, Delay, EffectSlot, Engine, Handle, Patch, Processor, Synth};
 
 /// Largest buffer the engine renders in one go; bigger cpal buffers are split.
 const MAX_BLOCK: usize = 4096;
@@ -32,9 +32,15 @@ pub fn start(grid: &Grid, patches: Vec<Patch>, bpm: f64) -> Result<Audio> {
 
     let instruments = patches
         .into_iter()
-        .map(|p| Box::new(Synth::new(p, sample_rate)) as Box<dyn Instrument>)
+        .map(|p| Box::new(Synth::new(p, sample_rate)) as Box<dyn Processor>)
         .collect();
-    let (mut engine, handle) = Engine::new(sample_rate, bpm, grid, instruments);
+    let (mut engine, mut handle) = Engine::new(sample_rate, bpm, grid, instruments);
+    // One delay on the send bus, for tracks to send to.
+    handle.send(Command::InsertEffect {
+        chain: Chain::Send,
+        index: 0,
+        effect: EffectSlot::new(Box::new(Delay::new(sample_rate))),
+    });
     let mut left = vec![0.0f32; MAX_BLOCK];
     let mut right = vec![0.0f32; MAX_BLOCK];
 
