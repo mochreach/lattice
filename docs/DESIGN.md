@@ -296,6 +296,15 @@ checkpoint, so `u` removes the last pass's notes together; any other edit, undo 
 starts a new take. Tracks of other lengths take the step from their own position, so polymeter
 records correctly.
 
+With record armed, play starts with a count-in: `:count` bars (one to start, up to four, or none) of
+clicks, accenting each bar's first beat, heard even with the click off. `Command::Play` carries the
+bars; the engine runs its clock through them without sequencing, so the song's first step lands
+exactly a whole number of bars later, and publishes the count-in steps still to come in `Status`,
+which the header shows as beats (`IN 4`). The `Transport` carries them too, and a track's position
+during the count-in is negative, so a note half a step early rounds onto step 0 and the sequencer
+plays it there; one earlier is heard but not entered. The click is now silenced by not sending it
+notes rather than by not mixing it, so the count-in's clicks can sound with it off.
+
 Lengths come from key releases. Where the kitty protocol is available the TUI also pushes
 `REPORT_EVENT_TYPES`; a release calls `Editor::release`, which sets the length of the notes that
 key recorded to the steps it was held (at least one, at most the track). Repeats are ignored while

@@ -89,7 +89,7 @@ fn rendering_never_allocates() {
     ));
     let (mut engine, mut handle) = Engine::new(48_000.0, 174.0, &grid, vec![synth]);
     // Commands are handled inside the no-allocation zone too.
-    handle.send(Command::Play);
+    handle.send(Command::Play { count_in: 0 });
     handle.send(Command::SetBpm(140.0));
     handle.send(Command::Preview {
         track: 0,

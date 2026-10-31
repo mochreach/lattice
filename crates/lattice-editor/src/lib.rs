@@ -295,6 +295,8 @@ pub struct Editor {
     pub show_keys: bool,
     /// Whether notes played in insert mode while the song plays go in at the playhead.
     pub record: bool,
+    /// Bars of clicks before the song starts, when record is armed.
+    pub count_in: u32,
     /// Where playback is; see [`Editor::set_transport`].
     transport: Option<Transport>,
     /// The pass being recorded, all one undo.
@@ -365,6 +367,7 @@ impl Editor {
             click: true,
             show_keys: false,
             record: false,
+            count_in: 1,
             transport: None,
             take: None,
             held: Vec::new(),

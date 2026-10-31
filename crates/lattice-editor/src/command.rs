@@ -284,6 +284,12 @@ pub const COMMANDS: &[Spec] = &[
         describe: "record on or off: notes played while the song plays go in at the playhead",
     },
     Spec {
+        name: "count",
+        alias: None,
+        params: &[int("BARS", "bars", 0, 4)],
+        describe: "bars counted in before recording (0 for none)",
+    },
+    Spec {
         name: "keys",
         alias: None,
         params: &[],
@@ -866,6 +872,10 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                 "follow {}",
                 if editor.follow { "on" } else { "off" }
             ));
+            Ok(vec![])
+        }
+        "count" => {
+            editor.count_in = command.int(0);
             Ok(vec![])
         }
         "rec" => {

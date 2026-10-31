@@ -39,7 +39,10 @@ const CLICK_ACCENT_PITCH: u8 = 96;
 /// Messages from the UI thread to the audio thread.
 #[derive(Debug)]
 pub enum Command {
-    Play,
+    /// Starts from the top, after this many bars of clicks (heard even with the click off).
+    Play {
+        count_in: u32,
+    },
     Stop,
     SetBpm(f64),
     SetClick(bool),
@@ -270,6 +273,8 @@ impl Strip {
 /// Playback state the audio thread publishes for the UI.
 pub struct Status {
     playing: AtomicBool,
+    /// Steps of the count-in still to come, counting the one sounding; 0 once the song starts.
+    count_in: AtomicU32,
     /// Per track index: `pass << 32 | step`, or `u64::MAX` when stopped or not yet played. One
     /// atomic, so the step and pass are always read together.
     positions: [AtomicU64; MAX_TRACKS],
@@ -285,6 +290,7 @@ impl Status {
     fn new() -> Self {
         Self {
             playing: AtomicBool::new(false),
+            count_in: AtomicU32::new(0),
             positions: std::array::from_fn(|_| AtomicU64::new(u64::MAX)),
             peaks: std::array::from_fn(|_| AtomicU32::new(0)),
             bus_peaks: std::array::from_fn(|_| AtomicU32::new(0)),
@@ -294,6 +300,12 @@ impl Status {
 
     pub fn playing(&self) -> bool {
         self.playing.load(Ordering::Relaxed)
+    }
+
+    /// Steps of the count-in still to come, counting the one sounding: 0 when it's over, or
+    /// there wasn't one.
+    pub fn count_in(&self) -> u32 {
+        self.count_in.load(Ordering::Relaxed)
     }
 
     /// The step `track` is playing, and which pass through the track it's on.
@@ -333,6 +345,7 @@ impl Status {
 
     fn set_stopped(&self) {
         self.playing.store(false, Ordering::Relaxed);
+        self.count_in.store(0, Ordering::Relaxed);
         for p in &self.positions {
             p.store(u64::MAX, Ordering::Relaxed);
         }
@@ -436,6 +449,8 @@ pub struct Engine {
     playing: bool,
     steps_per_beat: u64,
     step_index: u64,
+    /// Count-in steps still to play before step 0.
+    count_in: u64,
     /// Boxed, so players arrive and leave without being moved out of their boxes, which would
     /// free the boxes here. Room for `MAX_TRACKS`.
     #[allow(clippy::vec_box)]
@@ -499,6 +514,7 @@ impl Engine {
             playing: false,
             steps_per_beat: u64::from(grid.steps_per_beat.max(1)),
             step_index: 0,
+            count_in: 0,
             tracks,
             send_effects: effects(),
             master_effects: effects(),
@@ -527,8 +543,14 @@ impl Engine {
 
     /// Starts playback from the top.
     pub fn play(&mut self) {
+        self.play_after(0);
+    }
+
+    /// Starts playback from the top, after `bars` bars of clicks.
+    pub fn play_after(&mut self, bars: u32) {
         self.stop();
         self.playing = true;
+        self.count_in = u64::from(bars) * BEATS_PER_BAR * self.steps_per_beat;
         self.status.playing.store(true, Ordering::Relaxed);
         self.clock.restart();
     }
@@ -544,6 +566,7 @@ impl Engine {
             t.position = u64::MAX;
         }
         self.step_index = 0;
+        self.count_in = 0;
         self.playing = false;
         self.status.set_stopped();
     }
@@ -563,7 +586,7 @@ impl Engine {
     fn run_commands(&mut self) {
         while let Ok(command) = self.commands.pop() {
             match command {
-                Command::Play => self.play(),
+                Command::Play { count_in } => self.play_after(count_in),
                 Command::Stop => self.stop(),
                 Command::SetBpm(bpm) => self.clock.set_bpm(bpm),
                 Command::SetClick(on) => self.click_enabled = on,
@@ -821,17 +844,31 @@ impl Engine {
         let (cl, cr) = (&mut self.click_left[..len], &mut self.click_right[..len]);
         self.click.process(&self.click_events, cl, cr);
         self.click_events.clear();
-        if self.click_enabled {
-            mix_into(left, cl);
-            mix_into(right, cr);
-        }
+        mix_into(left, cl);
+        mix_into(right, cr);
         for sample in left.iter_mut().chain(right.iter_mut()) {
             *sample = sample.tanh();
         }
     }
 
     fn sequence_step(&mut self, offset: u32) {
-        if self.step_index.is_multiple_of(self.steps_per_beat) {
+        // Counting in: only clicks, accenting each bar's first beat.
+        if self.count_in > 0 {
+            self.status
+                .count_in
+                .store(self.count_in as u32, Ordering::Relaxed);
+            if self.count_in.is_multiple_of(self.steps_per_beat) {
+                let bar = self
+                    .count_in
+                    .is_multiple_of(BEATS_PER_BAR * self.steps_per_beat);
+                let pitch = if bar { CLICK_ACCENT_PITCH } else { CLICK_PITCH };
+                push(&mut self.click_events, note_on(offset, pitch, 100));
+            }
+            self.count_in -= 1;
+            return;
+        }
+        self.status.count_in.store(0, Ordering::Relaxed);
+        if self.click_enabled && self.step_index.is_multiple_of(self.steps_per_beat) {
             let beat = self.step_index / self.steps_per_beat;
             let pitch = if beat.is_multiple_of(BEATS_PER_BAR) {
                 CLICK_ACCENT_PITCH
@@ -1059,6 +1096,29 @@ mod tests {
         let spb = 44_100.0 * 60.0 / 137.0;
         let expected: Vec<usize> = (0..6).map(|k| (k as f64 * spb).ceil() as usize).collect();
         assert_eq!(onsets(&audio), expected);
+    }
+
+    #[test]
+    fn a_count_in_clicks_a_bar_even_with_the_click_off_then_plays() {
+        let (mut engine, handle) = with_synth(48_000.0);
+        engine.click_enabled = false;
+        engine.play_after(1);
+        // 133 bpm, 16ths: about 5,413 samples per step, so a bar is 16 of them.
+        let step = 48_000.0 * 60.0 / (133.0 * 4.0);
+        let start = render(&mut engine, 256, 100);
+        assert_eq!(handle.status().count_in(), 16);
+        assert_eq!(handle.status().position(0), None);
+        let rest = render(&mut engine, 256, (step * 15.5) as usize - 100);
+        let audio = [start, rest].concat();
+        let expected: Vec<usize> = (0..4)
+            .map(|beat| (beat as f64 * step * 4.0).ceil() as usize)
+            .collect();
+        assert_eq!(onsets(&audio), expected);
+        assert_eq!(handle.status().count_in(), 1);
+        // Then the song, from its first step.
+        render(&mut engine, 256, step as usize);
+        assert_eq!(handle.status().count_in(), 0);
+        assert_eq!(handle.status().position(0), Some((0, 0)));
     }
 
     #[test]

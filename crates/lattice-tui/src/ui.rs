@@ -229,7 +229,12 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
     let label = |s: &'static str| Span::styled(s, theme.dim);
     let value = |s: String| Span::styled(s, theme.text.add_modifier(Modifier::BOLD));
     let on_off = |on: bool| if on { "on" } else { "off" };
-    let transport = if status.playing() {
+    let counting = status.count_in() as usize;
+    let transport = if counting > 0 {
+        // The beats still to count, as a band leader counts them.
+        let beats = counting.div_ceil(editor.grid.steps_per_beat.max(1) as usize);
+        Span::styled(format!(" ◆ IN {beats} "), theme.block(theme.error))
+    } else if status.playing() {
         Span::styled(" ▶ PLAY ", theme.block(theme.playing))
     } else {
         Span::styled(" ■ STOP ", theme.block(Color::DarkGray))

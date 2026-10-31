@@ -152,12 +152,15 @@ fn run(
     }
 }
 
+/// The first track's position, if it's started, and the count-in still to come.
+type Mark = (Option<(usize, u32)>, u32);
+
 /// Where playback is, for recording. The engine says which step each track is on; how long
 /// ago that changed says how far into the step it is.
 #[derive(Default)]
 struct Playhead {
-    /// The first track's position, and when it was first seen.
-    seen: Option<((usize, u32), Instant)>,
+    /// The first track's position and the count-in, and when they were first seen.
+    seen: Option<(Mark, Instant)>,
 }
 
 impl Playhead {
@@ -165,19 +168,16 @@ impl Playhead {
         let positions: Vec<_> = (0..editor.grid.tracks.len())
             .map(|t| status.position(t))
             .collect();
-        let Some(first) = positions
-            .first()
-            .copied()
-            .flatten()
-            .filter(|_| status.playing())
-        else {
+        let count_in = status.count_in();
+        let first = positions.first().copied().flatten();
+        if !status.playing() || (first.is_none() && count_in == 0) {
             self.seen = None;
             return None;
-        };
+        }
         let since = match self.seen {
-            Some((position, since)) if position == first => since,
+            Some((seen, since)) if seen == (first, count_in) => since,
             _ => {
-                self.seen = Some((first, now));
+                self.seen = Some(((first, count_in), now));
                 now
             }
         };
@@ -185,6 +185,7 @@ impl Playhead {
         Some(Transport {
             positions,
             into_step: (now.duration_since(since).as_secs_f64() / step).min(0.99),
+            count_in: count_in as usize,
         })
     }
 }
@@ -210,7 +211,10 @@ fn apply(
             track: Box::new(editor.grid.tracks[index].clone()),
         },
         Effect::TogglePlay if handle.status().playing() => Command::Stop,
-        Effect::TogglePlay => Command::Play,
+        // A count-in only when recording, to play along from the first beat.
+        Effect::TogglePlay => Command::Play {
+            count_in: if editor.record { editor.count_in } else { 0 },
+        },
         Effect::Bpm(bpm) => Command::SetBpm(bpm),
         Effect::Click(on) => Command::SetClick(on),
         Effect::Preview { track, pitch } => Command::Preview {

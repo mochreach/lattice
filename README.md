@@ -108,8 +108,9 @@ without moving on, so a step can take several drums. This needs a terminal that 
 apart (kitty, WezTerm, foot, Ghostty, recent Alacritty). Elsewhere, and inside tmux, the number
 row does the same in insert mode while the cursor is in a folded group.
 
-To **record live**, press `R` (a red `REC` shows in the header) and then `space`. While the song
-plays, the notes you play in insert mode, piano keys and pads alike, go in where the playhead is,
+To **record live**, press `R` (a red `REC` shows in the header) and then `space`. A bar of clicks
+counts you in, with the beats left in the header (`IN 4` … `IN 1`), whether or not the metronome
+is on; a note played in the last half-step of it goes on the first step. While the song plays, the notes you play in insert mode, piano keys and pads alike, go in where the playhead is,
 on the nearest step, on the cursor's track (or each selection's), over whatever was there. A note
 rounded back onto a step that has just played sounds as you play it; one rounded on to the next
 step is played by the sequencer there, in time. Each pass round the track is one undo, so `u`
@@ -130,6 +131,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:bpm N`, `:step N`, `:oct N` | tempo, auto-step, keyboard octave |
 | `:click`, `:follow` | toggle the metronome, following the playhead |
 | `:rec` | toggle recording, like `R` |
+| `:count N` | bars counted in before recording (0–4, 0 for none; 1 to start) |
 | `:keys` | toggle showing the keys as they're pressed, above the status line, for screencasts |
 | `:name NAME` | rename the track |
 | `:group-name NAME` | rename this track's group |

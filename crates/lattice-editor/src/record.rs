@@ -1,7 +1,9 @@
 //! Live recording. With record armed (`R` or `:rec`) and the song playing, the notes played in
 //! insert mode, piano keys and pads alike, go in where the playhead is, to the nearest step,
 //! rather than at the cursor. Each pass through the track is one undo, so a bad take comes out
-//! whole. When the frontend reports key releases, a note is as long as it was held.
+//! whole. When the frontend reports key releases, a note is as long as it was held. When record is
+//! armed, play starts with a count-in (`:count`), and a note played just before the song starts
+//! goes on its first step.
 
 use lattice_core::Note;
 
@@ -15,6 +17,8 @@ pub struct Transport {
     pub positions: Vec<Option<(usize, u32)>>,
     /// How far into those steps playback is, from 0 to 1.
     pub into_step: f64,
+    /// Steps of the count-in still to come, counting the one sounding; 0 once the song starts.
+    pub count_in: usize,
 }
 
 /// A recorded note whose key is still down, to be given its length when it comes up.
@@ -29,8 +33,12 @@ pub(crate) struct Held {
 }
 
 impl Transport {
-    /// Where `track` is, in steps since it started, to a fraction of a step.
+    /// Where `track` is, in steps since it started, to a fraction of a step; negative while
+    /// counting in.
     fn at(&self, track: usize, len: usize) -> Option<f64> {
+        if self.count_in > 0 {
+            return Some(self.into_step - self.count_in as f64);
+        }
         let (step, pass) = (*self.positions.get(track)?)?;
         Some((u64::from(pass) * len as u64 + step as u64) as f64 + self.into_step)
     }
@@ -81,12 +89,18 @@ impl Editor {
         let mut notes = vec![];
         for &track in tracks {
             let len = self.track_len(track);
-            if let Some(from) = transport.at(track, len).filter(|_| len > 0) {
-                let at = from.round() as u64;
+            // Too early in the count-in for the first step, it's only heard.
+            if let Some(from) = transport.at(track, len).filter(|&f| len > 0 && f >= -0.5) {
+                let at = from.round().max(0.0) as u64;
                 notes.push((track, (at % len as u64) as usize, at / len as u64, from));
             }
         }
-        let &(_, _, pass, from) = notes.first()?;
+        let Some(&(_, _, pass, from)) = notes.first() else {
+            return Some(vec![Effect::Preview {
+                track: tracks[0],
+                pitch,
+            }]);
+        };
         // Each pass through the primary track is one take, undone together.
         if self.take != Some(pass) {
             self.checkpoint();
@@ -110,7 +124,7 @@ impl Editor {
         let mut effects = changed(notes.iter().map(|n| n.0));
         // Rounded back onto a step that's already played, it's sounded now; rounded on to the
         // next, the sequencer plays it there, in time.
-        if from.fract() < 0.5 {
+        if from.round() <= from {
             effects.push(Effect::Preview {
                 track: notes[0].0,
                 pitch,
@@ -173,6 +187,7 @@ mod tests {
         e.set_transport(Some(Transport {
             positions: vec![Some((step, pass)); 2],
             into_step: into,
+            count_in: 0,
         }));
     }
 
@@ -263,6 +278,7 @@ mod tests {
         e.set_transport(Some(Transport {
             positions: vec![Some((10, 0)), Some((2, 1))],
             into_step: 0.0,
+            count_in: 0,
         }));
         e.handle(Key::Char('z'));
         assert_eq!(pitches(&e, 0), []);
@@ -271,5 +287,32 @@ mod tests {
         // Stopping ends the take.
         e.set_transport(None);
         assert!(e.take.is_none());
+    }
+
+    #[test]
+    fn a_note_just_before_the_count_in_ends_goes_on_the_first_step() {
+        let mut e = editor();
+        e.handle(Key::Char('R'));
+        let counting = |left, into| Transport {
+            positions: vec![None, None],
+            into_step: into,
+            count_in: left,
+        };
+        // Early in the count-in: heard, not recorded, and not entered at the cursor either.
+        e.set_transport(Some(counting(9, 0.5)));
+        assert_eq!(
+            e.handle(Key::Char('z')),
+            [Effect::Preview {
+                track: 0,
+                pitch: 60
+            }]
+        );
+        assert_eq!(pitches(&e, 0), []);
+        // Half a step early: on step 0, played there by the sequencer, and held into the song.
+        e.set_transport(Some(counting(1, 0.7)));
+        assert_eq!(e.handle(Key::Char('x')), [Effect::TrackChanged(0)]);
+        at(&mut e, 1, 0, 0.8);
+        e.release(Key::Char('x'));
+        assert_eq!(pitches(&e, 0), [(0, 62, 2)]);
     }
 }
