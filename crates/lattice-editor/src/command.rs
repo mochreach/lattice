@@ -338,6 +338,18 @@ pub const COMMANDS: &[Spec] = &[
         describe: "open a song, discarding unsaved changes",
     },
     Spec {
+        name: "export",
+        alias: None,
+        params: &[optional_text("[PATH] [BARS]", "path")],
+        describe: "render the song to a WAV file, by default once round its loop",
+    },
+    Spec {
+        name: "export-sel",
+        alias: None,
+        params: &[optional_text("[PATH]", "path")],
+        describe: "render the selection to a WAV file, for a sample",
+    },
+    Spec {
         name: "write-quit",
         alias: Some("wq"),
         params: &[optional_text("[PATH]", "path")],
@@ -860,6 +872,8 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         ]),
         "open" if editor.modified() => Err(UNSAVED_OPEN.into()),
         "open" | "open!" => Ok(vec![Effect::Open(command.text(0).into())]),
+        "export" => editor.export_song(command.text(0)),
+        "export-sel" => editor.export_selection(command.text(0)),
         "help" => {
             let names: Vec<&str> = COMMANDS.iter().map(|c| c.name).collect();
             Err(names.join(" · "))

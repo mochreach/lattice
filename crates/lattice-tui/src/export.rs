@@ -1,0 +1,222 @@
+//! Renders an [`Export`] to a WAV file, on its own thread with its own engine, so playing and
+//! editing carry on meanwhile.
+
+use std::fs::File;
+use std::io::{BufWriter, Write};
+use std::path::Path;
+use std::sync::mpsc::{self, Receiver};
+
+use anyhow::{Context, Result};
+use lattice_core::Buses;
+use lattice_editor::{Editor, Export, file_name};
+use lattice_engine::{Command, Engine, Handle};
+
+use crate::mixer::Mixer;
+use crate::tracks::Tracks;
+
+/// Samples rendered at a time.
+const BLOCK: usize = 1024;
+/// Below this, the tail is silent: -80 dB.
+const SILENT: f32 = 1e-4;
+/// The tail ends once it's been silent this long, or at the most after `MAX_TAIL`, in seconds.
+const QUIET: f32 = 1.0;
+const MAX_TAIL: f32 = 10.0;
+
+/// Exports still rendering.
+pub struct Exports {
+    sample_rate: f32,
+    pending: Vec<Receiver<String>>,
+}
+
+impl Exports {
+    pub fn new(sample_rate: f32) -> Self {
+        Self {
+            sample_rate,
+            pending: vec![],
+        }
+    }
+
+    /// Starts rendering `export` with the editor's buses and tempo as they are now.
+    pub fn start(&mut self, export: Export, editor: &mut Editor) {
+        editor.message = Some(format!("exporting {}…", file_name(&export.path)));
+        let buses = editor.buses.clone();
+        self.pending
+            .push(start(export, buses, editor.bpm, self.sample_rate));
+    }
+
+    /// Shows the message from each export that's finished.
+    pub fn poll(&mut self, editor: &mut Editor) {
+        self.pending.retain(|rx| match rx.try_recv() {
+            Ok(message) => {
+                editor.message = Some(message);
+                false
+            }
+            Err(mpsc::TryRecvError::Empty) => true,
+            Err(mpsc::TryRecvError::Disconnected) => false,
+        });
+    }
+}
+
+/// Starts rendering; the receiver gets the message to show when it's done.
+fn start(export: Export, buses: Buses, bpm: f64, sample_rate: f32) -> Receiver<String> {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let message = match render(&export, buses, bpm, sample_rate)
+            .and_then(|audio| write_wav(&export.path, &audio, sample_rate as u32))
+        {
+            Ok(seconds) => format!("exported {} ({seconds:.1}s)", file_name(&export.path)),
+            Err(e) => format!("export failed: {e:#}"),
+        };
+        let _ = tx.send(message);
+    });
+    rx
+}
+
+/// Plays `export.grid` from the top for its steps through the song's mixer, then lets it ring
+/// out until it's quiet. Returns interleaved stereo.
+pub fn render(export: &Export, buses: Buses, bpm: f64, sample_rate: f32) -> Result<Vec<f32>> {
+    let editor = Editor::new(export.grid.clone(), bpm).with_buses(buses);
+    let instruments = Tracks::instruments(&editor.grid, sample_rate);
+    let (mut engine, mut handle) = Engine::new(sample_rate, bpm, &editor.grid, instruments);
+    let mut left = vec![0.0; BLOCK];
+    let mut right = vec![0.0; BLOCK];
+
+    // Rendering nothing runs the commands sent so far, making room for more.
+    let drain = |engine: &mut Engine, handle: &mut Handle| {
+        engine.process(&mut [], &mut []);
+        handle.collect_garbage();
+    };
+    let mut mixer = Mixer::new(sample_rate);
+    let mut tries = 0;
+    while !mixer.sync(&editor, &mut handle) {
+        drain(&mut engine, &mut handle);
+        tries += 1;
+        anyhow::ensure!(tries < 1000, "the song's mixer wouldn't load");
+    }
+    for command in [Command::SetClick(false), Command::Play { count_in: 0 }] {
+        handle.send(command);
+    }
+    drain(&mut engine, &mut handle);
+
+    let step = 60.0 / (bpm * f64::from(editor.grid.steps_per_beat.max(1)));
+    let length = (export.steps as f64 * step * f64::from(sample_rate)).round() as usize;
+    let mut audio = Vec::with_capacity(2 * length);
+    let mut render = |engine: &mut Engine, frames: usize, audio: &mut Vec<f32>| {
+        let (l, r) = (&mut left[..frames], &mut right[..frames]);
+        engine.process(l, r);
+        audio.extend(l.iter().zip(&*r).flat_map(|(&l, &r)| [l, r]));
+    };
+    while audio.len() < 2 * length {
+        render(&mut engine, BLOCK.min(length - audio.len() / 2), &mut audio);
+    }
+
+    // The next step would start the loop again, so stop there, releasing what's held, and
+    // keep going while delays and reverbs fade.
+    handle.send(Command::Stop);
+    let quiet = (QUIET * sample_rate) as usize;
+    let max = 2 * length + 2 * (MAX_TAIL * sample_rate) as usize;
+    let mut last_sound = audio.len();
+    while audio.len() < max && audio.len() - last_sound < 2 * quiet {
+        let from = audio.len();
+        render(&mut engine, BLOCK, &mut audio);
+        if let Some(i) = audio[from..].iter().rposition(|s| s.abs() > SILENT) {
+            last_sound = from + i + 1;
+        }
+    }
+    // Ending on a whole frame.
+    audio.truncate(last_sound.next_multiple_of(2));
+    Ok(audio)
+}
+
+/// Writes interleaved stereo as 24-bit PCM, which samplers and DAWs all read. Returns its
+/// length in seconds.
+pub fn write_wav(path: &Path, audio: &[f32], sample_rate: u32) -> Result<f32> {
+    const CHANNELS: u16 = 2;
+    const BYTES: u16 = 3;
+    let data = u32::try_from(audio.len() * usize::from(BYTES)).context("too long for a WAV")?;
+    let file = File::create(path).with_context(|| format!("can't write {}", path.display()))?;
+    let mut w = BufWriter::new(file);
+    w.write_all(b"RIFF")?;
+    w.write_all(&(36 + data).to_le_bytes())?;
+    w.write_all(b"WAVEfmt ")?;
+    w.write_all(&16u32.to_le_bytes())?;
+    w.write_all(&1u16.to_le_bytes())?; // PCM
+    w.write_all(&CHANNELS.to_le_bytes())?;
+    w.write_all(&sample_rate.to_le_bytes())?;
+    let align = CHANNELS * BYTES;
+    w.write_all(&(sample_rate * u32::from(align)).to_le_bytes())?;
+    w.write_all(&align.to_le_bytes())?;
+    w.write_all(&(8 * BYTES).to_le_bytes())?;
+    w.write_all(b"data")?;
+    w.write_all(&data.to_le_bytes())?;
+    for &s in audio {
+        let s = (s.clamp(-1.0, 1.0) * 8_388_607.0).round() as i32;
+        w.write_all(&s.to_le_bytes()[..3])?;
+    }
+    w.flush()?;
+    Ok(audio.len() as f32 / f32::from(CHANNELS) / sample_rate as f32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lattice_core::{Grid, Note, Step, Track};
+
+    fn export(steps: u64) -> Export {
+        let mut track = Track {
+            name: "t".into(),
+            steps: vec![Step::default(); 4],
+            mix: Default::default(),
+            instrument: Default::default(),
+            effects: vec![],
+            choke: 0,
+            rules: vec![],
+        };
+        track.steps[0].note = Some(Note {
+            pitch: 60,
+            velocity: 100,
+            length: 1,
+        });
+        Export {
+            path: "x.wav".into(),
+            grid: Grid {
+                name: "test".into(),
+                steps_per_beat: 4,
+                tracks: vec![track],
+                groups: vec![],
+            },
+            steps,
+        }
+    }
+
+    #[test]
+    fn renders_the_steps_then_the_tail_until_quiet() {
+        let rate = 8000.0;
+        // Four steps at 120 bpm are half a second.
+        let audio = render(&export(4), Buses::default(), 120.0, rate).unwrap();
+        let frames = audio.len() / 2;
+        assert!(frames < 4000 + (QUIET * rate) as usize, "{frames} frames");
+        assert!(audio[..2000].iter().any(|s| s.abs() > 0.01), "the note");
+        // Past the first pass, nothing plays again: the tail only fades.
+        let after = audio[2 * 4000..].iter().fold(0.0f32, |m, s| m.max(s.abs()));
+        let during = audio[..2000].iter().fold(0.0f32, |m, s| m.max(s.abs()));
+        assert!(after < during);
+    }
+
+    #[test]
+    fn writes_a_wav_header_and_24_bit_frames() {
+        let dir = std::env::temp_dir().join(format!("lattice-wav-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("t.wav");
+        let seconds = write_wav(&path, &[0.0, 1.0, -1.0, 0.5], 48000).unwrap();
+        assert_eq!(seconds, 2.0 / 48000.0);
+        let bytes = std::fs::read(&path).unwrap();
+        assert_eq!(bytes.len(), 44 + 12);
+        assert_eq!(&bytes[..4], b"RIFF");
+        assert_eq!(&bytes[8..16], b"WAVEfmt ");
+        assert_eq!(u32::from_le_bytes(bytes[24..28].try_into().unwrap()), 48000);
+        assert_eq!(&bytes[44..50], &[0, 0, 0, 0xff, 0xff, 0x7f]);
+        assert_eq!(&bytes[50..53], &[0x01, 0x00, 0x80]);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}

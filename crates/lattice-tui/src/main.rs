@@ -1,6 +1,7 @@
 mod audio;
 mod bars;
 mod demo;
+mod export;
 mod file;
 mod key_log;
 mod keys;
@@ -23,6 +24,7 @@ use ratatui::crossterm::event::{
 };
 use ratatui::crossterm::{execute, terminal};
 
+use crate::export::Exports;
 use crate::mixer::Mixer;
 use crate::theme::Theme;
 use crate::tracks::Tracks;
@@ -64,6 +66,7 @@ fn main() -> Result<()> {
     let mut audio = audio::start(&editor.grid, editor.bpm)?;
     let mut tracks = Tracks::new(&editor, audio.sample_rate);
     let mut mixer = Mixer::new(audio.sample_rate);
+    let mut exports = Exports::new(audio.sample_rate);
     mixer.sync(&editor, &mut audio.handle);
     if args.iter().any(|a| a == "--no-click") {
         editor.click = false;
@@ -94,6 +97,7 @@ fn main() -> Result<()> {
         &mut editor,
         &mut tracks,
         &mut mixer,
+        &mut exports,
         &mut audio.handle,
         &theme,
     );
@@ -109,6 +113,7 @@ fn run(
     editor: &mut Editor,
     tracks: &mut Tracks,
     mixer: &mut Mixer,
+    exports: &mut Exports,
     handle: &mut Handle,
     theme: &Theme,
 ) -> Result<()> {
@@ -116,6 +121,7 @@ fn run(
     let mut playhead = Playhead::default();
     loop {
         handle.collect_garbage();
+        exports.poll(editor);
         // Watched every frame, so it sees each step start within a frame of it.
         editor.set_transport(playhead.transport(handle.status(), editor, Instant::now()));
         terminal.draw(|frame| ui::draw(frame, editor, handle.status(), theme, &mut view))?;
@@ -142,7 +148,7 @@ fn run(
                     }
                 };
                 for effect in effects {
-                    match apply(effect, editor, tracks, mixer, handle) {
+                    match apply(effect, editor, tracks, mixer, exports, handle) {
                         Flow::Next => {}
                         Flow::Stop => break,
                         Flow::Quit => return Ok(()),
@@ -200,6 +206,7 @@ fn apply(
     editor: &mut Editor,
     tracks: &mut Tracks,
     mixer: &mut Mixer,
+    exports: &mut Exports,
     handle: &mut Handle,
 ) -> Flow {
     let command = match effect {
@@ -258,7 +265,11 @@ fn apply(
                 }
             };
         }
-        Effect::Open(path) => return open(path, editor, tracks, mixer, handle),
+        Effect::Open(path) => return open(path, editor, tracks, mixer, exports, handle),
+        Effect::Export(export) => {
+            exports.start(*export, editor);
+            return Flow::Next;
+        }
         Effect::Quit => return Flow::Quit,
     };
     if !handle.send(command) {
@@ -273,6 +284,7 @@ fn open(
     editor: &mut Editor,
     tracks: &mut Tracks,
     mixer: &mut Mixer,
+    exports: &mut Exports,
     handle: &mut Handle,
 ) -> Flow {
     let (song, new) = match file::open(&path, Some(editor.grid.steps_per_beat)) {
@@ -284,7 +296,7 @@ fn open(
     };
     let message = new.then(|| format!("{} (new file)", path.display()));
     for effect in editor.load(song, path) {
-        apply(effect, editor, tracks, mixer, handle);
+        apply(effect, editor, tracks, mixer, exports, handle);
     }
     if message.is_some() {
         editor.message = message;

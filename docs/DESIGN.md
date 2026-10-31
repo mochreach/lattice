@@ -622,6 +622,14 @@ modified whenever it differs, so undoing back to the saved state clears the `[+]
 gives every track a new id and returns `Effect::TracksChanged`, so the frontend rebuilds the
 engine's tracks, however many the song has (up to `MAX_TRACKS`).
 
+Exporting works the same way. `:export` and `:export-sel` return `Effect::Export` with the grid
+to render and for how many steps: the song's whole loop (the least common multiple of each
+track's length times the passes its `every` and `drift` rules take to come round, up to 64
+bars), or the selection cut out as a grid of its own, with the other tracks muted. The frontend
+renders it on a thread of its own, with a fresh engine and mixer, so playing carries on, then
+stops the sequencer and renders on until a second of silence (at most ten seconds), trims that
+and writes 24-bit PCM at the audio device's rate.
+
 Not in files yet:
 - **More than one grid.** Files can hold several, but only the first in the arrangement is
   edited and saved back.

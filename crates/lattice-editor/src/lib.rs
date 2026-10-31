@@ -12,6 +12,7 @@
 //! tested by feeding in key sequences.
 
 mod command;
+mod export;
 mod group;
 mod keymap;
 mod mixer;
@@ -20,6 +21,7 @@ mod pattern;
 mod record;
 
 pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
+pub use export::{Export, MAX_BARS, cycle, file_name};
 pub use keymap::{Action, Binding, Key, Keymap, Menu, NoteLayout};
 pub use mixer::{Field, MixerCursor, PARAM_COLUMNS, Page, Row, Shown, Strip};
 pub use pads::{HARD, MEDIUM, PadMode, SCALES, SOFT, Scale};
@@ -149,6 +151,8 @@ pub enum Effect {
     /// Read the song here and pass it to [`Editor::load`], or start a new song if there's no such
     /// file.
     Open(PathBuf),
+    /// Render this to a WAV file.
+    Export(Box<Export>),
     Quit,
 }
 
