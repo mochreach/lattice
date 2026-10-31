@@ -136,11 +136,16 @@ fn one_pole(hz: f32, sample_rate: f32) -> f32 {
     1.0 - (-TAU * hz.min(0.45 * sample_rate) / sample_rate).exp()
 }
 
+/// Longest the kick holds its level before it starts to decay.
+const MAX_HOLD: f32 = 0.08;
+
 struct KickVoice {
     sample_rate: f32,
     tune: f32,
     punch: f32,
     amp_coef: f32,
+    /// Samples the body holds at full level before decaying, like an 808's.
+    hold_len: u32,
     drive: f32,
     /// Hz once the drop is over, for the current hit.
     freq: f32,
@@ -150,6 +155,14 @@ struct KickVoice {
     sweep_coef: f32,
     phase: f32,
     amp: f32,
+    hold: u32,
+    /// The noise burst at the start of a hit, and its level.
+    click: f32,
+    click_coef: f32,
+    noise: Noise,
+    /// DC blocker state, as asymmetric drive shifts the waveform off centre.
+    dc: [f32; 2],
+    dc_coef: f32,
     velocity: f32,
 }
 
@@ -169,6 +182,13 @@ impl Voice for KickVoice {
             sweep_coef: 0.0,
             phase: 0.0,
             amp: 0.0,
+            hold_len: 0,
+            hold: 0,
+            click: 0.0,
+            click_coef: decay_coef(0.002, sample_rate),
+            noise: Noise(0x2545_f491),
+            dc: [0.0; 2],
+            dc_coef: 1.0 - TAU * 15.0 / sample_rate,
             velocity: 0.0,
         }
     }
@@ -177,7 +197,10 @@ impl Voice for KickVoice {
         match id {
             kick::TUNE => self.tune = value,
             kick::PUNCH => self.punch = value,
-            kick::DECAY => self.amp_coef = fade(value, self.sample_rate),
+            kick::DECAY => {
+                self.amp_coef = fade(value, self.sample_rate);
+                self.hold_len = ((value * 0.2).min(MAX_HOLD) * self.sample_rate) as u32;
+            }
             _ => self.drive = value,
         }
     }
@@ -192,6 +215,8 @@ impl Voice for KickVoice {
         self.sweep = 1.0;
         self.phase = 0.0;
         self.amp = 1.0;
+        self.hold = self.hold_len;
+        self.click = 1.0;
         self.velocity = velocity;
     }
 
@@ -200,17 +225,32 @@ impl Voice for KickVoice {
         self.phase += hz / self.sample_rate;
         self.phase -= self.phase.floor();
         self.sweep *= self.sweep_coef;
-        let x = (TAU * self.phase).sin() * self.amp;
-        self.amp *= self.amp_coef;
-        // Saturation, scaled so a full-scale sine still peaks at 1.
+        let click = self.noise.next() * self.click * (0.1 + 0.4 * self.punch);
+        self.click *= self.click_coef;
+        let x = (TAU * self.phase).sin() * self.amp + click;
+        if self.hold > 0 {
+            self.hold -= 1;
+        } else {
+            self.amp *= self.amp_coef;
+        }
+        // Saturation, pushed off centre so it adds even harmonics, which carry the kick on
+        // small speakers. Scaled so the larger, negative side of a full-scale sine peaks at 1.
         let gain = 1.0 + 9.0 * self.drive;
-        let out = (x * gain).tanh() / gain.tanh();
+        let bias = 0.4 * self.drive;
+        let shaped =
+            ((x * gain + bias).tanh() - bias.tanh()) / ((gain - bias).tanh() + bias.tanh());
+        let out = shaped - self.dc[0] + self.dc_coef * self.dc[1];
+        self.dc = [shaped, out];
         (out * self.velocity * 0.75, self.amp > SILENCE)
     }
 }
 
 /// The second mode of a circular membrane, relative to the first.
 const SHELL_RATIO: f32 = 1.59;
+/// Where the wires' noise is high-passed: low enough to keep the snare's weight.
+const WIRES_LOW: f32 = 180.0;
+/// Drive on the shell, which thickens it.
+const SHELL_DRIVE: f32 = 1.8;
 
 struct SnareVoice {
     sample_rate: f32,
@@ -243,7 +283,7 @@ impl Voice for SnareVoice {
             body_coef: 0.0,
             noise_coef: 0.0,
             lowpass: 0.0,
-            highpass: one_pole(400.0, sample_rate),
+            highpass: one_pole(WIRES_LOW, sample_rate),
             freq: 180.0,
             sweep: 0.0,
             sweep_coef: decay_coef(0.01, sample_rate),
@@ -261,8 +301,8 @@ impl Voice for SnareVoice {
         match id {
             snare::TUNE => self.tune = value,
             snare::DECAY => {
-                // The shell dies away before the wires do.
-                self.body_coef = fade(value * 0.6, self.sample_rate);
+                // The shell dies away a little before the wires do.
+                self.body_coef = fade(value * 0.9, self.sample_rate);
                 self.noise_coef = fade(value, self.sample_rate);
             }
             snare::SNAP => self.snap = value,
@@ -287,17 +327,18 @@ impl Voice for SnareVoice {
             *phase -= phase.floor();
         }
         let shell = 0.6 * (TAU * self.phases[0]).sin() + 0.4 * (TAU * self.phases[1]).sin();
+        let shell = (shell * self.body * SHELL_DRIVE).tanh() / SHELL_DRIVE.tanh();
 
-        // Noise, low-passed by the tone, then high-passed to keep it off the shell.
+        // Noise, low-passed by the tone, then high-passed only gently, so it keeps some weight.
         self.low += self.lowpass * (self.noise.next() - self.low);
         self.high += self.highpass * (self.low - self.high);
         let wires = (self.low - self.high) * 2.0;
 
-        let out = shell * self.body * (1.0 - 0.5 * self.snap) + wires * self.rattle * self.snap;
+        let out = shell * (1.0 - 0.35 * self.snap) + wires * self.rattle * self.snap;
         self.body *= self.body_coef;
         self.rattle *= self.noise_coef;
         (
-            out * self.velocity * 0.75,
+            out * self.velocity * 0.62,
             self.body.max(self.rattle) > SILENCE,
         )
     }

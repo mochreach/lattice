@@ -174,7 +174,7 @@ pub fn song() -> Grid {
         "kick",
         "x.x.......xx....|x.x.......xx....|x.x.......x.....|..xx......x.....",
         InstKind::Kick,
-        &[(kick::TUNE, 55.0), (kick::PUNCH, 0.6), (kick::DECAY, 0.3)],
+        &[(kick::TUNE, 55.0), (kick::PUNCH, 0.6), (kick::DECAY, 0.4)],
     );
     kick.mix.level = -2.0;
     let mut snare = drum(

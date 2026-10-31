@@ -126,8 +126,8 @@ track plays one drum and keeps its own rules, length and mixer strip:
 
 | Drum | Sound | Controls |
 | --- | --- | --- |
-| `kick` | a sine whose pitch drops from up to 12× its tuning, through `tanh` drive | tune, punch (how far and fast the pitch drops), decay, drive |
-| `snare` | two shell modes (1 and 1.59×, a membrane's first two) with a small pitch drop, and band-limited noise for the wires | tune, decay, snap (noise against the shell), tone (the noise's brightness) |
+| `kick` | a sine whose pitch drops from up to 12× its tuning, held at full level for a fifth of its decay (up to 80 ms) before it falls, with a 2 ms click of noise, through off-centre `tanh` drive for even harmonics | tune, punch (how far and fast the pitch drops, and the click), decay, drive |
+| `snare` | two shell modes (1 and 1.59×, a membrane's first two) with a small pitch drop, driven, ringing nearly as long as the noise for the wires, which is high-passed only at 180 Hz to keep its weight | tune, decay, snap (noise against the shell), tone (the noise's brightness) |
 | `hat` | the 808's six detuned square waves, mixed with noise, through a 12 dB/octave high-pass | tune, decay (short closed, long open), tone (the high-pass), noise |
 
 Each drum is one voice: every note retriggers it, note-offs are ignored, and it rings out by its

@@ -132,14 +132,14 @@ pub mod kick {
     pub const PUNCH: u32 = 1;
     /// Time to fade by 60 dB.
     pub const DECAY: u32 = 2;
-    /// Saturation, which fattens the tail and squares it off.
+    /// Saturation, off centre so it adds even harmonics: it fattens the tail and squares it off.
     pub const DRIVE: u32 = 3;
 
     pub(super) const PARAMS: [ParamInfo; 4] = [
         param(TUNE, "tune", (30.0, 120.0, 50.0), "Hz", Curve::Log),
         param(PUNCH, "punch", (0.0, 1.0, 0.5), "", Curve::Linear),
         param(DECAY, "decay", (0.05, 2.0, 0.45), "s", Curve::Log),
-        param(DRIVE, "drive", (0.0, 1.0, 0.2), "", Curve::Linear),
+        param(DRIVE, "drive", (0.0, 1.0, 0.35), "", Curve::Linear),
     ];
 }
 
