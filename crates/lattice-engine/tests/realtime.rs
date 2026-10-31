@@ -1,7 +1,7 @@
 //! The engine must never allocate on the audio thread. `assert_no_alloc` aborts if it does.
 
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
-use lattice_core::instrument::kick;
+use lattice_core::instrument::{kick, string};
 use lattice_core::{Condition, Grid, InstKind, Instrument, Rule, Step, Track, Transform};
 use lattice_engine::{
     AdsrParams, Chain, Command, Comp, Delay, Drive, EffectSlot, Engine, Patch, Processor, Synth,
@@ -83,6 +83,10 @@ fn rendering_never_allocates() {
         .into_iter()
         .map(|kind| lattice_engine::instrument::build(&Instrument::new(kind), 48_000.0))
         .collect();
+    let mut strings = Some(lattice_engine::instrument::build(
+        &Instrument::new(InstKind::String),
+        48_000.0,
+    ));
     let (mut engine, mut handle) = Engine::new(48_000.0, 174.0, &grid, vec![synth]);
     // Commands are handled inside the no-allocation zone too.
     handle.send(Command::Play);
@@ -177,6 +181,24 @@ fn rendering_never_allocates() {
                         target: Target::Instrument(0),
                         id: kick::DECAY,
                         value: 0.1,
+                    });
+                }
+                785 => {
+                    handle.send(Command::SetInstrument {
+                        index: 0,
+                        instrument: strings.take().unwrap(),
+                    });
+                }
+                790 => {
+                    handle.send(Command::SetParam {
+                        target: Target::Instrument(0),
+                        id: string::BOW,
+                        value: 0.5,
+                    });
+                    handle.send(Command::Preview {
+                        track: 0,
+                        pitch: 40,
+                        velocity: 100,
                     });
                 }
                 800 => {

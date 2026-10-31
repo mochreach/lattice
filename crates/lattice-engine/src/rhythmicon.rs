@@ -17,7 +17,7 @@ use crate::processor::{Event, EventKind, Processor, Segment, segments};
 /// Below this, a drum has finished and stops rendering.
 const SILENCE: f32 = 1e-4;
 /// ln(1000): time constants per "time to fade by 60 dB".
-const SIXTY_DB: f32 = 6.907_755;
+pub(crate) const SIXTY_DB: f32 = 6.907_755;
 
 /// Per-sample multiplier that fades by 60 dB over `seconds`.
 fn fade(seconds: f32, sample_rate: f32) -> f32 {
@@ -139,16 +139,16 @@ pub fn build(kind: InstKind, sample_rate: f32, values: &[f32]) -> Option<Box<dyn
         InstKind::Hat => Box::new(Hat::with_values(sample_rate, values)),
         InstKind::Clap => Box::new(Clap::with_values(sample_rate, values)),
         InstKind::Tom => Box::new(Tom::with_values(sample_rate, values)),
-        InstKind::Synth => return None,
+        InstKind::Synth | InstKind::String => return None,
     })
 }
 
 /// White noise from a 32-bit xorshift: cheap, and the same every run.
 #[derive(Debug, Clone, Copy)]
-struct Noise(u32);
+pub(crate) struct Noise(pub(crate) u32);
 
 impl Noise {
-    fn next(&mut self) -> f32 {
+    pub(crate) fn next(&mut self) -> f32 {
         self.0 ^= self.0 << 13;
         self.0 ^= self.0 >> 17;
         self.0 ^= self.0 << 5;
@@ -157,7 +157,7 @@ impl Noise {
 }
 
 /// One-pole low-pass coefficient for a cutoff.
-fn one_pole(hz: f32, sample_rate: f32) -> f32 {
+pub(crate) fn one_pole(hz: f32, sample_rate: f32) -> f32 {
     1.0 - (-TAU * hz.min(0.45 * sample_rate) / sample_rate).exp()
 }
 

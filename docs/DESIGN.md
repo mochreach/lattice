@@ -156,6 +156,49 @@ each `Voice` is only its trigger and a per-sample tick; they're scalar, as one v
 A choke (`EventKind::Choke`, after CLAP's note choke) fades whatever a drum is playing over a
 few milliseconds, quick but not a click; the synth releases its voices. See choke groups, below.
 
+### Monochord, the string engine
+
+The second engine, named after the monochord, the single string over a movable bridge with which
+Pythagoras worked out the ratios of musical intervals. One instrument, `:inst string`, with eight
+voices, each a string:
+
+- **The string** is an extended Karplus–Strong waveguide (after Jaffe and Smith): a delay line one
+  period long, read with third-order Lagrange interpolation so it plays in tune without dulling
+  the top, and in its loop a two-point low-pass, `(1 - d)·x[n] + d·x[n-1]`, and a loss. The
+  low-pass delays the loop by about `d` samples, so the line is `d` shorter. The loss per trip is
+  set so every string fades by 60 dB over the decay, whatever its pitch; the low-pass then makes
+  high notes and high harmonics die sooner, as on a real string. Tests check pitches from A-1 to
+  A-6 are within 3 cents.
+- **A pluck** fills one period of the line with noise, low-passed from just above the note (a
+  soft thumb) to near Nyquist (a hard pick), brighter for harder notes, then subtracted from
+  itself a fraction *position* of a period on, which notches out the harmonics with a node where
+  the string is plucked. Its mean is removed and its level set by its RMS, so pluck and position
+  change the tone, not the loudness. Plucking a string that's still ringing keeps 30% of it.
+- **A bow** feeds noise in while the note is held, low-passed four times above the note, scaled
+  by `sqrt(1 - g²)` for a loop gain of `g` per trip, which holds the string at a steady level
+  whatever the decay. It glides in and out over about 60 ms, and takes the place of the pluck as
+  it's turned up. A note-off lifts the bow; a plucked string rings on by its decay, as a harp's
+  does. A choke fades every string out, as it does a drum.
+- **The models** set the pluck's brightest, the loop's least damping, and two things a plain
+  string doesn't do. `steel` plays each note on a pair of strings 7 cents apart, spread a little
+  left and right, so they beat. `sitar` shortens its loop by up to 6% when the string's
+  displacement is large, as a sitar's string does against its curved bridge (jawari): a buzz that
+  brightens the attack and settles as it fades. `steel` has a trace of the same, for the slight
+  fall in pitch of a hard pluck.
+
+| Control | Range | |
+| --- | --- | --- |
+| model | `nylon` `steel` `sitar` | |
+| pluck | 0–1 | soft thumb to hard pick |
+| position | 0.02–0.5 | near the bridge, thin and nasal, to the middle, hollow |
+| decay | 0.2–20 s | before the low-pass's extra loss |
+| tone | 0–1 | how much of the top survives each trip |
+| bow | 0–1 | 0 only plucks; 1 only bows |
+
+Decay and tone change the strings already ringing; the rest apply from the next note. The output
+goes through a DC blocker, since the buzz can shift its centre. Each voice is scalar: a string's
+work is a read, a filter and a write per sample, cheap enough not to need SIMD lanes.
+
 ## Track groups
 
 A group is a named run of adjacent tracks, such as a drum kit with one drum on each track. Each

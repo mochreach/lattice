@@ -14,6 +14,7 @@ pub mod dsp;
 pub mod engine;
 pub mod fx;
 pub mod instrument;
+pub mod monochord;
 pub mod param;
 pub mod processor;
 pub mod rhythmicon;

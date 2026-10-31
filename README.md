@@ -124,7 +124,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:group-name NAME` | rename this track's group |
 | `:level DB`, `:pan P`, `:send DB` | mixer, for every track the selections reach: level (-60 to 6 dB), pan (-100 left to 100 right), send to the send bus (-60, off, to 6 dB); on the mixer page, `:level` sets a bus too |
 | `:set VALUE` | on the mixer page, set the value under the cursor (also `c`) |
-| `:inst INSTRUMENT` | the instrument for every track the selections reach (or the mixer cursor's): `synth`, `kick`, `snare`, `hat`, `clap` or `tom` |
+| `:inst INSTRUMENT` | the instrument for every track the selections reach (or the mixer cursor's): `synth`, `string`, `kick`, `snare`, `hat`, `clap` or `tom` |
 | `:fx-add EFFECT` | add an effect (`delay`, `drive` or `comp`) after the mixer cursor, or at the end of this track's chain |
 | `:choke N` | choke group (1–8, 0 for none) for every track the selections reach: within a track group, a hit cuts off the other tracks with the same number, as a closed hat stops an open one |
 | `:mute`, `:solo` | toggle mute or solo for every track the selections reach (also `tm`, `ts`) |
@@ -157,7 +157,11 @@ Rhythmicon, the drum engine: one drum per track, played at its tuning by C-4 and
 by other notes. Each has a model (`tight` `boom` `hard` for the kick, `tight` `fat` `crack` for
 the snare, `metal` `ring` `sizzle` for the hat, `tight` `room` `crowd` for the clap, `tight`
 `round` `hard` for the tom) and four controls within it (see
-[docs/DESIGN.md](docs/DESIGN.md)). The demo song
+[docs/DESIGN.md](docs/DESIGN.md)). `string` is Monochord, a plucked or bowed string, modelled
+as a waveguide: models `nylon`, `steel` (pairs of strings a few cents apart, spread in stereo)
+and `sitar` (buzzing against its bridge), with pluck (soft thumb to hard pick), position (along
+the string), decay, tone and bow (sustain while the note is held). Strings ring on after a
+note ends, as a harp's do; a note-off only lifts the bow. The demo song
 is the Amen break at 136 BPM, on a kick, snare, ride and crash, under the synths. The drums are a
 folded group, `amen`, with drive and a compressor on its bus; `tz` unfolds it.
 

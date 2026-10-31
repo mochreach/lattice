@@ -2,6 +2,7 @@
 
 use lattice_core::{InstKind, Instrument};
 
+use crate::monochord::Monochord;
 use crate::processor::Processor;
 use crate::rhythmicon;
 use crate::synth::Synth;
@@ -11,6 +12,7 @@ use crate::synth::Synth;
 pub fn build(instrument: &Instrument, sample_rate: f32) -> Box<dyn Processor> {
     match instrument.kind {
         InstKind::Synth => Box::new(Synth::with_values(sample_rate, &instrument.values)),
+        InstKind::String => Box::new(Monochord::with_values(sample_rate, &instrument.values)),
         kind => rhythmicon::build(kind, sample_rate, &instrument.values)
             .expect("every other instrument is a drum"),
     }

@@ -3,6 +3,9 @@
 //! The drums (kick, snare, hat, clap and tom) are Rhythmicon, Lattice's first engine, named after the
 //! first drum machine, which Leon Theremin built for Henry Cowell in 1931. Each plays one drum on
 //! one track: C-4 plays it at its tuning, and other notes tune it up or down from there.
+//!
+//! The string is Monochord, the second engine, named after Pythagoras' one-stringed instrument
+//! for studying pitch: a plucked or bowed string, modelled as a waveguide.
 
 use serde::{Deserialize, Serialize};
 
@@ -31,11 +34,13 @@ pub enum InstKind {
     Hat,
     Clap,
     Tom,
+    String,
 }
 
 impl InstKind {
-    pub const ALL: [InstKind; 6] = [
+    pub const ALL: [InstKind; 7] = [
         InstKind::Synth,
+        InstKind::String,
         InstKind::Kick,
         InstKind::Snare,
         InstKind::Hat,
@@ -55,6 +60,7 @@ impl InstKind {
             InstKind::Hat => &hat::PARAMS,
             InstKind::Clap => &clap::PARAMS,
             InstKind::Tom => &tom::PARAMS,
+            InstKind::String => &string::PARAMS,
         }
     }
 }
@@ -68,6 +74,7 @@ impl Kind for InstKind {
             InstKind::Hat => "hat",
             InstKind::Clap => "clap",
             InstKind::Tom => "tom",
+            InstKind::String => "string",
         }
     }
 
@@ -241,6 +248,37 @@ pub mod tom {
         param(DECAY, "decay", (0.05, 2.0, 0.4), "s", Curve::Log),
         param(BEND, "bend", (0.0, 1.0, 0.4), "", Curve::Linear),
         param(NOISE, "noise", (0.0, 1.0, 0.2), "", Curve::Linear),
+    ];
+}
+
+/// A string, plucked or bowed: a waveguide whose loop sets its pitch, and whose losses set how
+/// long and how brightly it rings.
+pub mod string {
+    use super::*;
+
+    /// The kind of string: warm nylon, a pair of bright steel strings a few cents apart, as on a
+    /// twelve-string, or a sitar's, buzzing against its curved bridge.
+    pub const MODEL: u32 = 0;
+    /// What plucks it, from a soft thumb to a hard pick.
+    pub const PLUCK: u32 = 1;
+    /// Where along the string it's plucked: near the bridge is thin and nasal, the middle hollow.
+    pub const POSITION: u32 = 2;
+    /// Time for the lowest notes to fade by 60 dB; high notes, as on a real string, die sooner.
+    pub const DECAY: u32 = 3;
+    /// How much of the high end survives each trip along the string.
+    pub const TONE: u32 = 4;
+    /// Bowing while the note is held, which keeps the string sounding, against plucking alone.
+    pub const BOW: u32 = 5;
+
+    pub const MODELS: &[&str] = &["nylon", "steel", "sitar"];
+
+    pub(super) const PARAMS: [ParamInfo; 6] = [
+        param(MODEL, "model", (0.0, 2.0, 0.0), "", Curve::Choice(MODELS)),
+        param(PLUCK, "pluck", (0.0, 1.0, 0.5), "", Curve::Linear),
+        param(POSITION, "position", (0.02, 0.5, 0.15), "", Curve::Linear),
+        param(DECAY, "decay", (0.2, 20.0, 3.0), "s", Curve::Log),
+        param(TONE, "tone", (0.0, 1.0, 0.6), "", Curve::Linear),
+        param(BOW, "bow", (0.0, 1.0, 0.0), "", Curve::Linear),
     ];
 }
 
