@@ -236,10 +236,13 @@ track stays a real track, with its own rules, length and strip; the group adds:
 - **Drum pads on the numpad (done).** Pad `n` plays the `n`th track of the cursor's group at
   C-4, a drum at its tuning, so the kit can be played like a pad controller; in insert mode it
   also enters the note on the cursor's step, without moving on, so a step can take several
-  drums. Terminals send numpad digits as plain digits unless asked for more: the TUI pushes
-  crossterm's `DISAMBIGUATE_ESCAPE_CODES` flag when the terminal supports it (the kitty protocol,
-  also in WezTerm, foot, Ghostty and recent Alacritty), and digits that arrive with the keypad
-  state become `Key::Pad`. On the command line they type digits as usual. The fallback, for
+  drums. Terminals send numpad digits as plain digits unless asked for more: when the terminal supports the kitty protocol
+  (also in WezTerm, foot, Ghostty and recent Alacritty), the TUI asks for every key as a code
+  (`REPORT_ALL_KEYS_AS_ESCAPE_CODES`: disambiguating alone still sends the numpad's digits as
+  text), with the shifted character (`REPORT_ALTERNATE_KEYS`, so `%` and `C` arrive as typed)
+  and with repeats and releases (`REPORT_EVENT_TYPES`). Digits that arrive with the keypad state
+  become `Key::Pad`. Repeats of keys that play notes (`Editor::plays`) are dropped, so a held pad
+  or piano key plays once, while held motions still repeat. On the command line they type digits as usual. The fallback, for
   other terminals and inside tmux: in insert mode in a folded group, the number row (`1`–`9`)
   is the pads instead of the piano's sharps, as a folded group is a drum machine's view.
 

@@ -639,6 +639,18 @@ impl Editor {
         }
     }
 
+    /// Whether `key` plays a note now: a pad, or a piano key in insert mode. Holding one down
+    /// shouldn't play it again and again, so the frontend drops its repeats.
+    pub fn plays(&self, key: Key) -> bool {
+        match (key, &self.mode) {
+            (_, Mode::Command(_)) => false,
+            (Key::Pad(_), _) => true,
+            (Key::Char('1'..='9'), Mode::Insert) if self.in_folded_group() => true,
+            (_, Mode::Insert) => self.piano_pitch(key).is_some(),
+            _ => false,
+        }
+    }
+
     /// The pitch a piano key plays at the keyboard octave.
     fn piano_pitch(&self, key: Key) -> Option<u8> {
         let Key::Char(c) = key else {
@@ -2412,5 +2424,25 @@ mod tests {
         assert_eq!(e.command_problem(), None);
         assert!(e.completions().is_empty());
         assert_eq!(e.command_spec(), None);
+    }
+
+    #[test]
+    fn only_note_keys_play() {
+        let mut e = editor();
+        assert!(e.plays(Key::Pad(1)));
+        assert!(!e.plays(Key::Char('z')), "a motion in normal mode");
+        keys(&mut e, "i");
+        assert!(e.plays(Key::Char('z')));
+        assert!(
+            !e.plays(Key::Char('1')),
+            "not a piano key, outside a folded group"
+        );
+        assert!(!e.plays(Key::Backspace));
+        e.handle(Key::Esc);
+        keys(&mut e, ":");
+        assert!(
+            !e.plays(Key::Pad(1)),
+            "the numpad types on the command line"
+        );
     }
 }

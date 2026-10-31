@@ -73,14 +73,17 @@ fn main() -> Result<()> {
 
     let theme = Theme::detect();
     let mut terminal = ratatui::init();
-    // Ask for keys to be told apart (the kitty protocol), so the numpad can be pads, and for
-    // releases, so recorded notes last as long as they're held. Terminals that don't speak it
-    // carry on as before.
+    // Ask for every key as a code (the kitty protocol), as only then are the numpad's digits told
+    // apart from the number row's, so they can be pads; with the shifted character, so `%` and
+    // `C` still arrive as typed; and with releases, so recorded notes last as long as they're
+    // held. Terminals that don't speak it carry on as before.
     let enhanced = terminal::supports_keyboard_enhancement().unwrap_or(false)
         && execute!(
             std::io::stdout(),
             PushKeyboardEnhancementFlags(
                 KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                    | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
+                    | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
                     | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
             )
         )
@@ -128,8 +131,8 @@ fn run(
                 editor.set_transport(playhead.transport(handle.status(), editor, now));
                 let effects = match event.kind {
                     KeyEventKind::Release => editor.release(key),
-                    // A held key repeating would record the note over and over.
-                    KeyEventKind::Repeat if editor.recording() => vec![],
+                    // A held note plays once, as on a keyboard; held motions still repeat.
+                    KeyEventKind::Repeat if editor.plays(key) => vec![],
                     _ => {
                         let effects = editor.handle(key);
                         let typing = matches!(editor.mode, Mode::Command(_));
