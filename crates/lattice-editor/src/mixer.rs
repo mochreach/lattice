@@ -6,7 +6,7 @@
 //! (and `+` `-`) nudge the value under it, as Helix increments numbers, and `c` types one in.
 
 use lattice_core::{
-    Fx, FxKind, InstKind, Instrument, Kind, MAX_DB, MAX_EFFECTS, MIN_DB, ParamInfo,
+    Bus, Fx, FxKind, InstKind, Instrument, Kind, MAX_DB, MAX_EFFECTS, MIN_DB, ParamInfo,
 };
 
 use crate::keymap::Action;
@@ -29,6 +29,8 @@ pub enum Page {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Strip {
     Track(usize),
+    /// A group's bus, by its index in the grid's groups.
+    Group(usize),
     Send,
     Master,
 }
@@ -69,7 +71,7 @@ pub struct Shown<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct MixerCursor {
-    /// Tracks in order, then the send bus, then the master.
+    /// Tracks in order, then the groups' buses, then the send bus, then the master.
     pub strip: usize,
     pub row: Row,
     /// The effect in the strip's chain whose settings are shown.
@@ -79,33 +81,52 @@ pub struct MixerCursor {
 }
 
 impl Editor {
-    /// Strips on the mixer page: the tracks, then the send and master buses.
+    /// Strips on the mixer page: the tracks, the groups' buses, then the send and master buses.
     pub fn strips(&self) -> usize {
-        self.grid.tracks.len() + 2
+        self.grid.tracks.len() + self.grid.groups.len() + 2
     }
 
     pub fn strip(&self, index: usize) -> Strip {
         let tracks = self.grid.tracks.len();
+        let groups = self.grid.groups.len();
         match index {
             i if i < tracks => Strip::Track(i),
-            i if i == tracks => Strip::Send,
+            i if i < tracks + groups => Strip::Group(i - tracks),
+            i if i == tracks + groups => Strip::Send,
             _ => Strip::Master,
+        }
+    }
+
+    /// The bus behind a bus's strip.
+    pub fn bus(&self, strip: Strip) -> Option<&Bus> {
+        match strip {
+            Strip::Track(_) => None,
+            Strip::Group(g) => Some(&self.grid.groups[g].bus),
+            Strip::Send => Some(&self.buses.send),
+            Strip::Master => Some(&self.buses.master),
+        }
+    }
+
+    fn bus_mut(&mut self, strip: Strip) -> Option<&mut Bus> {
+        match strip {
+            Strip::Track(_) => None,
+            Strip::Group(g) => Some(&mut self.grid.groups[g].bus),
+            Strip::Send => Some(&mut self.buses.send),
+            Strip::Master => Some(&mut self.buses.master),
         }
     }
 
     pub fn chain(&self, strip: Strip) -> &[Fx] {
         match strip {
             Strip::Track(i) => &self.grid.tracks[i].effects,
-            Strip::Send => &self.buses.send.effects,
-            Strip::Master => &self.buses.master.effects,
+            _ => &self.bus(strip).expect("a bus").effects,
         }
     }
 
     fn chain_mut(&mut self, strip: Strip) -> &mut Vec<Fx> {
         match strip {
             Strip::Track(i) => &mut self.grid.tracks[i].effects,
-            Strip::Send => &mut self.buses.send.effects,
-            Strip::Master => &mut self.buses.master.effects,
+            _ => &mut self.bus_mut(strip).expect("a bus").effects,
         }
     }
 
@@ -276,11 +297,7 @@ impl Editor {
             Strip::Track(i) => Some(&self.grid.tracks[i].mix),
             _ => None,
         };
-        let bus = match strip {
-            Strip::Send => Some(&self.buses.send),
-            Strip::Master => Some(&self.buses.master),
-            Strip::Track(_) => None,
-        };
+        let bus = self.bus(strip);
         match cursor.row {
             Row::Level => {
                 let level = track.map_or_else(|| bus.map_or(0.0, |b| b.level), |m| m.level);
@@ -316,8 +333,11 @@ impl Editor {
         let strip = self.strip(cursor.strip);
         match (cursor.row, strip) {
             (Row::Level, Strip::Track(i)) => self.grid.tracks[i].mix.level = value,
-            (Row::Level, Strip::Send) => self.buses.send.level = value,
-            (Row::Level, Strip::Master) => self.buses.master.level = value,
+            (Row::Level, bus) => {
+                if let Some(bus) = self.bus_mut(bus) {
+                    bus.level = value;
+                }
+            }
             (Row::Pan, Strip::Track(i)) => self.grid.tracks[i].mix.pan = value / 100.0,
             (Row::Send, Strip::Track(i)) => self.grid.tracks[i].mix.send = value,
             (Row::Param(p), Strip::Track(i)) if cursor.instrument => {
@@ -454,9 +474,8 @@ impl Editor {
 
     pub(crate) fn set_bus_level(&mut self, bus: Strip, level: f32) -> Vec<Effect> {
         self.checkpoint();
-        match bus {
-            Strip::Send => self.buses.send.level = level,
-            _ => self.buses.master.level = level,
+        if let Some(bus) = self.bus_mut(bus) {
+            bus.level = level;
         }
         vec![Effect::MixerChanged]
     }

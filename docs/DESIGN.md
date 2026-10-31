@@ -164,9 +164,10 @@ track stays a real track, with its own rules, length and strip; the group adds:
   glyph, like a drum machine's step view, so a kit takes little room. Editing still works folded:
   the cursor moves between the narrow columns, and entering a step adds a hit at that drum's
   note and velocity. `tz` folds and unfolds, borrowing Helix's `z` for view.
-- **A group bus.** The group's tracks mix into a strip of their own, with a level and an effect
-  chain, before the master: a drum bus for compression and drive. Folded, the mixer page shows
-  the group as that one strip.
+- **A group bus (done).** The group's tracks mix into a strip of their own, with a level and an
+  effect chain, before the master: a drum bus for compression and drive. The mixer page shows
+  each group's bus after the tracks, beside the send and master buses, in its first track's
+  colour. Sends still go straight from each track to the send bus.
 - **Choke.** Tracks in a group can cut each other off, so a closed hat stops an open one.
 - **Drum pads on the numpad.** The group's tracks are mapped to the numpad's keys, so the kit can
   be played (and entered in insert mode) like a pad controller: each key plays its track's drum
@@ -184,7 +185,11 @@ are inserted, removed and moved only through `Grid::insert_track`, `remove_track
 which keep the groups in line: a track inserted between two members joins; at either end it stays
 out; a member moved within its group stays in, and leaves when it moves past either end; a group
 whose last track goes goes with it. At most `MAX_GROUPS` (8), as the engine preallocates a bus for
-each. New groups are named `group N`; `:group-name` renames one. The pattern page draws a bracket
+each: `Engine::groups` holds a `GroupBus` per slot (chain, gain and buffers), and each
+`TrackPlayer` carries the slot it mixes into, set with `Command::SetGroup`, so the route moves
+with the track. A bus runs only when a track feeds it or it has effects (whose tails ring out).
+The TUI's `Mixer` uses a group's index in `Grid::groups` as its slot, and syncs routes by track
+id, chains and levels as it does the other buses. New groups are named `group N`; `:group-name` renames one. The pattern page draws a bracket
 with the group's name over its tracks.
 
 **Names.** Each engine is named with an indirect nod to a pioneer of electronic music: a studio,

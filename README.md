@@ -60,7 +60,7 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `ta`, `th` `tl` | add a track after this one, move it left / right |
 | `ty`, `td` | copy the tracks the selections reach; remove them, copying them first |
 | `tp` `tP` | paste copied tracks after / before this one, with their notes, rules, mix and instrument |
-| `tg` | group the tracks the selections reach (from the first to the last), or ungroup the group they're in |
+| `tg` | group the tracks the selections reach (from the first to the last), or ungroup the group they're in; a group's tracks mix into its bus, a strip on the mixer page with a level and effects |
 | `;` `A-;` | collapse the selection, flip which end the cursor is |
 
 | Multiple selections | |
@@ -131,7 +131,8 @@ centre, each with its value written over it; `M` when it's muted and `S` when it
 meter in place of the underline. Muted tracks, and tracks silenced by another's solo, are dimmed.
 Every track can send to a delay on the send bus; sends start off.
 
-The **mixer page** (`gm`) has a strip for each track and for the send and master buses: level,
+The **mixer page** (`gm`) has a strip for each track, each group's bus, and the send and master
+buses: level,
 pan, send, a meter, its instrument and its effects. The settings of the instrument or effect
 under the cursor show just below it. `h j k l` move, `^a` `^x` nudge the value under the cursor
 (with counts, so `10^a`), `c` types an exact one (or, on the instrument, another instrument),

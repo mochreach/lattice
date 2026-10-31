@@ -1,8 +1,9 @@
 //! The sequencer and mixer, driven entirely from the audio callback.
 //!
 //! Signal path: each track's instrument, then its effects, then its mixer strip (level, pan,
-//! mute and solo) into the master bus, with a post-fader send into the send bus. The send bus
-//! runs its own effects into the master bus, which runs its effects, then the click is added.
+//! mute and solo) into its group's bus or the master bus, with a post-fader send into the send
+//! bus. Each group bus runs its effects and level into the master, as does the send bus; the
+//! master runs its effects, then the click is added.
 //!
 //! The UI thread talks to the engine through a [`Handle`]: commands go over a lock-free queue,
 //! and playback position comes back through atomics in [`Status`]. Nothing on the audio side
@@ -13,7 +14,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 use lattice_core::{Grid, MAX_STEPS, Mix, Step, Track, db_to_gain, realise_into};
-pub use lattice_core::{MAX_EFFECTS, MAX_TRACKS};
+pub use lattice_core::{MAX_EFFECTS, MAX_GROUPS, MAX_TRACKS};
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
 
 use crate::click::Click;
@@ -95,10 +96,16 @@ pub enum Command {
         id: u32,
         value: f32,
     },
-    /// Set the send or master bus's level, in dB. Ignored for a track's chain.
+    /// Set a bus's level, in dB. Ignored for a track's chain.
     SetBusLevel {
         bus: Chain,
         level: f32,
+    },
+    /// Route the track at `index` into a group's bus (below [`MAX_GROUPS`]), or straight to the
+    /// master. The route moves with the track.
+    SetGroup {
+        index: usize,
+        group: Option<usize>,
     },
 }
 
@@ -107,6 +114,8 @@ pub enum Command {
 pub enum Chain {
     /// After a track's instrument, before its mixer strip.
     Track(usize),
+    /// A group's bus, fed by its tracks, below [`MAX_GROUPS`].
+    Group(usize),
     /// The send bus, fed by every track's send.
     Send,
     /// The master bus, after everything is mixed.
@@ -157,6 +166,26 @@ fn run_chain(effects: &mut [Box<EffectSlot>], left: &mut [f32], right: &mut [f32
         sort_by_offset(&mut slot.events);
         slot.processor.process(&slot.events, left, right);
         slot.events.clear();
+    }
+}
+
+/// A group's bus: its tracks mix into it, then it runs its effects and level into the master.
+struct GroupBus {
+    effects: Effects,
+    /// Linear.
+    gain: Smoothed,
+    left: Vec<f32>,
+    right: Vec<f32>,
+}
+
+impl GroupBus {
+    fn new(sample_rate: f32) -> Self {
+        Self {
+            effects: effects(),
+            gain: Smoothed::new(1.0, sample_rate),
+            left: vec![0.0; MAX_BLOCK],
+            right: vec![0.0; MAX_BLOCK],
+        }
     }
 }
 
@@ -249,6 +278,7 @@ pub struct Status {
     peaks: [AtomicU32; MAX_TRACKS],
     /// The same for the send and master buses, after their levels.
     bus_peaks: [AtomicU32; 2],
+    group_peaks: [AtomicU32; MAX_GROUPS],
 }
 
 impl Status {
@@ -258,6 +288,7 @@ impl Status {
             positions: std::array::from_fn(|_| AtomicU64::new(u64::MAX)),
             peaks: std::array::from_fn(|_| AtomicU32::new(0)),
             bus_peaks: std::array::from_fn(|_| AtomicU32::new(0)),
+            group_peaks: std::array::from_fn(|_| AtomicU32::new(0)),
         }
     }
 
@@ -278,11 +309,15 @@ impl Status {
             .map_or(0.0, |p| f32::from_bits(p.swap(0, Ordering::Relaxed)))
     }
 
-    /// The loudest sample the send or master bus has played since the last call.
+    /// The loudest sample a bus has played since the last call.
     pub fn take_bus_peak(&self, bus: Chain) -> f32 {
         let peak = match bus {
             Chain::Send => &self.bus_peaks[0],
             Chain::Master => &self.bus_peaks[1],
+            Chain::Group(g) => match self.group_peaks.get(g) {
+                Some(peak) => peak,
+                None => return 0.0,
+            },
             Chain::Track(track) => return self.take_peak(track),
         };
         f32::from_bits(peak.swap(0, Ordering::Relaxed))
@@ -349,6 +384,8 @@ pub struct TrackPlayer {
     instrument: Box<dyn Processor>,
     effects: Effects,
     strip: Strip,
+    /// The group bus it mixes into, if any.
+    group: Option<usize>,
     /// The track as realised for the current pass.
     steps: Vec<Step>,
     playhead: usize,
@@ -372,6 +409,7 @@ impl TrackPlayer {
             instrument,
             effects: effects(),
             strip: Strip::new(sample_rate),
+            group: None,
             steps: Vec::with_capacity(MAX_STEPS),
             playhead: 0,
             pass: 0,
@@ -404,6 +442,7 @@ pub struct Engine {
     tracks: Vec<Box<TrackPlayer>>,
     send_effects: Effects,
     master_effects: Effects,
+    groups: [GroupBus; MAX_GROUPS],
     send_left: Vec<f32>,
     send_right: Vec<f32>,
     /// Bus levels, linear.
@@ -463,6 +502,7 @@ impl Engine {
             tracks,
             send_effects: effects(),
             master_effects: effects(),
+            groups: std::array::from_fn(|_| GroupBus::new(sample_rate)),
             send_left: vec![0.0; MAX_BLOCK],
             send_right: vec![0.0; MAX_BLOCK],
             send_gain: Smoothed::new(1.0, sample_rate),
@@ -603,8 +643,18 @@ impl Engine {
                 Command::SetBusLevel { bus, level } => match bus {
                     Chain::Send => self.send_gain.set(db_to_gain(level)),
                     Chain::Master => self.master_gain.set(db_to_gain(level)),
+                    Chain::Group(g) => {
+                        if let Some(group) = self.groups.get_mut(g) {
+                            group.gain.set(db_to_gain(level));
+                        }
+                    }
                     Chain::Track(_) => {}
                 },
+                Command::SetGroup { index, group } => {
+                    if let Some(t) = self.tracks.get_mut(index) {
+                        t.group = group.filter(|&g| g < MAX_GROUPS);
+                    }
+                }
                 Command::SetParam { target, id, value } => {
                     let events = match target {
                         Target::Instrument(track) => {
@@ -632,6 +682,7 @@ impl Engine {
     fn chain_mut(&mut self, chain: Chain) -> Option<&mut Effects> {
         match chain {
             Chain::Track(index) => self.tracks.get_mut(index).map(|t| &mut t.effects),
+            Chain::Group(g) => self.groups.get_mut(g).map(|group| &mut group.effects),
             Chain::Send => Some(&mut self.send_effects),
             Chain::Master => Some(&mut self.master_effects),
         }
@@ -711,6 +762,17 @@ impl Engine {
         let (sl, sr) = (&mut self.send_left[..len], &mut self.send_right[..len]);
         sl.fill(0.0);
         sr.fill(0.0);
+        // Which group buses have tracks in them this block.
+        let mut fed = [false; MAX_GROUPS];
+        for t in &self.tracks {
+            if let Some(g) = t.group {
+                fed[g] = true;
+            }
+        }
+        for (group, _) in self.groups.iter_mut().zip(fed).filter(|(_, fed)| *fed) {
+            group.left[..len].fill(0.0);
+            group.right[..len].fill(0.0);
+        }
         let any_solo = self.tracks.iter().any(|t| t.track.mix.solo);
         for (index, t) in self.tracks.iter_mut().enumerate() {
             sort_by_offset(&mut t.events);
@@ -721,8 +783,31 @@ impl Engine {
             t.events.clear();
             run_chain(&mut t.effects, tl, tr);
             t.strip.set(&t.track.mix, any_solo);
-            let peak = t.strip.apply([tl, tr], [left, right], [sl, sr]);
+            let out = match t.group {
+                Some(g) => {
+                    let group = &mut self.groups[g];
+                    [&mut group.left[..len], &mut group.right[..len]]
+                }
+                None => [&mut *left, &mut *right],
+            };
+            let peak = t.strip.apply([tl, tr], out, [sl, sr]);
             self.status.add_peak(index, peak);
+        }
+        for (g, group) in self.groups.iter_mut().enumerate() {
+            // A bus with no tracks still runs its effects, so their tails ring out.
+            if !fed[g] && group.effects.is_empty() {
+                continue;
+            }
+            let (gl, gr) = (&mut group.left[..len], &mut group.right[..len]);
+            if !fed[g] {
+                gl.fill(0.0);
+                gr.fill(0.0);
+            }
+            run_chain(&mut group.effects, gl, gr);
+            let peak = apply_gain(&mut group.gain, gl, gr);
+            self.status.group_peaks[g].fetch_max(peak.to_bits(), Ordering::Relaxed);
+            mix_into(left, gl);
+            mix_into(right, gr);
         }
         run_chain(&mut self.send_effects, sl, sr);
         let peak = apply_gain(&mut self.send_gain, sl, sr);
@@ -1293,6 +1378,36 @@ mod tests {
         assert!((left[0] - master.tanh()).abs() < 1e-6);
         assert_eq!(handle.status().take_bus_peak(Chain::Send), 0.0);
         assert!((handle.status().take_bus_peak(Chain::Master) - master).abs() < 1e-6);
+    }
+
+    #[test]
+    fn grouped_tracks_mix_through_their_group_bus() {
+        let (mut engine, mut handle) = mixer(&[Mix::default(), Mix::default()]);
+        for index in 0..2 {
+            handle.send(Command::SetGroup {
+                index,
+                group: Some(3),
+            });
+        }
+        handle.send(Command::SetBusLevel {
+            bus: Chain::Group(3),
+            level: -6.0,
+        });
+        // The route moves with its track.
+        handle.send(Command::MoveTrack { from: 0, to: 1 });
+        handle.send(Command::SetGroup {
+            index: 1,
+            group: None,
+        });
+        render_stereo(&mut engine, 30);
+        handle.status().take_bus_peak(Chain::Group(3));
+        let (left, _) = render_stereo(&mut engine, 10);
+        // One track straight through, the other at the group's -6 dB.
+        let group = 0.5 * db_to_gain(-6.0);
+        assert!((left[0] - (0.5 + group).tanh()).abs() < 1e-6);
+        assert!((handle.status().take_bus_peak(Chain::Group(3)) - group).abs() < 1e-6);
+        assert_eq!(handle.status().take_bus_peak(Chain::Group(0)), 0.0);
+        assert_eq!(handle.status().take_bus_peak(Chain::Group(99)), 0.0);
     }
 
     #[test]

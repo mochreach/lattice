@@ -1,5 +1,5 @@
-//! Drawing the mixer page: a strip per track, then the send and master buses, and the settings
-//! of the instrument or effect under the cursor.
+//! Drawing the mixer page: a strip per track, then the groups' buses and the send and master
+//! buses, and the settings of the instrument or effect under the cursor.
 
 use lattice_core::Kind;
 use lattice_editor::{Editor, Row, Shown, Strip};
@@ -35,7 +35,9 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, theme: &Theme, view:
     let any_solo = editor.grid.tracks.iter().any(|t| t.mix.solo);
 
     // The buses always show, on the right; the tracks scroll if they don't all fit.
-    let room = (area.width as usize).saturating_sub(LABEL + 2 * (CELL + 1) + 2);
+    let groups = &editor.grid.groups;
+    let buses = groups.len() + 2;
+    let room = (area.width as usize).saturating_sub(LABEL + buses * (CELL + 1) + 2);
     let fits = (room / (CELL + 1)).max(1);
     if cursor.strip < tracks {
         if cursor.strip < view.first_strip {
@@ -64,17 +66,30 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, theme: &Theme, view:
             meter: view.meters[i],
         }
     });
-    let buses = [
-        (Strip::Send, "SEND", theme.accent, view.bus_meters[0]),
-        (Strip::Master, "MASTER", theme.visual, view.bus_meters[1]),
-    ];
+    // A group's bus takes the colour of its first track.
+    let group_buses = groups.iter().enumerate().map(|(g, group)| {
+        (
+            Strip::Group(g),
+            group.name.to_uppercase(),
+            theme.track(group.first),
+            view.group_meters[g],
+        )
+    });
+    let buses = group_buses.chain([
+        (Strip::Send, "SEND".into(), theme.accent, view.bus_meters[0]),
+        (
+            Strip::Master,
+            "MASTER".into(),
+            theme.visual,
+            view.bus_meters[1],
+        ),
+    ]);
     let bus_columns = buses
-        .into_iter()
         .enumerate()
         .map(|(i, (strip, name, colour, meter))| Column {
             index: tracks + i,
             strip,
-            name: name.into(),
+            name,
             colour,
             style: Style::new().fg(colour),
             meter,
@@ -104,7 +119,7 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, theme: &Theme, view:
     let line = |label: Span<'static>, cells: Vec<Vec<Span<'static>>>| {
         let mut spans = vec![label];
         for (k, (c, cell)) in columns.iter().zip(cells).enumerate() {
-            if c.strip == Strip::Send {
+            if c.strip.is_bus() && !columns[k.saturating_sub(1)].strip.is_bus() {
                 let more = if hidden.1 && k > 0 { "›" } else { " " };
                 spans.push(Span::styled(format!("{more}│"), theme.faint));
             }
@@ -156,10 +171,9 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, theme: &Theme, view:
         columns
             .iter()
             .map(|c| {
-                let level = match c.strip {
-                    Strip::Track(i) => editor.grid.tracks[i].mix.level,
-                    Strip::Send => editor.buses.send.level,
-                    Strip::Master => editor.buses.master.level,
+                let level = match editor.bus(c.strip) {
+                    Some(bus) => bus.level,
+                    None => track_mix(c).map_or(0.0, |mix| mix.level),
                 };
                 bars::level(level, CELL, style_at(c, Row::Level), theme)
             })

@@ -123,6 +123,23 @@ mod tests {
     }
 
     #[test]
+    fn a_group_has_a_bus_strip_on_the_mixer_page() {
+        use crate::Strip;
+        let mut e = editor();
+        keys(&mut e, "vltg\x1b");
+        assert_eq!(e.strips(), 5 + 1 + 2);
+        assert_eq!(e.strip(5), Strip::Group(0));
+        assert_eq!(e.strip(6), Strip::Send);
+        // Its level and effects, set from the mixer page.
+        keys(&mut e, "gmglhh:level -3\n:fx-add comp\n");
+        let bus = &e.grid.groups[0].bus;
+        assert_eq!(bus.level, -3.0);
+        assert_eq!(bus.effects.len(), 1);
+        keys(&mut e, "u");
+        assert!(e.grid.groups[0].bus.effects.is_empty(), "undoable");
+    }
+
+    #[test]
     fn groups_follow_tracks_as_they_move() {
         let mut e = editor();
         keys(&mut e, "lvltg\x1b");

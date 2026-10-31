@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use lattice_core::Fx;
+use lattice_core::{Fx, MAX_GROUPS};
 use lattice_editor::{Editor, TrackId};
 use lattice_engine::{Chain, Command, EffectSlot, Handle, Target, fx};
 
@@ -16,6 +16,11 @@ pub struct Mixer {
     master: Vec<Fx>,
     /// The bus levels sent, in dB. The engine starts at unity.
     levels: [f32; 2],
+    /// Each group bus's chain and level, by its index in the grid's groups.
+    groups: [(Vec<Fx>, f32); MAX_GROUPS],
+    /// The group bus each track was routed to, by id; a track not here goes to the master, as
+    /// new tracks do.
+    routes: HashMap<TrackId, usize>,
 }
 
 impl Mixer {
@@ -27,6 +32,8 @@ impl Mixer {
             send: Vec::new(),
             master: Vec::new(),
             levels: [0.0; 2],
+            groups: Default::default(),
+            routes: HashMap::new(),
         }
     }
 
@@ -39,9 +46,10 @@ impl Mixer {
 
     fn sync_with(&mut self, editor: &Editor, mut send: impl FnMut(Command) -> bool) -> bool {
         let ids = editor.track_ids();
-        // A track that's gone takes its chain with it; if undo brings it back, it comes back
-        // with an empty one.
+        // A track that's gone takes its chain and route with it; if undo brings it back, it
+        // comes back with an empty chain, going to the master.
         self.tracks.retain(|id, _| ids.contains(id));
+        self.routes.retain(|id, _| ids.contains(id));
         let sample_rate = self.sample_rate;
         for (index, (id, track)) in ids.iter().zip(&editor.grid.tracks).enumerate() {
             let sent = self.tracks.entry(*id).or_default();
@@ -53,6 +61,36 @@ impl Mixer {
                 &mut send,
             ) {
                 return false;
+            }
+        }
+        for (index, id) in ids.iter().enumerate() {
+            let group = editor.grid.group_of(index);
+            if self.routes.get(id).copied() != group {
+                if !send(Command::SetGroup { index, group }) {
+                    return false;
+                }
+                match group {
+                    Some(g) => self.routes.insert(*id, g),
+                    None => self.routes.remove(id),
+                };
+            }
+        }
+        // A group bus follows the group at its index; past the last group, they're emptied.
+        let none = lattice_core::Bus::default();
+        for (g, (sent, level)) in self.groups.iter_mut().enumerate() {
+            let bus = editor.grid.groups.get(g).map_or(&none, |group| &group.bus);
+            let chain = Chain::Group(g);
+            if !sync_chain(chain, sent, &bus.effects, sample_rate, &mut send) {
+                return false;
+            }
+            if *level != bus.level {
+                if !send(Command::SetBusLevel {
+                    bus: chain,
+                    level: bus.level,
+                }) {
+                    return false;
+                }
+                *level = bus.level;
             }
         }
         let buses = &editor.buses;
@@ -157,6 +195,39 @@ mod tests {
             true
         }));
         sent
+    }
+
+    #[test]
+    fn groups_route_their_tracks_and_have_buses() {
+        let grid = crate::demo::song();
+        let mut editor = Editor::new(grid, 120.0).with_buses(crate::demo::buses());
+        let mut mixer = Mixer::new(48_000.0);
+        sync(&mut mixer, &editor);
+        editor.grid.groups = vec![lattice_core::Group::new("kit", 1..3)];
+        editor.grid.groups[0].bus.level = -4.0;
+        editor.grid.groups[0].bus.effects = vec![Fx::new(FxKind::Comp)];
+        assert_eq!(
+            sync(&mut mixer, &editor),
+            [
+                "SetGroup { index: 1, group: Some(0) }",
+                "SetGroup { index: 2, group: Some(0) }",
+                "insert Group(0) 0",
+                "SetBusLevel { bus: Group(0), level: -4.0 }",
+            ]
+        );
+        assert!(sync(&mut mixer, &editor).is_empty(), "already in line");
+
+        // Ungrouped, the tracks go back to the master and the bus is emptied.
+        editor.grid.groups.clear();
+        assert_eq!(
+            sync(&mut mixer, &editor),
+            [
+                "SetGroup { index: 1, group: None }",
+                "SetGroup { index: 2, group: None }",
+                "RemoveEffect { chain: Group(0), index: 0 }",
+                "SetBusLevel { bus: Group(0), level: 0.0 }",
+            ]
+        );
     }
 
     #[test]

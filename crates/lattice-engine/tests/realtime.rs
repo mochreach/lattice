@@ -77,6 +77,7 @@ fn rendering_never_allocates() {
     let mut track_delay = Some(EffectSlot::new(Box::new(Delay::new(48_000.0))));
     let mut track_drive = Some(EffectSlot::new(Box::new(Drive::new(48_000.0))));
     let mut track_comp = Some(EffectSlot::new(Box::new(Comp::new(48_000.0))));
+    let mut group_comp = Some(EffectSlot::new(Box::new(Comp::new(48_000.0))));
     let mut drums: Vec<_> = [InstKind::Hat, InstKind::Snare, InstKind::Kick]
         .into_iter()
         .map(|kind| lattice_engine::instrument::build(&Instrument::new(kind), 48_000.0))
@@ -147,6 +148,21 @@ fn rendering_never_allocates() {
                         },
                         id: delay::TIME,
                         value: 0.2,
+                    });
+                }
+                720 => {
+                    handle.send(Command::SetGroup {
+                        index: 0,
+                        group: Some(2),
+                    });
+                    handle.send(Command::InsertEffect {
+                        chain: Chain::Group(2),
+                        index: 0,
+                        effect: group_comp.take().unwrap(),
+                    });
+                    handle.send(Command::SetBusLevel {
+                        bus: Chain::Group(2),
+                        level: -3.0,
                     });
                 }
                 750 | 760 | 770 => {

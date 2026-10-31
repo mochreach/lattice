@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use lattice_core::{Group, MAX_TRACKS, Step, Track, realise};
+use lattice_core::{Group, MAX_GROUPS, MAX_TRACKS, Step, Track, realise};
 use lattice_editor::{
     BEATS_PER_BAR, Completion, Cursor, Editor, Infobox, Mode, Page, PromptKind, Selection, View,
 };
@@ -34,6 +34,8 @@ pub struct ViewState {
     pub(crate) meters: [f32; MAX_TRACKS],
     /// The send and master buses' meters.
     pub(crate) bus_meters: [f32; 2],
+    /// Each group bus's meter, by its index in the grid's groups.
+    pub(crate) group_meters: [f32; MAX_GROUPS],
     metered: Option<Instant>,
     /// The leftmost track strip on the mixer page, when they don't all fit.
     pub(crate) first_strip: usize,
@@ -56,6 +58,9 @@ impl ViewState {
             .zip(&mut self.bus_meters)
         {
             *meter = (*meter * fall).max(status.take_bus_peak(bus));
+        }
+        for (g, meter) in self.group_meters.iter_mut().enumerate() {
+            *meter = (*meter * fall).max(status.take_bus_peak(Chain::Group(g)));
         }
     }
 }
