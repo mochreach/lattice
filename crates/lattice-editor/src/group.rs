@@ -1,10 +1,10 @@
 //! Grouping tracks: `tg` groups the tracks the selections reach, or ungroups the group they're
-//! in, `tz` folds and unfolds it, and `:group-name` renames it. The numpad's keys are pads,
-//! playing the group's tracks.
+//! in, `tz` folds and unfolds it, and `:group-name` renames it. The numpad's pads play the
+//! group's tracks (see `pads.rs`).
 
-use lattice_core::{DRUM_ROOT, Group, MAX_GROUPS, Note};
+use lattice_core::{Group, MAX_GROUPS};
 
-use crate::{DEFAULT_VELOCITY, Editor, Effect, Key, Mode};
+use crate::{Editor, Effect};
 
 impl Editor {
     /// Groups every track from the first the selections reach to the last, or, if they're all in
@@ -66,41 +66,6 @@ impl Editor {
             self.grid.groups[g].folded = fold;
         }
         vec![]
-    }
-
-    /// Pad `n` (from 1): plays the `n`th track of the cursor's group at C-4, which plays a drum
-    /// at its tuning. In insert mode it also enters the note there, on the cursor's step, without
-    /// moving on, so several drums can go on one step.
-    pub(crate) fn pad(&mut self, n: u8, key: Key) -> Vec<Effect> {
-        let Some(g) = self.grid.group_of(self.cursor().track) else {
-            self.message = Some("pads play a group's tracks; tg makes one".into());
-            return vec![];
-        };
-        let group = &self.grid.groups[g];
-        let n = usize::from(n);
-        if n == 0 || n > group.len {
-            return vec![];
-        }
-        let track = group.first + n - 1;
-        let pitch = DRUM_ROOT;
-        if let Some(effects) = self.record_note(key, &[track], pitch) {
-            return effects;
-        }
-        let mut effects = vec![];
-        if self.mode == Mode::Insert {
-            let step = self.cursor().step;
-            if step < self.track_len(track) {
-                self.checkpoint();
-                self.grid.tracks[track].steps[step].note = Some(Note {
-                    pitch,
-                    velocity: DEFAULT_VELOCITY,
-                    length: 1,
-                });
-                effects.push(Effect::TrackChanged(track));
-            }
-        }
-        effects.push(Effect::Preview { track, pitch });
-        effects
     }
 
     /// Whether the cursor's track is in a folded group, where the number row stands in for the
@@ -236,8 +201,14 @@ mod tests {
 
         let mut e = editor();
         let pitch = DRUM_ROOT;
-        assert!(e.handle(Key::Pad(1)).is_empty(), "no group here");
-        assert!(e.message.as_deref().unwrap().contains("tg makes one"));
+        // Outside a group they play a scale instead (see `pads.rs`).
+        assert_eq!(
+            e.handle(Key::Pad(1)),
+            [Effect::Preview {
+                track: 0,
+                pitch: 60
+            }]
+        );
 
         e.grid.groups = vec![Group::new("kit", 1..4)];
         keys(&mut e, "l");

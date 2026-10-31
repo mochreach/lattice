@@ -4,7 +4,8 @@ use std::time::Instant;
 
 use lattice_core::{Group, MAX_GROUPS, MAX_TRACKS, Step, Track, realise};
 use lattice_editor::{
-    BEATS_PER_BAR, Completion, Cursor, Editor, Infobox, Mode, Page, PromptKind, Selection, View,
+    BEATS_PER_BAR, Completion, Cursor, Editor, Infobox, Mode, PadMode, Page, PromptKind, Selection,
+    View,
 };
 use lattice_engine::{Chain, Status};
 use ratatui::Frame;
@@ -265,6 +266,11 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         } else {
             Span::raw("")
         },
+        if editor.pad_mode == PadMode::Mute {
+            Span::styled(" MUTE PADS ", theme.block(theme.visual))
+        } else {
+            Span::raw("")
+        },
         Span::raw("   "),
         value(file),
         Span::styled(modified, theme.text),
@@ -272,6 +278,8 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         value(bpm(editor.bpm)),
         label("   oct "),
         value(editor.octave.to_string()),
+        label("   vel "),
+        value(editor.velocity.to_string()),
         label("   step "),
         value(editor.auto_step.to_string()),
         label("   pattern "),
@@ -790,7 +798,10 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             theme.dim,
         ),
         Mode::Insert => (
-            "z–m q–u notes · [ ] octave · ⌫ clear · esc done".into(),
+            format!(
+                "z–m q–u notes · pads {} · [ ] octave · ⌫ clear · esc done",
+                editor.scale_name()
+            ),
             theme.dim,
         ),
         Mode::Select => (

@@ -7,7 +7,7 @@
 
 use lattice_core::Note;
 
-use crate::{DEFAULT_VELOCITY, Editor, Effect, Key, Mode, changed};
+use crate::{Editor, Effect, Key, Mode, changed};
 
 /// Where playback is, as the frontend last saw it.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -109,7 +109,7 @@ impl Editor {
         for &(track, step, _, from) in &notes {
             self.grid.tracks[track].steps[step].note = Some(Note {
                 pitch,
-                velocity: DEFAULT_VELOCITY,
+                velocity: self.velocity,
                 length: 1,
             });
             self.held.retain(|h| h.key != key || h.track != track);

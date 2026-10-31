@@ -24,6 +24,8 @@ pub enum Key {
     End,
     /// A numpad digit, when the terminal tells the numpad apart.
     Pad(u8),
+    /// The numpad's `.` `/` `*` `-` `+`.
+    PadOp(char),
 }
 
 impl fmt::Display for Key {
@@ -48,6 +50,7 @@ impl fmt::Display for Key {
             Key::Home => f.write_str("home"),
             Key::End => f.write_str("end"),
             Key::Pad(n) => write!(f, "pad{n}"),
+            Key::PadOp(c) => write!(f, "pad{c}"),
         }
     }
 }

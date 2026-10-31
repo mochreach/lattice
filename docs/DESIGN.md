@@ -251,6 +251,13 @@ track stays a real track, with its own rules, length and strip; the group adds:
   other terminals and inside tmux: in insert mode in a folded group, the number row (`1`–`9`)
   is the pads instead of the piano's sharps, as a folded group is a drum machine's view.
 
+- **More of a pad controller (done).** Outside a group the pads play a scale on the cursor's
+  track (`:scale`, from `SCALES`, with a root), degree `n - 1` up from the keyboard octave, so a
+  bass or string part can be played one-handed. The numpad's `/` `*` `-` set `Editor::velocity`
+  (60, 100, 127), which every note played or entered takes, piano keys too; `+` switches the
+  pads to muting the first nine tracks, an undoable change like `tm`, for building a song up and
+  down live. The non-digit keys arrive as `Key::PadOp`. The pads live in `pads.rs`.
+
 `tg` groups the tracks the selections reach, and ungroups them if they're already a group. Groups
 are saved in the song and undone like everything else.
 

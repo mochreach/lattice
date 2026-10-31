@@ -290,6 +290,18 @@ pub const COMMANDS: &[Spec] = &[
         describe: "bars counted in before recording (0 for none)",
     },
     Spec {
+        name: "vel",
+        alias: None,
+        params: &[int("VELOCITY", "velocity", 1, 127)],
+        describe: "how hard notes are played and entered (also the numpad's / * -)",
+    },
+    Spec {
+        name: "scale",
+        alias: None,
+        params: &[text("NAME [ROOT]", "scale")],
+        describe: "the scale the pads play outside a group: major, minor, dorian, mixolydian, pentatonic, minor-pentatonic, blues, chromatic; and its root",
+    },
+    Spec {
         name: "keys",
         alias: None,
         params: &[],
@@ -876,6 +888,14 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         "count" => {
             editor.count_in = command.int(0);
+            Ok(vec![])
+        }
+        "vel" => {
+            editor.velocity = command.int(0);
+            Ok(vec![])
+        }
+        "scale" => {
+            editor.set_scale(command.text(0))?;
             Ok(vec![])
         }
         "rec" => {

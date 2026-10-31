@@ -15,12 +15,14 @@ mod command;
 mod group;
 mod keymap;
 mod mixer;
+mod pads;
 mod pattern;
 mod record;
 
 pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
 pub use keymap::{Action, Binding, Key, Keymap, Menu};
 pub use mixer::{Field, MixerCursor, PARAM_COLUMNS, Page, Row, Shown, Strip};
+pub use pads::{HARD, MEDIUM, PadMode, SCALES, SOFT, Scale};
 pub use record::Transport;
 
 use std::path::{Path, PathBuf};
@@ -300,6 +302,13 @@ pub struct Editor {
     pub octave: u8,
     /// Steps to move after entering a note.
     pub auto_step: usize,
+    /// How hard notes are played and entered.
+    pub velocity: u8,
+    /// What the numpad's pads do.
+    pub pad_mode: PadMode,
+    /// The scale pads play outside a group, as an index into [`SCALES`], and its root above C.
+    pub scale: usize,
+    pub root: u8,
     pub follow: bool,
     pub click: bool,
     /// Whether the frontend shows the keys as they're pressed, for screencasts.
@@ -378,6 +387,10 @@ impl Editor {
             mixer: MixerCursor::default(),
             octave: 4,
             auto_step: 1,
+            velocity: DEFAULT_VELOCITY,
+            pad_mode: PadMode::Play,
+            scale: 0,
+            root: 0,
             follow: true,
             click: true,
             show_keys: false,
@@ -635,6 +648,8 @@ impl Editor {
         match (key, &self.mode) {
             // On the command line, the numpad types digits.
             (Key::Pad(n), Mode::Command(_)) => return self.command_key(Key::Char(pad_digit(n))),
+            (Key::PadOp(c), Mode::Command(_)) => return self.command_key(Key::Char(c)),
+            (Key::PadOp(c), _) => return self.pad_op(c),
             (Key::Pad(n), _) => return self.pad(n, key),
             (Key::Char(c @ '1'..='9'), Mode::Insert) if self.in_folded_group() => {
                 return self.pad(c as u8 - b'0', key);
@@ -734,7 +749,7 @@ impl Editor {
                 if let Some(step) = self.grid.tracks[c.track].steps.get_mut(c.step) {
                     step.note = Some(Note {
                         pitch,
-                        velocity: DEFAULT_VELOCITY,
+                        velocity: self.velocity,
                         length: 1,
                     });
                 }
@@ -1483,10 +1498,11 @@ impl Editor {
         let Some(pitch) = self.piano_pitch(key) else {
             return vec![];
         };
+        let velocity = self.velocity;
         let mut effects = self.edit(|s| {
             s.note = Some(Note {
                 pitch,
-                velocity: DEFAULT_VELOCITY,
+                velocity,
                 length: 1,
             })
         });

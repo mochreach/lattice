@@ -104,11 +104,20 @@ moves on. `⌫` clears a step, and `esc` returns to normal mode. In a terminal t
 releases (see below), a note sounds for as long as you hold its key, so a bowed string or a pad
 sustains under your finger, and chords ring together; elsewhere you hear a short blip.
 
-In a group, the **numpad is drum pads**: `1` plays the group's first track at C-4, `2` the
-second, and so on, in any mode; in insert mode it also enters the hit on the cursor's step,
-without moving on, so a step can take several drums. This needs a terminal that tells the numpad
-apart (kitty, WezTerm, foot, Ghostty, recent Alacritty). Elsewhere, and inside tmux, the number
-row does the same in insert mode while the cursor is in a folded group.
+The **numpad is a set of performance pads**, in any mode; in insert mode a pad also enters its
+note on the cursor's step, without moving on, so a step can take several drums.
+
+| Numpad | |
+| --- | --- |
+| `1`–`9` | in a group, its drums: `1` plays the first track at C-4, `2` the second, and so on; on any other track, the notes of a scale up from the keyboard octave (`:scale`, C major to start) |
+| `/` `*` `-` | play and enter notes soft, medium or hard (velocity 60, 100, 127; `:vel N` for any other), shown as `vel` in the header |
+| `+` | mute mode (`MUTE PADS` in the header): pads `1`–`9` mute and unmute the first nine tracks |
+
+`:scale NAME [ROOT]` chooses the scale: `major`, `minor`, `dorian`, `mixolydian`, `pentatonic`,
+`minor-pentatonic`, `blues` or `chromatic`, with a root such as `A` or `F#` (`:scale minor A`).
+The pads need a terminal that tells the numpad apart (kitty, WezTerm, foot, Ghostty, recent
+Alacritty). Elsewhere, and inside tmux, the number row stands in for pads `1`–`9` in insert mode
+while the cursor is in a folded group, and `:vel` sets the velocity.
 
 To **record live**, press `R` (a red `REC` shows in the header) and then `space`. A bar of clicks
 counts you in, with the beats left in the header (`IN 4` … `IN 1`), whether or not the metronome
@@ -133,6 +142,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:bpm N`, `:step N`, `:oct N` | tempo, auto-step, keyboard octave |
 | `:click`, `:follow` | toggle the metronome, following the playhead |
 | `:rec` | toggle recording, like `R` |
+| `:vel N`, `:scale NAME [ROOT]` | the velocity notes are played and entered at (1–127); the scale the numpad's pads play outside a group |
 | `:count N` | bars counted in before recording (0–4, 0 for none; 1 to start) |
 | `:keys` | toggle showing the keys as they're pressed, above the status line, for screencasts |
 | `:name NAME` | rename the track |

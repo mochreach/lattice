@@ -8,6 +8,7 @@ pub fn convert(event: KeyEvent) -> Option<Key> {
     let keypad = event.state.contains(KeyEventState::KEYPAD);
     Some(match event.code {
         KeyCode::Char(c @ '0'..='9') if keypad => Key::Pad(c as u8 - b'0'),
+        KeyCode::Char(c @ ('.' | '/' | '*' | '-' | '+')) if keypad => Key::PadOp(c),
         KeyCode::Char(c) if ctrl => Key::Ctrl(c.to_ascii_lowercase()),
         KeyCode::Char(c) if alt => Key::Alt(c),
         KeyCode::Char(c) => Key::Char(c),
