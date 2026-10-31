@@ -85,7 +85,17 @@ pub enum Command {
         velocity: u8,
         held: bool,
     },
-    /// End a previewed note.
+    /// Audition a note held and repeated: on every step that's a multiple of `every`, in time
+    /// with the song (or, stopped, with the tempo), until [`Command::Release`]. `now` plays it
+    /// at once as well.
+    Repeat {
+        track: usize,
+        pitch: u8,
+        velocity: u8,
+        every: u32,
+        now: bool,
+    },
+    /// End a previewed or repeated note.
     Release {
         track: usize,
         pitch: u8,
@@ -416,8 +426,8 @@ pub struct TrackPlayer {
     pass: u32,
     events: Vec<Event>,
     held: Vec<Held>,
-    /// Previewed notes and the samples until each is released. Room for `MAX_PREVIEWS`.
-    previews: Vec<(u8, usize)>,
+    /// Previewed notes. Room for `MAX_PREVIEWS`.
+    previews: Vec<Preview>,
     left: Vec<f32>,
     right: Vec<f32>,
     /// What was last published to [`Status`], so it can be published again if the track moves.
@@ -453,6 +463,17 @@ impl std::fmt::Debug for TrackPlayer {
             .field("track", &self.track.name)
             .finish_non_exhaustive()
     }
+}
+
+/// A previewed note on a track.
+#[derive(Debug, Clone, Copy)]
+struct Preview {
+    pitch: u8,
+    velocity: u8,
+    /// Samples until it's released.
+    remaining: usize,
+    /// Played again on every step that's a multiple of this; 0 for never.
+    every: u32,
 }
 
 pub struct Engine {
@@ -638,27 +659,37 @@ impl Engine {
                     velocity,
                     held,
                 } => {
-                    if let Some(t) = self.tracks.get_mut(track) {
-                        // Retriggering a pitch, or out of room: end the old one first.
-                        let same = t.previews.iter().position(|&(p, _)| p == pitch);
-                        let full = (t.previews.len() == MAX_PREVIEWS).then_some(0);
-                        if let Some(i) = same.or(full) {
-                            push(&mut t.events, note_off(0, t.previews[i].0));
-                            t.previews.remove(i);
-                        }
-                        push(&mut t.events, note_on(0, pitch, velocity));
-                        let samples = if held {
-                            self.held_preview_samples
-                        } else {
-                            self.preview_samples
-                        };
-                        t.previews.push((pitch, samples));
-                        self.choke_others(track, 0, &[]);
-                    }
+                    let remaining = if held {
+                        self.held_preview_samples
+                    } else {
+                        self.preview_samples
+                    };
+                    let preview = Preview {
+                        pitch,
+                        velocity,
+                        remaining,
+                        every: 0,
+                    };
+                    self.preview(track, preview, true);
+                }
+                Command::Repeat {
+                    track,
+                    pitch,
+                    velocity,
+                    every,
+                    now,
+                } => {
+                    let preview = Preview {
+                        pitch,
+                        velocity,
+                        remaining: self.held_preview_samples,
+                        every: every.max(1),
+                    };
+                    self.preview(track, preview, now);
                 }
                 Command::Release { track, pitch } => {
                     if let Some(t) = self.tracks.get_mut(track)
-                        && let Some(i) = t.previews.iter().position(|&(p, _)| p == pitch)
+                        && let Some(i) = t.previews.iter().position(|p| p.pitch == pitch)
                     {
                         push(&mut t.events, note_off(0, pitch));
                         t.previews.remove(i);
@@ -770,6 +801,43 @@ impl Engine {
         }
     }
 
+    /// Starts a preview on a track, sounding it `now` or leaving it to its repeats.
+    fn preview(&mut self, track: usize, preview: Preview, now: bool) {
+        let Some(t) = self.tracks.get_mut(track) else {
+            return;
+        };
+        // Retriggering a pitch, or out of room: end the old one first.
+        let same = t.previews.iter().position(|p| p.pitch == preview.pitch);
+        let full = (t.previews.len() == MAX_PREVIEWS).then_some(0);
+        if let Some(i) = same.or(full) {
+            push(&mut t.events, note_off(0, t.previews[i].pitch));
+            t.previews.remove(i);
+        }
+        t.previews.push(preview);
+        if now {
+            push(&mut t.events, note_on(0, preview.pitch, preview.velocity));
+            self.choke_others(track, 0, &[]);
+        }
+    }
+
+    /// Plays again the repeated previews due on step `step`.
+    fn repeat_previews(&mut self, step: u64, offset: u32) {
+        for index in 0..self.tracks.len() {
+            let t = &mut self.tracks[index];
+            let mut hit = false;
+            for p in &t.previews {
+                if p.every > 0 && step.is_multiple_of(u64::from(p.every)) {
+                    push(&mut t.events, note_off(offset, p.pitch));
+                    push(&mut t.events, note_on(offset, p.pitch, p.velocity));
+                    hit = true;
+                }
+            }
+            if hit {
+                self.choke_others(index, offset, &[]);
+            }
+        }
+    }
+
     /// Sends something back to the UI thread to be freed.
     fn discard(&mut self, garbage: Garbage) {
         if let Err(PushError::Full(garbage)) = self.garbage.push(garbage) {
@@ -781,33 +849,36 @@ impl Engine {
     fn process_block(&mut self, left: &mut [f32], right: &mut [f32]) {
         let len = left.len();
 
-        // Sequence: turn every step starting in this block into events.
-        if self.playing {
-            let mut pos = 0;
-            loop {
-                let until = self.clock.frames_until_step() as usize;
-                if until == 0 {
-                    self.clock.take_step();
+        // Sequence: turn every step starting in this block into events. The clock runs while
+        // stopped too, so repeated previews keep time.
+        let mut pos = 0;
+        loop {
+            let until = self.clock.frames_until_step() as usize;
+            if until == 0 {
+                let step = self.clock.step();
+                self.clock.take_step();
+                if self.playing {
                     self.sequence_step(pos as u32);
-                    continue;
                 }
-                let frames = until.min(len - pos);
-                self.clock.skip(frames as u64);
-                pos += frames;
-                if pos == len {
-                    break;
-                }
+                self.repeat_previews(step, pos as u32);
+                continue;
+            }
+            let frames = until.min(len - pos);
+            self.clock.skip(frames as u64);
+            pos += frames;
+            if pos == len {
+                break;
             }
         }
 
         for t in &mut self.tracks {
             let events = &mut t.events;
-            t.previews.retain_mut(|(pitch, remaining)| {
-                if *remaining < len {
-                    push(events, note_off(*remaining as u32, *pitch));
+            t.previews.retain_mut(|p| {
+                if p.remaining < len {
+                    push(events, note_off(p.remaining as u32, p.pitch));
                     false
                 } else {
-                    *remaining -= len;
+                    p.remaining -= len;
                     true
                 }
             });
@@ -1564,6 +1635,61 @@ mod tests {
         assert!((handle.status().take_bus_peak(Chain::Group(3)) - group).abs() < 1e-6);
         assert_eq!(handle.status().take_bus_peak(Chain::Group(0)), 0.0);
         assert_eq!(handle.status().take_bus_peak(Chain::Group(99)), 0.0);
+    }
+
+    /// Marks each note-on with a sample of 1.
+    struct Ticks;
+
+    impl Processor for Ticks {
+        fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]) {
+            for e in events {
+                if let EventKind::NoteOn { .. } = e.kind {
+                    left[e.offset as usize] = 1.0;
+                    right[e.offset as usize] = 1.0;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_repeated_preview_hits_on_the_step_grid_until_released() {
+        let grid = Grid {
+            name: "test".into(),
+            steps_per_beat: 4,
+            tracks: vec![lead()],
+            groups: vec![],
+        };
+        let (mut engine, mut handle) = Engine::new(48_000.0, 120.0, &grid, vec![Box::new(Ticks)]);
+        // 120 bpm, 16ths: 6,000 samples a step. Stopped, the clock still runs.
+        render(&mut engine, 256, 1_000);
+        handle.send(Command::Repeat {
+            track: 0,
+            pitch: 60,
+            velocity: 100,
+            every: 2,
+            now: true,
+        });
+        // At once, then on steps 2 and 4, at samples 12,000 and 24,000.
+        let audio = render(&mut engine, 256, 25_000);
+        assert_eq!(onsets(&audio), [0, 11_000, 23_000]);
+        handle.send(Command::Release {
+            track: 0,
+            pitch: 60,
+        });
+        assert!(render(&mut engine, 256, 30_000).iter().all(|&x| x == 0.0));
+
+        // Playing, the grid is the song's: from its first step.
+        handle.send(Command::Play { count_in: 0 });
+        render(&mut engine, 256, 3_000);
+        handle.send(Command::Repeat {
+            track: 0,
+            pitch: 99,
+            velocity: 100,
+            every: 4,
+            now: false,
+        });
+        let audio = render(&mut engine, 256, 25_000);
+        assert!(onsets(&audio).contains(&(24_000 - 3_000)));
     }
 
     /// Counts the chokes it's sent.

@@ -208,6 +208,19 @@ fn rendering_never_allocates() {
                         track: 0,
                         pitch: 40,
                     });
+                    handle.send(Command::Repeat {
+                        track: 0,
+                        pitch: 45,
+                        velocity: 90,
+                        every: 1,
+                        now: true,
+                    });
+                }
+                798 => {
+                    handle.send(Command::Release {
+                        track: 0,
+                        pitch: 45,
+                    });
                 }
                 800 => {
                     handle.send(Command::RemoveTrack(0));

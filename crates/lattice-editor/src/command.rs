@@ -11,7 +11,7 @@ use lattice_core::{
     Condition, MAX_CHOKE, MAX_DB, MAX_STEPS, MAX_TRACKS, MIN_DB, Mix, Rule, Step, Track, Transform,
 };
 
-use crate::{Editor, Effect};
+use crate::{Editor, Effect, NoteLayout};
 
 /// What a command takes after its name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -288,6 +288,12 @@ pub const COMMANDS: &[Spec] = &[
         alias: None,
         params: &[int("BARS", "bars", 0, 4)],
         describe: "bars counted in before recording (0 for none)",
+    },
+    Spec {
+        name: "layout",
+        alias: None,
+        params: &[text("LAYOUT", "layout")],
+        describe: "how notes lie on the keyboard in insert mode: piano, wicki (Wicki-Hayden) or fourths",
     },
     Spec {
         name: "vel",
@@ -888,6 +894,17 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         "count" => {
             editor.count_in = command.int(0);
+            Ok(vec![])
+        }
+        "layout" => {
+            let name = command.text(0);
+            let layout = NoteLayout::ALL
+                .into_iter()
+                .find(|l| l.name() == name)
+                .ok_or_else(|| format!("no layout {name}: try piano, wicki or fourths"))?;
+            editor.keymap.piano = layout.keys();
+            editor.keymap.layout = layout;
+            editor.message = Some(format!("notes laid out as {name}"));
             Ok(vec![])
         }
         "vel" => {

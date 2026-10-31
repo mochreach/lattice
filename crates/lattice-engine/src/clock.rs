@@ -52,6 +52,11 @@ impl Clock {
             .saturating_sub(self.position)
     }
 
+    /// The index of the next step, counted since the clock last restarted.
+    pub fn step(&self) -> u64 {
+        self.next_step
+    }
+
     /// Marks the step due at the current position as handled.
     pub fn take_step(&mut self) {
         self.next_step += 1;

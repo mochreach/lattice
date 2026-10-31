@@ -287,13 +287,61 @@ const PIANO: [(char, u8); 29] = [
     ('u', 23),
 ];
 
+/// The rows of the main keyboard, bottom up, each starting at its left. `[` and `]` are left
+/// out, as they change octave.
+const ROWS: [&str; 4] = ["zxcvbnm,./", "asdfghjkl;'", "qwertyuiop", "1234567890-="];
+
+/// Ways of laying notes out on the keyboard in insert mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NoteLayout {
+    /// The tracker's two-row piano: Z–M is the lower octave, Q–U the upper.
+    #[default]
+    Piano,
+    /// Wicki–Hayden, as on a concertina: a whole tone to the right, a fourth up-left and a fifth
+    /// up-right (each row sits a little left of the one below), so every chord of a kind has the
+    /// same shape.
+    Wicki,
+    /// As on a guitar or LinnStrument: a semitone to the right and a fourth a row up.
+    Fourths,
+}
+
+impl NoteLayout {
+    pub const ALL: [NoteLayout; 3] = [NoteLayout::Piano, NoteLayout::Wicki, NoteLayout::Fourths];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            NoteLayout::Piano => "piano",
+            NoteLayout::Wicki => "wicki",
+            NoteLayout::Fourths => "fourths",
+        }
+    }
+
+    /// Key → semitones above the keyboard octave's C.
+    pub fn keys(self) -> HashMap<char, u8> {
+        let (across, up) = match self {
+            NoteLayout::Piano => return PIANO.into_iter().collect(),
+            NoteLayout::Wicki => (2, 5),
+            NoteLayout::Fourths => (1, 5),
+        };
+        ROWS.iter()
+            .enumerate()
+            .flat_map(|(row, keys)| {
+                keys.chars()
+                    .enumerate()
+                    .map(move |(col, c)| (c, (row * up + col * across) as u8))
+            })
+            .collect()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Keymap {
     /// Normal and select mode. Select mode uses the same keys; motions extend instead of move.
     pub normal: HashMap<Key, Binding>,
     pub insert: HashMap<Key, Action>,
-    /// Insert mode and `r`: key → semitones above the keyboard octave's C.
+    /// Insert mode and `r`: key → semitones above the keyboard octave's C, laid out as `layout`.
     pub piano: HashMap<char, u8>,
+    pub layout: NoteLayout,
 }
 
 impl Default for Keymap {
@@ -440,7 +488,34 @@ impl Default for Keymap {
         Self {
             normal,
             insert,
-            piano: PIANO.into_iter().collect(),
+            piano: NoteLayout::Piano.keys(),
+            layout: NoteLayout::Piano,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn isomorphic_layouts_keep_their_intervals_everywhere() {
+        let wicki = NoteLayout::Wicki.keys();
+        // z is C; right a tone, up-left (a) a fourth, up-right (s) a fifth.
+        assert_eq!(
+            [wicki[&'z'], wicki[&'x'], wicki[&'a'], wicki[&'s']],
+            [0, 2, 5, 7]
+        );
+        // The same shape a row and two keys over: a major triad on F (a, d, then s's neighbour).
+        assert_eq!([wicki[&'a'], wicki[&'d'], wicki[&'w']], [5, 9, 12]);
+        assert_eq!(wicki[&'='], 37);
+
+        let fourths = NoteLayout::Fourths.keys();
+        assert_eq!(
+            [fourths[&'z'], fourths[&'x'], fourths[&'a'], fourths[&'q']],
+            [0, 1, 5, 10]
+        );
+        // Octave keys stay octave keys.
+        assert!(!wicki.contains_key(&'[') && !fourths.contains_key(&']'));
     }
 }

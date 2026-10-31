@@ -224,14 +224,26 @@ fn apply(
         Effect::Preview { track, pitch } => Command::Preview {
             track,
             pitch,
-            velocity: 100,
+            velocity: editor.velocity,
             held: false,
         },
         Effect::Hold { track, pitch } => Command::Preview {
             track,
             pitch,
-            velocity: 100,
+            velocity: editor.velocity,
             held: true,
+        },
+        Effect::Repeat {
+            track,
+            pitch,
+            every,
+            now,
+        } => Command::Repeat {
+            track,
+            pitch,
+            velocity: editor.velocity,
+            every: every as u32,
+            now,
         },
         Effect::Release { track, pitch } => Command::Release { track, pitch },
         Effect::Save(path) => {

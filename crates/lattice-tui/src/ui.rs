@@ -4,8 +4,8 @@ use std::time::Instant;
 
 use lattice_core::{Group, MAX_GROUPS, MAX_TRACKS, Step, Track, realise};
 use lattice_editor::{
-    BEATS_PER_BAR, Completion, Cursor, Editor, Infobox, Mode, PadMode, Page, PromptKind, Selection,
-    View,
+    BEATS_PER_BAR, Completion, Cursor, Editor, Infobox, Mode, NoteLayout, PadMode, Page,
+    PromptKind, Selection, View,
 };
 use lattice_engine::{Chain, Status};
 use ratatui::Frame;
@@ -263,6 +263,14 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         transport,
         if editor.record {
             Span::styled(" ● REC ", theme.block(theme.error))
+        } else {
+            Span::raw("")
+        },
+        if editor.repeating() {
+            Span::styled(
+                format!(" REPEAT {} ", editor.repeat_name()),
+                theme.block(theme.playing),
+            )
         } else {
             Span::raw("")
         },
@@ -774,6 +782,10 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
         left.push(Span::styled(format!(" {count}"), theme.text));
     }
 
+    let notes = match editor.keymap.layout {
+        NoteLayout::Piano => "z–m q–u notes".to_string(),
+        layout => format!("{} notes", layout.name()),
+    };
     let (hints, style) = match &editor.mode {
         Mode::Normal if editor.page == Page::Mixer => (
             "hl strips · jk detail · ( ) strip · tab chain · C-a C-x adjust · c set · :fx-add · d remove · gp pattern".into(),
@@ -784,22 +796,22 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             theme.dim,
         ),
         Mode::Insert if editor.record && editor.in_folded_group() => (
-            "recording: 1–9 pads · z–m q–u notes at the playhead, while playing · R off · esc done"
-                .into(),
+            format!("recording: 1–9 pads · {notes} at the playhead, while playing · R off · esc done"),
             theme.dim,
         ),
         Mode::Insert if editor.record => (
-            "recording: z–m q–u notes at the playhead, while playing · [ ] octave · R off · esc done"
-                .into(),
+            format!(
+                "recording: {notes} at the playhead, while playing · [ ] octave · R off · esc done"
+            ),
             theme.dim,
         ),
         Mode::Insert if editor.in_folded_group() => (
-            "1–9 pads · z–m q–u notes · [ ] octave · ⌫ clear · esc done".into(),
+            format!("1–9 pads · {notes} · [ ] octave · ⌫ clear · esc done"),
             theme.dim,
         ),
         Mode::Insert => (
             format!(
-                "z–m q–u notes · pads {} · [ ] octave · ⌫ clear · esc done",
+                "{notes} · pads {} · [ ] octave · ⌫ clear · esc done",
                 editor.scale_name()
             ),
             theme.dim,

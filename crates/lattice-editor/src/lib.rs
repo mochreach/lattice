@@ -20,7 +20,7 @@ mod pattern;
 mod record;
 
 pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
-pub use keymap::{Action, Binding, Key, Keymap, Menu};
+pub use keymap::{Action, Binding, Key, Keymap, Menu, NoteLayout};
 pub use mixer::{Field, MixerCursor, PARAM_COLUMNS, Page, Row, Shown, Strip};
 pub use pads::{HARD, MEDIUM, PadMode, SCALES, SOFT, Scale};
 pub use record::Transport;
@@ -129,6 +129,14 @@ pub enum Effect {
     Hold {
         track: usize,
         pitch: u8,
+    },
+    /// Audition a note again on every step that's a multiple of `every`, in time, until a
+    /// [`Effect::Release`] for it; `now` also plays it at once.
+    Repeat {
+        track: usize,
+        pitch: u8,
+        every: usize,
+        now: bool,
     },
     /// The key holding this note has come up: end it.
     Release {
@@ -325,8 +333,12 @@ pub struct Editor {
     held: Vec<Held>,
     /// Whether the frontend reports key releases, so previews are held until their key comes up.
     pub releases: bool,
-    /// Previewed notes, by the key that's holding each.
-    sounding: Vec<(Key, usize, u8)>,
+    /// Previewed notes, by the key that's holding each, and whether each is repeating.
+    sounding: Vec<(Key, usize, u8, bool)>,
+    /// Whether the numpad's `0` is held, so pads repeat.
+    repeat: bool,
+    /// How often pads repeat, in steps.
+    pub repeat_every: usize,
     /// Feedback for the status line; cleared on the next key.
     pub message: Option<String>,
     pub keymap: Keymap,
@@ -401,6 +413,8 @@ impl Editor {
             held: Vec::new(),
             releases: false,
             sounding: Vec::new(),
+            repeat: false,
+            repeat_every: 1,
             message: None,
             keymap: Keymap::default(),
             selections: vec![Selection::default()],
@@ -617,12 +631,16 @@ impl Editor {
 
     /// Holds a note key's previews until it comes up, ending any it was still holding.
     fn hold_previews(&mut self, key: Key, effects: Vec<Effect>) -> Vec<Effect> {
-        let mut out = self.release_previews(key);
+        let mut out = self.release_previews(key, false);
         for effect in effects {
             out.push(match effect {
                 Effect::Preview { track, pitch } => {
-                    self.sounding.push((key, track, pitch));
+                    self.sounding.push((key, track, pitch, false));
                     Effect::Hold { track, pitch }
+                }
+                Effect::Repeat { track, pitch, .. } => {
+                    self.sounding.push((key, track, pitch, true));
+                    effect
                 }
                 effect => effect,
             });
@@ -630,11 +648,11 @@ impl Editor {
         out
     }
 
-    /// Ends the previews `key` is holding.
-    fn release_previews(&mut self, key: Key) -> Vec<Effect> {
+    /// Ends the previews `key` is holding, and if `repeats`, every repeat.
+    fn release_previews(&mut self, key: Key, repeats: bool) -> Vec<Effect> {
         let mut released = vec![];
-        self.sounding.retain(|&(k, track, pitch)| {
-            let up = k == key;
+        self.sounding.retain(|&(k, track, pitch, repeating)| {
+            let up = k == key || (repeats && repeating);
             if up {
                 released.push(Effect::Release { track, pitch });
             }
@@ -741,7 +759,7 @@ impl Editor {
             // The primary's track first, as it sets the take.
             tracks.sort_unstable_by_key(|&t| t != track);
             tracks.dedup();
-            if let Some(effects) = self.record_note(key, &tracks, pitch) {
+            if let Some(effects) = self.record_note(key, &tracks, pitch, 0) {
                 return effects;
             }
             self.checkpoint();

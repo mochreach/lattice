@@ -99,7 +99,11 @@ in order, repeating the last if there are more selections than values. So `%`, t
 One deliberate departure from Helix: `space` is play / stop, as in every DAW, rather than a menu.
 
 In **insert mode**, the bottom two letter rows are a piano: `z`–`m` from C in the current
-octave, `q`–`u` an octave up, and `[` `]` change the octave. Each note is entered and the cursor
+octave, `q`–`u` an octave up, and `[` `]` change the octave. `:layout` lays the notes out
+isomorphically instead, over all four rows from `z` (C) to `=`, so a chord has the same shape
+wherever you play it: `wicki` (Wicki–Hayden: a tone to the right, a fourth up-left, a fifth
+up-right, three octaves across the keyboard) or `fourths` (a semitone to the right, a fourth a row
+up, as on a guitar); `:layout piano` goes back. Each note is entered and the cursor
 moves on. `⌫` clears a step, and `esc` returns to normal mode. In a terminal that reports key
 releases (see below), a note sounds for as long as you hold its key, so a bowed string or a pad
 sustains under your finger, and chords ring together; elsewhere you hear a short blip.
@@ -110,6 +114,8 @@ note on the cursor's step, without moving on, so a step can take several drums.
 | Numpad | |
 | --- | --- |
 | `1`–`9` | in a group, its drums: `1` plays the first track at C-4, `2` the second, and so on; on any other track, the notes of a scale up from the keyboard octave (`:scale`, C major to start) |
+| `0` (held) | note repeat: pads played while it's down repeat in time until let go (`REPEAT` in the header), and record each hit; needs key releases |
+| `.` | how often pads repeat: every 16th, 8th or quarter |
 | `/` `*` `-` | play and enter notes soft, medium or hard (velocity 60, 100, 127; `:vel N` for any other), shown as `vel` in the header |
 | `+` | mute mode (`MUTE PADS` in the header): pads `1`–`9` mute and unmute the first nine tracks |
 
@@ -142,6 +148,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:bpm N`, `:step N`, `:oct N` | tempo, auto-step, keyboard octave |
 | `:click`, `:follow` | toggle the metronome, following the playhead |
 | `:rec` | toggle recording, like `R` |
+| `:layout NAME` | how notes lie on the keyboard in insert mode: `piano`, `wicki` or `fourths` |
 | `:vel N`, `:scale NAME [ROOT]` | the velocity notes are played and entered at (1–127); the scale the numpad's pads play outside a group |
 | `:count N` | bars counted in before recording (0–4, 0 for none; 1 to start) |
 | `:keys` | toggle showing the keys as they're pressed, above the status line, for screencasts |

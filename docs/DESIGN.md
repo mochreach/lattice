@@ -257,6 +257,20 @@ track stays a real track, with its own rules, length and strip; the group adds:
   (60, 100, 127), which every note played or entered takes, piano keys too; `+` switches the
   pads to muting the first nine tracks, an undoable change like `tm`, for building a song up and
   down live. The non-digit keys arrive as `Key::PadOp`. The pads live in `pads.rs`.
+- **Isomorphic keyboards (done).** Numpads often register only three keys at once, so chords
+  belong on the main keyboard. `:layout wicki` and `:layout fourths` replace the tracker piano
+  with a grid over the four rows (`NoteLayout`): a key's pitch is `row * 5 + column * step`, a
+  step of 2 (Wicki–Hayden, where the rows' leftward stagger makes up-left a fourth and up-right
+  a fifth) or 1 (fourths, as on a guitar). `[` `]` are left out so they still change octave.
+- **Note repeat (done).** Holding the numpad's `0` makes the pads played meanwhile repeat, every
+  1, 2 or 4 steps (`.`), as on an MPC. The editor emits `Effect::Repeat`, held like a note key's
+  preview, and the engine's `Command::Repeat` is a preview with an `every`: it plays it again on
+  every step that's a multiple, after the note-off. The engine's clock now runs while stopped,
+  only sequencing while playing, so repeats keep time either way and, playing, fall on the song's
+  grid (a count-in is whole bars, so it doesn't shift it). A pad or `0` coming up ends the
+  repeats. Recording, the first hit goes in like any note, and the rest are written when the pad
+  comes up, on each step of the grid it was held through. It needs key releases, as a repeat
+  without its release would never end.
 
 `tg` groups the tracks the selections reach, and ungroups them if they're already a group. Groups
 are saved in the song and undone like everything else.

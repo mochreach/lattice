@@ -30,6 +30,8 @@ pub(crate) struct Held {
     pitch: u8,
     /// Where it was played, in steps since the track started.
     from: f64,
+    /// Repeated on every step that's a multiple of this, while held; 0 for not repeated.
+    every: usize,
 }
 
 impl Transport {
@@ -81,6 +83,7 @@ impl Editor {
         key: Key,
         tracks: &[usize],
         pitch: u8,
+        every: usize,
     ) -> Option<Vec<Effect>> {
         if !self.recording() {
             return None;
@@ -119,6 +122,7 @@ impl Editor {
                 step,
                 pitch,
                 from,
+                every,
             });
         }
         let mut effects = changed(notes.iter().map(|n| n.0));
@@ -136,7 +140,12 @@ impl Editor {
     /// A key has come up: the notes it's previewing end, and the notes it recorded last as long
     /// as it was held.
     pub fn release(&mut self, key: Key) -> Vec<Effect> {
-        let mut effects = self.release_previews(key);
+        // The numpad's `0` coming up ends note repeat.
+        let repeats = key == Key::Pad(0);
+        if repeats {
+            self.repeat = false;
+        }
+        let mut effects = self.release_previews(key, repeats);
         effects.extend(self.release_recorded(key));
         effects
     }
@@ -146,11 +155,26 @@ impl Editor {
             return vec![];
         };
         let mut tracks = vec![];
+        let velocity = self.velocity;
         for h in self.held.iter().filter(|h| h.key == key) {
             let len = self.track_len(h.track);
             let Some(to) = transport.at(h.track, len) else {
                 continue;
             };
+            // Repeated: a hit on each step of the repeat's grid it was held through.
+            if h.every > 0 {
+                let first = h.from.ceil().max(0.0) as u64;
+                let steps = &mut self.grid.tracks[h.track].steps;
+                for at in (first..=to.floor().max(0.0) as u64).filter(|a| a % h.every as u64 == 0) {
+                    steps[(at % len as u64) as usize].note = Some(Note {
+                        pitch: h.pitch,
+                        velocity,
+                        length: 1,
+                    });
+                    tracks.push(h.track);
+                }
+                continue;
+            }
             let length = (to - h.from).round().clamp(1.0, len as f64) as u16;
             if let Some(note) = &mut self.grid.tracks[h.track].steps[h.step].note
                 && note.pitch == h.pitch

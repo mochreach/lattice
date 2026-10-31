@@ -1,7 +1,9 @@
 //! The numpad as a performance surface. Pads `1`–`9` play the drums of the cursor's group or,
 //! on any other track, the notes of a scale (`:scale`) up from the keyboard octave. In mute mode
 //! (`+`) they mute and unmute the first nine tracks instead. `/` `*` `-` choose how hard notes
-//! are played and entered, soft, medium or hard (`:vel` sets any velocity).
+//! are played and entered, soft, medium or hard (`:vel` sets any velocity). Holding `0` repeats
+//! the pads played while it's down, in time, every 16th, 8th or quarter (`.` chooses), as on a
+//! drum machine; this needs key releases.
 
 use lattice_core::{DRUM_ROOT, Note};
 
@@ -87,6 +89,13 @@ impl Editor {
     /// Pad `n` (from 1).
     pub(crate) fn pad(&mut self, n: u8, key: Key) -> Vec<Effect> {
         if n == 0 {
+            if self.releases {
+                self.repeat = true;
+            } else {
+                self.message = Some(
+                    "note repeat needs a terminal that reports key releases, such as kitty".into(),
+                );
+            }
             return vec![];
         }
         let n = usize::from(n);
@@ -108,7 +117,19 @@ impl Editor {
                 None => return vec![],
             },
         };
-        if let Some(effects) = self.record_note(key, &[track], pitch) {
+        let every = if self.repeat { self.repeat_every } else { 0 };
+        if let Some(mut effects) = self.record_note(key, &[track], pitch, every) {
+            if every > 0 {
+                // Heard now if it rounded back, as a plain note would be; then on the grid.
+                let now = effects.iter().any(|e| matches!(e, Effect::Preview { .. }));
+                effects.retain(|e| !matches!(e, Effect::Preview { .. }));
+                effects.push(Effect::Repeat {
+                    track,
+                    pitch,
+                    every,
+                    now,
+                });
+            }
             return effects;
         }
         // In insert mode it's entered on the cursor's step, without moving on, so several drums
@@ -126,8 +147,28 @@ impl Editor {
                 effects.push(Effect::TrackChanged(track));
             }
         }
-        effects.push(Effect::Preview { track, pitch });
+        effects.push(if every > 0 {
+            Effect::Repeat {
+                track,
+                pitch,
+                every,
+                now: true,
+            }
+        } else {
+            Effect::Preview { track, pitch }
+        });
         effects
+    }
+
+    /// How often pads repeat, as a note value: `1/16`.
+    pub fn repeat_name(&self) -> String {
+        let beat = self.grid.steps_per_beat.max(1) as usize;
+        format!("1/{}", 4 * beat / self.repeat_every.max(1))
+    }
+
+    /// Whether the numpad's `0` is down, so pads repeat.
+    pub fn repeating(&self) -> bool {
+        self.repeat
     }
 
     /// The scale's `degree`th note (from 0), up from its root in the keyboard octave.
@@ -163,6 +204,14 @@ impl Editor {
             '-' => {
                 self.velocity = HARD;
                 self.message = Some(velocity("hard"));
+            }
+            '.' => {
+                self.repeat_every = match self.repeat_every {
+                    1 => 2,
+                    2 => 4,
+                    _ => 1,
+                };
+                self.message = Some(format!("pads repeat every {}", self.repeat_name()));
             }
             '+' => {
                 self.pad_mode = match self.pad_mode {
@@ -308,5 +357,75 @@ mod tests {
         assert!(!e.grid.tracks[1].mix.mute);
         e.handle(Key::PadOp('+'));
         assert_eq!(pad(&mut e, 2), Some(62));
+    }
+
+    #[test]
+    fn holding_zero_repeats_the_pads_until_it_or_they_come_up() {
+        let mut e = editor();
+        e.handle(Key::Pad(0));
+        assert!(!e.repeating(), "no releases, no repeat");
+        assert!(e.message.as_deref().unwrap().contains("key releases"));
+
+        e.releases = true;
+        e.handle(Key::PadOp('.'));
+        assert_eq!(e.repeat_name(), "1/8");
+        e.handle(Key::Pad(0));
+        let repeat = |pitch| Effect::Repeat {
+            track: 0,
+            pitch,
+            every: 2,
+            now: true,
+        };
+        let release = |pitch| Effect::Release { track: 0, pitch };
+        assert_eq!(e.handle(Key::Pad(1)), [repeat(60)]);
+        assert_eq!(e.handle(Key::Pad(3)), [repeat(64)]);
+        // Letting go of a pad ends its repeat; letting go of 0 ends them all.
+        assert_eq!(e.release(Key::Pad(1)), [release(60)]);
+        assert_eq!(e.release(Key::Pad(0)), [release(64)]);
+        assert!(!e.repeating());
+        assert_eq!(
+            e.handle(Key::Pad(1)),
+            [Effect::Hold {
+                track: 0,
+                pitch: 60
+            }]
+        );
+    }
+
+    #[test]
+    fn repeats_are_recorded_on_their_grid() {
+        use crate::Transport;
+        let mut e = editor();
+        e.releases = true;
+        e.handle(Key::Char('R'));
+        let at = |e: &mut Editor, step, into| {
+            e.set_transport(Some(Transport {
+                positions: vec![Some((step, 0)); 2],
+                into_step: into,
+                count_in: 0,
+            }))
+        };
+        // Every 8th from late in step 2 (so on 3, played on the grid) to early in step 9.
+        e.handle(Key::PadOp('.'));
+        e.handle(Key::Pad(0));
+        at(&mut e, 2, 0.6);
+        assert_eq!(
+            e.handle(Key::Pad(2)),
+            [
+                Effect::TrackChanged(0),
+                Effect::Repeat {
+                    track: 0,
+                    pitch: 62,
+                    every: 2,
+                    now: false
+                }
+            ]
+        );
+        at(&mut e, 9, 0.2);
+        e.release(Key::Pad(2));
+        let hits: Vec<_> = (0..16)
+            .filter(|&s| e.grid.tracks[0].steps[s].note.is_some())
+            .collect();
+        assert_eq!(hits, [3, 4, 6, 8]);
     }
 }
