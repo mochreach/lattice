@@ -30,6 +30,11 @@ use crate::pattern::Pattern;
 const UNDO_LIMIT: usize = 500;
 const PAGE: usize = 16;
 const DEFAULT_VELOCITY: u8 = 100;
+
+/// The digit a numpad key types.
+fn pad_digit(n: u8) -> char {
+    char::from(b'0' + n.min(9))
+}
 pub const BEATS_PER_BAR: usize = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -549,6 +554,15 @@ impl Editor {
 
     pub fn handle(&mut self, key: Key) -> Vec<Effect> {
         self.message = None;
+        match (key, &self.mode) {
+            // On the command line, the numpad types digits.
+            (Key::Pad(n), Mode::Command(_)) => return self.command_key(Key::Char(pad_digit(n))),
+            (Key::Pad(n), _) => return self.pad(n),
+            (Key::Char(c @ '1'..='9'), Mode::Insert) if self.in_folded_group() => {
+                return self.pad(c as u8 - b'0');
+            }
+            _ => {}
+        }
         match self.mode {
             Mode::Command(_) => self.command_key(key),
             Mode::Insert => self.insert_key(key),

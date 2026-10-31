@@ -22,6 +22,8 @@ pub enum Key {
     PageDown,
     Home,
     End,
+    /// A numpad digit, when the terminal tells the numpad apart.
+    Pad(u8),
 }
 
 impl fmt::Display for Key {
@@ -45,6 +47,7 @@ impl fmt::Display for Key {
             Key::PageDown => f.write_str("pagedown"),
             Key::Home => f.write_str("home"),
             Key::End => f.write_str("end"),
+            Key::Pad(n) => write!(f, "pad{n}"),
         }
     }
 }

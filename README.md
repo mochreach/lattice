@@ -100,6 +100,12 @@ In **insert mode**, the bottom two letter rows are a piano: `z`–`m` from C in 
 octave, `q`–`u` an octave up, and `[` `]` change the octave. Each note is entered and the cursor
 moves on. `⌫` clears a step, and `esc` returns to normal mode.
 
+In a group, the **numpad is drum pads**: `1` plays the group's first track at C-4, `2` the
+second, and so on, in any mode; in insert mode it also enters the hit on the cursor's step,
+without moving on, so a step can take several drums. This needs a terminal that tells the numpad
+apart (kitty, WezTerm, foot, Ghostty, recent Alacritty). Elsewhere, and inside tmux, the number
+row does the same in insert mode while the cursor is in a folded group.
+
 On the **command line**, commands that fuzzy-match what you've typed are listed above it, and
 `tab` cycles through them. Once the command is named, the parameters still to type are shown
 faintly after the cursor, and shrink as you type over them. Values are checked as you type: a

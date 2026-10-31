@@ -1,9 +1,10 @@
 //! Grouping tracks: `tg` groups the tracks the selections reach, or ungroups the group they're
-//! in, `tz` folds and unfolds it, and `:group-name` renames it.
+//! in, `tz` folds and unfolds it, and `:group-name` renames it. The numpad's keys are pads,
+//! playing the group's tracks.
 
-use lattice_core::{Group, MAX_GROUPS};
+use lattice_core::{DRUM_ROOT, Group, MAX_GROUPS, Note};
 
-use crate::{Editor, Effect};
+use crate::{DEFAULT_VELOCITY, Editor, Effect, Mode};
 
 impl Editor {
     /// Groups every track from the first the selections reach to the last, or, if they're all in
@@ -65,6 +66,46 @@ impl Editor {
             self.grid.groups[g].folded = fold;
         }
         vec![]
+    }
+
+    /// Pad `n` (from 1): plays the `n`th track of the cursor's group at C-4, which plays a drum
+    /// at its tuning. In insert mode it also enters the note there, on the cursor's step, without
+    /// moving on, so several drums can go on one step.
+    pub(crate) fn pad(&mut self, n: u8) -> Vec<Effect> {
+        let Some(g) = self.grid.group_of(self.cursor().track) else {
+            self.message = Some("pads play a group's tracks; tg makes one".into());
+            return vec![];
+        };
+        let group = &self.grid.groups[g];
+        let n = usize::from(n);
+        if n == 0 || n > group.len {
+            return vec![];
+        }
+        let track = group.first + n - 1;
+        let pitch = DRUM_ROOT;
+        let mut effects = vec![];
+        if self.mode == Mode::Insert {
+            let step = self.cursor().step;
+            if step < self.track_len(track) {
+                self.checkpoint();
+                self.grid.tracks[track].steps[step].note = Some(Note {
+                    pitch,
+                    velocity: DEFAULT_VELOCITY,
+                    length: 1,
+                });
+                effects.push(Effect::TrackChanged(track));
+            }
+        }
+        effects.push(Effect::Preview { track, pitch });
+        effects
+    }
+
+    /// Whether the cursor's track is in a folded group, where the number row stands in for the
+    /// pads in insert mode, for terminals that don't tell the numpad apart.
+    pub fn in_folded_group(&self) -> bool {
+        self.grid
+            .group_of(self.cursor().track)
+            .is_some_and(|g| self.grid.groups[g].folded)
     }
 
     /// Renames the group the cursor's track is in.
@@ -183,5 +224,49 @@ mod tests {
         assert_eq!(groups(&e), [("group 1".into(), 0, 3)]);
         keys(&mut e, "uu");
         assert_eq!(groups(&e), [("group 1".into(), 1, 2)]);
+    }
+
+    #[test]
+    fn pads_play_the_groups_tracks_and_enter_notes_in_insert_mode() {
+        use crate::Effect;
+        use lattice_core::{DRUM_ROOT, Group};
+
+        let mut e = editor();
+        let pitch = DRUM_ROOT;
+        assert!(e.handle(Key::Pad(1)).is_empty(), "no group here");
+        assert!(e.message.as_deref().unwrap().contains("tg makes one"));
+
+        e.grid.groups = vec![Group::new("kit", 1..4)];
+        keys(&mut e, "l");
+        assert_eq!(e.handle(Key::Pad(2)), [Effect::Preview { track: 2, pitch }]);
+        assert!(e.handle(Key::Pad(4)).is_empty(), "past the group's end");
+        assert!(
+            e.grid
+                .tracks
+                .iter()
+                .all(|t| t.steps.iter().all(|s| s.is_empty()))
+        );
+
+        // In insert mode they enter notes on the cursor's step, without moving on.
+        keys(&mut e, "jji");
+        e.handle(Key::Pad(1));
+        e.handle(Key::Pad(3));
+        assert_eq!(e.grid.tracks[1].steps[2].note.unwrap().pitch, pitch);
+        assert_eq!(e.grid.tracks[3].steps[2].note.unwrap().pitch, pitch);
+        assert_eq!(e.cursor().step, 2);
+
+        // Unfolded, the number row is still the piano; folded, it stands in for the pads.
+        keys(&mut e, "2");
+        assert!(e.grid.tracks[2].steps[2].is_empty());
+        e.grid.groups[0].folded = true;
+        keys(&mut e, "\x1bk");
+        keys(&mut e, "i2");
+        assert_eq!(e.grid.tracks[2].steps[2].note.unwrap().pitch, pitch);
+
+        // On the command line, the numpad types digits.
+        keys(&mut e, "\x1b:len ");
+        e.handle(Key::Pad(8));
+        keys(&mut e, "\n");
+        assert_eq!(e.grid.tracks[1].steps.len(), 8);
     }
 }

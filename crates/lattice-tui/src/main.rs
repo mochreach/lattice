@@ -16,7 +16,11 @@ use anyhow::Result;
 use lattice_editor::{Editor, Effect};
 use lattice_engine::{Command, Handle};
 use ratatui::DefaultTerminal;
-use ratatui::crossterm::event::{self, Event, KeyEventKind};
+use ratatui::crossterm::event::{
+    self, Event, KeyEventKind, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+    PushKeyboardEnhancementFlags,
+};
+use ratatui::crossterm::{execute, terminal};
 
 use crate::mixer::Mixer;
 use crate::theme::Theme;
@@ -67,6 +71,14 @@ fn main() -> Result<()> {
 
     let theme = Theme::detect();
     let mut terminal = ratatui::init();
+    // Ask for keys to be told apart (the kitty protocol), so the numpad can be pads. Terminals
+    // that don't speak it carry on as before.
+    let enhanced = terminal::supports_keyboard_enhancement().unwrap_or(false)
+        && execute!(
+            std::io::stdout(),
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+        )
+        .is_ok();
     let result = run(
         &mut terminal,
         &mut editor,
@@ -75,6 +87,9 @@ fn main() -> Result<()> {
         &mut audio.handle,
         &theme,
     );
+    if enhanced {
+        let _ = execute!(std::io::stdout(), PopKeyboardEnhancementFlags);
+    }
     ratatui::restore();
     result
 }

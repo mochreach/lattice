@@ -179,12 +179,15 @@ track stays a real track, with its own rules, length and strip; the group adds:
   choke each other, so a hat and an open hat played together both sound. The number only counts
   within a group; an ungrouped track never chokes. Previews choke too, so the kit plays by hand as
   it does from the pattern.
-- **Drum pads on the numpad.** The group's tracks are mapped to the numpad's keys, so the kit can
-  be played (and entered in insert mode) like a pad controller: each key plays its track's drum
-  at its own note. Terminals send numpad digits as plain digits unless they're asked for more:
-  with crossterm's keyboard enhancement flags (the kitty protocol, also in WezTerm, foot, Ghostty
-  and recent Alacritty), the keys arrive with a keypad state and can be told apart. Elsewhere it
-  needs a fallback, perhaps the number row while a group's insert mode is on.
+- **Drum pads on the numpad (done).** Pad `n` plays the `n`th track of the cursor's group at
+  C-4, a drum at its tuning, so the kit can be played like a pad controller; in insert mode it
+  also enters the note on the cursor's step, without moving on, so a step can take several
+  drums. Terminals send numpad digits as plain digits unless asked for more: the TUI pushes
+  crossterm's `DISAMBIGUATE_ESCAPE_CODES` flag when the terminal supports it (the kitty protocol,
+  also in WezTerm, foot, Ghostty and recent Alacritty), and digits that arrive with the keypad
+  state become `Key::Pad`. On the command line they type digits as usual. The fallback, for
+  other terminals and inside tmux: in insert mode in a folded group, the number row (`1`–`9`)
+  is the pads instead of the piano's sharps, as a folded group is a drum machine's view.
 
 `tg` groups the tracks the selections reach, and ungroups them if they're already a group. Groups
 are saved in the song and undone like everything else.

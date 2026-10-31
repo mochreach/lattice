@@ -757,6 +757,10 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             "v select · x rows · g goto · ] next · i insert · d delete · : command".into(),
             theme.dim,
         ),
+        Mode::Insert if editor.in_folded_group() => (
+            "1–9 pads · z–m q–u notes · [ ] octave · ⌫ clear · esc done".into(),
+            theme.dim,
+        ),
         Mode::Insert => (
             "z–m q–u notes · [ ] octave · ⌫ clear · esc done".into(),
             theme.dim,
