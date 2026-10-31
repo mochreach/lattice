@@ -288,6 +288,8 @@ pub struct Editor {
     pub auto_step: usize,
     pub follow: bool,
     pub click: bool,
+    /// Whether the frontend shows the keys as they're pressed, for screencasts.
+    pub show_keys: bool,
     /// Feedback for the status line; cleared on the next key.
     pub message: Option<String>,
     pub keymap: Keymap,
@@ -350,6 +352,7 @@ impl Editor {
             auto_step: 1,
             follow: true,
             click: true,
+            show_keys: false,
             message: None,
             keymap: Keymap::default(),
             selections: vec![Selection::default()],

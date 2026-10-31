@@ -278,6 +278,12 @@ pub const COMMANDS: &[Spec] = &[
         describe: "follow the playhead on or off",
     },
     Spec {
+        name: "keys",
+        alias: None,
+        params: &[],
+        describe: "show the keys as they're pressed, for screencasts",
+    },
+    Spec {
         name: "help",
         alias: Some("h"),
         params: &[],
@@ -853,6 +859,14 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             editor.message = Some(format!(
                 "follow {}",
                 if editor.follow { "on" } else { "off" }
+            ));
+            Ok(vec![])
+        }
+        "keys" => {
+            editor.show_keys = !editor.show_keys;
+            editor.message = Some(format!(
+                "keys {}",
+                if editor.show_keys { "shown" } else { "hidden" }
             ));
             Ok(vec![])
         }

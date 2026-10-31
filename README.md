@@ -23,7 +23,7 @@ What we learned from it, and the plan for this version, are in
 ```sh
 nix develop               # or bring your own Rust toolchain plus alsa-lib
 cargo test
-cargo run --release       # opens the tracker with a demo song; add `-- --no-click` to mute the metronome
+cargo run --release       # opens the tracker with a demo song; add `-- --no-click` to mute the metronome, `-- --show-keys` to show keys as they're pressed
 cargo run --release -- song.lattice   # opens a song, or starts a new one there
 ```
 
@@ -119,6 +119,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:len N` | track length (1–256) |
 | `:bpm N`, `:step N`, `:oct N` | tempo, auto-step, keyboard octave |
 | `:click`, `:follow` | toggle the metronome, following the playhead |
+| `:keys` | toggle showing the keys as they're pressed, above the status line, for screencasts |
 | `:name NAME` | rename the track |
 | `:group-name NAME` | rename this track's group |
 | `:level DB`, `:pan P`, `:send DB` | mixer, for every track the selections reach: level (-60 to 6 dB), pan (-100 left to 100 right), send to the send bus (-60, off, to 6 dB); on the mixer page, `:level` sets a bus too |

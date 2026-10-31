@@ -14,6 +14,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Padding, Paragraph};
 
 use crate::bars;
+use crate::key_log::KeyLog;
 use crate::mixer_page;
 use crate::theme::Theme;
 
@@ -41,6 +42,8 @@ pub struct ViewState {
     pub(crate) first_strip: usize,
     /// How many track strips fit on the mixer page.
     pub(crate) strips_shown: usize,
+    /// The keys just pressed, shown when the editor's `show_keys` is on.
+    pub keys: KeyLog,
 }
 
 impl ViewState {
@@ -90,6 +93,9 @@ pub fn draw(
         Paragraph::new(status_line(editor, theme, bottom.width)),
         bottom,
     );
+    if editor.show_keys {
+        view.keys.draw(frame, grid, theme);
+    }
     if let Some(infobox) = editor.infobox() {
         draw_infobox(frame, grid, &infobox, theme);
     }

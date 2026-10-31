@@ -2,6 +2,7 @@ mod audio;
 mod bars;
 mod demo;
 mod file;
+mod key_log;
 mod keys;
 mod mixer;
 mod mixer_page;
@@ -10,10 +11,10 @@ mod tracks;
 mod ui;
 
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use lattice_editor::{Editor, Effect};
+use lattice_editor::{Editor, Effect, Mode};
 use lattice_engine::{Command, Handle};
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{
@@ -68,6 +69,7 @@ fn main() -> Result<()> {
         editor.click = false;
         audio.handle.send(Command::SetClick(false));
     }
+    editor.show_keys = args.iter().any(|a| a == "--show-keys");
 
     let theme = Theme::detect();
     let mut terminal = ratatui::init();
@@ -116,7 +118,10 @@ fn run(
                 && key.kind != KeyEventKind::Release
                 && let Some(key) = keys::convert(key)
             {
-                for effect in editor.handle(key) {
+                let effects = editor.handle(key);
+                let typing = matches!(editor.mode, Mode::Command(_));
+                view.keys.record(key, typing, Instant::now());
+                for effect in effects {
                     match apply(effect, editor, tracks, mixer, handle) {
                         Flow::Next => {}
                         Flow::Stop => break,
