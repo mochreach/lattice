@@ -10,6 +10,7 @@ use ron::extensions::Extensions;
 use ron::ser::PrettyConfig;
 
 use crate::fx::MAX_EFFECTS;
+use crate::group::MAX_GROUPS;
 use crate::song::{Grid, MAX_DB, MAX_TRACKS, Song, Track};
 
 /// Nesting below which values go on one line: each step, note and rule fits on its own line.
@@ -80,7 +81,29 @@ fn check_grid(grid: &Grid) -> Result<(), String> {
             grid.tracks.len()
         ));
     }
-    grid.tracks.iter().try_for_each(check_track)
+    grid.tracks.iter().try_for_each(check_track)?;
+    check_groups(grid)
+}
+
+fn check_groups(grid: &Grid) -> Result<(), String> {
+    if grid.groups.len() > MAX_GROUPS {
+        return Err(format!(
+            "grid {:?} has more than {MAX_GROUPS} groups",
+            grid.name
+        ));
+    }
+    let mut next = 0;
+    for group in &grid.groups {
+        if group.len == 0 || group.first < next || group.first + group.len > grid.tracks.len() {
+            return Err(format!(
+                "group {:?} must cover tracks that exist, after the group before it",
+                group.name
+            ));
+        }
+        next = group.first + group.len;
+        group.bus.check(&group.name)?;
+    }
+    Ok(())
 }
 
 fn check_track(track: &Track) -> Result<(), String> {
@@ -115,6 +138,7 @@ fn check_track(track: &Track) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::fx::{self, Bus, Buses, Fx, FxKind};
+    use crate::group::Group;
     use crate::instrument::{InstKind, Instrument, kick};
     use crate::{Condition, Mix, Note, Rule, Step, Transform};
 
@@ -172,6 +196,10 @@ mod tests {
                 name: "a".into(),
                 steps_per_beat: 4,
                 tracks: vec![bass, empty],
+                groups: vec![Group {
+                    folded: true,
+                    ..Group::new("pair", 0..2)
+                }],
             }],
             order: vec![0],
             buses: Buses {
@@ -232,6 +260,11 @@ mod tests {
 
     #[test]
     fn rejects_songs_that_cannot_play() {
+        let mut bad = song();
+        bad.grids[0].groups[0].len = 3;
+        let err = from_ron(&to_ron(&bad)).unwrap_err().to_string();
+        assert!(err.contains("group \"pair\""), "{err}");
+
         let mut bad = song();
         bad.grids[0].tracks[0].steps.clear();
         let err = from_ron(&to_ron(&bad)).unwrap_err().to_string();

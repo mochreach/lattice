@@ -135,6 +135,8 @@ pub enum Action {
     PasteTracksBefore,
     MoveTrackLeft,
     MoveTrackRight,
+    /// Group the tracks the selections reach, or ungroup the group they're in.
+    ToggleGroup,
     TogglePlay,
     ToggleView,
     Quit,
@@ -212,6 +214,7 @@ impl Action {
             Action::PasteTracksBefore => "paste tracks before",
             Action::MoveTrackLeft => "move track left",
             Action::MoveTrackRight => "move track right",
+            Action::ToggleGroup => "group / ungroup tracks",
             Action::TogglePlay => "play / stop",
             Action::ToggleView => "written or playing pattern",
             Action::Quit => "quit",
@@ -339,6 +342,7 @@ impl Default for Keymap {
                 (Char('P'), PasteTracksBefore),
                 (Char('h'), MoveTrackLeft),
                 (Char('l'), MoveTrackRight),
+                (Char('g'), ToggleGroup),
             ],
         };
 

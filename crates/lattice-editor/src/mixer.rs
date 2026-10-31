@@ -480,6 +480,7 @@ mod tests {
             name: "test".into(),
             steps_per_beat: 4,
             tracks: vec![track("a"), track("b")],
+            groups: vec![],
         };
         let buses = Buses {
             send: Bus {

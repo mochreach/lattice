@@ -42,6 +42,7 @@ fn rendering_never_allocates() {
         name: "test".into(),
         steps_per_beat: 4,
         tracks: vec![track],
+        groups: vec![],
     };
     let patch = Patch {
         wave: Wave::Saw,

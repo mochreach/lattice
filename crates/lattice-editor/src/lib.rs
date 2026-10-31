@@ -12,6 +12,7 @@
 //! tested by feeding in key sequences.
 
 mod command;
+mod group;
 mod keymap;
 mod mixer;
 mod pattern;
@@ -974,6 +975,7 @@ impl Editor {
             Action::PasteTracksBefore => return self.paste_tracks(Place::Before),
             Action::MoveTrackLeft => return self.run_command("track-move -1"),
             Action::MoveTrackRight => return self.run_command("track-move 1"),
+            Action::ToggleGroup => return self.toggle_group(),
             Action::GotoMixer => {
                 self.page = Page::Mixer;
                 self.mode = Mode::Normal;
@@ -1408,19 +1410,18 @@ impl Editor {
 
     /// Adds a track at `index`, with a new id.
     pub(crate) fn insert_track(&mut self, index: usize, track: Track) {
-        self.grid.tracks.insert(index, track);
+        self.grid.insert_track(index, track);
         self.ids.insert(index, TrackId(self.next_id));
         self.next_id += 1;
     }
 
     pub(crate) fn remove_track(&mut self, index: usize) {
-        self.grid.tracks.remove(index);
+        self.grid.remove_track(index);
         self.ids.remove(index);
     }
 
     pub(crate) fn move_track(&mut self, from: usize, to: usize) {
-        let track = self.grid.tracks.remove(from);
-        self.grid.tracks.insert(to, track);
+        self.grid.move_track(from, to);
         let id = self.ids.remove(from);
         self.ids.insert(to, id);
     }
@@ -1506,6 +1507,7 @@ mod tests {
             name: "test".into(),
             steps_per_beat: 4,
             tracks: vec![track("a", 16), track("b", 8)],
+            groups: vec![],
         };
         Editor::new(grid, 120.0)
     }

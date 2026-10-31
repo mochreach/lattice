@@ -247,6 +247,7 @@ pub fn song() -> Grid {
         name: "demo".into(),
         steps_per_beat: 4,
         tracks: vec![kick, snare, ride, crash, bass, arp, bleep],
+        groups: vec![],
     }
 }
 

@@ -155,7 +155,7 @@ each `Voice` is only its trigger and a per-sample tick; they're scalar, as one v
 
 Planned next: choke between drums, which comes with groups.
 
-## Track groups (planned)
+## Track groups
 
 A group is a named run of adjacent tracks, such as a drum kit with one drum on each track. Each
 track stays a real track, with its own rules, length and strip; the group adds:
@@ -177,6 +177,15 @@ track stays a real track, with its own rules, length and strip; the group adds:
 
 `tg` groups the tracks the selections reach, and ungroups them if they're already a group. Groups
 are saved in the song and undone like everything else.
+
+**How groups are kept (done).** `Grid::groups` holds each group as a run of track indices (`first`,
+`len`), in track order and never overlapping, with its name, whether it's folded and its bus. Tracks
+are inserted, removed and moved only through `Grid::insert_track`, `remove_track` and `move_track`,
+which keep the groups in line: a track inserted between two members joins; at either end it stays
+out; a member moved within its group stays in, and leaves when it moves past either end; a group
+whose last track goes goes with it. At most `MAX_GROUPS` (8), as the engine preallocates a bus for
+each. New groups are named `group N`; `:group-name` renames one. The pattern page draws a bracket
+with the group's name over its tracks.
 
 **Names.** Each engine is named with an indirect nod to a pioneer of electronic music: a studio,
 a record or an idea rather than the person's name, so it doesn't read as an endorsement. The name

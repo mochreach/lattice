@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use lattice_core::{MAX_TRACKS, Step, Track, realise};
+use lattice_core::{Group, MAX_TRACKS, Step, Track, realise};
 use lattice_editor::{
     BEATS_PER_BAR, Completion, Cursor, Editor, Infobox, Mode, Page, PromptKind, Selection, View,
 };
@@ -349,7 +349,10 @@ fn draw_grid(
         .map(|(i, t)| Column::new(i, t, editor, status, theme, view.meters[i]))
         .collect();
     let hidden = (view.first_track > 0, view.first_track + fits < tracks);
-    let mut lines = header_lines(&columns, hidden, theme);
+    let mut lines: Vec<_> = group_line(&columns, &editor.grid.groups, theme)
+        .into_iter()
+        .collect();
+    lines.extend(header_lines(&columns, hidden, theme));
     let rows = (area.height as usize).saturating_sub(lines.len());
     let longest = columns.iter().map(|c| c.shown.len()).max().unwrap_or(0);
     scroll_to(view, editor, &columns, rows, longest, status.playing());
@@ -393,6 +396,46 @@ fn scroll_to(
         view.scroll = target + 1 - rows;
     }
     view.scroll = view.scroll.min(longest.saturating_sub(rows));
+}
+
+/// A bracket over each group's columns, with its name, if the grid has groups.
+fn group_line(columns: &[Column], groups: &[Group], theme: &Theme) -> Option<Line<'static>> {
+    if groups.is_empty() {
+        return None;
+    }
+    let mut spans = vec![Span::raw(" ".repeat(GUTTER))];
+    for c in columns {
+        let Some(group) = groups.iter().find(|g| g.contains(c.index)) else {
+            spans.push(Span::raw(" ".repeat(CELL + 1)));
+            continue;
+        };
+        let first = c.index == group.first;
+        let last = c.index + 1 == group.first + group.len;
+        // The cell and the gap after it, so the bracket runs unbroken across the group.
+        let mut bar: Vec<char> = "─".repeat(CELL + 1).chars().collect();
+        if first {
+            bar[0] = '╭';
+        }
+        if last {
+            bar[CELL - 1] = '╮';
+            bar[CELL] = ' ';
+        }
+        let bar: String = bar.into_iter().collect();
+        if first {
+            let name = fit(&format!(" {} ", group.name.to_uppercase()), CELL - 3);
+            let name = name.trim_end().to_string() + " ";
+            let rest: String = bar.chars().skip(2 + name.chars().count()).collect();
+            spans.push(Span::styled(
+                bar.chars().take(2).collect::<String>(),
+                theme.dim,
+            ));
+            spans.push(Span::styled(name, theme.text.add_modifier(Modifier::BOLD)));
+            spans.push(Span::styled(rest, theme.dim));
+        } else {
+            spans.push(Span::styled(bar, theme.dim));
+        }
+    }
+    Some(Line::from(spans))
 }
 
 /// Track names with mute and solo flags, lengths and passes, level and pan, then the rules one

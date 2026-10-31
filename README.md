@@ -60,6 +60,7 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `ta`, `th` `tl` | add a track after this one, move it left / right |
 | `ty`, `td` | copy the tracks the selections reach; remove them, copying them first |
 | `tp` `tP` | paste copied tracks after / before this one, with their notes, rules, mix and instrument |
+| `tg` | group the tracks the selections reach (from the first to the last), or ungroup the group they're in |
 | `;` `A-;` | collapse the selection, flip which end the cursor is |
 
 | Multiple selections | |
@@ -111,6 +112,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:bpm N`, `:step N`, `:oct N` | tempo, auto-step, keyboard octave |
 | `:click`, `:follow` | toggle the metronome, following the playhead |
 | `:name NAME` | rename the track |
+| `:group-name NAME` | rename this track's group |
 | `:level DB`, `:pan P`, `:send DB` | mixer, for every track the selections reach: level (-60 to 6 dB), pan (-100 left to 100 right), send to the send bus (-60, off, to 6 dB); on the mixer page, `:level` sets a bus too |
 | `:set VALUE` | on the mixer page, set the value under the cursor (also `c`) |
 | `:inst INSTRUMENT` | the instrument for every track the selections reach (or the mixer cursor's): `synth`, `kick`, `snare`, `hat`, `clap` or `tom` |

@@ -204,7 +204,7 @@ pub const COMMANDS: &[Spec] = &[
         name: "inst",
         alias: None,
         params: &[text("INSTRUMENT", "instrument")],
-        describe: "choose the instrument: synth, kick, snare or hat",
+        describe: "choose the instrument: synth, kick, snare, hat, clap or tom",
     },
     Spec {
         name: "fx-add",
@@ -234,6 +234,12 @@ pub const COMMANDS: &[Spec] = &[
             MAX_TRACKS as i64,
         )],
         describe: "move this track left or right",
+    },
+    Spec {
+        name: "group-name",
+        alias: None,
+        params: &[text("NAME", "name")],
+        describe: "rename this track's group",
     },
     Spec {
         name: "bpm",
@@ -891,6 +897,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         "fx-add" => editor.add_effect(command.text(0)),
         "inst" => editor.set_instrument(command.text(0)),
+        "group-name" => editor.rename_group(command.text(0)),
         "track-add" => {
             let tracks = &editor.grid.tracks;
             if tracks.len() >= MAX_TRACKS {

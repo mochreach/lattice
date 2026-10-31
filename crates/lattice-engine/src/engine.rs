@@ -861,6 +861,7 @@ mod tests {
             name: "empty".into(),
             steps_per_beat: 4,
             tracks: vec![],
+            groups: vec![],
         };
         let (mut engine, _) = Engine::new(sample_rate, bpm, &grid, vec![]);
         engine.play();
@@ -894,6 +895,7 @@ mod tests {
             name: "test".into(),
             steps_per_beat: 4,
             tracks: vec![lead()],
+            groups: vec![],
         };
         let patch = Patch {
             wave: Wave::Square,
@@ -1090,6 +1092,7 @@ mod tests {
             name: "mix".into(),
             steps_per_beat: 4,
             tracks,
+            groups: vec![],
         };
         let instruments = mixes.iter().map(|_| dc()).collect();
         let (mut engine, handle) = Engine::new(1_000.0, 120.0, &grid, instruments);

@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::fx::{Buses, Fx};
+use crate::group::Group;
 use crate::instrument::Instrument;
 use crate::transform::Rule;
 
@@ -225,6 +226,10 @@ pub struct Grid {
     pub name: String,
     pub steps_per_beat: u32,
     pub tracks: Vec<Track>,
+    /// In track order, never overlapping. Change tracks through [`Grid::insert_track`] and its
+    /// siblings, which keep these in line.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<Group>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
