@@ -1,10 +1,10 @@
 //! A short demo song for hearing the engine and the pattern transforms.
 
-use lattice_core::fx::delay;
+use lattice_core::fx::{comp, delay, drive};
 use lattice_core::instrument::{hat, kick, snare, synth};
 use lattice_core::{
-    Bus, Buses, Condition, DRUM_ROOT, Fx, FxKind, Grid, InstKind, Instrument, Note, Rule, Step,
-    Track, Transform,
+    Bus, Buses, Condition, DRUM_ROOT, Fx, FxKind, Grid, Group, InstKind, Instrument, Note, Rule,
+    Step, Track, Transform,
 };
 
 /// The Amen break's own tempo.
@@ -247,8 +247,27 @@ pub fn song() -> Grid {
         name: "demo".into(),
         steps_per_beat: 4,
         tracks: vec![kick, snare, ride, crash, bass, arp, bleep],
-        groups: vec![],
+        groups: vec![drums()],
     }
+}
+
+/// The drums as a folded group, on a bus that warms them up and glues them together: a little
+/// drive, then a compressor slow enough to let the hits' fronts through, mixed in parallel.
+fn drums() -> Group {
+    let mut warm = Fx::new(FxKind::Drive);
+    warm.values[drive::DRIVE as usize] = 0.35;
+    warm.values[drive::TONE as usize] = 9_000.0;
+    warm.values[drive::MIX as usize] = 0.6;
+    let mut glue = Fx::new(FxKind::Comp);
+    glue.values[comp::THRESHOLD as usize] = -20.0;
+    glue.values[comp::ATTACK as usize] = 0.01;
+    glue.values[comp::RELEASE as usize] = 0.1;
+    glue.values[comp::MAKEUP as usize] = 3.0;
+    glue.values[comp::MIX as usize] = 0.7;
+    let mut group = Group::new("amen", 0..4);
+    group.folded = true;
+    group.bus.effects = vec![warm, glue];
+    group
 }
 
 #[cfg(test)]

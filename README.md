@@ -153,7 +153,8 @@ by other notes. Each has a model (`tight` `boom` `hard` for the kick, `tight` `f
 the snare, `metal` `ring` `sizzle` for the hat, `tight` `room` `crowd` for the clap, `tight`
 `round` `hard` for the tom) and four controls within it (see
 [docs/DESIGN.md](docs/DESIGN.md)). The demo song
-is the Amen break at 136 BPM, on a kick, snare, ride and crash, under the synths.
+is the Amen break at 136 BPM, on a kick, snare, ride and crash, under the synths. The drums are a
+folded group, `amen`, with drive and a compressor on its bus; `tz` unfolds it.
 
 Tracks can be added, removed and moved while playing, and undo brings a removed track back with
 its notes and its instrument. When there are more than fit across the terminal, the grid scrolls

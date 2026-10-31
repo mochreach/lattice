@@ -417,7 +417,9 @@ There are three effects so far, each usable on any track or bus:
   stays put. The gain reduction in dB follows a 6 dB soft knee with the attack going down and the
   release coming back.
 
-Together they're the drum bus, once groups land: a group's bus gets a chain of its own.
+Together they're a drum bus. The demo's drums are a folded group, `amen`, whose bus has a
+little drive (mixed at 60%) and then a compressor with a 10 ms attack, so the hits' fronts get
+through, mixed in at 70%.
 
 The chains and the bus levels are part of the song (`Track::effects`, `Song::buses`), so they're
 saved and undone with everything else. An effect is stored as its kind and its parameter values,
