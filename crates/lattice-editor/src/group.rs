@@ -4,7 +4,7 @@
 
 use lattice_core::{DRUM_ROOT, Group, MAX_GROUPS, Note};
 
-use crate::{DEFAULT_VELOCITY, Editor, Effect, Mode};
+use crate::{DEFAULT_VELOCITY, Editor, Effect, Key, Mode};
 
 impl Editor {
     /// Groups every track from the first the selections reach to the last, or, if they're all in
@@ -71,7 +71,7 @@ impl Editor {
     /// Pad `n` (from 1): plays the `n`th track of the cursor's group at C-4, which plays a drum
     /// at its tuning. In insert mode it also enters the note there, on the cursor's step, without
     /// moving on, so several drums can go on one step.
-    pub(crate) fn pad(&mut self, n: u8) -> Vec<Effect> {
+    pub(crate) fn pad(&mut self, n: u8, key: Key) -> Vec<Effect> {
         let Some(g) = self.grid.group_of(self.cursor().track) else {
             self.message = Some("pads play a group's tracks; tg makes one".into());
             return vec![];
@@ -83,6 +83,9 @@ impl Editor {
         }
         let track = group.first + n - 1;
         let pitch = DRUM_ROOT;
+        if let Some(effects) = self.record_note(key, &[track], pitch) {
+            return effects;
+        }
         let mut effects = vec![];
         if self.mode == Mode::Insert {
             let step = self.cursor().step;

@@ -16,16 +16,19 @@ mod group;
 mod keymap;
 mod mixer;
 mod pattern;
+mod record;
 
 pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
 pub use keymap::{Action, Binding, Key, Keymap, Menu};
 pub use mixer::{Field, MixerCursor, PARAM_COLUMNS, Page, Row, Shown, Strip};
+pub use record::Transport;
 
 use std::path::{Path, PathBuf};
 
 use lattice_core::{Buses, Grid, MAX_STEPS, MAX_TRACKS, Note, Song, Step, Track};
 
 use crate::pattern::Pattern;
+use crate::record::Held;
 
 const UNDO_LIMIT: usize = 500;
 const PAGE: usize = 16;
@@ -290,6 +293,14 @@ pub struct Editor {
     pub click: bool,
     /// Whether the frontend shows the keys as they're pressed, for screencasts.
     pub show_keys: bool,
+    /// Whether notes played in insert mode while the song plays go in at the playhead.
+    pub record: bool,
+    /// Where playback is; see [`Editor::set_transport`].
+    transport: Option<Transport>,
+    /// The pass being recorded, all one undo.
+    take: Option<u64>,
+    /// Recorded notes whose keys are still down.
+    held: Vec<Held>,
     /// Feedback for the status line; cleared on the next key.
     pub message: Option<String>,
     pub keymap: Keymap,
@@ -353,6 +364,10 @@ impl Editor {
             follow: true,
             click: true,
             show_keys: false,
+            record: false,
+            transport: None,
+            take: None,
+            held: Vec::new(),
             message: None,
             keymap: Keymap::default(),
             selections: vec![Selection::default()],
@@ -560,9 +575,9 @@ impl Editor {
         match (key, &self.mode) {
             // On the command line, the numpad types digits.
             (Key::Pad(n), Mode::Command(_)) => return self.command_key(Key::Char(pad_digit(n))),
-            (Key::Pad(n), _) => return self.pad(n),
+            (Key::Pad(n), _) => return self.pad(n, key),
             (Key::Char(c @ '1'..='9'), Mode::Insert) if self.in_folded_group() => {
-                return self.pad(c as u8 - b'0');
+                return self.pad(c as u8 - b'0', key);
             }
             _ => {}
         }
@@ -633,9 +648,16 @@ impl Editor {
 
     fn insert_key(&mut self, key: Key) -> Vec<Effect> {
         if let Some(pitch) = self.piano_pitch(key) {
-            self.checkpoint();
             let track = self.cursor().track;
             let cursors: Vec<Cursor> = self.selections.iter().map(|s| s.cursor).collect();
+            let mut tracks: Vec<usize> = cursors.iter().map(|c| c.track).collect();
+            // The primary's track first, as it sets the take.
+            tracks.sort_unstable_by_key(|&t| t != track);
+            tracks.dedup();
+            if let Some(effects) = self.record_note(key, &tracks, pitch) {
+                return effects;
+            }
+            self.checkpoint();
             for c in &cursors {
                 if let Some(step) = self.grid.tracks[c.track].steps.get_mut(c.step) {
                     step.note = Some(Note {
@@ -1006,6 +1028,7 @@ impl Editor {
             Action::GotoEffects => self.goto_chain(false),
             Action::GotoPattern => self.page = Page::Pattern,
             Action::TogglePlay => return vec![Effect::TogglePlay],
+            Action::ToggleRecord => self.toggle_record(),
             Action::ToggleView => {
                 self.view = match self.view {
                     View::Source => View::Live,
@@ -1464,6 +1487,7 @@ impl Editor {
     }
 
     pub(crate) fn checkpoint(&mut self) {
+        self.take = None;
         self.undo.push(Snapshot {
             grid: self.grid.clone(),
             buses: self.buses.clone(),
@@ -1495,6 +1519,8 @@ impl Editor {
             return vec![];
         };
         let tracks_changed = snapshot.ids != self.ids;
+        self.take = None;
+        self.held.clear();
         to.push(Snapshot {
             grid: std::mem::replace(&mut self.grid, snapshot.grid),
             buses: std::mem::replace(&mut self.buses, snapshot.buses),

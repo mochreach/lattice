@@ -255,6 +255,11 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         // Padded to the longest page's name, so the transport stays put.
         Span::raw(" ".repeat(1 + " PATTERN ".len() - page.len())),
         transport,
+        if editor.record {
+            Span::styled(" ● REC ", theme.block(theme.error))
+        } else {
+            Span::raw("")
+        },
         Span::raw("   "),
         value(file),
         Span::styled(modified, theme.text),
@@ -763,6 +768,16 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
         ),
         Mode::Normal => (
             "v select · x rows · g goto · ] next · i insert · d delete · : command".into(),
+            theme.dim,
+        ),
+        Mode::Insert if editor.record && editor.in_folded_group() => (
+            "recording: 1–9 pads · z–m q–u notes at the playhead, while playing · R off · esc done"
+                .into(),
+            theme.dim,
+        ),
+        Mode::Insert if editor.record => (
+            "recording: z–m q–u notes at the playhead, while playing · [ ] octave · R off · esc done"
+                .into(),
             theme.dim,
         ),
         Mode::Insert if editor.in_folded_group() => (

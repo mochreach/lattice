@@ -278,6 +278,12 @@ pub const COMMANDS: &[Spec] = &[
         describe: "follow the playhead on or off",
     },
     Spec {
+        name: "rec",
+        alias: None,
+        params: &[],
+        describe: "record on or off: notes played while the song plays go in at the playhead",
+    },
+    Spec {
         name: "keys",
         alias: None,
         params: &[],
@@ -860,6 +866,10 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                 "follow {}",
                 if editor.follow { "on" } else { "off" }
             ));
+            Ok(vec![])
+        }
+        "rec" => {
+            editor.toggle_record();
             Ok(vec![])
         }
         "keys" => {

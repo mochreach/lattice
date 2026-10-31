@@ -14,8 +14,8 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use lattice_editor::{Editor, Effect, Mode};
-use lattice_engine::{Command, Handle};
+use lattice_editor::{Editor, Effect, Mode, Transport};
+use lattice_engine::{Command, Handle, Status};
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{
     self, Event, KeyEventKind, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
@@ -73,12 +73,16 @@ fn main() -> Result<()> {
 
     let theme = Theme::detect();
     let mut terminal = ratatui::init();
-    // Ask for keys to be told apart (the kitty protocol), so the numpad can be pads. Terminals
-    // that don't speak it carry on as before.
+    // Ask for keys to be told apart (the kitty protocol), so the numpad can be pads, and for
+    // releases, so recorded notes last as long as they're held. Terminals that don't speak it
+    // carry on as before.
     let enhanced = terminal::supports_keyboard_enhancement().unwrap_or(false)
         && execute!(
             std::io::stdout(),
-            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+            PushKeyboardEnhancementFlags(
+                KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                    | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+            )
         )
         .is_ok();
     let result = run(
@@ -105,8 +109,11 @@ fn run(
     theme: &Theme,
 ) -> Result<()> {
     let mut view = ui::ViewState::default();
+    let mut playhead = Playhead::default();
     loop {
         handle.collect_garbage();
+        // Watched every frame, so it sees each step start within a frame of it.
+        editor.set_transport(playhead.transport(handle.status(), editor, Instant::now()));
         terminal.draw(|frame| ui::draw(frame, editor, handle.status(), theme, &mut view))?;
 
         if !event::poll(FRAME)? {
@@ -114,13 +121,22 @@ fn run(
         }
         // Handle everything that's waiting before drawing again.
         loop {
-            if let Event::Key(key) = event::read()?
-                && key.kind != KeyEventKind::Release
-                && let Some(key) = keys::convert(key)
+            if let Event::Key(event) = event::read()?
+                && let Some(key) = keys::convert(event)
             {
-                let effects = editor.handle(key);
-                let typing = matches!(editor.mode, Mode::Command(_));
-                view.keys.record(key, typing, Instant::now());
+                let now = Instant::now();
+                editor.set_transport(playhead.transport(handle.status(), editor, now));
+                let effects = match event.kind {
+                    KeyEventKind::Release => editor.release(key),
+                    // A held key repeating would record the note over and over.
+                    KeyEventKind::Repeat if editor.recording() => vec![],
+                    _ => {
+                        let effects = editor.handle(key);
+                        let typing = matches!(editor.mode, Mode::Command(_));
+                        view.keys.record(key, typing, now);
+                        effects
+                    }
+                };
                 for effect in effects {
                     match apply(effect, editor, tracks, mixer, handle) {
                         Flow::Next => {}
@@ -133,6 +149,43 @@ fn run(
                 break;
             }
         }
+    }
+}
+
+/// Where playback is, for recording. The engine says which step each track is on; how long
+/// ago that changed says how far into the step it is.
+#[derive(Default)]
+struct Playhead {
+    /// The first track's position, and when it was first seen.
+    seen: Option<((usize, u32), Instant)>,
+}
+
+impl Playhead {
+    fn transport(&mut self, status: &Status, editor: &Editor, now: Instant) -> Option<Transport> {
+        let positions: Vec<_> = (0..editor.grid.tracks.len())
+            .map(|t| status.position(t))
+            .collect();
+        let Some(first) = positions
+            .first()
+            .copied()
+            .flatten()
+            .filter(|_| status.playing())
+        else {
+            self.seen = None;
+            return None;
+        };
+        let since = match self.seen {
+            Some((position, since)) if position == first => since,
+            _ => {
+                self.seen = Some((first, now));
+                now
+            }
+        };
+        let step = 60.0 / (editor.bpm * f64::from(editor.grid.steps_per_beat.max(1)));
+        Some(Transport {
+            positions,
+            into_step: (now.duration_since(since).as_secs_f64() / step).min(0.99),
+        })
     }
 }
 

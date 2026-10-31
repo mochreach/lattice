@@ -147,6 +147,8 @@ pub enum Action {
     /// Fold or unfold the groups the selections reach.
     ToggleFold,
     TogglePlay,
+    /// Arm or disarm recording at the playhead.
+    ToggleRecord,
     ToggleView,
     Quit,
 }
@@ -228,6 +230,7 @@ impl Action {
             Action::ToggleGroup => "group / ungroup tracks",
             Action::ToggleFold => "fold / unfold group",
             Action::TogglePlay => "play / stop",
+            Action::ToggleRecord => "record on / off",
             Action::ToggleView => "written or playing pattern",
             Action::Quit => "quit",
         }
@@ -308,6 +311,7 @@ impl Default for Keymap {
             (Esc, Escape),
             (Char(' '), TogglePlay),
             (Tab, ToggleView),
+            (Char('R'), ToggleRecord),
             (Ctrl('c'), Quit),
         ];
 

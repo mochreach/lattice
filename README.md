@@ -90,6 +90,7 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | Everywhere | |
 | --- | --- |
 | `space` | play / stop |
+| `R` | record on / off (starts insert mode): see below |
 | `tab` | show the pattern as written, or as it's playing this pass |
 | `:` | command line |
 | `gm` `gp` | the mixer page (on this track), back to the pattern |
@@ -107,6 +108,15 @@ without moving on, so a step can take several drums. This needs a terminal that 
 apart (kitty, WezTerm, foot, Ghostty, recent Alacritty). Elsewhere, and inside tmux, the number
 row does the same in insert mode while the cursor is in a folded group.
 
+To **record live**, press `R` (a red `REC` shows in the header) and then `space`. While the song
+plays, the notes you play in insert mode, piano keys and pads alike, go in where the playhead is,
+on the nearest step, on the cursor's track (or each selection's), over whatever was there. A note
+rounded back onto a step that has just played sounds as you play it; one rounded on to the next
+step is played by the sequencer there, in time. Each pass round the track is one undo, so `u`
+takes out a bad take and keeps the passes before it. In a terminal that reports key releases
+(kitty, WezTerm, foot, Ghostty, recent Alacritty; not tmux), a note lasts as long as the key was
+held; elsewhere each is one step. Stopped, insert mode enters notes at the cursor as usual.
+
 On the **command line**, commands that fuzzy-match what you've typed are listed above it, and
 `tab` cycles through them. Once the command is named, the parameters still to type are shown
 faintly after the cursor, and shrink as you type over them. Values are checked as you type: a
@@ -119,6 +129,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:len N` | track length (1–256) |
 | `:bpm N`, `:step N`, `:oct N` | tempo, auto-step, keyboard octave |
 | `:click`, `:follow` | toggle the metronome, following the playhead |
+| `:rec` | toggle recording, like `R` |
 | `:keys` | toggle showing the keys as they're pressed, above the status line, for screencasts |
 | `:name NAME` | rename the track |
 | `:group-name NAME` | rename this track's group |

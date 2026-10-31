@@ -278,6 +278,30 @@ should hint at the engine's character. The docs can say where each name comes fr
 
 Physical-modelling engines (bars, strings, membranes, pipes) will want names in the same spirit.
 
+## Live recording (done)
+
+`R` or `:rec` arms recording, and arming starts insert mode. While the song plays, a piano key or
+pad in insert mode writes its note at the playhead of the cursor's track (and of each other
+selection's) rather than at the cursor, which stays put. The editor doesn't know about the engine,
+so before each key the frontend gives it a `Transport`: every track's step and pass, from
+`Status`, and how far into the step playback is. The engine only publishes whole steps, so the TUI
+times that fraction itself, from when it saw the first track's step change against the step's
+length at the current tempo. It looks every frame (16 ms), so the fraction errs a little early,
+which roughly cancels the audio's own latency, as players press a little late to what they hear.
+
+The note goes on the nearest step. Rounded back, the step has played, so the note is previewed
+now; rounded on, it isn't, and the sequencer plays it on the next step, since `SetTrack` is heard
+from the current step on. Each pass through the primary track is a take with one undo
+checkpoint, so `u` removes the last pass's notes together; any other edit, undo or stopping
+starts a new take. Tracks of other lengths take the step from their own position, so polymeter
+records correctly.
+
+Lengths come from key releases. Where the kitty protocol is available the TUI also pushes
+`REPORT_EVENT_TYPES`; a release calls `Editor::release`, which sets the length of the notes that
+key recorded to the steps it was held (at least one, at most the track). Repeats are ignored while
+recording, so a held key isn't recorded again and again. Without releases, notes are one step
+long. A preview still lasts its fixed 0.3 s, so a held note isn't heard held until the next pass.
+
 ## Performance
 
 How many voices and effects we can run, and on what hardware, depends on performance. So it's
