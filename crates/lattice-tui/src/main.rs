@@ -88,6 +88,7 @@ fn main() -> Result<()> {
             )
         )
         .is_ok();
+    editor.releases = enhanced;
     let result = run(
         &mut terminal,
         &mut editor,
@@ -224,7 +225,15 @@ fn apply(
             track,
             pitch,
             velocity: 100,
+            held: false,
         },
+        Effect::Hold { track, pitch } => Command::Preview {
+            track,
+            pitch,
+            velocity: 100,
+            held: true,
+        },
+        Effect::Release { track, pitch } => Command::Release { track, pitch },
         Effect::Save(path) => {
             return match file::write(&path, &editor.song()) {
                 Ok(()) => {

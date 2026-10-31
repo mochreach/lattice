@@ -117,8 +117,19 @@ pub enum Effect {
     TogglePlay,
     Bpm(f64),
     Click(bool),
-    /// Audition a note on a track's instrument.
+    /// Audition a note on a track's instrument, briefly.
     Preview {
+        track: usize,
+        pitch: u8,
+    },
+    /// Audition a note until a [`Effect::Release`] for it: a note key played while the frontend
+    /// reports key releases ([`Editor::releases`]).
+    Hold {
+        track: usize,
+        pitch: u8,
+    },
+    /// The key holding this note has come up: end it.
+    Release {
         track: usize,
         pitch: u8,
     },
@@ -303,6 +314,10 @@ pub struct Editor {
     take: Option<u64>,
     /// Recorded notes whose keys are still down.
     held: Vec<Held>,
+    /// Whether the frontend reports key releases, so previews are held until their key comes up.
+    pub releases: bool,
+    /// Previewed notes, by the key that's holding each.
+    sounding: Vec<(Key, usize, u8)>,
     /// Feedback for the status line; cleared on the next key.
     pub message: Option<String>,
     pub keymap: Keymap,
@@ -371,6 +386,8 @@ impl Editor {
             transport: None,
             take: None,
             held: Vec::new(),
+            releases: false,
+            sounding: Vec::new(),
             message: None,
             keymap: Keymap::default(),
             selections: vec![Selection::default()],
@@ -574,6 +591,46 @@ impl Editor {
     }
 
     pub fn handle(&mut self, key: Key) -> Vec<Effect> {
+        // Only note keys hold: they're plain keys, so their releases match. An edit's preview,
+        // `C-a` say, stays brief, as Ctrl might come up first.
+        let holds = self.releases && self.plays(key);
+        let effects = self.handle_key(key);
+        if holds {
+            self.hold_previews(key, effects)
+        } else {
+            effects
+        }
+    }
+
+    /// Holds a note key's previews until it comes up, ending any it was still holding.
+    fn hold_previews(&mut self, key: Key, effects: Vec<Effect>) -> Vec<Effect> {
+        let mut out = self.release_previews(key);
+        for effect in effects {
+            out.push(match effect {
+                Effect::Preview { track, pitch } => {
+                    self.sounding.push((key, track, pitch));
+                    Effect::Hold { track, pitch }
+                }
+                effect => effect,
+            });
+        }
+        out
+    }
+
+    /// Ends the previews `key` is holding.
+    fn release_previews(&mut self, key: Key) -> Vec<Effect> {
+        let mut released = vec![];
+        self.sounding.retain(|&(k, track, pitch)| {
+            let up = k == key;
+            if up {
+                released.push(Effect::Release { track, pitch });
+            }
+            !up
+        });
+        released
+    }
+
+    fn handle_key(&mut self, key: Key) -> Vec<Effect> {
         self.message = None;
         match (key, &self.mode) {
             // On the command line, the numpad types digits.
@@ -2444,5 +2501,37 @@ mod tests {
             !e.plays(Key::Pad(1)),
             "the numpad types on the command line"
         );
+    }
+
+    #[test]
+    fn note_keys_hold_their_notes_until_they_come_up() {
+        let mut e = editor();
+        e.releases = true;
+        let hold = |pitch| Effect::Hold { track: 0, pitch };
+        let release = |pitch| Effect::Release { track: 0, pitch };
+        // A chord: each note held by its own key.
+        assert!(keys(&mut e, "iz").contains(&hold(60)));
+        let effects = keys(&mut e, "c");
+        assert!(effects.contains(&hold(64)) && !effects.contains(&release(60)));
+        assert_eq!(e.release(Key::Char('c')), [release(64)]);
+        assert_eq!(e.release(Key::Char('z')), [release(60)]);
+        assert!(e.release(Key::Char('z')).is_empty());
+
+        // An edit's preview is brief, with nothing to release.
+        e.handle(Key::Esc);
+        keys(&mut e, "k");
+        let effects = e.handle(Key::Ctrl('a'));
+        assert!(effects.contains(&Effect::Preview {
+            track: 0,
+            pitch: 65
+        }));
+        assert!(e.release(Key::Ctrl('a')).is_empty());
+
+        // Without releases from the frontend, note keys' previews are brief too.
+        e.releases = false;
+        assert!(keys(&mut e, "ix").contains(&Effect::Preview {
+            track: 0,
+            pitch: 62
+        }));
     }
 }

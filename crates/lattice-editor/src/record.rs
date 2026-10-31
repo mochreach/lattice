@@ -133,8 +133,15 @@ impl Editor {
         Some(effects)
     }
 
-    /// A key has come up: the notes it recorded last as long as it was held.
+    /// A key has come up: the notes it's previewing end, and the notes it recorded last as long
+    /// as it was held.
     pub fn release(&mut self, key: Key) -> Vec<Effect> {
+        let mut effects = self.release_previews(key);
+        effects.extend(self.release_recorded(key));
+        effects
+    }
+
+    fn release_recorded(&mut self, key: Key) -> Vec<Effect> {
         let Some(transport) = &self.transport else {
             return vec![];
         };
@@ -238,13 +245,23 @@ mod tests {
     #[test]
     fn held_keys_set_the_length_and_each_pass_is_one_undo() {
         let mut e = editor();
+        e.releases = true;
         e.handle(Key::Char('R'));
         at(&mut e, 2, 0, 0.1);
         e.handle(Key::Char('z'));
         at(&mut e, 4, 0, 0.0);
         e.handle(Key::Char('x'));
         at(&mut e, 5, 0, 0.3);
-        assert_eq!(e.release(Key::Char('z')), [Effect::TrackChanged(0)]);
+        assert_eq!(
+            e.release(Key::Char('z')),
+            [
+                Effect::Release {
+                    track: 0,
+                    pitch: 60
+                },
+                Effect::TrackChanged(0)
+            ]
+        );
         assert!(e.release(Key::Char('z')).is_empty(), "already up");
         at(&mut e, 4, 0, 0.6);
         e.release(Key::Char('x'));

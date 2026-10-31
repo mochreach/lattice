@@ -242,7 +242,12 @@ track stays a real track, with its own rules, length and strip; the group adds:
   text), with the shifted character (`REPORT_ALTERNATE_KEYS`, so `%` and `C` arrive as typed)
   and with repeats and releases (`REPORT_EVENT_TYPES`). Digits that arrive with the keypad state
   become `Key::Pad`. Repeats of keys that play notes (`Editor::plays`) are dropped, so a held pad
-  or piano key plays once, while held motions still repeat. On the command line they type digits as usual. The fallback, for
+  or piano key plays once, while held motions still repeat. With releases, a note key's preview
+  is `Effect::Hold` rather than `Effect::Preview`: the engine sounds it until `Command::Release`
+  (15 s at most, in case the release is lost), and a track can sound up to eight at once, so
+  chords ring. The editor keeps which key holds which note and emits `Effect::Release` when that
+  key comes up. Only note keys hold, as they're plain keys whose releases match their presses;
+  an edit's preview (`C-a`, `>`) stays at 0.3 s, since its modifier may come up first. On the command line they type digits as usual. The fallback, for
   other terminals and inside tmux: in insert mode in a folded group, the number row (`1`–`9`)
   is the pads instead of the piano's sharps, as a folded group is a drum machine's view.
 

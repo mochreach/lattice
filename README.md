@@ -100,7 +100,9 @@ One deliberate departure from Helix: `space` is play / stop, as in every DAW, ra
 
 In **insert mode**, the bottom two letter rows are a piano: `z`–`m` from C in the current
 octave, `q`–`u` an octave up, and `[` `]` change the octave. Each note is entered and the cursor
-moves on. `⌫` clears a step, and `esc` returns to normal mode.
+moves on. `⌫` clears a step, and `esc` returns to normal mode. In a terminal that reports key
+releases (see below), a note sounds for as long as you hold its key, so a bowed string or a pad
+sustains under your finger, and chords ring together; elsewhere you hear a short blip.
 
 In a group, the **numpad is drum pads**: `1` plays the group's first track at C-4, `2` the
 second, and so on, in any mode; in insert mode it also enters the hit on the cursor's step,

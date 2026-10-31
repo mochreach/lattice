@@ -95,6 +95,7 @@ fn rendering_never_allocates() {
         track: 0,
         pitch: 72,
         velocity: 100,
+        held: true,
     });
     handle.send(Command::SetTrack {
         index: 0,
@@ -199,6 +200,13 @@ fn rendering_never_allocates() {
                         track: 0,
                         pitch: 40,
                         velocity: 100,
+                        held: true,
+                    });
+                }
+                795 => {
+                    handle.send(Command::Release {
+                        track: 0,
+                        pitch: 40,
                     });
                 }
                 800 => {

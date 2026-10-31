@@ -33,6 +33,10 @@ const MAX_HELD: usize = 16;
 const COMMAND_QUEUE: usize = 256;
 
 const PREVIEW_SECONDS: f32 = 0.3;
+/// The longest a held preview lasts, in case its release never comes.
+const HELD_PREVIEW_SECONDS: f32 = 15.0;
+/// Previews a track can sound at once before the oldest is cut.
+const MAX_PREVIEWS: usize = 8;
 const CLICK_PITCH: u8 = 84;
 const CLICK_ACCENT_PITCH: u8 = 96;
 
@@ -73,11 +77,18 @@ pub enum Command {
         from: usize,
         to: usize,
     },
-    /// Audition a note on a track's instrument.
+    /// Audition a note on a track's instrument: briefly, or `held` until [`Command::Release`]
+    /// (or a long while, if that never comes). A track can audition several notes at once.
     Preview {
         track: usize,
         pitch: u8,
         velocity: u8,
+        held: bool,
+    },
+    /// End a previewed note.
+    Release {
+        track: usize,
+        pitch: u8,
     },
     /// Insert an effect into a chain at `index` (or at the end, if past it). Build it off the
     /// audio thread with [`EffectSlot::new`]; it's sent straight back if the chain is full or
@@ -405,8 +416,8 @@ pub struct TrackPlayer {
     pass: u32,
     events: Vec<Event>,
     held: Vec<Held>,
-    /// A previewed note and the samples until it's released.
-    preview: Option<(u8, usize)>,
+    /// Previewed notes and the samples until each is released. Room for `MAX_PREVIEWS`.
+    previews: Vec<(u8, usize)>,
     left: Vec<f32>,
     right: Vec<f32>,
     /// What was last published to [`Status`], so it can be published again if the track moves.
@@ -428,7 +439,7 @@ impl TrackPlayer {
             pass: 0,
             events: Vec::with_capacity(MAX_EVENTS),
             held: Vec::with_capacity(MAX_HELD),
-            preview: None,
+            previews: Vec::with_capacity(MAX_PREVIEWS),
             left: vec![0.0; MAX_BLOCK],
             right: vec![0.0; MAX_BLOCK],
             position: u64::MAX,
@@ -469,6 +480,7 @@ pub struct Engine {
     click_right: Vec<f32>,
     click_enabled: bool,
     preview_samples: usize,
+    held_preview_samples: usize,
     commands: Consumer<Command>,
     garbage: Producer<Garbage>,
     status: Arc<Status>,
@@ -529,6 +541,7 @@ impl Engine {
             click_right: vec![0.0; MAX_BLOCK],
             click_enabled: true,
             preview_samples: (PREVIEW_SECONDS * sample_rate) as usize,
+            held_preview_samples: (HELD_PREVIEW_SECONDS * sample_rate) as usize,
             commands: command_rx,
             garbage: garbage_tx,
             status: Arc::clone(&status),
@@ -623,14 +636,32 @@ impl Engine {
                     track,
                     pitch,
                     velocity,
+                    held,
                 } => {
                     if let Some(t) = self.tracks.get_mut(track) {
-                        if let Some((old, _)) = t.preview.take() {
-                            push(&mut t.events, note_off(0, old));
+                        // Retriggering a pitch, or out of room: end the old one first.
+                        let same = t.previews.iter().position(|&(p, _)| p == pitch);
+                        let full = (t.previews.len() == MAX_PREVIEWS).then_some(0);
+                        if let Some(i) = same.or(full) {
+                            push(&mut t.events, note_off(0, t.previews[i].0));
+                            t.previews.remove(i);
                         }
                         push(&mut t.events, note_on(0, pitch, velocity));
-                        t.preview = Some((pitch, self.preview_samples));
+                        let samples = if held {
+                            self.held_preview_samples
+                        } else {
+                            self.preview_samples
+                        };
+                        t.previews.push((pitch, samples));
                         self.choke_others(track, 0, &[]);
+                    }
+                }
+                Command::Release { track, pitch } => {
+                    if let Some(t) = self.tracks.get_mut(track)
+                        && let Some(i) = t.previews.iter().position(|&(p, _)| p == pitch)
+                    {
+                        push(&mut t.events, note_off(0, pitch));
+                        t.previews.remove(i);
                     }
                 }
                 Command::InsertEffect {
@@ -657,7 +688,7 @@ impl Engine {
                         Some(t) => {
                             // Notes held on the old instrument end with it.
                             t.held.clear();
-                            t.preview = None;
+                            t.previews.clear();
                             std::mem::replace(&mut t.instrument, instrument)
                         }
                         None => instrument,
@@ -770,14 +801,16 @@ impl Engine {
         }
 
         for t in &mut self.tracks {
-            if let Some((pitch, remaining)) = t.preview {
-                if remaining < len {
-                    push(&mut t.events, note_off(remaining as u32, pitch));
-                    t.preview = None;
+            let events = &mut t.events;
+            t.previews.retain_mut(|(pitch, remaining)| {
+                if *remaining < len {
+                    push(events, note_off(*remaining as u32, *pitch));
+                    false
                 } else {
-                    t.preview = Some((pitch, remaining - len));
+                    *remaining -= len;
+                    true
                 }
-            }
+            });
         }
 
         // Render and mix.
@@ -1246,9 +1279,38 @@ mod tests {
             track: 0,
             pitch: 64,
             velocity: 100,
+            held: false,
         });
         let audio = render(&mut engine, 256, 48_000);
         assert!(audio[..4_800].iter().any(|x| x.abs() > 0.05));
+        assert!(audio[40_000..].iter().all(|&x| x == 0.0));
+    }
+
+    #[test]
+    fn a_held_preview_sounds_until_released_alongside_others() {
+        let (mut engine, mut handle) = with_synth(48_000.0);
+        engine.stop();
+        for pitch in [60, 64] {
+            handle.send(Command::Preview {
+                track: 0,
+                pitch,
+                velocity: 100,
+                held: true,
+            });
+        }
+        // Held well past a brief preview's 0.3 s, both notes still sound.
+        render(&mut engine, 256, 48_000);
+        assert_eq!(engine.tracks[0].previews.len(), 2);
+        assert!(
+            render(&mut engine, 256, 4_800)
+                .iter()
+                .any(|x| x.abs() > 0.05)
+        );
+        for pitch in [60, 64] {
+            handle.send(Command::Release { track: 0, pitch });
+        }
+        let audio = render(&mut engine, 256, 48_000);
+        assert!(engine.tracks[0].previews.is_empty());
         assert!(audio[40_000..].iter().all(|&x| x == 0.0));
     }
 
