@@ -1,7 +1,8 @@
 //! Drawing the mixer page: a strip per track, then the send and master buses, and the settings
-//! of the effect under the cursor.
+//! of the instrument or effect under the cursor.
 
-use lattice_editor::{Editor, Row, Strip};
+use lattice_core::Kind;
+use lattice_editor::{Editor, Row, Shown, Strip};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -192,6 +193,67 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, theme: &Theme, view:
             .collect(),
     ));
 
+    // The settings of the instrument or effect under the cursor, or the last one it was on in
+    // this strip, straight after what they belong to.
+    let panel = |shown: Shown<'_>| {
+        let (owner, colour) = columns
+            .iter()
+            .find(|c| c.strip == shown.strip)
+            .map_or((String::new(), theme.accent), |c| {
+                (c.name.clone(), c.colour)
+            });
+        let title = match shown.slot {
+            Some(slot) => format!("── {} · {owner} · {} ", shown.name, slot + 1),
+            None => format!("── {} · {owner} ", shown.name),
+        };
+        let rule = (area.width as usize).saturating_sub(title.chars().count() + 1);
+        let mut lines = vec![
+            Line::raw(""),
+            Line::from(vec![
+                Span::raw(" "),
+                Span::styled(title, Style::new().fg(colour).add_modifier(Modifier::BOLD)),
+                Span::styled("─".repeat(rule), theme.faint),
+            ]),
+        ];
+        let width = PANEL.min((area.width as usize).saturating_sub(LABEL + 1));
+        for (p, info) in shown.params.iter().enumerate() {
+            let row = Row::Param(p);
+            let style = if cursor.row == row {
+                Style::new().fg(Color::Reset)
+            } else {
+                Style::new().fg(colour)
+            };
+            let mut spans = vec![label(info.name, Some(row))];
+            spans.extend(bars::param(info, shown.values[p], width, style, theme));
+            lines.push(Line::from(spans));
+        }
+        lines
+    };
+    let shown = editor.shown();
+
+    // What plays each track.
+    lines.push(line(
+        label("inst", Some(Row::Instrument)),
+        columns
+            .iter()
+            .map(|c| {
+                let Some(instrument) = editor.instrument(c.strip) else {
+                    return empty();
+                };
+                let style = if at(c, Row::Instrument) {
+                    theme.block(Color::Reset)
+                } else {
+                    c.style
+                };
+                vec![Span::styled(fit(instrument.kind.name(), CELL), style)]
+            })
+            .collect(),
+    ));
+    if let Some(shown) = shown.filter(|s| s.slot.is_none()) {
+        lines.extend(panel(shown));
+        lines.push(Line::raw(""));
+    }
+
     // Each strip's chain, one effect per row; an empty chain shows a slot to add to.
     let longest = columns
         .iter()
@@ -224,34 +286,8 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, theme: &Theme, view:
         ));
     }
 
-    // The settings of the effect under the cursor, or the last one it was on in this strip.
-    if let Some((strip, slot, fx)) = editor.shown_effect() {
-        let (owner, colour) = columns
-            .iter()
-            .find(|c| c.strip == strip)
-            .map_or((String::new(), theme.accent), |c| {
-                (c.name.clone(), c.colour)
-            });
-        let title = format!("── {} · {owner} · {} ", fx.kind.name(), slot + 1);
-        let rule = (area.width as usize).saturating_sub(title.chars().count() + 1);
-        lines.push(Line::raw(""));
-        lines.push(Line::from(vec![
-            Span::raw(" "),
-            Span::styled(title, Style::new().fg(colour).add_modifier(Modifier::BOLD)),
-            Span::styled("─".repeat(rule), theme.faint),
-        ]));
-        let width = PANEL.min((area.width as usize).saturating_sub(LABEL + 1));
-        for (p, info) in fx.params().iter().enumerate() {
-            let row = Row::Param(p);
-            let style = if cursor.row == row {
-                Style::new().fg(Color::Reset)
-            } else {
-                Style::new().fg(colour)
-            };
-            let mut spans = vec![label(info.name, Some(row))];
-            spans.extend(bars::param(info, fx.values[p], width, style, theme));
-            lines.push(Line::from(spans));
-        }
+    if let Some(shown) = shown.filter(|s| s.slot.is_some()) {
+        lines.extend(panel(shown));
     }
 
     frame.render_widget(Paragraph::new(lines), area);

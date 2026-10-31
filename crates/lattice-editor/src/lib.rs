@@ -18,9 +18,8 @@ mod pattern;
 
 pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
 pub use keymap::{Action, Binding, Key, Keymap, Menu};
-pub use mixer::{MixerCursor, Page, Row, Strip};
+pub use mixer::{MixerCursor, Page, Row, Shown, Strip};
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use lattice_core::{Buses, Grid, MAX_STEPS, MAX_TRACKS, Note, Song, Step, Track};
@@ -297,10 +296,8 @@ pub struct Editor {
     pending: Option<Pending>,
     /// One clip per selection copied.
     clipboard: Vec<Clip>,
-    /// Whole tracks copied, with the id of the track each was copied from.
-    track_clipboard: Vec<(TrackId, Track)>,
-    /// For each pasted track, the track it was copied from.
-    origins: HashMap<TrackId, TrackId>,
+    /// Whole tracks copied, instruments and all.
+    track_clipboard: Vec<Track>,
     undo: Vec<Snapshot>,
     redo: Vec<Snapshot>,
 }
@@ -355,7 +352,6 @@ impl Editor {
             pending: None,
             clipboard: Vec::new(),
             track_clipboard: Vec::new(),
-            origins: HashMap::new(),
             undo: Vec::new(),
             redo: Vec::new(),
         }
@@ -371,11 +367,6 @@ impl Editor {
     /// Each track's id, in the order of `grid.tracks`.
     pub fn track_ids(&self) -> &[TrackId] {
         &self.ids
-    }
-
-    /// The track a pasted track was copied from, so a frontend can give it the same instrument.
-    pub fn copied_from(&self, id: TrackId) -> Option<TrackId> {
-        self.origins.get(&id).copied()
     }
 
     /// Whether the song differs from when it was last saved or opened, tracks added, removed
@@ -1005,7 +996,7 @@ impl Editor {
         self.track_clipboard = self
             .selected_tracks()
             .into_iter()
-            .map(|t| (self.ids[t], self.grid.tracks[t].clone()))
+            .map(|t| self.grid.tracks[t].clone())
             .collect();
         self.message = Some(match self.track_clipboard.len() {
             1 => "copied 1 track".into(),
@@ -1047,9 +1038,8 @@ impl Editor {
             _ => cursor.track + 1,
         };
         self.checkpoint();
-        for (i, (from, track)) in self.track_clipboard.clone().into_iter().enumerate() {
+        for (i, track) in self.track_clipboard.clone().into_iter().enumerate() {
             self.insert_track(at + i, track);
-            self.origins.insert(self.ids[at + i], from);
         }
         self.select_point(at, cursor.step);
         vec![Effect::TracksChanged]
@@ -1508,6 +1498,7 @@ mod tests {
             name: name.into(),
             steps: vec![Step::default(); len],
             mix: Default::default(),
+            instrument: Default::default(),
             effects: vec![],
             rules: vec![],
         };
@@ -1919,7 +1910,7 @@ mod tests {
         assert_eq!((region.first_track, region.last_track), (0, 0));
         assert_eq!((region.first_step, region.last_step), (0, 15));
 
-        // `ty` and `tp` copy and paste whole tracks, keeping where each came from.
+        // `ty` and `tp` copy and paste whole tracks.
         keys(&mut e, "%ty");
         assert_eq!(e.message.as_deref(), Some("copied 2 tracks"));
         keys(&mut e, ";gltp");
@@ -1927,9 +1918,6 @@ mod tests {
         assert_eq!(e.cursor().track, 2, "on the first pasted track");
         let names: Vec<&str> = e.grid.tracks.iter().map(|t| t.name.as_str()).collect();
         assert_eq!(names, ["a", "b", "a", "b"]);
-        let ids = e.track_ids().to_vec();
-        assert_eq!(e.copied_from(ids[3]), Some(ids[1]));
-        assert_eq!(e.copied_from(ids[1]), None);
         keys(&mut e, "ghtP");
         assert_eq!(e.grid.tracks.len(), 6);
         assert_eq!(e.grid.tracks[0].name, "a");

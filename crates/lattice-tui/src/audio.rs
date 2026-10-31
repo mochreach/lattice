@@ -3,7 +3,9 @@
 use anyhow::{Context, Result, bail};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use lattice_core::Grid;
-use lattice_engine::{Engine, Handle, Patch, Processor, Synth};
+use lattice_engine::{Engine, Handle};
+
+use crate::tracks::Tracks;
 
 /// Largest buffer the engine renders in one go; bigger cpal buffers are split.
 const MAX_BLOCK: usize = 4096;
@@ -15,7 +17,7 @@ pub struct Audio {
     pub sample_rate: f32,
 }
 
-pub fn start(grid: &Grid, patches: Vec<Patch>, bpm: f64) -> Result<Audio> {
+pub fn start(grid: &Grid, bpm: f64) -> Result<Audio> {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
@@ -30,10 +32,7 @@ pub fn start(grid: &Grid, patches: Vec<Patch>, bpm: f64) -> Result<Audio> {
     let channels = usize::from(config.channels());
     let sample_rate = config.sample_rate() as f32;
 
-    let instruments = patches
-        .into_iter()
-        .map(|p| Box::new(Synth::new(p, sample_rate)) as Box<dyn Processor>)
-        .collect();
+    let instruments = Tracks::instruments(grid, sample_rate);
     // Effects and bus levels are sent once it's running; see `Mixer`.
     let (mut engine, handle) = Engine::new(sample_rate, bpm, grid, instruments);
     let mut left = vec![0.0f32; MAX_BLOCK];

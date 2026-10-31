@@ -157,6 +157,7 @@ mod tests {
                 Step::note(67),
             ],
             mix: Default::default(),
+            instrument: Default::default(),
             effects: vec![],
             rules,
         }

@@ -6,9 +6,14 @@
 
 use std::f32::consts::PI;
 
+use lattice_core::InstKind;
+use lattice_core::instrument::synth::{
+    ATTACK, CUTOFF, DECAY, ENV, GAIN, RELEASE, RESONANCE, SUSTAIN, WAVE,
+};
 use wide::f32x8;
 
 use crate::dsp::{AdsrParams, Wave, decay_coef};
+use crate::param::ParamInfo;
 use crate::processor::{Event, EventKind, Processor, Segment, segments};
 
 const VOICES: usize = 8;
@@ -30,6 +35,48 @@ pub struct Patch {
     pub env_amount: f32,
     pub resonance: f32,
     pub gain: f32,
+}
+
+impl Patch {
+    /// The patch a song's synth settings describe, one value per parameter, by id.
+    pub fn from_values(values: &[f32]) -> Self {
+        let mut patch = Self {
+            wave: Wave::Saw,
+            amp: AdsrParams {
+                attack: 0.0,
+                decay: 0.0,
+                sustain: 0.0,
+                release: 0.0,
+            },
+            cutoff: 0.0,
+            env_amount: 0.0,
+            resonance: 0.0,
+            gain: 0.0,
+        };
+        for info in InstKind::Synth.params() {
+            let value = values
+                .get(info.id as usize)
+                .copied()
+                .unwrap_or(info.default);
+            patch.set(info.id, info.clamp(value));
+        }
+        patch
+    }
+
+    fn set(&mut self, id: u32, value: f32) {
+        match id {
+            WAVE => self.wave = if value < 0.5 { Wave::Saw } else { Wave::Square },
+            ATTACK => self.amp.attack = value,
+            DECAY => self.amp.decay = value,
+            SUSTAIN => self.amp.sustain = value,
+            RELEASE => self.amp.release = value,
+            CUTOFF => self.cutoff = value,
+            ENV => self.env_amount = value,
+            RESONANCE => self.resonance = value,
+            GAIN => self.gain = value,
+            _ => {}
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -79,10 +126,8 @@ pub struct Synth {
 
 impl Synth {
     pub fn new(patch: Patch, sample_rate: f32) -> Self {
-        // Time constant for an exponential towards ATTACK_TARGET that passes 1.0 after `attack`.
-        let attack_tau = patch.amp.attack.max(1e-4) / -(1.0 - 1.0 / ATTACK_TARGET).ln();
         let zero = f32x8::splat(0.0);
-        Self {
+        let mut synth = Self {
             patch,
             sample_rate,
             phase: zero,
@@ -102,11 +147,30 @@ impl Synth {
             notes_started: 0,
             silent: true,
             clock: 0,
-            attack_coef: decay_coef(attack_tau, sample_rate),
-            decay_coef: decay_coef(patch.amp.decay, sample_rate),
-            release_coef: decay_coef(patch.amp.release, sample_rate),
-            damping: 2.0 - 2.0 * patch.resonance.clamp(0.0, 0.98),
-        }
+            attack_coef: 0.0,
+            decay_coef: 0.0,
+            release_coef: 0.0,
+            damping: 0.0,
+        };
+        synth.derive();
+        synth
+    }
+
+    /// Starts at a song's synth settings, one value per parameter, by id.
+    pub fn with_values(sample_rate: f32, values: &[f32]) -> Self {
+        Self::new(Patch::from_values(values), sample_rate)
+    }
+
+    /// Works out the coefficients that follow from the patch. Notes already sounding pick up
+    /// the new envelope times at their next stage.
+    fn derive(&mut self) {
+        let patch = &self.patch;
+        // Time constant for an exponential towards ATTACK_TARGET that passes 1.0 after `attack`.
+        let attack_tau = patch.amp.attack.max(1e-4) / -(1.0 - 1.0 / ATTACK_TARGET).ln();
+        self.attack_coef = decay_coef(attack_tau, self.sample_rate);
+        self.decay_coef = decay_coef(patch.amp.decay, self.sample_rate);
+        self.release_coef = decay_coef(patch.amp.release, self.sample_rate);
+        self.damping = 2.0 - 2.0 * patch.resonance.clamp(0.0, 0.98);
     }
 
     fn note_on(&mut self, pitch: u8, velocity: u8) {
@@ -231,9 +295,18 @@ impl Processor for Synth {
             Segment::Event(event) => match event.kind {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
                 EventKind::NoteOff { pitch } => self.note_off(pitch),
-                EventKind::Param { .. } => {}
+                EventKind::Param { id, value } => {
+                    if let Some(info) = InstKind::Synth.params().get(id as usize) {
+                        self.patch.set(id, info.clamp(value));
+                        self.derive();
+                    }
+                }
             },
         });
+    }
+
+    fn params(&self) -> &[ParamInfo] {
+        InstKind::Synth.params()
     }
 }
 
@@ -322,6 +395,26 @@ mod tests {
         }
         assert!(synth.silent);
         assert!(l.iter().all(|&x| x == 0.0));
+    }
+
+    #[test]
+    fn settings_come_from_the_song_and_param_events() {
+        let mut values = lattice_core::Instrument::new(InstKind::Synth).values;
+        values[WAVE as usize] = 1.0;
+        values[CUTOFF as usize] = 440.0;
+        let mut synth = Synth::with_values(48_000.0, &values);
+        assert_eq!(synth.patch.wave, Wave::Square);
+        assert_eq!(synth.patch.cutoff, 440.0);
+        let set = ev(
+            0,
+            EventKind::Param {
+                id: RESONANCE,
+                value: 0.5,
+            },
+        );
+        let (mut l, mut r) = (vec![0.0; 16], vec![0.0; 16]);
+        synth.process(&[set], &mut l, &mut r);
+        assert_eq!(synth.damping, 1.0);
     }
 
     #[test]

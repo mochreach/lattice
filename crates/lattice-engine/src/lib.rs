@@ -11,8 +11,10 @@ pub mod denormal;
 pub mod dsp;
 pub mod engine;
 pub mod fx;
+pub mod instrument;
 pub mod param;
 pub mod processor;
+pub mod rhythmicon;
 pub mod synth;
 
 pub use clock::Clock;

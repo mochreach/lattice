@@ -40,7 +40,7 @@ enum Flow {
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let (grid, palette) = demo::song();
+    let grid = demo::song();
     let mut editor = Editor::new(grid, demo::BPM).with_buses(demo::buses());
     // `lattice song.lattice` opens the song, or starts a new one there, like Helix.
     if let Some(path) = args
@@ -56,9 +56,8 @@ fn main() -> Result<()> {
         }
     }
 
-    let patches = Tracks::patches(&palette, editor.grid.tracks.len());
-    let mut audio = audio::start(&editor.grid, patches, editor.bpm)?;
-    let mut tracks = Tracks::new(&editor, palette, audio.sample_rate);
+    let mut audio = audio::start(&editor.grid, editor.bpm)?;
+    let mut tracks = Tracks::new(&editor, audio.sample_rate);
     let mut mixer = Mixer::new(audio.sample_rate);
     mixer.sync(&editor, &mut audio.handle);
     if args.iter().any(|a| a == "--no-click") {
@@ -183,7 +182,6 @@ fn open(
         }
     };
     let message = new.then(|| format!("{} (new file)", path.display()));
-    tracks.restart_palette();
     for effect in editor.load(song, path) {
         apply(effect, editor, tracks, mixer, handle);
     }

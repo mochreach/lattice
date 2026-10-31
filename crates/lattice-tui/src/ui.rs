@@ -639,7 +639,7 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
 
     let (hints, style) = match &editor.mode {
         Mode::Normal if editor.page == Page::Mixer => (
-            "hjkl move · C-a C-x adjust · c set · :fx-add · d remove · gp pattern".into(),
+            "hjkl move · C-a C-x adjust · c set · :inst · :fx-add · d remove · gp pattern".into(),
             theme.dim,
         ),
         Mode::Normal => (

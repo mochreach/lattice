@@ -113,6 +113,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:name NAME` | rename the track |
 | `:level DB`, `:pan P`, `:send DB` | mixer, for every track the selections reach: level (-60 to 6 dB), pan (-100 left to 100 right), send to the send bus (-60, off, to 6 dB); on the mixer page, `:level` sets a bus too |
 | `:set VALUE` | on the mixer page, set the value under the cursor (also `c`) |
+| `:inst INSTRUMENT` | the instrument for every track the selections reach (or the mixer cursor's): `synth`, `kick`, `snare` or `hat` |
 | `:fx-add EFFECT` | add an effect (only `delay` so far) after the mixer cursor, or at the end of this track's chain |
 | `:mute`, `:solo` | toggle mute or solo for every track the selections reach (also `tm`, `ts`) |
 | `:w [PATH]`, `:wq [PATH]` | save the song (to a `.lattice` file), save and quit |
@@ -129,10 +130,17 @@ meter in place of the underline. Muted tracks, and tracks silenced by another's 
 Every track can send to a delay on the send bus; sends start off.
 
 The **mixer page** (`gm`) has a strip for each track and for the send and master buses: level,
-pan, send, a meter and its effects, with the settings of the effect under the cursor below.
-`h j k l` move, `^a` `^x` nudge the value under the cursor (with counts, so `10^a`), `c` types an
-exact one, `:fx-add delay` adds an effect after the cursor and `d` removes it. `tm` `ts` still
-mute and solo, and `gp` goes back to the pattern. Effects and bus levels are saved in the song.
+pan, send, a meter, its instrument and its effects. The settings of the instrument or effect
+under the cursor show just below it. `h j k l` move, `^a` `^x` nudge the value under the cursor
+(with counts, so `10^a`), `c` types an exact one (or, on the instrument, another instrument),
+`:fx-add delay` adds an effect after the cursor and `d` removes it. `tm` `ts` still mute and
+solo, and `gp` goes back to the pattern. Instruments, effects and bus levels are saved in the
+song.
+
+**Instruments:** each track has one. `synth` is a plain test synth. `kick`, `snare` and `hat` are
+Rhythmicon, the drum engine: one drum per track, played at its tuning by C-4 and tuned up or down
+by other notes, each with four controls (see [docs/DESIGN.md](docs/DESIGN.md)). The demo song
+starts with a kick, snare and hats.
 
 Tracks can be added, removed and moved while playing, and undo brings a removed track back with
 its notes and its instrument. When there are more than fit across the terminal, the grid scrolls

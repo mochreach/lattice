@@ -1,7 +1,8 @@
 //! The engine must never allocate on the audio thread. `assert_no_alloc` aborts if it does.
 
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
-use lattice_core::{Condition, Grid, Rule, Step, Track, Transform};
+use lattice_core::instrument::kick;
+use lattice_core::{Condition, Grid, InstKind, Instrument, Rule, Step, Track, Transform};
 use lattice_engine::{
     AdsrParams, Chain, Command, Delay, EffectSlot, Engine, Patch, Processor, Synth, Target,
     TrackPlayer, Wave, delay,
@@ -24,6 +25,7 @@ fn rendering_never_allocates() {
             })
             .collect(),
         mix: Default::default(),
+        instrument: Default::default(),
         effects: vec![],
         rules: vec![
             Rule {
@@ -72,6 +74,10 @@ fn rendering_never_allocates() {
     let mut muted = Some(Box::new(muted));
     let mut send_delay = Some(EffectSlot::new(Box::new(Delay::new(48_000.0))));
     let mut track_delay = Some(EffectSlot::new(Box::new(Delay::new(48_000.0))));
+    let mut drums: Vec<_> = [InstKind::Hat, InstKind::Snare, InstKind::Kick]
+        .into_iter()
+        .map(|kind| lattice_engine::instrument::build(&Instrument::new(kind), 48_000.0))
+        .collect();
     let (mut engine, mut handle) = Engine::new(48_000.0, 174.0, &grid, vec![synth]);
     // Commands are handled inside the no-allocation zone too.
     handle.send(Command::Play);
@@ -128,6 +134,19 @@ fn rendering_never_allocates() {
                         },
                         id: delay::TIME,
                         value: 0.2,
+                    });
+                }
+                750 | 760 | 770 => {
+                    handle.send(Command::SetInstrument {
+                        index: 0,
+                        instrument: drums.pop().unwrap(),
+                    });
+                }
+                780 => {
+                    handle.send(Command::SetParam {
+                        target: Target::Instrument(0),
+                        id: kick::DECAY,
+                        value: 0.1,
                     });
                 }
                 800 => {

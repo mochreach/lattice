@@ -201,6 +201,12 @@ pub const COMMANDS: &[Spec] = &[
         describe: "mixer: set the value under the cursor",
     },
     Spec {
+        name: "inst",
+        alias: None,
+        params: &[text("INSTRUMENT", "instrument")],
+        describe: "choose the instrument: synth, kick, snare or hat",
+    },
+    Spec {
         name: "fx-add",
         alias: None,
         params: &[text("EFFECT", "effect")],
@@ -884,6 +890,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             editor.set_mixer_value(value)
         }
         "fx-add" => editor.add_effect(command.text(0)),
+        "inst" => editor.set_instrument(command.text(0)),
         "track-add" => {
             let tracks = &editor.grid.tracks;
             if tracks.len() >= MAX_TRACKS {
@@ -902,6 +909,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                 name,
                 steps: vec![Step::default(); NEW_TRACK_STEPS],
                 mix: Default::default(),
+                instrument: Default::default(),
                 effects: vec![],
                 rules: vec![],
             };

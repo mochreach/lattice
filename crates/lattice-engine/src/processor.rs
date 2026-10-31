@@ -45,6 +45,12 @@ pub trait Processor: Send {
     }
 }
 
+impl std::fmt::Debug for dyn Processor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Processor").finish_non_exhaustive()
+    }
+}
+
 pub enum Segment<'a> {
     /// Render these frames.
     Render(Range<usize>),

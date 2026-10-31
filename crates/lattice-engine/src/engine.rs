@@ -55,6 +55,12 @@ pub enum Command {
         index: usize,
         player: Box<TrackPlayer>,
     },
+    /// Swap the instrument on the track at `index`. The old one goes back to the UI thread to be
+    /// freed, as does this one if there's no such track. Build it off the audio thread.
+    SetInstrument {
+        index: usize,
+        instrument: Box<dyn Processor>,
+    },
     /// Remove the track at `index`, moving later tracks back. It goes back to the UI thread,
     /// instrument and all, to be freed.
     RemoveTrack(usize),
@@ -305,6 +311,7 @@ enum Garbage {
     Track(Box<Track>),
     Player(Box<TrackPlayer>),
     Effect(Box<EffectSlot>),
+    Instrument(Box<dyn Processor>),
 }
 
 /// The UI thread's end of the engine.
@@ -580,6 +587,18 @@ impl Engine {
                         let effect = effects.remove(index);
                         self.discard(Garbage::Effect(effect));
                     }
+                }
+                Command::SetInstrument { index, instrument } => {
+                    let old = match self.tracks.get_mut(index) {
+                        Some(t) => {
+                            // Notes held on the old instrument end with it.
+                            t.held.clear();
+                            t.preview = None;
+                            std::mem::replace(&mut t.instrument, instrument)
+                        }
+                        None => instrument,
+                    };
+                    self.discard(Garbage::Instrument(old));
                 }
                 Command::SetBusLevel { bus, level } => match bus {
                     Chain::Send => self.send_gain.set(db_to_gain(level)),
@@ -861,6 +880,7 @@ mod tests {
                 })
                 .to_vec(),
             mix: Default::default(),
+            instrument: Default::default(),
             effects: vec![],
             rules: vec![Rule {
                 transform: Transform::Drift(1),
@@ -1181,6 +1201,24 @@ mod tests {
         let (left, _) = render_stereo(&mut engine, 10);
         assert!((left[0] - 1.0f32.tanh()).abs() < 1e-6);
         assert!(matches!(handle.garbage.pop(), Ok(Garbage::Effect(_))));
+    }
+
+    #[test]
+    fn instruments_are_swapped_and_the_old_one_sent_back() {
+        let (mut engine, mut handle) = mixer(&[Mix::default()]);
+        let (left, _) = render_stereo(&mut engine, 10);
+        assert!(left[9] > 0.4);
+        for index in [0, 5] {
+            handle.send(Command::SetInstrument {
+                index,
+                instrument: silent(),
+            });
+        }
+        let (left, _) = render_stereo(&mut engine, 200);
+        assert!(left[199].abs() < 1e-3, "the new instrument plays");
+        for _ in 0..2 {
+            assert!(matches!(handle.garbage.pop(), Ok(Garbage::Instrument(_))));
+        }
     }
 
     #[test]

@@ -118,6 +118,50 @@ in the spirit of Teenage Engineering's gear: powerful enough, but not a wall of 
 
 The current `Synth` is a plain test instrument for exercising the engine, not a flagship.
 
+### Rhythmicon, the drum engine
+
+The first engine, named after the Rhythmicon, the first drum machine, which Leon Theremin built
+for Henry Cowell in 1931. It has three drums, each an instrument of its own (`:inst kick`), so one
+track plays one drum and keeps its own rules, length and mixer strip:
+
+| Drum | Sound | Controls |
+| --- | --- | --- |
+| `kick` | a sine whose pitch drops from up to 12× its tuning, through `tanh` drive | tune, punch (how far and fast the pitch drops), decay, drive |
+| `snare` | two shell modes (1 and 1.59×, a membrane's first two) with a small pitch drop, and band-limited noise for the wires | tune, decay, snap (noise against the shell), tone (the noise's brightness) |
+| `hat` | the 808's six detuned square waves, mixed with noise, through a 12 dB/octave high-pass | tune, decay (short closed, long open), tone (the high-pass), noise |
+
+Each drum is one voice: every note retriggers it, note-offs are ignored, and it rings out by its
+decay. C-4 (`DRUM_ROOT`) plays it at its tuning and other notes tune it up or down. Velocity
+scales the level. Settings apply from the next hit, except decay, which also changes the hit
+that's ringing. Decay is the time to fall by 60 dB. The drums share a `Drum<V>` processor, so
+each `Voice` is only its trigger and a per-sample tick; they're scalar, as one voice is cheap.
+
+Planned next: a clap and a tom; a *model* control that sweeps each drum between machines (an 808
+kick to a 909's) rather than adding knobs; and choke between drums, which comes with groups.
+
+## Track groups (planned)
+
+A group is a named run of adjacent tracks, such as a drum kit with one drum on each track. Each
+track stays a real track, with its own rules, length and strip; the group adds:
+
+- **Folding.** A folded group narrows each of its tracks to two cells and shows each hit as a
+  glyph, like a drum machine's step view, so a kit takes little room. Editing still works folded:
+  the cursor moves between the narrow columns, and entering a step adds a hit at that drum's
+  note and velocity. `tz` folds and unfolds, borrowing Helix's `z` for view.
+- **A group bus.** The group's tracks mix into a strip of their own, with a level and an effect
+  chain, before the master: a drum bus for compression and drive. Folded, the mixer page shows
+  the group as that one strip.
+- **Choke.** Tracks in a group can cut each other off, so a closed hat stops an open one.
+- **Drum pads on the numpad.** The group's tracks are mapped to the numpad's keys, so the kit can
+  be played (and entered in insert mode) like a pad controller: each key plays its track's drum
+  at its own note. Terminals send numpad digits as plain digits unless they're asked for more:
+  with crossterm's keyboard enhancement flags (the kitty protocol, also in WezTerm, foot, Ghostty
+  and recent Alacritty), the keys arrive with a keypad state and can be told apart. Elsewhere it
+  needs a fallback, perhaps the number row while a group's insert mode is on.
+
+`tg` groups the tracks the selections reach, and ungroups them if they're already a group. Groups
+are saved in the song and undone like everything else.
+
 **Names.** Each engine is named with an indirect nod to a pioneer of electronic music: a studio,
 a record or an idea rather than the person's name, so it doesn't read as an endorsement. The name
 should hint at the engine's character. The docs can say where each name comes from. Candidates:
@@ -285,8 +329,11 @@ though it had been playing from the start.
 The editor gives each track a `TrackId` that stays with it, including through undo, which
 snapshots the ids along with the grid. Changing the set or order of tracks produces
 `Effect::TracksChanged`, and the frontend works out the engine commands by comparing the engine's
-ids with the editor's. It keeps each id's instrument patch, so a track that undo brings back
-sounds as it did. New tracks take the demo patches in turn for now.
+ids with the editor's. Instruments are part of each track (`Track::instrument`, a kind and its
+settings, like an effect), so a track brought back by undo, or pasted, sounds as it did. The
+frontend keeps the instrument it last sent each engine track: if the kind has changed it builds a
+new one and sends `SetInstrument`, and the old one comes back over the garbage queue; otherwise
+it sends `SetParam` for each setting that differs. New tracks get the test synth.
 
 ## Mixer and effects
 
@@ -329,11 +376,13 @@ differ.
 
 `gm` swaps the grid for a page of strips (`gp` goes back): a column per track, then the send and
 master buses, which always stay in view while the tracks scroll. Rows are level, pan, send, a
-meter, and the effects in each chain; below them is a panel with the settings of the effect under
-the cursor. `hjkl` move between strips and rows, `^a` `^x` nudge the value under the cursor (0.5
+meter, each track's instrument, and the effects in each chain. The settings of the instrument or
+effect under the cursor show in a panel straight after it: below the instrument row for an
+instrument, at the bottom for an effect, so `j` always moves down into them. `hjkl` move between strips and rows, `^a` `^x` nudge the value under the cursor (0.5
 dB, 5% of pan, or 1% of a setting's range, with counts), and `c` opens the command line with
-`set ` ready for an exact value. `:fx-add` inserts after the cursor and `d` removes the effect
-under it. The `t` menu still works on the cursor's track. The mixer cursor is the editor's state,
+`set ` ready for an exact value (or `inst ` on the instrument row). Settings that pick from a list,
+like the synth's wave, use `Curve::Choice` and nudge one choice at a time. `:fx-add` inserts after
+the cursor and `d` removes the effect under it. The `t` menu still works on the cursor's track. The mixer cursor is the editor's state,
 like the pattern's, and isn't saved.
 
 ## Song files
@@ -384,9 +433,6 @@ gives every track a new id and returns `Effect::TracksChanged`, so the frontend 
 engine's tracks, however many the song has (up to `MAX_TRACKS`).
 
 Not in files yet:
-- **Instrument patches.** They're still defined in `lattice-tui`'s `demo.rs`, and a loaded song's
-  tracks take the demo patches in turn, as new tracks do. Patches belong in the song once
-  instruments can be chosen per track.
 - **More than one grid.** Files can hold several, but only the first in the arrangement is
   edited and saved back.
 - **Changing steps per beat while running.** The engine's clock is set up with it, so `:o` refuses a

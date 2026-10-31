@@ -1,11 +1,13 @@
 //! The mixer page: a strip for each track, then the send and master buses, each with its level
-//! (and a track's pan and send) and its chain of effects, and below them the settings of the
-//! effect under the cursor.
+//! (and a track's pan, send and instrument) and its chain of effects, and below them the settings
+//! of the instrument or effect under the cursor.
 //!
 //! The cursor moves over strips with `h` `l` and over a strip's rows with `j` `k`. `C-a` `C-x`
 //! (and `+` `-`) nudge the value under it, as Helix increments numbers, and `c` types one in.
 
-use lattice_core::{Fx, FxKind, MAX_DB, MAX_EFFECTS, MIN_DB};
+use lattice_core::{
+    Fx, FxKind, InstKind, Instrument, Kind, MAX_DB, MAX_EFFECTS, MIN_DB, ParamInfo,
+};
 
 use crate::keymap::Action;
 use crate::{Editor, Effect, Mode, PromptKind};
@@ -46,10 +48,23 @@ pub enum Row {
     Pan,
     /// Tracks only.
     Send,
+    /// Tracks only.
+    Instrument,
     /// A slot in the chain; slot 0 is there even when the chain is empty, to add to.
     Effect(usize),
-    /// A setting of the effect whose settings are shown, by its id.
+    /// A setting of the instrument or effect whose settings are shown, by its id.
     Param(usize),
+}
+
+/// The instrument or effect whose settings are shown under the strips.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Shown<'a> {
+    pub strip: Strip,
+    /// The effect's slot in the chain, or `None` for the track's instrument.
+    pub slot: Option<usize>,
+    pub name: &'static str,
+    pub params: &'static [ParamInfo],
+    pub values: &'a [f32],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -59,6 +74,8 @@ pub struct MixerCursor {
     pub row: Row,
     /// The effect in the strip's chain whose settings are shown.
     pub effect: usize,
+    /// The track's instrument's settings are shown instead.
+    pub instrument: bool,
 }
 
 impl Editor {
@@ -92,46 +109,94 @@ impl Editor {
         }
     }
 
+    /// The track's instrument, for a track's strip.
+    pub fn instrument(&self, strip: Strip) -> Option<&Instrument> {
+        match strip {
+            Strip::Track(i) => Some(&self.grid.tracks[i].instrument),
+            _ => None,
+        }
+    }
+
     /// The mixer cursor, kept within the strips, rows and effects there are now.
     pub fn mixer_cursor(&self) -> MixerCursor {
         let strip = self.mixer.strip.min(self.strips() - 1);
         let kind = self.strip(strip);
         let effects = self.chain(kind).len();
         let mut effect = self.mixer.effect.min(effects.saturating_sub(1));
+        let instrument = self.mixer.instrument && !kind.is_bus();
         let row = match self.mixer.row {
-            Row::Pan | Row::Send if kind.is_bus() => Row::Level,
+            Row::Pan | Row::Send | Row::Instrument if kind.is_bus() => Row::Level,
             Row::Effect(i) => {
                 let i = i.min(effects.saturating_sub(1));
                 effect = i;
                 Row::Effect(i)
             }
-            Row::Param(p) => match self.chain(kind).get(effect) {
-                Some(fx) => Row::Param(p.min(fx.params().len() - 1)),
-                None => Row::Effect(0),
-            },
+            Row::Param(p) => {
+                let cursor = MixerCursor {
+                    strip,
+                    row: Row::Level,
+                    effect,
+                    instrument,
+                };
+                match self.shown_at(cursor) {
+                    Some(shown) => Row::Param(p.min(shown.params.len() - 1)),
+                    None => Row::Effect(0),
+                }
+            }
             row => row,
         };
-        MixerCursor { strip, row, effect }
+        MixerCursor {
+            strip,
+            row,
+            effect,
+            instrument,
+        }
     }
 
-    /// The effect whose settings are shown under the strips, if the cursor's strip has any.
-    pub fn shown_effect(&self) -> Option<(Strip, usize, &Fx)> {
-        let cursor = self.mixer_cursor();
+    /// The instrument or effect whose settings are shown under the strips, if the cursor's
+    /// strip has one: the one the cursor is on, or was last on in this strip.
+    pub fn shown(&self) -> Option<Shown<'_>> {
+        self.shown_at(self.mixer_cursor())
+    }
+
+    fn shown_at(&self, cursor: MixerCursor) -> Option<Shown<'_>> {
         let strip = self.strip(cursor.strip);
+        if cursor.instrument {
+            let instrument = self.instrument(strip)?;
+            return Some(Shown {
+                strip,
+                slot: None,
+                name: instrument.kind.name(),
+                params: instrument.params(),
+                values: &instrument.values,
+            });
+        }
         let fx = self.chain(strip).get(cursor.effect)?;
-        Some((strip, cursor.effect, fx))
+        Some(Shown {
+            strip,
+            slot: Some(cursor.effect),
+            name: fx.kind.name(),
+            params: fx.params(),
+            values: &fx.values,
+        })
     }
 
-    /// The rows the cursor can be on in a strip, top to bottom, with the settings of `effect`.
-    fn rows(&self, strip: Strip, effect: usize) -> Vec<Row> {
+    /// The rows the cursor can be on in a strip, top to bottom, with the settings shown for
+    /// `cursor`: below the instrument for an instrument, at the bottom for an effect.
+    fn rows(&self, cursor: MixerCursor) -> Vec<Row> {
+        let strip = self.strip(cursor.strip);
+        let params = self.shown_at(cursor).map_or(0, |shown| shown.params.len());
         let mut rows = vec![Row::Level];
         if !strip.is_bus() {
-            rows.extend([Row::Pan, Row::Send]);
+            rows.extend([Row::Pan, Row::Send, Row::Instrument]);
         }
-        let chain = self.chain(strip);
-        rows.extend((0..chain.len().max(1)).map(Row::Effect));
-        if let Some(fx) = chain.get(effect) {
-            rows.extend((0..fx.params().len()).map(Row::Param));
+        // The settings shown come straight after what they belong to.
+        if cursor.instrument {
+            rows.extend((0..params).map(Row::Param));
+        }
+        rows.extend((0..self.chain(strip).len().max(1)).map(Row::Effect));
+        if !cursor.instrument {
+            rows.extend((0..params).map(Row::Param));
         }
         rows
     }
@@ -139,11 +204,16 @@ impl Editor {
     /// Moves the cursor `by` rows, or to the first or last.
     fn move_row(&mut self, to: impl FnOnce(usize, usize) -> usize) {
         let mut cursor = self.mixer_cursor();
-        let rows = self.rows(self.strip(cursor.strip), cursor.effect);
+        let rows = self.rows(cursor);
         let at = rows.iter().position(|&r| r == cursor.row).unwrap_or(0);
         cursor.row = rows[to(at, rows.len() - 1).min(rows.len() - 1)];
-        if let Row::Effect(i) = cursor.row {
-            cursor.effect = i;
+        match cursor.row {
+            Row::Instrument => cursor.instrument = true,
+            Row::Effect(i) => {
+                cursor.effect = i;
+                cursor.instrument = false;
+            }
+            _ => {}
         }
         self.mixer = cursor;
     }
@@ -170,9 +240,14 @@ impl Editor {
             Action::NoteUp | Action::Longer => return Some(self.nudge(by)),
             Action::NoteDown | Action::Shorter => return Some(self.nudge(-by)),
             Action::Change => {
+                // On the instrument, choose another; anywhere else, type a value.
+                let line = match self.mixer_cursor().row {
+                    Row::Instrument => "inst ",
+                    _ => "set ",
+                };
                 self.open_prompt(PromptKind::Command);
                 if let Mode::Command(prompt) = &mut self.mode {
-                    prompt.line = "set ".into();
+                    prompt.line = line.into();
                     prompt.typed = prompt.line.clone();
                 }
             }
@@ -213,11 +288,11 @@ impl Editor {
             }
             Row::Pan => Some((track?.pan * 100.0, -100.0, 100.0)),
             Row::Send => Some((track?.send, MIN_DB, MAX_DB)),
-            Row::Effect(_) => None,
+            Row::Instrument | Row::Effect(_) => None,
             Row::Param(p) => {
-                let (_, _, fx) = self.shown_effect()?;
-                let info = fx.params()[p];
-                Some((fx.values[p], info.min, info.max))
+                let shown = self.shown()?;
+                let info = shown.params[p];
+                Some((shown.values[p], info.min, info.max))
             }
         }
     }
@@ -245,6 +320,10 @@ impl Editor {
             (Row::Level, Strip::Master) => self.buses.master.level = value,
             (Row::Pan, Strip::Track(i)) => self.grid.tracks[i].mix.pan = value / 100.0,
             (Row::Send, Strip::Track(i)) => self.grid.tracks[i].mix.send = value,
+            (Row::Param(p), Strip::Track(i)) if cursor.instrument => {
+                let info = self.grid.tracks[i].instrument.params()[p];
+                self.grid.tracks[i].instrument.values[p] = info.clamp(value);
+            }
             (Row::Param(p), _) => self.chain_mut(strip)[cursor.effect].values[p] = value,
             _ => {}
         }
@@ -264,11 +343,11 @@ impl Editor {
             Row::Level | Row::Send => old + by as f32 * LEVEL_STEP,
             // Kept to whole percent, so repeated nudges don't drift.
             Row::Pan => (old + by as f32 * PAN_STEP * 100.0).round(),
-            Row::Param(p) => match self.shown_effect() {
-                Some((_, _, fx)) => fx.params()[p].nudge(old, by),
+            Row::Param(p) => match self.shown() {
+                Some(shown) => shown.params[p].nudge(old, by),
                 None => return vec![],
             },
-            Row::Effect(_) => return vec![],
+            Row::Instrument | Row::Effect(_) => return vec![],
         };
         self.set_mixer_value(new.clamp(min, max))
             .unwrap_or_default()
@@ -288,7 +367,8 @@ impl Editor {
                 let len = self.chain(strip).len();
                 let index = match cursor.row {
                     _ if len == 0 => 0,
-                    Row::Effect(_) | Row::Param(_) => cursor.effect + 1,
+                    Row::Effect(_) => cursor.effect + 1,
+                    Row::Param(_) if !cursor.instrument => cursor.effect + 1,
                     _ => len,
                 };
                 (strip, index)
@@ -306,6 +386,36 @@ impl Editor {
         if self.page == Page::Mixer {
             self.mixer.row = Row::Effect(index);
             self.mixer.effect = index;
+            self.mixer.instrument = false;
+        }
+        Ok(vec![Effect::MixerChanged])
+    }
+
+    /// Puts a new instrument, at its default settings, on the tracks `:inst` changes. Tracks
+    /// that already have that kind keep their settings.
+    pub(crate) fn set_instrument(&mut self, name: &str) -> Result<Vec<Effect>, String> {
+        let kind = InstKind::named(name).ok_or_else(|| {
+            let names: Vec<&str> = InstKind::ALL.iter().map(|k| k.name()).collect();
+            format!(
+                "no instrument called {name:?}; there's {}",
+                names.join(", ")
+            )
+        })?;
+        let tracks: Vec<usize> = self
+            .mix_targets()?
+            .into_iter()
+            .filter(|&t| self.grid.tracks[t].instrument.kind != kind)
+            .collect();
+        if tracks.is_empty() {
+            return Ok(vec![]);
+        }
+        self.checkpoint();
+        for t in tracks {
+            self.grid.tracks[t].instrument = Instrument::new(kind);
+        }
+        if self.page == Page::Mixer {
+            self.mixer.row = Row::Instrument;
+            self.mixer.instrument = true;
         }
         Ok(vec![Effect::MixerChanged])
     }
@@ -324,8 +434,8 @@ impl Editor {
         vec![Effect::MixerChanged]
     }
 
-    /// The tracks `:level`, `:pan`, `:send`, `:mute` and `:solo` change: on the mixer page, the
-    /// cursor's strip; on the pattern page, every track the selections reach.
+    /// The tracks `:level`, `:pan`, `:send`, `:mute`, `:solo` and `:inst` change: on the mixer
+    /// page, the cursor's strip; on the pattern page, every track the selections reach.
     pub(crate) fn mix_targets(&self) -> Result<Vec<usize>, String> {
         if self.page == Page::Pattern {
             return Ok(self.selected_tracks());
@@ -357,6 +467,7 @@ mod tests {
     use super::*;
     use crate::Key;
     use lattice_core::fx::delay::{FEEDBACK, TIME};
+    use lattice_core::instrument::kick;
     use lattice_core::{Bus, Buses, Grid, Step, Track};
 
     fn editor() -> Editor {
@@ -410,15 +521,24 @@ mod tests {
         assert_eq!(e.page, Page::Mixer);
         assert_eq!(at(&e), (Strip::Track(0), Row::Level));
         keys(&mut e, "jjj");
+        assert_eq!(at(&e), (Strip::Track(0), Row::Instrument));
+        assert_eq!(e.shown().unwrap().name, "synth");
+        keys(&mut e, "j");
+        assert_eq!(at(&e), (Strip::Track(0), Row::Param(0)), "its settings");
+        keys(&mut e, "9j");
         assert_eq!(at(&e), (Strip::Track(0), Row::Effect(0)), "an empty slot");
+        assert!(e.shown().is_none());
         keys(&mut e, "j");
         assert_eq!(at(&e).1, Row::Effect(0), "nothing below it");
         keys(&mut e, "ll");
         assert_eq!(at(&e), (Strip::Send, Row::Effect(0)), "on the delay");
         keys(&mut e, "jj");
         assert_eq!(at(&e), (Strip::Send, Row::Param(FEEDBACK as usize)));
-        let (strip, slot, fx) = e.shown_effect().unwrap();
-        assert_eq!((strip, slot, fx.kind), (Strip::Send, 0, FxKind::Delay));
+        let shown = e.shown().unwrap();
+        assert_eq!(
+            (shown.strip, shown.slot, shown.name),
+            (Strip::Send, Some(0), "delay")
+        );
         keys(&mut e, "h");
         assert_eq!(
             at(&e),
@@ -463,7 +583,8 @@ mod tests {
     #[test]
     fn effects_are_added_and_removed() {
         let mut e = editor();
-        keys(&mut e, "jjj");
+        keys(&mut e, "jjjj9j");
+        assert_eq!(at(&e).1, Row::Effect(0));
         assert_eq!(command(&mut e, "fx-add delay"), [Effect::MixerChanged]);
         command(&mut e, "fx-add delay");
         assert_eq!(e.grid.tracks[0].effects.len(), 2);
@@ -487,6 +608,49 @@ mod tests {
         keys(&mut e, "gpl");
         command(&mut e, "fx-add delay");
         assert_eq!(e.grid.tracks[1].effects.len(), 1);
+    }
+
+    #[test]
+    fn instruments_are_chosen_and_set() {
+        let mut e = editor();
+        keys(&mut e, "ljjj");
+        assert_eq!(at(&e), (Strip::Track(1), Row::Instrument));
+        keys(&mut e, "c");
+        let Mode::Command(prompt) = &e.mode else {
+            panic!("c opens the command line")
+        };
+        assert_eq!(prompt.line, "inst ");
+        assert_eq!(keys(&mut e, "kick\n"), [Effect::MixerChanged]);
+        assert_eq!(e.grid.tracks[1].instrument.kind, InstKind::Kick);
+        assert_eq!(e.grid.tracks[0].instrument.kind, InstKind::Synth);
+        assert!(command(&mut e, "inst kick").is_empty(), "already a kick");
+
+        // Its settings show below, and nudge like an effect's.
+        keys(&mut e, "jj");
+        assert_eq!(at(&e).1, Row::Param(kick::PUNCH as usize));
+        keys(&mut e, "5A");
+        assert!((e.grid.tracks[1].instrument.get(kick::PUNCH) - 0.55).abs() < 1e-6);
+        keys(&mut e, "jjj");
+        assert_eq!(
+            at(&e).1,
+            Row::Effect(0),
+            "the effects come after its settings"
+        );
+        assert!(e.shown().is_none());
+        command(&mut e, "inst cowbell");
+        assert!(e.message.as_deref().unwrap().contains("kick, snare, hat"));
+
+        // On the pattern page, every track the selections reach.
+        keys(&mut e, "gp%");
+        command(&mut e, "inst hat");
+        assert!(
+            e.grid
+                .tracks
+                .iter()
+                .all(|t| t.instrument.kind == InstKind::Hat)
+        );
+        keys(&mut e, "u");
+        assert_eq!(e.grid.tracks[1].instrument.kind, InstKind::Kick, "undoable");
     }
 
     #[test]

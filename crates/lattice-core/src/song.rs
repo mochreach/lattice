@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::fx::{Buses, Fx};
+use crate::instrument::Instrument;
 use crate::transform::Rule;
 
 /// Longest a track can be. The engine preallocates for this so edits never allocate on the audio
@@ -79,6 +80,8 @@ pub struct Track {
     pub steps: Vec<Step>,
     /// Transforms applied, in order, to realise the track for each pass.
     pub rules: Vec<Rule>,
+    /// What plays the notes.
+    pub instrument: Instrument,
     /// Effects after the instrument, before the mixer strip.
     pub effects: Vec<Fx>,
     pub mix: Mix,
@@ -159,6 +162,8 @@ struct SparseTrack {
     steps: BTreeMap<usize, Step>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     rules: Vec<Rule>,
+    #[serde(default)]
+    instrument: Instrument,
     #[serde(default, skip_serializing_if = "Mix::is_default")]
     mix: Mix,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -177,6 +182,7 @@ impl From<Track> for SparseTrack {
                 .filter(|(_, step)| !step.is_empty())
                 .collect(),
             rules: track.rules,
+            instrument: track.instrument,
             mix: track.mix,
             effects: track.effects,
         }
@@ -207,6 +213,7 @@ impl TryFrom<SparseTrack> for Track {
             name: sparse.name,
             steps,
             rules: sparse.rules,
+            instrument: sparse.instrument,
             mix: sparse.mix,
             effects: sparse.effects,
         })

@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn chains_follow_the_song() {
-        let (grid, _) = crate::demo::song();
+        let grid = crate::demo::song();
         let mut editor = Editor::new(grid, 120.0).with_buses(crate::demo::buses());
         let mut mixer = Mixer::new(48_000.0);
         assert_eq!(sync(&mut mixer, &editor), ["insert Send 0"]);

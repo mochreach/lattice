@@ -1,43 +1,43 @@
 //! Keeps the engine's tracks, and each one's instrument, in line with the editor's as tracks are
-//! added, removed and moved.
+//! added, removed and moved, and as instruments are chosen and set.
 
-use std::collections::HashMap;
-
+use lattice_core::{Grid, Instrument};
 use lattice_editor::{Editor, TrackId};
-use lattice_engine::{Command, Handle, Patch, Synth, TrackPlayer};
+use lattice_engine::{Command, Handle, Processor, Target, TrackPlayer, instrument};
 
 pub struct Tracks {
     sample_rate: f32,
-    /// Each track's patch, kept after the track is removed in case undo brings it back.
-    patches: HashMap<TrackId, Patch>,
-    /// New tracks take these in turn.
-    palette: Vec<Patch>,
-    next: usize,
-    /// The engine's tracks, in order, as far as the commands sent so far go.
-    engine: Vec<TrackId>,
+    /// The engine's tracks, in order, and the instrument each has, as far as the commands sent
+    /// so far go.
+    engine: Vec<(TrackId, Instrument)>,
 }
 
 impl Tracks {
-    /// The editor's tracks are playing with `patches` in turn, as from [`Tracks::patches`].
-    pub fn new(editor: &Editor, patches: Vec<Patch>, sample_rate: f32) -> Self {
-        let ids = editor.track_ids();
-        assert!(!patches.is_empty());
+    /// The editor's tracks are playing, with the instruments from [`Tracks::instruments`].
+    pub fn new(editor: &Editor, sample_rate: f32) -> Self {
         Self {
             sample_rate,
-            patches: ids
+            engine: editor
+                .track_ids()
                 .iter()
-                .copied()
-                .zip(patches.iter().copied().cycle())
+                .zip(&editor.grid.tracks)
+                .map(|(&id, track)| (id, track.instrument.clone()))
                 .collect(),
-            palette: patches,
-            next: ids.len(),
-            engine: ids.to_vec(),
         }
     }
 
+    /// An instrument for each of the grid's tracks, for the engine to start with.
+    pub fn instruments(grid: &Grid, sample_rate: f32) -> Vec<Box<dyn Processor>> {
+        grid.tracks
+            .iter()
+            .map(|track| instrument::build(&track.instrument, sample_rate))
+            .collect()
+    }
+
     /// Sends the engine the commands that bring its tracks in line with the editor's: removing
-    /// those that have gone, moving those that have moved and adding new ones, built here off the
-    /// audio thread. Returns false if the command queue filled up; the rest is sent on the next sync.
+    /// those that have gone, moving those that have moved and adding new ones, then swapping or
+    /// setting instruments, built here off the audio thread. Returns false if the command queue
+    /// filled up; the rest is sent on the next sync.
     pub fn sync(&mut self, editor: &Editor, handle: &mut Handle) -> bool {
         self.sync_with(editor, |command| handle.send(command))
     }
@@ -46,71 +46,72 @@ impl Tracks {
         let wanted = editor.track_ids();
         // From the back, so the indices still to visit don't shift.
         for index in (0..self.engine.len()).rev() {
-            if !wanted.contains(&self.engine[index]) {
+            if !wanted.contains(&self.engine[index].0) {
                 if !send(Command::RemoveTrack(index)) {
                     return false;
                 }
                 self.engine.remove(index);
             }
         }
-        for (index, &id) in wanted.iter().enumerate() {
-            if self.engine.get(index) == Some(&id) {
+        for (index, (&id, track)) in wanted.iter().zip(&editor.grid.tracks).enumerate() {
+            if self.engine.get(index).map(|e| e.0) == Some(id) {
                 continue;
             }
             // Everything before `index` already matches, so a moved track is further on.
-            let command = match self.engine.iter().position(|&e| e == id) {
-                Some(from) => Command::MoveTrack { from, to: index },
-                None => Command::InsertTrack {
-                    index,
-                    player: TrackPlayer::new(
-                        editor.grid.tracks[index].clone(),
-                        Box::new(Synth::new(self.patch(editor, id), self.sample_rate)),
+            match self.engine.iter().position(|e| e.0 == id) {
+                Some(from) => {
+                    if !send(Command::MoveTrack { from, to: index }) {
+                        return false;
+                    }
+                    let moved = self.engine.remove(from);
+                    self.engine.insert(index, moved);
+                }
+                None => {
+                    let player = TrackPlayer::new(
+                        track.clone(),
+                        instrument::build(&track.instrument, self.sample_rate),
                         self.sample_rate,
-                    ),
-                },
-            };
-            let moved = matches!(command, Command::MoveTrack { .. });
-            if !send(command) {
-                return false;
+                    );
+                    if !send(Command::InsertTrack { index, player }) {
+                        return false;
+                    }
+                    self.engine.insert(index, (id, track.instrument.clone()));
+                }
             }
-            if moved {
-                self.engine.retain(|&e| e != id);
+        }
+        for (index, track) in editor.grid.tracks.iter().enumerate() {
+            let sent = &mut self.engine[index].1;
+            let wanted = &track.instrument;
+            if sent.kind != wanted.kind {
+                let instrument = instrument::build(wanted, self.sample_rate);
+                if !send(Command::SetInstrument { index, instrument }) {
+                    return false;
+                }
+                *sent = wanted.clone();
+                continue;
             }
-            self.engine.insert(index, id);
+            for (id, &value) in wanted.values.iter().enumerate() {
+                if sent.values[id] != value {
+                    let target = Target::Instrument(index);
+                    if !send(Command::SetParam {
+                        target,
+                        id: id as u32,
+                        value,
+                    }) {
+                        return false;
+                    }
+                    sent.values[id] = value;
+                }
+            }
         }
         true
-    }
-
-    /// One of `palette` for each of `tracks` tracks, in turn: what a song starts with.
-    pub fn patches(palette: &[Patch], tracks: usize) -> Vec<Patch> {
-        palette.iter().copied().cycle().take(tracks).collect()
-    }
-
-    /// New tracks take the patches in turn from the first again, so an opened song's tracks
-    /// sound as they would if Lattice had started with it.
-    pub fn restart_palette(&mut self) {
-        self.next = 0;
-    }
-
-    /// The track's patch: a pasted track's is the one it was copied from, and a new track takes
-    /// the next from the palette.
-    fn patch(&mut self, editor: &Editor, id: TrackId) -> Patch {
-        let copied =
-            std::iter::successors(editor.copied_from(id), |&from| editor.copied_from(from))
-                .find_map(|from| self.patches.get(&from).copied());
-        *self.patches.entry(id).or_insert_with(|| {
-            if let Some(patch) = copied {
-                return patch;
-            }
-            self.next += 1;
-            self.palette[(self.next - 1) % self.palette.len()]
-        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lattice_core::InstKind;
     use lattice_editor::Key;
 
     fn command(editor: &mut Editor, line: &str) {
@@ -120,9 +121,11 @@ mod tests {
         editor.handle(Key::Enter);
     }
 
-    /// Syncs, applying the commands to a list standing in for the engine's tracks.
-    fn sync(tracks: &mut Tracks, editor: &Editor, engine: &mut Vec<TrackId>) {
+    /// Syncs, applying the commands to a list standing in for the engine's tracks, and returns
+    /// the instrument commands sent.
+    fn sync(tracks: &mut Tracks, editor: &Editor, engine: &mut Vec<TrackId>) -> Vec<String> {
         let wanted = editor.track_ids();
+        let mut instruments = vec![];
         let synced = tracks.sync_with(editor, |command| {
             match command {
                 Command::InsertTrack { index, .. } => engine.insert(index, wanted[index]),
@@ -133,19 +136,31 @@ mod tests {
                     let id = engine.remove(from);
                     engine.insert(to, id);
                 }
+                Command::SetInstrument { index, .. } => {
+                    instruments.push(format!("instrument {index}"));
+                }
+                Command::SetParam {
+                    target: Target::Instrument(index),
+                    id,
+                    value,
+                } => instruments.push(format!("{index}: {id} = {value}")),
                 other => panic!("unexpected {other:?}"),
             }
             true
         });
         assert!(synced);
         assert_eq!(engine, wanted);
+        instruments
+    }
+
+    fn editor() -> Editor {
+        Editor::new(crate::demo::song(), 120.0)
     }
 
     #[test]
     fn engine_follows_the_editor_through_undo_and_redo() {
-        let (grid, patches) = crate::demo::song();
-        let mut editor = Editor::new(grid, 120.0);
-        let mut tracks = Tracks::new(&editor, patches, 48_000.0);
+        let mut editor = editor();
+        let mut tracks = Tracks::new(&editor, 48_000.0);
         let mut engine = editor.track_ids().to_vec();
         let script = [
             "ta",
@@ -159,40 +174,56 @@ mod tests {
         ];
         for line in script {
             command(&mut editor, line);
-            sync(&mut tracks, &editor, &mut engine);
+            assert!(sync(&mut tracks, &editor, &mut engine).is_empty());
         }
-        assert_eq!(engine.len(), 3);
         for key in ['u', 'U'] {
             for _ in script {
                 editor.handle(Key::Char(key));
                 sync(&mut tracks, &editor, &mut engine);
             }
         }
-        assert_eq!(
-            tracks.patches.len(),
-            6,
-            "one patch for each track ever made"
-        );
+        let kinds: Vec<_> = tracks.engine.iter().map(|e| e.1.kind).collect();
+        let wanted: Vec<_> = editor
+            .grid
+            .tracks
+            .iter()
+            .map(|t| t.instrument.kind)
+            .collect();
+        assert_eq!(kinds, wanted, "instruments moved with their tracks");
     }
 
     #[test]
-    fn pasted_tracks_keep_the_patch_they_were_copied_from() {
-        let (grid, patches) = crate::demo::song();
-        let mut editor = Editor::new(grid, 120.0);
-        let mut tracks = Tracks::new(&editor, patches, 48_000.0);
+    fn instruments_are_swapped_or_set() {
+        let mut editor = editor();
+        let mut tracks = Tracks::new(&editor, 48_000.0);
         let mut engine = editor.track_ids().to_vec();
-        for key in "glty".chars() {
+        let last = editor.grid.tracks.len() - 1;
+        for key in "gl".chars() {
             editor.handle(Key::Char(key));
         }
-        // Paste the last track twice, the second time copying the first copy.
-        for key in "tptyghtP".chars() {
-            editor.handle(Key::Char(key));
-            sync(&mut tracks, &editor, &mut engine);
+        command(&mut editor, "inst kick");
+        assert_eq!(
+            sync(&mut tracks, &editor, &mut engine),
+            [format!("instrument {last}")]
+        );
+        assert_eq!(tracks.engine[last].1.kind, InstKind::Kick);
+
+        // Pasted tracks bring their instrument, settings and all.
+        for key in "gmglhhjjjjjAgptytp".chars() {
+            let key = if key == 'A' {
+                Key::Ctrl('a')
+            } else {
+                Key::Char(key)
+            };
+            editor.handle(key);
         }
-        let ids = editor.track_ids();
-        let last = ids[ids.len() - 2];
-        let patch = |id| format!("{:?}", tracks.patches[&id]);
-        assert_eq!(patch(ids[0]), patch(last));
-        assert_eq!(patch(ids[ids.len() - 1]), patch(last));
+        assert_eq!(
+            sync(&mut tracks, &editor, &mut engine),
+            [format!("{last}: 1 = 0.51")]
+        );
+        assert_eq!(
+            tracks.engine[last + 1].1,
+            editor.grid.tracks[last].instrument
+        );
     }
 }

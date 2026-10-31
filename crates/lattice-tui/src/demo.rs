@@ -1,8 +1,10 @@
 //! A short demo song for hearing the engine and the pattern transforms.
 
 use lattice_core::fx::delay;
-use lattice_core::{Bus, Buses, Condition, Fx, FxKind, Grid, Rule, Step, Track, Transform};
-use lattice_engine::{AdsrParams, Patch, Wave};
+use lattice_core::instrument::synth;
+use lattice_core::{
+    Bus, Buses, Condition, Fx, FxKind, Grid, InstKind, Instrument, Rule, Step, Track, Transform,
+};
 
 pub const BPM: f64 = 120.0;
 
@@ -75,7 +77,7 @@ pub fn buses() -> Buses {
 
 /// A new, empty song for the demo's instruments: one bar on each track, named after them.
 pub fn blank() -> Grid {
-    let (mut grid, _) = song();
+    let mut grid = song();
     for track in &mut grid.tracks {
         track.steps = vec![Step::default(); 16];
         track.rules.clear();
@@ -84,86 +86,105 @@ pub fn blank() -> Grid {
     grid
 }
 
-pub fn song() -> (Grid, Vec<Patch>) {
-    let bass = Track {
-        name: "bass".into(),
-        steps: pattern("C2 . . C2 . . C3 . C2 . G2 C2 . . Bb2 ."),
-        mix: Default::default(),
-        effects: vec![],
-        rules: chord_changes(),
-    };
+/// The test synth with these settings.
+#[allow(clippy::too_many_arguments)]
+fn synth(
+    wave: f32,
+    (attack, decay, sustain, release): (f32, f32, f32, f32),
+    cutoff: f32,
+    env: f32,
+    resonance: f32,
+    gain: f32,
+) -> Instrument {
+    let mut instrument = Instrument::new(InstKind::Synth);
+    for (id, value) in [
+        (synth::WAVE, wave),
+        (synth::ATTACK, attack),
+        (synth::DECAY, decay),
+        (synth::SUSTAIN, sustain),
+        (synth::RELEASE, release),
+        (synth::CUTOFF, cutoff),
+        (synth::ENV, env),
+        (synth::RESONANCE, resonance),
+        (synth::GAIN, gain),
+    ] {
+        instrument.values[id as usize] = value;
+    }
+    instrument
+}
+
+fn track(name: &str, steps: &str, instrument: Instrument, rules: Vec<Rule>) -> Track {
+    Track {
+        name: name.into(),
+        steps: pattern(steps),
+        rules,
+        instrument,
+        ..Track::default()
+    }
+}
+
+const SAW: f32 = 0.0;
+const SQUARE: f32 = 1.0;
+
+pub fn song() -> Grid {
+    // Rhythmicon: four on the floor, a backbeat with a little echo, and off-beat hats, with one
+    // tuned an octave up at the end of the bar.
+    let mut kick = track(
+        "kick",
+        "C4 . . . C4 . . . C4 . . . C4 . C4 .",
+        Instrument::new(InstKind::Kick),
+        vec![],
+    );
+    kick.mix.level = -2.0;
+    let mut snare = track(
+        "snare",
+        ". . . . C4 . . . . . . . C4 . . .",
+        Instrument::new(InstKind::Snare),
+        vec![],
+    );
+    snare.mix.level = -4.0;
+    snare.mix.send = -14.0;
+    let mut hats = track(
+        "hats",
+        ". . C4 . . . C4 . . . C4 . . . C5 C4",
+        Instrument::new(InstKind::Hat),
+        vec![],
+    );
+    hats.mix.level = -8.0;
+    hats.mix.pan = 0.2;
+
+    let bass = track(
+        "bass",
+        "C2 . . C2 . . C3 . C2 . G2 C2 . . Bb2 .",
+        synth(SQUARE, (0.003, 0.15, 0.4, 0.06), 250.0, 1_800.0, 0.45, 0.45),
+        chord_changes(),
+    );
 
     let mut arp_rules = vec![rule(
         Transform::Reverse,
         Condition::Every { n: 2, offset: 1 },
     )];
     arp_rules.extend(chord_changes());
-    let arp = Track {
-        name: "arp".into(),
-        steps: pattern("C4 Eb4 G4 C5 C4 Eb4 G4 C5 C4 Eb4 G4 C5 Bb4 G4 Eb4 G4"),
-        mix: Default::default(),
-        effects: vec![],
-        rules: arp_rules,
-    };
+    let arp = track(
+        "arp",
+        "C4 Eb4 G4 C5 C4 Eb4 G4 C5 C4 Eb4 G4 C5 Bb4 G4 Eb4 G4",
+        synth(SAW, (0.002, 0.1, 0.15, 0.12), 900.0, 4_500.0, 0.25, 0.16),
+        arp_rules,
+    );
 
     // Six steps against sixteen, drifting one step further each pass.
-    let bleep = Track {
-        name: "bleep".into(),
-        steps: pattern("G5 . . Eb5 . ."),
-        mix: Default::default(),
-        effects: vec![],
-        rules: vec![rule(Transform::Drift(1), Condition::Always)],
-    };
+    let bleep = track(
+        "bleep",
+        "G5 . . Eb5 . .",
+        synth(SQUARE, (0.001, 0.05, 0.0, 0.2), 3_000.0, 2_000.0, 0.1, 0.1),
+        vec![rule(Transform::Drift(1), Condition::Always)],
+    );
 
-    let grid = Grid {
+    Grid {
         name: "demo".into(),
         steps_per_beat: 4,
-        tracks: vec![bass, arp, bleep],
-    };
-
-    let patches = vec![
-        Patch {
-            wave: Wave::Square,
-            amp: AdsrParams {
-                attack: 0.003,
-                decay: 0.15,
-                sustain: 0.4,
-                release: 0.06,
-            },
-            cutoff: 250.0,
-            env_amount: 1_800.0,
-            resonance: 0.45,
-            gain: 0.45,
-        },
-        Patch {
-            wave: Wave::Saw,
-            amp: AdsrParams {
-                attack: 0.002,
-                decay: 0.1,
-                sustain: 0.15,
-                release: 0.12,
-            },
-            cutoff: 900.0,
-            env_amount: 4_500.0,
-            resonance: 0.25,
-            gain: 0.16,
-        },
-        Patch {
-            wave: Wave::Square,
-            amp: AdsrParams {
-                attack: 0.001,
-                decay: 0.05,
-                sustain: 0.0,
-                release: 0.2,
-            },
-            cutoff: 3_000.0,
-            env_amount: 2_000.0,
-            resonance: 0.1,
-            gain: 0.1,
-        },
-    ];
-
-    (grid, patches)
+        tracks: vec![kick, snare, hats, bass, arp, bleep],
+    }
 }
 
 #[cfg(test)]
@@ -180,7 +201,8 @@ mod tests {
 
     #[test]
     fn demo_builds() {
-        let (grid, patches) = song();
-        assert_eq!(grid.tracks.len(), patches.len());
+        let grid = song();
+        assert_eq!(grid.tracks[0].instrument.kind, InstKind::Kick);
+        assert!(grid.tracks.iter().all(|t| t.steps.len() <= 16));
     }
 }

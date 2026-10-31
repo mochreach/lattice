@@ -1,7 +1,4 @@
 //! Reading and writing `.lattice` song files.
-//!
-//! Instrument patches aren't part of the song yet, so a loaded song's tracks take the demo
-//! patches in turn, as new tracks do.
 
 use std::io::ErrorKind;
 use std::path::Path;

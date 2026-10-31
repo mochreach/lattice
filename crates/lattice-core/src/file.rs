@@ -115,6 +115,7 @@ fn check_track(track: &Track) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::fx::{self, Bus, Buses, Fx, FxKind};
+    use crate::instrument::{InstKind, Instrument, kick};
     use crate::{Condition, Mix, Note, Rule, Step, Transform};
 
     fn song() -> Song {
@@ -122,6 +123,7 @@ mod tests {
             name: "bass".into(),
             steps: vec![Step::default(); 16],
             mix: Default::default(),
+            instrument: Default::default(),
             effects: vec![],
             rules: vec![
                 Rule {
@@ -153,10 +155,13 @@ mod tests {
         let mut delay = Fx::new(FxKind::Delay);
         delay.values[fx::delay::FEEDBACK as usize] = 0.7;
         bass.effects.push(Fx::new(FxKind::Delay));
+        bass.instrument = Instrument::new(InstKind::Kick);
+        bass.instrument.values[kick::PUNCH as usize] = 0.8;
         let empty = Track {
             name: "empty".into(),
             steps: vec![Step::default(); 6],
             mix: Default::default(),
+            instrument: Default::default(),
             effects: vec![],
             rules: vec![],
         };
@@ -201,8 +206,10 @@ mod tests {
         assert!(text.contains("mute: true,\n"), "{text}");
         assert!(text.contains("(kind: Delay),"), "{text}");
         assert!(text.contains("\"feedback\": 0.7,"), "{text}");
+        assert!(text.contains("kind: Kick,"), "{text}");
+        assert!(text.contains("\"punch\": 0.8"), "{text}");
         assert_eq!(text.matches("mix:").count(), 1, "{text}");
-        assert!(text.lines().count() < 70, "{text}");
+        assert!(text.lines().count() < 80, "{text}");
     }
 
     #[test]
