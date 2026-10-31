@@ -607,6 +607,7 @@ impl Engine {
                         }
                         push(&mut t.events, note_on(0, pitch, velocity));
                         t.preview = Some((pitch, self.preview_samples));
+                        self.choke_others(track, 0, &[]);
                     }
                 }
                 Command::InsertEffect {
@@ -841,6 +842,8 @@ impl Engine {
         }
         self.step_index += 1;
 
+        // Which tracks hit on this step, for choking.
+        let mut hits = [false; MAX_TRACKS];
         for (index, t) in self.tracks.iter_mut().enumerate() {
             // Note-offs first, so a voice can be reused by this step's note.
             t.held.retain_mut(|h| {
@@ -868,6 +871,7 @@ impl Engine {
                     t.held.remove(i);
                 }
                 push(&mut t.events, note_on(offset, note.pitch, note.velocity));
+                hits[index] = true;
                 t.held.push(Held {
                     pitch: note.pitch,
                     steps_left: note.length.max(1),
@@ -878,6 +882,35 @@ impl Engine {
             if t.playhead >= t.steps.len() {
                 t.playhead = 0;
                 t.pass += 1;
+            }
+        }
+        for index in 0..self.tracks.len() {
+            if hits[index] {
+                self.choke_others(index, offset, &hits);
+            }
+        }
+    }
+
+    /// Chokes every other track in `index`'s group with its choke number, except those that hit
+    /// at the same time (`hits`), which both play.
+    fn choke_others(&mut self, index: usize, offset: u32, hits: &[bool]) {
+        let t = &self.tracks[index];
+        let (Some(group), choke) = (t.group, t.track.choke) else {
+            return;
+        };
+        if choke == 0 {
+            return;
+        }
+        for (j, other) in self.tracks.iter_mut().enumerate() {
+            let same = other.group == Some(group) && other.track.choke == choke;
+            if same && j != index && !hits.get(j).copied().unwrap_or(false) {
+                push(
+                    &mut other.events,
+                    Event {
+                        offset,
+                        kind: EventKind::Choke,
+                    },
+                );
             }
         }
     }
@@ -968,6 +1001,7 @@ mod tests {
             mix: Default::default(),
             instrument: Default::default(),
             effects: vec![],
+            choke: 0,
             rules: vec![Rule {
                 transform: Transform::Drift(1),
                 when: Condition::Always,
@@ -1408,6 +1442,68 @@ mod tests {
         assert!((handle.status().take_bus_peak(Chain::Group(3)) - group).abs() < 1e-6);
         assert_eq!(handle.status().take_bus_peak(Chain::Group(0)), 0.0);
         assert_eq!(handle.status().take_bus_peak(Chain::Group(99)), 0.0);
+    }
+
+    /// Counts the chokes it's sent.
+    struct Chokes(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+
+    impl Processor for Chokes {
+        fn process(&mut self, events: &[Event], _: &mut [f32], _: &mut [f32]) {
+            let chokes = events.iter().filter(|e| e.kind == EventKind::Choke);
+            (self.0).fetch_add(chokes.count(), std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
+    #[test]
+    fn hits_choke_the_tracks_in_their_group_with_their_choke_number() {
+        // Hits on steps 0, 2, 0, 0 and 2: the third shares the first's step, the fourth has
+        // another choke number and the fifth no group.
+        let hits = [0, 2, 0, 0, 2];
+        let chokes = [1, 1, 1, 2, 1];
+        let tracks = hits
+            .iter()
+            .zip(chokes)
+            .map(|(&hit, choke)| {
+                let mut steps = vec![Step::default(); 4];
+                steps[hit] = Step::note(60);
+                Track {
+                    steps,
+                    choke,
+                    rules: vec![],
+                    ..lead()
+                }
+            })
+            .collect();
+        let grid = Grid {
+            name: "choke".into(),
+            steps_per_beat: 4,
+            tracks,
+            groups: vec![],
+        };
+        let counts: Vec<std::sync::Arc<std::sync::atomic::AtomicUsize>> =
+            hits.iter().map(|_| Default::default()).collect();
+        let instruments = counts
+            .iter()
+            .map(|count| Box::new(Chokes(count.clone())) as Box<dyn Processor>)
+            .collect();
+        let (mut engine, mut handle) = Engine::new(1_000.0, 120.0, &grid, instruments);
+        engine.click_enabled = false;
+        for index in 0..4 {
+            handle.send(Command::SetGroup {
+                index,
+                group: Some(0),
+            });
+        }
+        engine.play();
+        // 125 samples a step: steps 0 to 2.
+        render_stereo(&mut engine, 300);
+        let counts: Vec<_> = counts
+            .iter()
+            .map(|c| c.load(std::sync::atomic::Ordering::Relaxed))
+            .collect();
+        // Step 0 chokes track 1 twice, and step 2 chokes tracks 0 and 2; tracks 0 and 2 don't
+        // choke each other.
+        assert_eq!(counts, [1, 2, 1, 0, 0]);
     }
 
     #[test]

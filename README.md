@@ -118,6 +118,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:set VALUE` | on the mixer page, set the value under the cursor (also `c`) |
 | `:inst INSTRUMENT` | the instrument for every track the selections reach (or the mixer cursor's): `synth`, `kick`, `snare`, `hat`, `clap` or `tom` |
 | `:fx-add EFFECT` | add an effect (`delay`, `drive` or `comp`) after the mixer cursor, or at the end of this track's chain |
+| `:choke N` | choke group (1–8, 0 for none) for every track the selections reach: within a track group, a hit cuts off the other tracks with the same number, as a closed hat stops an open one |
 | `:mute`, `:solo` | toggle mute or solo for every track the selections reach (also `tm`, `ts`) |
 | `:w [PATH]`, `:wq [PATH]` | save the song (to a `.lattice` file), save and quit |
 | `:o PATH`, `:o! PATH` | open a song, or start a new one at PATH; `!` discards unsaved changes |
@@ -133,7 +134,7 @@ meter in place of the underline. Muted tracks, and tracks silenced by another's 
 Every track can send to a delay on the send bus; sends start off.
 
 The **mixer page** (`gm`) has a strip for each track, each group's bus, and the send and master
-buses: level, pan, send, a meter, its instrument and its effects. The settings of the instrument or effect
+buses: level, pan, send, choke group, a meter, its instrument and its effects. The settings of the instrument or effect
 under the cursor show just below it. `h j k l` move, `^a` `^x` nudge the value under the cursor
 (with counts, so `10^a`), `c` types an exact one (or, on the instrument, another instrument),
 `:fx-add delay` (or `drive`, `comp`) adds an effect after the cursor and `d` removes it. `tm` `ts` still mute and

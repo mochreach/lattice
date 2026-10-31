@@ -8,7 +8,7 @@ use std::ops::Range;
 use std::path::PathBuf;
 
 use lattice_core::{
-    Condition, MAX_DB, MAX_STEPS, MAX_TRACKS, MIN_DB, Mix, Rule, Step, Track, Transform,
+    Condition, MAX_CHOKE, MAX_DB, MAX_STEPS, MAX_TRACKS, MIN_DB, Mix, Rule, Step, Track, Transform,
 };
 
 use crate::{Editor, Effect};
@@ -181,6 +181,12 @@ pub const COMMANDS: &[Spec] = &[
         alias: None,
         params: &[decimal("DB", "send", MIN_DB as i64, MAX_DB as i64)],
         describe: "mixer: send to the send bus, in dB",
+    },
+    Spec {
+        name: "choke",
+        alias: None,
+        params: &[int("N", "choke group", 0, MAX_CHOKE as i64)],
+        describe: "choke group: tracks in one track group with the same number cut each other off (0 for none)",
     },
     Spec {
         name: "mute",
@@ -873,6 +879,15 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             let send = command.decimal(0) as f32;
             mix(editor, |mix| mix.send = send)
         }
+        "choke" => {
+            let choke = command.int(0);
+            let tracks = editor.mix_targets()?;
+            editor.checkpoint();
+            for &t in &tracks {
+                editor.grid.tracks[t].choke = choke;
+            }
+            Ok(tracks.into_iter().map(Effect::TrackChanged).collect())
+        }
         "mute" | "solo" => {
             let solo = command.spec.name == "solo";
             let flag = |mix: Mix| if solo { mix.solo } else { mix.mute };
@@ -918,6 +933,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                 mix: Default::default(),
                 instrument: Default::default(),
                 effects: vec![],
+                choke: 0,
                 rules: vec![],
             };
             editor.insert_track(editor.cursor().track + 1, track);

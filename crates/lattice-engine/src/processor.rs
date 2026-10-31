@@ -25,6 +25,9 @@ pub enum EventKind {
     NoteOff {
         pitch: u8,
     },
+    /// Cut off every sounding note quickly, as CLAP's note choke does: another drum in the
+    /// track's choke group has hit.
+    Choke,
     /// Set a parameter, by its [`ParamInfo::id`], to `value` in the parameter's own units.
     Param {
         id: u32,

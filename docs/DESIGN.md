@@ -153,7 +153,8 @@ scales the level. Settings apply from the next hit, except decay, which also cha
 that's ringing. Decay is the time to fall by 60 dB. The drums share a `Drum<V>` processor, so
 each `Voice` is only its trigger and a per-sample tick; they're scalar, as one voice is cheap.
 
-Planned next: choke between drums, which comes with groups.
+A choke (`EventKind::Choke`, after CLAP's note choke) fades whatever a drum is playing over a
+few milliseconds, quick but not a click; the synth releases its voices. See choke groups, below.
 
 ## Track groups
 
@@ -171,7 +172,13 @@ track stays a real track, with its own rules, length and strip; the group adds:
   effect chain, before the master: a drum bus for compression and drive. The mixer page shows
   each group's bus after the tracks, beside the send and master buses, in its first track's
   colour. Sends still go straight from each track to the send bus.
-- **Choke.** Tracks in a group can cut each other off, so a closed hat stops an open one.
+- **Choke (done).** Tracks in a group can cut each other off, so a closed hat stops an open one.
+  Each track has a choke number (`Track::choke`, 0 for none, up to 8), set with `:choke N` or
+  the mixer page's `choke` row. When a track hits, the engine sends a choke, at the same sample,
+  to the other tracks in its group with the same number. Tracks that hit on the same step don't
+  choke each other, so a hat and an open hat played together both sound. The number only counts
+  within a group; an ungrouped track never chokes. Previews choke too, so the kit plays by hand as
+  it does from the pattern.
 - **Drum pads on the numpad.** The group's tracks are mapped to the numpad's keys, so the kit can
   be played (and entered in insert mode) like a pad controller: each key plays its track's drum
   at its own note. Terminals send numpad digits as plain digits unless they're asked for more:

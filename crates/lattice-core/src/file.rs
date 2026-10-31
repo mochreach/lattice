@@ -11,7 +11,7 @@ use ron::ser::PrettyConfig;
 
 use crate::fx::MAX_EFFECTS;
 use crate::group::MAX_GROUPS;
-use crate::song::{Grid, MAX_DB, MAX_TRACKS, Song, Track};
+use crate::song::{Grid, MAX_CHOKE, MAX_DB, MAX_TRACKS, Song, Track};
 
 /// Nesting below which values go on one line: each step, note and rule fits on its own line.
 const DEPTH_LIMIT: usize = 6;
@@ -115,6 +115,12 @@ fn check_track(track: &Track) -> Result<(), String> {
             track.name
         ));
     }
+    if track.choke > MAX_CHOKE {
+        return Err(format!(
+            "track {:?}: choke groups go up to {MAX_CHOKE}",
+            track.name
+        ));
+    }
     if track.effects.len() > MAX_EFFECTS {
         return Err(format!(
             "track {:?} has more than {MAX_EFFECTS} effects",
@@ -149,6 +155,7 @@ mod tests {
             mix: Default::default(),
             instrument: Default::default(),
             effects: vec![],
+            choke: 0,
             rules: vec![
                 Rule {
                     transform: Transform::Transpose(5),
@@ -187,6 +194,7 @@ mod tests {
             mix: Default::default(),
             instrument: Default::default(),
             effects: vec![],
+            choke: 0,
             rules: vec![],
         };
         Song {

@@ -6,7 +6,7 @@
 //! (and `+` `-`) nudge the value under it, as Helix increments numbers, and `c` types one in.
 
 use lattice_core::{
-    Bus, Fx, FxKind, InstKind, Instrument, Kind, MAX_DB, MAX_EFFECTS, MIN_DB, ParamInfo,
+    Bus, Fx, FxKind, InstKind, Instrument, Kind, MAX_CHOKE, MAX_DB, MAX_EFFECTS, MIN_DB, ParamInfo,
 };
 
 use crate::keymap::Action;
@@ -50,6 +50,8 @@ pub enum Row {
     Pan,
     /// Tracks only.
     Send,
+    /// Tracks only: the choke group, 0 for none.
+    Choke,
     /// Tracks only.
     Instrument,
     /// A slot in the chain; slot 0 is there even when the chain is empty, to add to.
@@ -146,7 +148,7 @@ impl Editor {
         let mut effect = self.mixer.effect.min(effects.saturating_sub(1));
         let instrument = self.mixer.instrument && !kind.is_bus();
         let row = match self.mixer.row {
-            Row::Pan | Row::Send | Row::Instrument if kind.is_bus() => Row::Level,
+            Row::Pan | Row::Send | Row::Choke | Row::Instrument if kind.is_bus() => Row::Level,
             Row::Effect(i) => {
                 let i = i.min(effects.saturating_sub(1));
                 effect = i;
@@ -209,7 +211,7 @@ impl Editor {
         let params = self.shown_at(cursor).map_or(0, |shown| shown.params.len());
         let mut rows = vec![Row::Level];
         if !strip.is_bus() {
-            rows.extend([Row::Pan, Row::Send, Row::Instrument]);
+            rows.extend([Row::Pan, Row::Send, Row::Choke, Row::Instrument]);
         }
         // The settings shown come straight after what they belong to.
         if cursor.instrument {
@@ -305,6 +307,10 @@ impl Editor {
             }
             Row::Pan => Some((track?.pan * 100.0, -100.0, 100.0)),
             Row::Send => Some((track?.send, MIN_DB, MAX_DB)),
+            Row::Choke => match strip {
+                Strip::Track(i) => Some((self.grid.tracks[i].choke as f32, 0.0, MAX_CHOKE as f32)),
+                _ => None,
+            },
             Row::Instrument | Row::Effect(_) => None,
             Row::Param(p) => {
                 let shown = self.shown()?;
@@ -340,6 +346,7 @@ impl Editor {
             }
             (Row::Pan, Strip::Track(i)) => self.grid.tracks[i].mix.pan = value / 100.0,
             (Row::Send, Strip::Track(i)) => self.grid.tracks[i].mix.send = value,
+            (Row::Choke, Strip::Track(i)) => self.grid.tracks[i].choke = value.round() as u8,
             (Row::Param(p), Strip::Track(i)) if cursor.instrument => {
                 let info = self.grid.tracks[i].instrument.params()[p];
                 self.grid.tracks[i].instrument.values[p] = info.clamp(value);
@@ -348,7 +355,9 @@ impl Editor {
             _ => {}
         }
         Ok(match (cursor.row, strip) {
-            (Row::Level | Row::Pan | Row::Send, Strip::Track(i)) => vec![Effect::TrackChanged(i)],
+            (Row::Level | Row::Pan | Row::Send | Row::Choke, Strip::Track(i)) => {
+                vec![Effect::TrackChanged(i)]
+            }
             _ => vec![Effect::MixerChanged],
         })
     }
@@ -363,6 +372,7 @@ impl Editor {
             Row::Level | Row::Send => old + by as f32 * LEVEL_STEP,
             // Kept to whole percent, so repeated nudges don't drift.
             Row::Pan => (old + by as f32 * PAN_STEP * 100.0).round(),
+            Row::Choke => old + by as f32,
             Row::Param(p) => match self.shown() {
                 Some(shown) => shown.params[p].nudge(old, by),
                 None => return vec![],
@@ -541,6 +551,12 @@ mod tests {
         assert_eq!(e.page, Page::Mixer);
         assert_eq!(at(&e), (Strip::Track(0), Row::Level));
         keys(&mut e, "jjj");
+        assert_eq!(at(&e), (Strip::Track(0), Row::Choke));
+        assert_eq!(command(&mut e, "set 3"), [Effect::TrackChanged(0)]);
+        assert_eq!(e.grid.tracks[0].choke, 3);
+        command(&mut e, "set 9");
+        assert_eq!(e.message.as_deref(), Some("this goes from 0 to 8"));
+        keys(&mut e, "j");
         assert_eq!(at(&e), (Strip::Track(0), Row::Instrument));
         assert_eq!(e.shown().unwrap().name, "synth");
         keys(&mut e, "j");
@@ -603,7 +619,7 @@ mod tests {
     #[test]
     fn effects_are_added_and_removed() {
         let mut e = editor();
-        keys(&mut e, "jjjj9j");
+        keys(&mut e, "jjjjj9j");
         assert_eq!(at(&e).1, Row::Effect(0));
         assert_eq!(command(&mut e, "fx-add delay"), [Effect::MixerChanged]);
         command(&mut e, "fx-add delay");
@@ -633,7 +649,7 @@ mod tests {
     #[test]
     fn instruments_are_chosen_and_set() {
         let mut e = editor();
-        keys(&mut e, "ljjj");
+        keys(&mut e, "ljjjj");
         assert_eq!(at(&e), (Strip::Track(1), Row::Instrument));
         keys(&mut e, "c");
         let Mode::Command(prompt) = &e.mode else {

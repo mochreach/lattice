@@ -200,6 +200,27 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, theme: &Theme, view:
             .collect(),
     ));
     lines.push(line(
+        label("choke", Some(Row::Choke)),
+        columns
+            .iter()
+            .map(|c| {
+                let Strip::Track(i) = c.strip else {
+                    return empty();
+                };
+                let text = match editor.grid.tracks[i].choke {
+                    0 => "-".to_string(),
+                    n => n.to_string(),
+                };
+                let style = if at(c, Row::Choke) {
+                    theme.block(Color::Reset)
+                } else {
+                    c.style
+                };
+                vec![Span::styled(fit(&text, CELL), style)]
+            })
+            .collect(),
+    ));
+    lines.push(line(
         label("", None),
         columns
             .iter()

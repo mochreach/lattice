@@ -86,7 +86,14 @@ pub struct Track {
     /// Effects after the instrument, before the mixer strip.
     pub effects: Vec<Fx>,
     pub mix: Mix,
+    /// Its choke group within its track group, 1 to [`MAX_CHOKE`], or 0 for none: a hit on any
+    /// track in the same group with the same choke cuts this one off, as a closed hat stops an
+    /// open one.
+    pub choke: u8,
 }
+
+/// The highest choke group.
+pub const MAX_CHOKE: u8 = 8;
 
 /// Quietest level in decibels; at or below it, a level or send is silent.
 pub const MIN_DB: f32 = -60.0;
@@ -169,6 +176,12 @@ struct SparseTrack {
     mix: Mix,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     effects: Vec<Fx>,
+    #[serde(default, skip_serializing_if = "is_zero_u8")]
+    choke: u8,
+}
+
+fn is_zero_u8(n: &u8) -> bool {
+    *n == 0
 }
 
 impl From<Track> for SparseTrack {
@@ -186,6 +199,7 @@ impl From<Track> for SparseTrack {
             instrument: track.instrument,
             mix: track.mix,
             effects: track.effects,
+            choke: track.choke,
         }
     }
 }
@@ -217,6 +231,7 @@ impl TryFrom<SparseTrack> for Track {
             instrument: sparse.instrument,
             mix: sparse.mix,
             effects: sparse.effects,
+            choke: sparse.choke,
         })
     }
 }

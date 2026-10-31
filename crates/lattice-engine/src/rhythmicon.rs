@@ -40,10 +40,17 @@ trait Voice: Send {
     fn tick(&mut self) -> (f32, bool);
 }
 
+/// How long a choked drum takes to fade, in seconds to fall by 1/e: quick, but not a click.
+const CHOKE: f32 = 0.003;
+
 /// A drum as an instrument.
 struct Drum<V> {
     voice: V,
     sounding: bool,
+    /// Multiplies the output: 1, falling once choked.
+    fade: f32,
+    fade_coef: f32,
+    choked: bool,
 }
 
 impl<V: Voice> Drum<V> {
@@ -52,6 +59,9 @@ impl<V: Voice> Drum<V> {
         let mut drum = Self {
             voice: V::new(sample_rate),
             sounding: false,
+            fade: 1.0,
+            fade_coef: decay_coef(CHOKE, sample_rate),
+            choked: false,
         };
         for info in V::KIND.params() {
             let value = values
@@ -70,10 +80,18 @@ impl<V: Voice> Drum<V> {
             return;
         }
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            if !self.sounding {
+                (*l, *r) = (0.0, 0.0);
+                continue;
+            }
             let (out, sounding) = self.voice.tick();
-            *l = out;
-            *r = out;
+            *l = out * self.fade;
+            *r = out * self.fade;
             self.sounding = sounding;
+            if self.choked {
+                self.fade *= self.fade_coef;
+                self.sounding &= self.fade > SILENCE;
+            }
         }
     }
 }
@@ -88,8 +106,11 @@ impl<V: Voice> Processor for Drum<V> {
                     self.voice
                         .trigger(2f32.powf(semitones / 12.0), f32::from(velocity) / 127.0);
                     self.sounding = true;
+                    self.fade = 1.0;
+                    self.choked = false;
                 }
                 EventKind::NoteOff { .. } => {}
+                EventKind::Choke => self.choked = self.sounding,
                 EventKind::Param { id, value } => {
                     if let Some(info) = V::KIND.params().get(id as usize) {
                         self.voice.set(id, info.clamp(value));
@@ -917,6 +938,29 @@ mod tests {
                 assert!(diff > 10.0, "{kind:?} {a} and {b} differ by {diff}");
             }
         }
+    }
+
+    #[test]
+    fn a_choke_cuts_a_ringing_drum_quickly() {
+        let kind = InstKind::Hat;
+        let mut values = Instrument::new(kind).values;
+        values[hat::DECAY as usize] = 1.5;
+        let mut hat = build(kind, RATE, &values).unwrap();
+        let choke = Event {
+            offset: 100,
+            kind: EventKind::Choke,
+        };
+        let (mut left, mut right) = (vec![0.0; 4_800], vec![0.0; 4_800]);
+        hat.process(&[hit(DRUM_ROOT), choke], &mut left, &mut right);
+        assert!(peak(&left[..100]) > 0.1);
+        assert!(
+            peak(&left[100..200]) > 0.01,
+            "it fades rather than clicking off"
+        );
+        assert!(peak(&left[2_400..]) == 0.0, "silent within 50 ms");
+        // The next hit plays in full.
+        hat.process(&[hit(DRUM_ROOT)], &mut left, &mut right);
+        assert!(peak(&left[..100]) > 0.1);
     }
 
     #[test]

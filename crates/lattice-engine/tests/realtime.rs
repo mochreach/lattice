@@ -27,6 +27,7 @@ fn rendering_never_allocates() {
         mix: Default::default(),
         instrument: Default::default(),
         effects: vec![],
+        choke: 0,
         rules: vec![
             Rule {
                 transform: Transform::Drift(1),

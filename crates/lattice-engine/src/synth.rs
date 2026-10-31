@@ -207,6 +207,17 @@ impl Synth {
         }
     }
 
+    /// Releases every voice.
+    fn choke(&mut self) {
+        for i in 0..VOICES {
+            if matches!(self.stage[i], Stage::Attack | Stage::Decay) {
+                self.stage[i] = Stage::Release;
+                set_lane(&mut self.env_target, i, 0.0);
+                set_lane(&mut self.env_coef, i, self.release_coef);
+            }
+        }
+    }
+
     /// Envelope stage changes and filter coefficients, every `CONTROL_PERIOD` samples.
     fn update_control(&mut self) {
         let mut env = self.env.to_array();
@@ -295,6 +306,7 @@ impl Processor for Synth {
             Segment::Event(event) => match event.kind {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
                 EventKind::NoteOff { pitch } => self.note_off(pitch),
+                EventKind::Choke => self.choke(),
                 EventKind::Param { id, value } => {
                     if let Some(info) = InstKind::Synth.params().get(id as usize) {
                         self.patch.set(id, info.clamp(value));
