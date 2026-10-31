@@ -140,7 +140,7 @@ song.
 **Instruments:** each track has one. `synth` is a plain test synth. `kick`, `snare` and `hat` are
 Rhythmicon, the drum engine: one drum per track, played at its tuning by C-4 and tuned up or down
 by other notes, each with four controls (see [docs/DESIGN.md](docs/DESIGN.md)). The demo song
-starts with a kick, snare and hats.
+is the Amen break at 136 BPM, on a kick, snare, ride and crash, under the synths.
 
 Tracks can be added, removed and moved while playing, and undo brings a removed track back with
 its notes and its instrument. When there are more than fit across the terminal, the grid scrolls

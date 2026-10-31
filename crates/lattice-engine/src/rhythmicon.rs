@@ -374,7 +374,7 @@ impl Voice for HatVoice {
         }
         let out = x * self.amp;
         self.amp *= self.amp_coef;
-        (out * self.velocity * 3.0, self.amp > SILENCE)
+        (out * self.velocity * 6.0, self.amp > SILENCE)
     }
 }
 
