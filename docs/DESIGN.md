@@ -162,26 +162,36 @@ The second engine, named after the monochord, the single string over a movable b
 Pythagoras worked out the ratios of musical intervals. One instrument, `:inst string`, with eight
 voices, each a string:
 
-- **The string** is an extended Karplus–Strong waveguide (after Jaffe and Smith): a delay line one
-  period long, read with third-order Lagrange interpolation so it plays in tune without dulling
-  the top, and in its loop a two-point low-pass, `(1 - d)·x[n] + d·x[n-1]`, and a loss. The
-  low-pass delays the loop by about `d` samples, so the line is `d` shorter. The loss per trip is
-  set so every string fades by 60 dB over the decay, whatever its pitch; the low-pass then makes
-  high notes and high harmonics die sooner, as on a real string. Tests check pitches from A-1 to
-  A-6 are within 3 cents.
-- **A pluck** fills one period of the line with noise, low-passed from just above the note (a
-  soft thumb) to near Nyquist (a hard pick), brighter for harder notes, then subtracted from
-  itself a fraction *position* of a period on, which notches out the harmonics with a node where
-  the string is plucked. Its mean is removed and its level set by its RMS, so pluck and position
-  change the tone, not the loudness. Plucking a string that's still ringing keeps 30% of it.
-- **A bow** feeds noise in while the note is held, low-passed four times above the note, scaled
-  by `sqrt(1 - g²)` for a loop gain of `g` per trip, which holds the string at a steady level
-  whatever the decay. It glides in and out over about 60 ms, and takes the place of the pluck as
-  it's turned up. A note-off lifts the bow; a plucked string rings on by its decay, as a harp's
-  does. A choke fades every string out, as it does a drum.
+- **The string** is a waveguide in two halves, as in the Synthesis ToolKit's `Bowed`: one delay
+  line from the bow to the bridge and back, one from the bow to the nut and back, with the bow
+  12.7% of the way from the bridge. Each end inverts the wave; the bridge's end also has a
+  two-point low-pass, `(1 - d)·x[n] + d·x[n-1]`, and a loss. The bridge's line is read with
+  third-order Lagrange interpolation, so the string plays in tune without dulling the top, and is
+  `d` shorter to make up for the low-pass's delay. The loss per trip is set so every string fades
+  by 60 dB over the decay, whatever its pitch; the low-pass then makes high notes and high
+  harmonics die sooner, as on a real string. Tests check plucked pitches from A-1 to A-6 are
+  within 3 cents, and a bowed A-3 within 10.
+- **A pluck** fills both lines with one period of noise, low-passed from the note itself (a soft
+  thumb, nearly a sine) up to near Nyquist (a hard pick) on an even, logarithmic sweep, brighter
+  for harder notes, then subtracted from itself a fraction *position* of a period on, which
+  notches out the harmonics with a node where the string is plucked. Its mean is removed and its
+  level set by its RMS, so pluck and position change the tone, not the loudness. A hard pick also
+  clicks: a 1.5 ms burst of differenced noise outside the string, as loud as the pluck squared.
+  Plucking a string that's still ringing keeps 30% of it.
+- **A bow** is STK's friction junction: where the lines meet, the bow's speed less the string's
+  gives the slip, and the friction curve `min(1, (|(slip + 0.001)·grip| + 0.75)^-4)` turns it
+  into a push into both lines. Slow slip sticks, so the bow drags the string along until it
+  snaps back: Helmholtz motion, the sawtooth of a real bowed string. The bow setting raises its
+  speed (0.06 to 0.3) and its grip (slope 2 to 4.2) together, so light bowing skates and heavy
+  bowing grips and grits; its speed wavers by 5%, as a hand's does. The string's velocity at the
+  bridge is a train of pulses, so, as far as the bow is on the string, the output is tilted down
+  6 dB an octave from 1.5 times the note, into the sawtooth's spectrum. The bow glides on and off
+  over about 30 ms, takes the place of the pluck as it's turned up, and swells for a second or
+  two on low, long-ringing strings before it holds. A note-off lifts the bow; a plucked string
+  rings on by its decay, as a harp's does. A choke fades every string out, as it does a drum.
 - **The models** set the pluck's brightest, the loop's least damping, and two things a plain
   string doesn't do. `steel` plays each note on a pair of strings 7 cents apart, spread a little
-  left and right, so they beat. `sitar` shortens its loop by up to 6% when the string's
+  left and right, so they beat. `sitar` shortens its bridge's line by up to 6% when the string's
   displacement is large, as a sitar's string does against its curved bridge (jawari): a buzz that
   brightens the attack and settles as it fades. `steel` has a trace of the same, for the slight
   fall in pitch of a hard pluck.
@@ -189,15 +199,16 @@ voices, each a string:
 | Control | Range | |
 | --- | --- | --- |
 | model | `nylon` `steel` `sitar` | |
-| pluck | 0–1 | soft thumb to hard pick |
+| pluck | 0–1 | soft thumb to hard, clicking pick |
 | position | 0.02–0.5 | near the bridge, thin and nasal, to the middle, hollow |
 | decay | 0.2–20 s | before the low-pass's extra loss |
 | tone | 0–1 | how much of the top survives each trip |
-| bow | 0–1 | 0 only plucks; 1 only bows |
+| bow | 0–1 | 0 only plucks; above, bows while held, light to heavy; 1 only bows |
 
-Decay and tone change the strings already ringing; the rest apply from the next note. The output
+Decay, tone and bow change the strings already sounding; the rest apply from the next note. The output
 goes through a DC blocker, since the buzz can shift its centre. Each voice is scalar: a string's
-work is a read, a filter and a write per sample, cheap enough not to need SIMD lanes.
+work is two reads, a filter, the friction curve while bowed and two writes per sample, cheap
+enough not to need SIMD lanes.
 
 ## Track groups
 

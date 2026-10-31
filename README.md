@@ -159,8 +159,9 @@ the snare, `metal` `ring` `sizzle` for the hat, `tight` `room` `crowd` for the c
 `round` `hard` for the tom) and four controls within it (see
 [docs/DESIGN.md](docs/DESIGN.md)). `string` is Monochord, a plucked or bowed string, modelled
 as a waveguide: models `nylon`, `steel` (pairs of strings a few cents apart, spread in stereo)
-and `sitar` (buzzing against its bridge), with pluck (soft thumb to hard pick), position (along
-the string), decay, tone and bow (sustain while the note is held). Strings ring on after a
+and `sitar` (buzzing against its bridge), with pluck (soft thumb to hard, clicking pick), position (along
+the string), decay, tone and bow (a real bowed string while the note is held, light to heavy;
+it takes over from the pluck as it's turned up, and long notes suit it). Strings ring on after a
 note ends, as a harp's do; a note-off only lifts the bow. The demo song
 is the Amen break at 136 BPM, on a kick, snare, ride and crash, under the synths. The drums are a
 folded group, `amen`, with drive and a compressor on its bus; `tz` unfolds it.

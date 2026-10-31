@@ -259,7 +259,7 @@ pub mod string {
     /// The kind of string: warm nylon, a pair of bright steel strings a few cents apart, as on a
     /// twelve-string, or a sitar's, buzzing against its curved bridge.
     pub const MODEL: u32 = 0;
-    /// What plucks it, from a soft thumb to a hard pick.
+    /// What plucks it, from a soft thumb, nearly a sine, to a hard pick, bright and clicking.
     pub const PLUCK: u32 = 1;
     /// Where along the string it's plucked: near the bridge is thin and nasal, the middle hollow.
     pub const POSITION: u32 = 2;
@@ -267,7 +267,8 @@ pub mod string {
     pub const DECAY: u32 = 3;
     /// How much of the high end survives each trip along the string.
     pub const TONE: u32 = 4;
-    /// Bowing while the note is held, which keeps the string sounding, against plucking alone.
+    /// Bowing while the note is held, which keeps the string sounding: light skates over it, heavy
+    /// grips and grits. Plucks fade out as it's turned up.
     pub const BOW: u32 = 5;
 
     pub const MODELS: &[&str] = &["nylon", "steel", "sitar"];

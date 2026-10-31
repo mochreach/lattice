@@ -1,12 +1,17 @@
 //! Monochord, the string engine: a plucked or bowed string, after Pythagoras' one-stringed
 //! instrument for studying pitch.
 //!
-//! Each voice is a waveguide (an extended Karplus–Strong string): a delay line one period long,
-//! read with a fractional delay so it plays in tune, and a gentle low-pass in its loop, so high
-//! harmonics die sooner than low ones, as on a real string. A pluck fills the line with a burst
-//! of filtered noise, shaped by where along the string it's plucked; a bow feeds noise in for as
-//! long as the note is held. Notes ring out by their decay after a note-off, which only lifts
-//! the bow; plucking a string that's still ringing damps it first, as a finger would.
+//! Each voice is a waveguide string, as in the Synthesis ToolKit's `Bowed`: two delay lines that
+//! meet where the bow sits, one running to the nut and back, the other to the bridge and back.
+//! Reflections invert the waves at each end, and the bridge's end has a gentle low-pass and a
+//! loss, so high harmonics die sooner than low ones, as on a real string. The bridge's line is
+//! read with a fractional delay, so the string plays in tune.
+//!
+//! A pluck fills both lines with a burst of filtered noise, shaped by where along the string it's
+//! plucked, and a pick that hits hard adds its own click. A bow, while the note's held, drags the
+//! string along by friction until it slips back, again and again: the sawtooth motion of a real
+//! bowed string. Notes ring out by their decay after a note-off, which only lifts the bow;
+//! plucking a string that's still ringing damps it first, as a finger would.
 
 use lattice_core::InstKind;
 use lattice_core::instrument::string::{BOW, DECAY, MODEL, PLUCK, POSITION, TONE};
@@ -25,17 +30,29 @@ const CONTROL_PERIOD: u32 = 64;
 const SILENCE: f32 = 1e-4;
 /// How long a choked string takes to fade, in seconds to fall by 1/e.
 const CHOKE: f32 = 0.003;
-/// The bow's noise is low-passed this many times above the note, so it rosins the string
-/// rather than hissing over it.
-const BOW_BAND: f32 = 4.0;
+/// Where the bow sits, as a fraction of the string from the bridge: a violin's usual spot.
+const BOW_POINT: f32 = 0.127;
 /// How long the bow takes to bite, or to lift, in seconds to move by 1/e.
-const BOW_TIME: f32 = 0.06;
+const BOW_TIME: f32 = 0.03;
+/// The bow's speed at the lightest bow and at the heaviest, in the string's units.
+const BOW_SPEED: (f32, f32) = (0.06, 0.3);
+/// The bow's pressure at the lightest and the heaviest, as the friction curve's slope: low skates
+/// and breathes, high grips and scratches.
+const BOW_GRIP: (f32, f32) = (2.0, 4.2);
+/// How much the bow's speed wavers, as a hand's does.
+const BOW_WAVER: f32 = 0.05;
+/// Where the bowed sound starts to fall away, 6 dB an octave, as a multiple of the note: the
+/// string's own sawtooth, rather than the pulses of its velocity at the bridge.
+const BOW_TILT: f32 = 1.5;
+/// Makes up the level the tilt takes.
+const BOW_LIFT: f32 = 2.0;
 /// How much of a ringing string is left when it's plucked again.
 const REPLUCK: f32 = 0.3;
 /// The level of a full-velocity pluck, as the RMS of the string's displacement.
 const PLUCK_LEVEL: f32 = 0.35;
-/// The level a full bow holds the string at.
-const BOW_LEVEL: f32 = 0.8;
+/// The level of the hardest pick's click, and how long it lasts, in seconds to fall by 1/e.
+const CLICK_LEVEL: f32 = 0.8;
+const CLICK_TIME: f32 = 0.0015;
 /// Each string's output, so a few together leave headroom.
 const GAIN: f32 = 0.35;
 
@@ -55,10 +72,10 @@ struct StringModel {
 }
 
 const STRINGS: [StringModel; 3] = [
-    // Nylon: a soft attack and a warm, fairly quick-fading top.
+    // Nylon: a softer attack and a warm, fairly quick-fading top.
     StringModel {
-        pick: 0.4,
-        bright: 0.25,
+        pick: 0.75,
+        bright: 0.2,
         courses: 1,
         detune: 0.0,
         buzz: 0.0,
@@ -81,62 +98,123 @@ const STRINGS: [StringModel; 3] = [
     },
 ];
 
-/// One string: a delay line and its loop filter.
+/// A delay line, written a sample at a time.
 #[derive(Debug, Clone)]
-struct Course {
-    line: Box<[f32]>,
+struct Line {
+    samples: Box<[f32]>,
     /// Where the next sample goes.
     write: usize,
-    /// The delay, in samples, that tunes the loop: its period less the loop filter's delay.
-    delay: f32,
+}
+
+impl Line {
+    fn new(len: usize) -> Self {
+        Self {
+            samples: vec![0.0; len].into_boxed_slice(),
+            write: 0,
+        }
+    }
+
+    fn mask(&self) -> usize {
+        self.samples.len() - 1
+    }
+
+    /// Where the sample written `delay` samples ago sits.
+    #[inline]
+    fn at(&self, delay: usize) -> usize {
+        (self.write + self.samples.len() - delay) & self.mask()
+    }
+
+    /// The sample `delay` (at least 1) samples back.
+    #[inline]
+    fn read(&self, delay: usize) -> f32 {
+        self.samples[self.at(delay)]
+    }
+
+    /// The line `delay` samples back, read with third-order Lagrange interpolation, which keeps
+    /// the high harmonics a linear read would dull. `delay` is at least 2.
+    #[inline]
+    fn read_between(&self, delay: f32) -> f32 {
+        let whole = delay as usize;
+        // The four taps sit at delays whole - 1 to whole + 2, so `d` is between 1 and 2.
+        let d = delay - whole as f32 + 1.0;
+        let tap = |k: usize| self.read(whole - 1 + k);
+        let (dm1, dm2, dm3) = (d - 1.0, d - 2.0, d - 3.0);
+        -dm1 * dm2 * dm3 / 6.0 * tap(0) + d * dm2 * dm3 / 2.0 * tap(1)
+            - d * dm1 * dm3 / 2.0 * tap(2)
+            + d * dm1 * dm2 / 6.0 * tap(3)
+    }
+
+    #[inline]
+    fn write(&mut self, x: f32) {
+        self.samples[self.write] = x;
+        self.write = (self.write + 1) & self.mask();
+    }
+}
+
+/// One string: the line from the bow to the bridge and back, and from the bow to the nut and
+/// back.
+#[derive(Debug, Clone)]
+struct Course {
+    bridge: Line,
+    neck: Line,
+    /// The bridge side's delay, which takes the fraction that tunes the string.
+    bridge_delay: f32,
+    /// The neck side's, a whole number of samples.
+    neck_delay: usize,
     /// The period, in samples.
     period: f32,
-    /// What's left after each trip round the loop.
+    /// What's left after each trip round the string.
     loss: f32,
-    /// How much of a bow's noise goes in each sample, to make up for the loss.
-    feed: f32,
-    /// The sample read last time round, for the loop filter.
+    /// The wave last back from the bridge, for the low-pass there.
     last: f32,
 }
 
 impl Course {
     fn new(len: usize) -> Self {
         Self {
-            line: vec![0.0; len].into_boxed_slice(),
-            write: 0,
-            delay: 2.0,
-            period: 2.0,
+            bridge: Line::new(len),
+            neck: Line::new(len),
+            bridge_delay: 2.0,
+            neck_delay: 1,
+            period: 3.0,
             loss: 0.0,
-            feed: 0.0,
             last: 0.0,
         }
     }
 
-    /// The line `delay` samples back, read with third-order Lagrange interpolation, which keeps
-    /// the high harmonics a linear read would dull. `delay` is at least 2.
-    #[inline]
-    fn read(&self, delay: f32) -> f32 {
-        let mask = self.line.len() - 1;
-        let whole = delay as usize;
-        // The four taps sit at delays whole - 1 to whole + 2, so `d` is between 1 and 2.
-        let d = delay - whole as f32 + 1.0;
-        let at = |k: usize| self.line[(self.write + mask + 1 - (whole - 1 + k)) & mask];
-        let (dm1, dm2, dm3) = (d - 1.0, d - 2.0, d - 3.0);
-        -dm1 * dm2 * dm3 / 6.0 * at(0) + d * dm2 * dm3 / 2.0 * at(1) - d * dm1 * dm3 / 2.0 * at(2)
-            + d * dm1 * dm2 / 6.0 * at(3)
+    /// Divides a period of `period` samples between the two sides of the bow, less `damping`,
+    /// the low-pass's delay.
+    fn tune(&mut self, period: f32, damping: f32) {
+        self.period = period;
+        let length = (period - damping).max(3.0);
+        self.neck_delay = ((length * (1.0 - BOW_POINT)) as usize).clamp(1, (length - 2.0) as usize);
+        self.bridge_delay = length - self.neck_delay as f32;
     }
 
-    /// One trip round the loop: reads the string at `delay`, filters it by `damping` and `loss`,
-    /// adds `input`, and returns what was read.
+    /// One sample: the waves arriving at the bow from each end, reflected, pass the bow on to the
+    /// other side, with whatever the bow adds. `bow` is the bow's speed and grip, if it's on the
+    /// string. Returns the wave back from the bridge.
     #[inline]
-    fn tick(&mut self, delay: f32, damping: f32, loss: f32, input: f32) -> f32 {
-        let x = self.read(delay);
-        let y = loss * ((1.0 - damping) * x + damping * self.last);
-        self.last = x;
-        let mask = self.line.len() - 1;
-        self.line[self.write] = y + input;
-        self.write = (self.write + 1) & mask;
-        x
+    fn tick(&mut self, damping: f32, buzz: f32, bow: Option<(f32, f32)>) -> f32 {
+        // A loud string hits the bridge and plays shorter.
+        let delay = (self.bridge_delay * (1.0 - buzz * self.last.abs().min(1.0))).max(2.0);
+        let from_bridge = self.bridge.read_between(delay);
+        let bridge = -self.loss * ((1.0 - damping) * from_bridge + damping * self.last);
+        self.last = from_bridge;
+        let nut = -self.neck.read(self.neck_delay);
+        let push = match bow {
+            Some((speed, grip)) => {
+                // How fast the bow moves against the string: slowly, it sticks and drags the
+                // string along; fast, it slips. The friction curve is STK's.
+                let slip = speed - (bridge + nut);
+                let friction = ((slip + 0.001) * grip).abs() + 0.75;
+                slip * friction.powi(-4).min(1.0)
+            }
+            None => 0.0,
+        };
+        self.neck.write(bridge + push);
+        self.bridge.write(nut + push);
+        from_bridge
     }
 }
 
@@ -150,16 +228,19 @@ struct Voice {
     /// The note is held, so the bow, if any, keeps going.
     held: bool,
     velocity: f32,
-    /// The loop filter's damping.
+    /// The bridge's low-pass's damping.
     damping: f32,
     buzz: f32,
-    /// The bow's current level, gliding towards the bow setting while held, to 0 after.
+    /// How far the bow is on the string, gliding to 1 while the note's held and to 0 after.
     bow: f32,
-    /// The bow's noise, low-passed.
-    rosin: f32,
-    /// The low-pass's coefficient, and the gain that makes up for what it takes out.
-    rosin_coef: f32,
-    rosin_gain: f32,
+    /// The bowed sound's tilt: a low-pass for each string, and its coefficient.
+    tilt: [f32; 2],
+    tilt_coef: f32,
+    /// The pick's click: how loud it starts, where it's got to, and the last noise, which it's
+    /// the difference of, so it's all top.
+    click: f32,
+    click_level: f32,
+    click_last: f32,
     /// Fades a choked string out.
     fade: f32,
     choked: bool,
@@ -182,6 +263,7 @@ pub struct Monochord {
     /// One period of a pluck, worked out before it goes on the string.
     scratch: Box<[f32]>,
     bow_coef: f32,
+    click_coef: f32,
     fade_coef: f32,
     plucks: u64,
     clock: u32,
@@ -206,9 +288,11 @@ impl Monochord {
             damping: 0.5,
             buzz: 0.0,
             bow: 0.0,
-            rosin: 0.0,
-            rosin_coef: 1.0,
-            rosin_gain: 1.0,
+            tilt: [0.0; 2],
+            tilt_coef: 1.0,
+            click: 0.0,
+            click_level: 0.0,
+            click_last: 0.0,
             fade: 1.0,
             choked: false,
             started: 0,
@@ -227,6 +311,7 @@ impl Monochord {
             // A period, and as much again for the pluck position's notch.
             scratch: vec![0.0; 2 * len].into_boxed_slice(),
             bow_coef: decay_coef(BOW_TIME, sample_rate),
+            click_coef: decay_coef(CLICK_TIME, sample_rate),
             fade_coef: decay_coef(CHOKE, sample_rate),
             plucks: 0,
             clock: 0,
@@ -244,7 +329,7 @@ impl Monochord {
     }
 
     /// Called with each setting, once at the start and whenever one changes. `value` is in range.
-    /// Decay and tone change the strings ringing too; the rest wait for the next pluck.
+    /// Decay, tone and bow change the strings sounding too; the rest wait for the next pluck.
     fn set(&mut self, id: u32, value: f32) {
         match id {
             MODEL => self.model = (value.round() as usize).min(STRINGS.len() - 1),
@@ -273,18 +358,12 @@ impl Monochord {
         // Lost per sample, so every string fades over the decay whatever its period.
         let loss = (-SIXTY_DB / (self.decay * self.sample_rate)).exp();
         let hz = midi_to_hz(voice.pitch).max(LOWEST_HZ);
-        voice.rosin_coef = one_pole(hz * BOW_BAND, self.sample_rate);
-        // A one-pole low-pass leaves white noise with a/(2 - a) of its power.
-        voice.rosin_gain = ((2.0 - voice.rosin_coef) / voice.rosin_coef).sqrt();
+        voice.tilt_coef = one_pole(hz * BOW_TILT, self.sample_rate);
         for (c, course) in voice.courses.iter_mut().enumerate() {
             let cents = if c == 0 { 0.0 } else { model.detune };
-            course.period = self.sample_rate / (hz * 2f32.powf(cents / 1200.0));
-            // The loop filter delays by about `damping` samples; the line makes up the rest.
-            course.delay = (course.period - damping).max(2.0);
-            course.loss = loss.powf(course.period);
-            // A bow feeds in noise at the rate the loop loses energy, so it holds the string at
-            // a steady level whatever the decay.
-            course.feed = (1.0 - course.loss * course.loss).sqrt();
+            let period = self.sample_rate / (hz * 2f32.powf(cents / 1200.0));
+            course.tune(period, damping);
+            course.loss = loss.powf(period);
         }
     }
 
@@ -316,13 +395,17 @@ impl Monochord {
         if !ringing {
             voice.bow = 0.0;
         }
+        // The harder the pick, the louder its click; a thumb makes none.
+        voice.click = 1.0;
+        voice.click_level =
+            CLICK_LEVEL * self.pluck * self.pluck * voice.velocity * (1.0 - self.bow);
         self.tune(i);
         self.pluck(i, if ringing { REPLUCK } else { 0.0 });
     }
 
     /// Plucks voice `i`: one period of noise, low-passed by how hard the pluck is and notched by
-    /// where it lands, goes on each of its strings, over what's left of the string times `keep`.
-    /// A bow takes over from the pluck as it's turned up.
+    /// where it lands, goes round each of its strings, over what's left of the string times
+    /// `keep`. A bow takes over from the pluck as it's turned up.
     fn pluck(&mut self, i: usize, keep: f32) {
         let model = &STRINGS[self.model];
         let voice = &self.voices[i];
@@ -330,10 +413,11 @@ impl Monochord {
         let period = voice.courses[0].period;
         let len = (period.round() as usize).clamp(2, self.scratch.len() / 2);
         let hz = self.sample_rate / period;
-        // Harder plucks, and harder-played notes, are brighter.
-        let hardness = self.pluck * (0.7 + 0.3 * voice.velocity);
+        // Harder plucks, and harder-played notes, are brighter: from just above the note, which
+        // is nearly a sine, to the top.
+        let hardness = self.pluck * (0.8 + 0.2 * voice.velocity) * model.pick;
         let top = 0.45 * self.sample_rate;
-        let cutoff = hz * 2.0 * (top / (hz * 2.0)).max(1.0).powf(hardness * model.pick);
+        let cutoff = hz * (top / hz).max(1.0).powf(hardness);
         let smooth = one_pole(cutoff, self.sample_rate);
 
         // Plucking a fraction `position` along cancels the harmonics with a node there.
@@ -358,16 +442,22 @@ impl Monochord {
             .sqrt()
             .max(1e-9);
         let scale = level / rms;
+        // The pluck as the bridge's line will give it back, `k` samples from now.
+        let wave = |k: isize| (burst[k.rem_euclid(len as isize) as usize] - mean) * scale;
 
         let voice = &mut self.voices[i];
         for course in &mut voice.courses[..voice.strings] {
-            let mask = course.line.len() - 1;
-            // Enough of the line for every read until the pluck has gone round once.
-            let span = (course.delay as usize + 4).min(course.line.len());
-            for k in 0..span {
-                let at = (course.write + mask + 1 - span + k) & mask;
-                let x = (self.scratch[k % len] - mean) * scale;
-                course.line[at] = course.line[at] * keep + x;
+            // A sample `j` back in the bridge's line comes out in `bridge - j` samples, and one
+            // `j` back in the neck's goes over to the bridge's, inverted, `neck - j` from now.
+            let bridge = course.bridge_delay as isize;
+            let neck = course.neck_delay as isize;
+            for j in 1..=bridge + 3 {
+                let at = course.bridge.at(j as usize);
+                course.bridge.samples[at] = course.bridge.samples[at] * keep + wave(bridge - j);
+            }
+            for j in 1..=neck {
+                let at = course.neck.at(j as usize);
+                course.neck.samples[at] = course.neck.samples[at] * keep - wave(neck - j + bridge);
             }
             course.last *= keep;
         }
@@ -409,6 +499,8 @@ impl Monochord {
             self.dc = [(0.0, 0.0); 2];
             return;
         }
+        let lerp = |(lo, hi): (f32, f32)| lo + (hi - lo) * self.bow;
+        let (speed, grip) = (lerp(BOW_SPEED), lerp(BOW_GRIP));
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             if self.clock.is_multiple_of(CONTROL_PERIOD) {
                 self.update_control();
@@ -419,25 +511,31 @@ impl Monochord {
                 if !voice.sounding {
                     continue;
                 }
-                let target = if voice.held {
-                    self.bow * voice.velocity
+                let target = if voice.held && self.bow > 0.0 {
+                    1.0
                 } else {
                     0.0
                 };
                 voice.bow = target + (voice.bow - target) * self.bow_coef;
+                let bow = (voice.bow > 1e-3).then(|| {
+                    let waver = 1.0 + BOW_WAVER * self.noise.next();
+                    (speed * voice.bow * voice.velocity * waver, grip)
+                });
                 let strings = voice.strings;
-                let bow = BOW_LEVEL * voice.bow;
-                if bow > 0.0 {
-                    voice.rosin += voice.rosin_coef * (self.noise.next() - voice.rosin);
-                }
-                let rosin = bow * voice.rosin * voice.rosin_gain;
                 let mut sum = [0.0; 2];
                 for (c, course) in voice.courses[..strings].iter_mut().enumerate() {
-                    let input = rosin * course.feed;
-                    // A loud string hits the bridge and plays shorter.
-                    let delay =
-                        (course.delay * (1.0 - voice.buzz * course.last.abs().min(1.0))).max(2.0);
-                    sum[c] = course.tick(delay, voice.damping, course.loss, input);
+                    let x = course.tick(voice.damping, voice.buzz, bow);
+                    // Tilted as far as the bow's on the string; a pluck rings as it is.
+                    let tilt = &mut voice.tilt[c];
+                    *tilt += voice.tilt_coef * (x - *tilt);
+                    sum[c] = x + voice.bow * (BOW_LIFT * *tilt - x);
+                }
+                let mut click = 0.0;
+                if voice.click > SILENCE {
+                    let noise = self.noise.next();
+                    click = voice.click * voice.click_level * (noise - voice.click_last);
+                    voice.click_last = noise;
+                    voice.click *= self.click_coef;
                 }
                 let fade = voice.fade;
                 if voice.choked {
@@ -449,6 +547,7 @@ impl Monochord {
                 } else {
                     (sum[0], sum[0])
                 };
+                let (a, b) = (a + click, b + click);
                 voice.peak = voice.peak.max(a.abs()).max(b.abs());
                 out_l += a * fade;
                 out_r += b * fade;
@@ -587,6 +686,9 @@ mod tests {
         let x = play(&mut m, &[on(57)], 2.0);
         let (early, late) = (rms(&x[9_600..19_200]), rms(&x[86_400..]));
         assert!(late > 0.02 && late > early * 0.7, "{early} then {late}");
+        // The bow drags the string round at its own pitch.
+        let heard = pitch_of(&x[48_000..], midi_to_hz(57));
+        assert!(cents(heard, midi_to_hz(57)).abs() < 10.0, "{heard} Hz");
         let off = Event {
             offset: 0,
             kind: EventKind::NoteOff { pitch: 57 },
@@ -597,13 +699,14 @@ mod tests {
 
     #[test]
     fn every_model_stays_steady_at_its_most_extreme() {
-        for model in 0..3 {
+        for (model, bow) in (0..3).flat_map(|m| [(m, 0.0), (m, 1.0)]) {
             let mut m = string(&[
                 (MODEL, model as f32),
                 (PLUCK, 1.0),
                 (DECAY, 20.0),
                 (TONE, 1.0),
                 (POSITION, 0.02),
+                (BOW, bow),
             ]);
             let chord: Vec<Event> = [28, 40, 52, 64, 76, 88, 100, 112, 124]
                 .into_iter()
@@ -611,10 +714,16 @@ mod tests {
                 .collect();
             let x = play(&mut m, &chord, 4.0);
             let peak = x.iter().fold(0.0f32, |p, x| p.max(x.abs()));
-            assert!(peak.is_finite() && peak < 4.0, "model {model}: {peak}");
             assert!(
-                rms(&x[168_000..]) <= rms(&x[..24_000]),
-                "model {model} grows"
+                peak.is_finite() && peak < 4.0,
+                "model {model}, bow {bow}: {peak}"
+            );
+            // Plucked, it only fades; bowed, it swells for a second or two, then holds.
+            let (early, late) = (rms(&x[24_000..48_000]), rms(&x[168_000..]));
+            let most = if bow > 0.0 { 2.5 } else { 1.0 };
+            assert!(
+                late <= early * most,
+                "model {model}, bow {bow}: {early} then {late}"
             );
         }
     }
