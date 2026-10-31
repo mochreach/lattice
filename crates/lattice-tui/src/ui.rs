@@ -265,10 +265,37 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
     ])
 }
 
+/// Width of a track's column in a folded group: a hit's glyph.
+const FOLDED: usize = 2;
+
+/// The width of track `index`'s column.
+fn column_width(editor: &Editor, index: usize) -> usize {
+    let folded = editor
+        .grid
+        .group_of(index)
+        .is_some_and(|g| editor.grid.groups[g].folded);
+    if folded { FOLDED } else { CELL }
+}
+
+/// How many of these columns fit in `room`, each with its gap; at least one.
+fn fitting(widths: &[usize], room: usize) -> usize {
+    let mut used = 0;
+    let n = widths
+        .iter()
+        .take_while(|&&w| {
+            used += w + 1;
+            used <= room
+        })
+        .count();
+    n.max(1)
+}
+
 /// What one track column shows this frame.
 struct Column<'a> {
     index: usize,
     track: &'a Track,
+    /// [`CELL`], or [`FOLDED`] in a folded group.
+    width: usize,
     /// Written or realised, depending on the view.
     shown: Vec<Step>,
     /// Rows covered by an earlier note's length.
@@ -295,6 +322,7 @@ impl<'a> Column<'a> {
     fn new(
         index: usize,
         track: &'a Track,
+        width: usize,
         editor: &Editor,
         status: &Status,
         theme: &Theme,
@@ -321,6 +349,7 @@ impl<'a> Column<'a> {
         Self {
             index,
             track,
+            width,
             shown,
             tails,
             playhead: position.map(|(step, _)| step),
@@ -341,9 +370,11 @@ fn draw_grid(
     view: &mut ViewState,
 ) {
     let tracks = editor.grid.tracks.len();
+    let widths: Vec<usize> = (0..tracks).map(|i| column_width(editor, i)).collect();
     // One column spare for the arrow that shows there are more tracks.
-    let fits = ((area.width as usize).saturating_sub(GUTTER + 1) / (CELL + 1)).max(1);
-    scroll_tracks(view, editor.cursor().track, fits, tracks);
+    let room = (area.width as usize).saturating_sub(GUTTER + 1);
+    scroll_tracks(view, editor.cursor().track, &widths, room);
+    let fits = fitting(&widths[view.first_track..], room);
     let columns: Vec<Column> = editor
         .grid
         .tracks
@@ -351,7 +382,7 @@ fn draw_grid(
         .enumerate()
         .skip(view.first_track)
         .take(fits)
-        .map(|(i, t)| Column::new(i, t, editor, status, theme, view.meters[i]))
+        .map(|(i, t)| Column::new(i, t, widths[i], editor, status, theme, view.meters[i]))
         .collect();
     let hidden = (view.first_track > 0, view.first_track + fits < tracks);
     let mut lines: Vec<_> = group_line(&columns, &editor.grid.groups, theme)
@@ -369,14 +400,17 @@ fn draw_grid(
     frame.render_widget(Paragraph::new(lines), area);
 }
 
-/// Keeps the cursor's track on screen when there are more tracks than fit.
-fn scroll_tracks(view: &mut ViewState, cursor: usize, fits: usize, tracks: usize) {
-    if cursor < view.first_track {
-        view.first_track = cursor;
-    } else if cursor >= view.first_track + fits {
-        view.first_track = cursor + 1 - fits;
+/// Keeps the cursor's track on screen when there are more tracks than fit in `room`, given each
+/// column's width, and fills the screen when there's space to the right.
+fn scroll_tracks(view: &mut ViewState, cursor: usize, widths: &[usize], room: usize) {
+    let first = &mut view.first_track;
+    *first = (*first).min(cursor);
+    while *first < cursor && fitting(&widths[*first..], room) <= cursor - *first {
+        *first += 1;
     }
-    view.first_track = view.first_track.min(tracks.saturating_sub(fits));
+    while *first > 0 && fitting(&widths[*first - 1..], room) == widths.len() - (*first - 1) {
+        *first -= 1;
+    }
 }
 
 /// Keeps the cursor on screen, or the playhead when following playback.
@@ -409,36 +443,39 @@ fn group_line(columns: &[Column], groups: &[Group], theme: &Theme) -> Option<Lin
         return None;
     }
     let mut spans = vec![Span::raw(" ".repeat(GUTTER))];
-    for c in columns {
+    let mut k = 0;
+    while k < columns.len() {
+        let c = &columns[k];
         let Some(group) = groups.iter().find(|g| g.contains(c.index)) else {
-            spans.push(Span::raw(" ".repeat(CELL + 1)));
+            spans.push(Span::raw(" ".repeat(c.width + 1)));
+            k += 1;
             continue;
         };
-        let first = c.index == group.first;
-        let last = c.index + 1 == group.first + group.len;
-        // The cell and the gap after it, so the bracket runs unbroken across the group.
-        let mut bar: Vec<char> = "─".repeat(CELL + 1).chars().collect();
-        if first {
-            bar[0] = '╭';
-        }
-        if last {
-            bar[CELL - 1] = '╮';
-            bar[CELL] = ' ';
-        }
-        let bar: String = bar.into_iter().collect();
-        if first {
-            let name = fit(&format!(" {} ", group.name.to_uppercase()), CELL - 3);
-            let name = name.trim_end().to_string() + " ";
-            let rest: String = bar.chars().skip(2 + name.chars().count()).collect();
-            spans.push(Span::styled(
-                bar.chars().take(2).collect::<String>(),
-                theme.dim,
-            ));
-            spans.push(Span::styled(name, theme.text.add_modifier(Modifier::BOLD)));
-            spans.push(Span::styled(rest, theme.dim));
-        } else {
-            spans.push(Span::styled(bar, theme.dim));
-        }
+        // The group's columns on screen, drawn as one bracket so its name fits however narrow
+        // they are.
+        let span: Vec<&Column> = columns[k..]
+            .iter()
+            .take_while(|c| group.contains(c.index))
+            .collect();
+        let width: usize = span.iter().map(|c| c.width + 1).sum::<usize>() - 1;
+        let opens = c.index == group.first;
+        let closes = span
+            .last()
+            .is_some_and(|c| c.index + 1 == group.first + group.len);
+        let start = if opens { "╭─" } else { "──" };
+        let end = if closes { "╮" } else { "─" };
+        let fold = if group.folded { " ▸" } else { "" };
+        let name = format!(" {}{fold} ", group.name.to_uppercase());
+        let name = fit(&name, width.saturating_sub(3)).trim_end().to_string() + " ";
+        let used = 2 + name.chars().count() + 1;
+        spans.push(Span::styled(start, theme.dim));
+        spans.push(Span::styled(name, theme.text.add_modifier(Modifier::BOLD)));
+        spans.push(Span::styled(
+            "─".repeat(width.saturating_sub(used)) + end,
+            theme.dim,
+        ));
+        spans.push(Span::raw(if closes { " " } else { "─" }));
+        k += span.len();
     }
     Some(Line::from(spans))
 }
@@ -451,7 +488,10 @@ fn header_lines(
     (left, right): (bool, bool),
     theme: &Theme,
 ) -> Vec<Line<'static>> {
-    let cell = |text: String, style: Style| Span::styled(format!("{} ", fit(&text, CELL)), style);
+    let cell = |c: &Column, text: String, style: Style| {
+        Span::styled(format!("{} ", fit(&text, c.width)), style)
+    };
+    let blank = |c: &Column| vec![Span::raw(" ".repeat(c.width + 1))];
     let line = |cells: Vec<Span<'static>>| {
         let mut spans = vec![Span::raw(" ".repeat(GUTTER))];
         spans.extend(cells);
@@ -473,7 +513,7 @@ fn header_lines(
                     _ => (" ", Style::new()),
                 };
                 [
-                    Span::styled(fit(&c.track.name.to_uppercase(), CELL - 1), style),
+                    Span::styled(fit(&c.track.name.to_uppercase(), c.width - 1), style),
                     Span::styled(format!("{flag} "), flag_style.add_modifier(Modifier::BOLD)),
                 ]
             })
@@ -492,20 +532,27 @@ fn header_lines(
                 .iter()
                 .map(|c| {
                     let pass = c.pass.map(|p| format!(" · pass {p}")).unwrap_or_default();
-                    cell(format!("{}{pass}", c.track.steps.len()), theme.dim)
+                    cell(c, format!("{}{pass}", c.track.steps.len()), theme.dim)
+                })
+                .collect(),
+        ),
+        // Folded, there's no room for the level and pan; the mixer page has them.
+        line(
+            columns
+                .iter()
+                .flat_map(|c| match c.width {
+                    FOLDED => blank(c),
+                    w => spaced(bars::level(c.track.mix.level, w, c.style(), theme)),
                 })
                 .collect(),
         ),
         line(
             columns
                 .iter()
-                .flat_map(|c| spaced(bars::level(c.track.mix.level, CELL, c.style(), theme)))
-                .collect(),
-        ),
-        line(
-            columns
-                .iter()
-                .flat_map(|c| spaced(bars::pan(c.track.mix.pan, CELL, c.style(), theme)))
+                .flat_map(|c| match c.width {
+                    FOLDED => blank(c),
+                    w => spaced(bars::pan(c.track.mix.pan, w, c.style(), theme)),
+                })
                 .collect(),
         ),
     ];
@@ -520,9 +567,11 @@ fn header_lines(
             columns
                 .iter()
                 .map(|c| match c.track.rules.get(k) {
-                    Some(rule) => cell(rule.to_string(), Style::new().fg(c.colour)),
-                    None if k == 0 => cell("no rules".into(), theme.faint),
-                    None => cell(String::new(), Style::new()),
+                    // Folded, a mark for each rule.
+                    Some(_) if c.width == FOLDED => cell(c, "r".into(), Style::new().fg(c.colour)),
+                    Some(rule) => cell(c, rule.to_string(), Style::new().fg(c.colour)),
+                    None if k == 0 && c.width != FOLDED => cell(c, "no rules".into(), theme.faint),
+                    None => cell(c, String::new(), Style::new()),
                 })
                 .collect(),
         ));
@@ -530,7 +579,7 @@ fn header_lines(
     lines.push(line(
         columns
             .iter()
-            .flat_map(|c| spaced(bars::meter(c.meter, CELL, c.colour, theme)))
+            .flat_map(|c| spaced(bars::meter(c.meter, c.width, c.colour, theme)))
             .collect(),
     ));
     lines
@@ -577,11 +626,25 @@ fn grid_row(
     for c in columns {
         let i = c.index;
         let Some(step) = c.shown.get(row) else {
-            spans.push(Span::styled(" ".repeat(CELL + 1), band));
+            spans.push(Span::styled(" ".repeat(c.width + 1), band));
             continue;
         };
 
         let (text, mut style) = match step.note {
+            // Folded: a hit, by how hard.
+            Some(note) if c.width == FOLDED => {
+                let glyph = match note.velocity {
+                    110.. => "●",
+                    80.. => "•",
+                    _ => "∙",
+                };
+                let mut style = Style::new().fg(c.colour);
+                if !c.audible {
+                    style = style.add_modifier(Modifier::DIM);
+                }
+                (format!(" {glyph}"), style)
+            }
+            None if c.width == FOLDED && !c.tails[row] => (" ·".into(), theme.faint),
             Some(note) => {
                 let length = if note.length > 1 {
                     note.length.to_string()
@@ -627,7 +690,7 @@ fn grid_row(
             style = style.bg(theme.selection);
         }
 
-        spans.push(Span::styled(fit(&text, CELL), style));
+        spans.push(Span::styled(fit(&text, c.width), style));
         spans.push(Span::styled(" ", band));
     }
     Line::from(spans)
@@ -771,14 +834,23 @@ mod tests {
     #[test]
     fn tracks_scroll_to_keep_the_cursor_in_view() {
         let mut view = ViewState::default();
-        scroll_tracks(&mut view, 5, 3, 8);
+        let room = 3 * (CELL + 1);
+        let widths = [CELL; 8];
+        scroll_tracks(&mut view, 5, &widths, room);
         assert_eq!(view.first_track, 3);
-        scroll_tracks(&mut view, 4, 3, 8);
+        scroll_tracks(&mut view, 4, &widths, room);
         assert_eq!(view.first_track, 3, "still in view");
-        scroll_tracks(&mut view, 1, 3, 8);
+        scroll_tracks(&mut view, 1, &widths, room);
         assert_eq!(view.first_track, 1);
-        scroll_tracks(&mut view, 1, 3, 2);
+        scroll_tracks(&mut view, 1, &widths[..2], room);
         assert_eq!(view.first_track, 0, "everything fits again");
+
+        // Folded columns take less room, so more fit.
+        let mut widths = [CELL; 8];
+        widths[1..5].fill(FOLDED);
+        assert_eq!(fitting(&widths, room), 6);
+        scroll_tracks(&mut view, 6, &widths, room);
+        assert_eq!(view.first_track, 1);
     }
 
     #[test]

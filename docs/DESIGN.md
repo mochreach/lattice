@@ -160,10 +160,13 @@ Planned next: choke between drums, which comes with groups.
 A group is a named run of adjacent tracks, such as a drum kit with one drum on each track. Each
 track stays a real track, with its own rules, length and strip; the group adds:
 
-- **Folding.** A folded group narrows each of its tracks to two cells and shows each hit as a
-  glyph, like a drum machine's step view, so a kit takes little room. Editing still works folded:
-  the cursor moves between the narrow columns, and entering a step adds a hit at that drum's
-  note and velocity. `tz` folds and unfolds, borrowing Helix's `z` for view.
+- **Folding (done).** A folded group narrows each of its tracks to two cells and shows each hit
+  as a glyph by velocity (`●` 110 and up, `•` 80 and up, `∙` below), like a drum machine's step
+  view, so a kit takes little room. The header keeps each track's initial, length, a mark per
+  rule and its meter; level and pan are on the mixer page. Editing works folded as unfolded: the
+  cursor moves between the narrow columns. `tz` folds and unfolds, borrowing Helix's `z` for
+  view, and is undoable, as the fold is saved with the song. The pattern page lays columns out by
+  their widths, scrolling so the cursor's track stays in view.
 - **A group bus (done).** The group's tracks mix into a strip of their own, with a level and an
   effect chain, before the master: a drum bus for compression and drive. The mixer page shows
   each group's bus after the tracks, beside the send and master buses, in its first track's

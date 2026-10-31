@@ -1,5 +1,5 @@
 //! Grouping tracks: `tg` groups the tracks the selections reach, or ungroups the group they're
-//! in, and `:group-name` renames it.
+//! in, `tz` folds and unfolds it, and `:group-name` renames it.
 
 use lattice_core::{Group, MAX_GROUPS};
 
@@ -44,6 +44,27 @@ impl Editor {
             .groups
             .insert(at, Group::new(name, first..last + 1));
         vec![Effect::MixerChanged]
+    }
+
+    /// Folds or unfolds every group the selections reach.
+    pub(crate) fn toggle_fold(&mut self) -> Vec<Effect> {
+        let mut groups: Vec<usize> = self
+            .selected_tracks()
+            .into_iter()
+            .filter_map(|t| self.grid.group_of(t))
+            .collect();
+        groups.dedup();
+        if groups.is_empty() {
+            self.message = Some("only groups fold; tg makes one".into());
+            return vec![];
+        }
+        // Together: if any is unfolded, they all fold.
+        let fold = groups.iter().any(|&g| !self.grid.groups[g].folded);
+        self.checkpoint();
+        for g in groups {
+            self.grid.groups[g].folded = fold;
+        }
+        vec![]
     }
 
     /// Renames the group the cursor's track is in.
@@ -137,6 +158,17 @@ mod tests {
         assert_eq!(bus.effects.len(), 1);
         keys(&mut e, "u");
         assert!(e.grid.groups[0].bus.effects.is_empty(), "undoable");
+    }
+
+    #[test]
+    fn tz_folds_and_unfolds() {
+        let mut e = editor();
+        keys(&mut e, "tz");
+        assert!(e.message.as_deref().unwrap().contains("only groups fold"));
+        keys(&mut e, "vltg\x1btz");
+        assert!(e.grid.groups[0].folded);
+        keys(&mut e, "tz");
+        assert!(!e.grid.groups[0].folded);
     }
 
     #[test]

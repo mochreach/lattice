@@ -976,6 +976,7 @@ impl Editor {
             Action::MoveTrackLeft => return self.run_command("track-move -1"),
             Action::MoveTrackRight => return self.run_command("track-move 1"),
             Action::ToggleGroup => return self.toggle_group(),
+            Action::ToggleFold => return self.toggle_fold(),
             Action::GotoMixer => {
                 self.page = Page::Mixer;
                 self.mode = Mode::Normal;

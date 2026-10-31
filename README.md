@@ -61,6 +61,7 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `ty`, `td` | copy the tracks the selections reach; remove them, copying them first |
 | `tp` `tP` | paste copied tracks after / before this one, with their notes, rules, mix and instrument |
 | `tg` | group the tracks the selections reach (from the first to the last), or ungroup the group they're in; a group's tracks mix into its bus, a strip on the mixer page with a level and effects |
+| `tz` | fold or unfold the groups the selections reach: each track narrows to a column of hits (`●` `•` `∙` by velocity), like a drum machine's steps |
 | `;` `A-;` | collapse the selection, flip which end the cursor is |
 
 | Multiple selections | |
@@ -132,8 +133,7 @@ meter in place of the underline. Muted tracks, and tracks silenced by another's 
 Every track can send to a delay on the send bus; sends start off.
 
 The **mixer page** (`gm`) has a strip for each track, each group's bus, and the send and master
-buses: level,
-pan, send, a meter, its instrument and its effects. The settings of the instrument or effect
+buses: level, pan, send, a meter, its instrument and its effects. The settings of the instrument or effect
 under the cursor show just below it. `h j k l` move, `^a` `^x` nudge the value under the cursor
 (with counts, so `10^a`), `c` types an exact one (or, on the instrument, another instrument),
 `:fx-add delay` (or `drive`, `comp`) adds an effect after the cursor and `d` removes it. `tm` `ts` still mute and

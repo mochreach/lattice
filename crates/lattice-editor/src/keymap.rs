@@ -137,6 +137,8 @@ pub enum Action {
     MoveTrackRight,
     /// Group the tracks the selections reach, or ungroup the group they're in.
     ToggleGroup,
+    /// Fold or unfold the groups the selections reach.
+    ToggleFold,
     TogglePlay,
     ToggleView,
     Quit,
@@ -215,6 +217,7 @@ impl Action {
             Action::MoveTrackLeft => "move track left",
             Action::MoveTrackRight => "move track right",
             Action::ToggleGroup => "group / ungroup tracks",
+            Action::ToggleFold => "fold / unfold group",
             Action::TogglePlay => "play / stop",
             Action::ToggleView => "written or playing pattern",
             Action::Quit => "quit",
@@ -343,6 +346,7 @@ impl Default for Keymap {
                 (Char('h'), MoveTrackLeft),
                 (Char('l'), MoveTrackRight),
                 (Char('g'), ToggleGroup),
+                (Char('z'), ToggleFold),
             ],
         };
 
