@@ -7,6 +7,7 @@ mod key_log;
 mod keys;
 mod mixer;
 mod mixer_page;
+mod splash;
 mod theme;
 mod tracks;
 mod ui;
@@ -26,6 +27,7 @@ use ratatui::crossterm::{execute, terminal};
 
 use crate::export::Exports;
 use crate::mixer::Mixer;
+use crate::splash::Splash;
 use crate::theme::Theme;
 use crate::tracks::Tracks;
 
@@ -92,6 +94,7 @@ fn main() -> Result<()> {
         )
         .is_ok();
     editor.releases = enhanced;
+    let splash = (!args.iter().any(|a| a == "--no-splash")).then(|| Splash::new(Instant::now()));
     let result = run(
         &mut terminal,
         &mut editor,
@@ -100,6 +103,7 @@ fn main() -> Result<()> {
         &mut exports,
         &mut audio.handle,
         &theme,
+        splash,
     );
     if enhanced {
         let _ = execute!(std::io::stdout(), PopKeyboardEnhancementFlags);
@@ -108,6 +112,7 @@ fn main() -> Result<()> {
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run(
     terminal: &mut DefaultTerminal,
     editor: &mut Editor,
@@ -116,6 +121,7 @@ fn run(
     exports: &mut Exports,
     handle: &mut Handle,
     theme: &Theme,
+    mut splash: Option<Splash>,
 ) -> Result<()> {
     let mut view = ui::ViewState::default();
     let mut playhead = Playhead::default();
@@ -124,7 +130,17 @@ fn run(
         exports.poll(editor);
         // Watched every frame, so it sees each step start within a frame of it.
         editor.set_transport(playhead.transport(handle.status(), editor, Instant::now()));
-        terminal.draw(|frame| ui::draw(frame, editor, handle.status(), theme, &mut view))?;
+        let now = Instant::now();
+        if splash.as_ref().is_some_and(|s| s.done(now)) {
+            splash = None;
+        }
+        terminal.draw(|frame| {
+            ui::draw(frame, editor, handle.status(), theme, &mut view);
+            if let Some(splash) = &splash {
+                let area = frame.area();
+                splash.draw(frame.buffer_mut(), area, theme, now);
+            }
+        })?;
 
         if !event::poll(FRAME)? {
             continue;
@@ -134,6 +150,11 @@ fn run(
             if let Event::Key(event) = event::read()?
                 && let Some(key) = keys::convert(event)
             {
+                // A key skips the opening, and does nothing else. Only a press: the release of
+                // the Enter that started Lattice comes through too.
+                if event.kind == KeyEventKind::Press && splash.take().is_some() {
+                    break;
+                }
                 let now = Instant::now();
                 editor.set_transport(playhead.transport(handle.status(), editor, now));
                 let effects = match event.kind {

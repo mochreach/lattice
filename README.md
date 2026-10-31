@@ -23,7 +23,7 @@ What we learned from it, and the plan for this version, are in
 ```sh
 nix develop               # or bring your own Rust toolchain plus alsa-lib
 cargo test
-cargo run --release       # opens the tracker with a demo song; add `-- --no-click` to mute the metronome, `-- --show-keys` to show keys as they're pressed
+cargo run --release       # opens the tracker with a demo song; add `-- --no-click` to mute the metronome, `-- --show-keys` to show keys as they're pressed, `-- --no-splash` to skip the opening animation (any key skips it too)
 cargo run --release -- song.lattice   # opens a song, or starts a new one there
 ```
 
