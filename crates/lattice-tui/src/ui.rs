@@ -784,6 +784,7 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
 
     let notes = match editor.keymap.layout {
         NoteLayout::Piano => "z–m q–u notes".to_string(),
+        NoteLayout::Scale => format!("{} notes", editor.scale_name()),
         layout => format!("{} notes", layout.name()),
     };
     let (hints, style) = match &editor.mode {

@@ -103,7 +103,9 @@ octave, `q`–`u` an octave up, and `[` `]` change the octave. `:layout` lays th
 isomorphically instead, over all four rows from `z` (C) to `=`, so a chord has the same shape
 wherever you play it: `wicki` (Wicki–Hayden: a tone to the right, a fourth up-left, a fifth
 up-right, three octaves across the keyboard) or `fourths` (a semitone to the right, a fourth a row
-up, as on a guitar); `:layout piano` goes back. Each note is entered and the cursor
+up, as on a guitar). `:layout scale` plays only the notes of the pads' scale (`:scale`), from its
+root at `z`: the next note of the scale to the right and about a fourth a row up, as in Push's
+"in key" mode, so nothing is out of key. `:layout piano` goes back. Each note is entered and the cursor
 moves on. `⌫` clears a step, and `esc` returns to normal mode. In a terminal that reports key
 releases (see below), a note sounds for as long as you hold its key, so a bowed string or a pad
 sustains under your finger, and chords ring together; elsewhere you hear a short blip.
@@ -148,7 +150,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:bpm N`, `:step N`, `:oct N` | tempo, auto-step, keyboard octave |
 | `:click`, `:follow` | toggle the metronome, following the playhead |
 | `:rec` | toggle recording, like `R` |
-| `:layout NAME` | how notes lie on the keyboard in insert mode: `piano`, `wicki` or `fourths` |
+| `:layout NAME` | how notes lie on the keyboard in insert mode: `piano`, `wicki`, `fourths` or `scale` |
 | `:vel N`, `:scale NAME [ROOT]` | the velocity notes are played and entered at (1–127); the scale the numpad's pads play outside a group |
 | `:count N` | bars counted in before recording (0–4, 0 for none; 1 to start) |
 | `:keys` | toggle showing the keys as they're pressed, above the status line, for screencasts |

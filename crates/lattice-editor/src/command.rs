@@ -293,7 +293,7 @@ pub const COMMANDS: &[Spec] = &[
         name: "layout",
         alias: None,
         params: &[text("LAYOUT", "layout")],
-        describe: "how notes lie on the keyboard in insert mode: piano, wicki (Wicki-Hayden) or fourths",
+        describe: "how notes lie on the keyboard in insert mode: piano, wicki (Wicki-Hayden), fourths, or scale (only the notes of :scale)",
     },
     Spec {
         name: "vel",
@@ -901,10 +901,12 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             let layout = NoteLayout::ALL
                 .into_iter()
                 .find(|l| l.name() == name)
-                .ok_or_else(|| format!("no layout {name}: try piano, wicki or fourths"))?;
-            editor.keymap.piano = layout.keys();
-            editor.keymap.layout = layout;
-            editor.message = Some(format!("notes laid out as {name}"));
+                .ok_or_else(|| format!("no layout {name}: try piano, wicki, fourths or scale"))?;
+            editor.lay_out_keys(layout);
+            editor.message = Some(match layout {
+                NoteLayout::Scale => format!("notes laid out in {}", editor.scale_name()),
+                _ => format!("notes laid out as {name}"),
+            });
             Ok(vec![])
         }
         "vel" => {

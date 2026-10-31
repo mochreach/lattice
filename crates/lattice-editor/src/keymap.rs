@@ -3,6 +3,8 @@
 use std::collections::HashMap;
 use std::fmt;
 
+use crate::pads::{SCALES, Scale};
+
 /// A key press, independent of any terminal library. Shifted letters arrive as uppercase chars.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Key {
@@ -303,34 +305,58 @@ pub enum NoteLayout {
     Wicki,
     /// As on a guitar or LinnStrument: a semitone to the right and a fourth a row up.
     Fourths,
+    /// Only the notes of the pads' scale (`:scale`), from its root, as in Push's "in key" mode:
+    /// the next note of the scale to the right, and about a fourth in its steps a row up.
+    Scale,
 }
 
 impl NoteLayout {
-    pub const ALL: [NoteLayout; 3] = [NoteLayout::Piano, NoteLayout::Wicki, NoteLayout::Fourths];
+    pub const ALL: [NoteLayout; 4] = [
+        NoteLayout::Piano,
+        NoteLayout::Wicki,
+        NoteLayout::Fourths,
+        NoteLayout::Scale,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
             NoteLayout::Piano => "piano",
             NoteLayout::Wicki => "wicki",
             NoteLayout::Fourths => "fourths",
+            NoteLayout::Scale => "scale",
         }
     }
 
-    /// Key → semitones above the keyboard octave's C.
-    pub fn keys(self) -> HashMap<char, u8> {
-        let (across, up) = match self {
-            NoteLayout::Piano => return PIANO.into_iter().collect(),
-            NoteLayout::Wicki => (2, 5),
-            NoteLayout::Fourths => (1, 5),
+    /// Key → semitones above the keyboard octave's C. Only [`NoteLayout::Scale`] uses `scale`
+    /// and its `root` (semitones above C).
+    pub fn keys(self, scale: &Scale, root: u8) -> HashMap<char, u8> {
+        let grid = |up: usize, across: usize, pitch: &dyn Fn(usize) -> u8| -> HashMap<char, u8> {
+            ROWS.iter()
+                .enumerate()
+                .flat_map(|(row, keys)| {
+                    keys.chars()
+                        .enumerate()
+                        .map(move |(col, c)| (c, row * up + col * across))
+                })
+                .map(|(c, n)| (c, pitch(n)))
+                .collect()
         };
-        ROWS.iter()
-            .enumerate()
-            .flat_map(|(row, keys)| {
-                keys.chars()
-                    .enumerate()
-                    .map(move |(col, c)| (c, (row * up + col * across) as u8))
-            })
-            .collect()
+        let semitones = |n: usize| n as u8;
+        match self {
+            NoteLayout::Piano => PIANO.into_iter().collect(),
+            NoteLayout::Wicki => grid(5, 2, &semitones),
+            NoteLayout::Fourths => grid(5, 1, &semitones),
+            NoteLayout::Scale => {
+                // A fourth is 5 of 12 semitones: 3 steps of a seven-note scale, 2 of five or six
+                // (rounding a half down, as blues' third step is a tritone).
+                let steps = scale.steps;
+                let up = (steps.len() * 5 + 5) / 12;
+                grid(up, 1, &|degree| {
+                    let octave = (degree / steps.len()) as u8;
+                    root + steps[degree % steps.len()] + 12 * octave
+                })
+            }
+        }
     }
 }
 
@@ -488,7 +514,7 @@ impl Default for Keymap {
         Self {
             normal,
             insert,
-            piano: NoteLayout::Piano.keys(),
+            piano: NoteLayout::Piano.keys(&SCALES[0], 0),
             layout: NoteLayout::Piano,
         }
     }
@@ -500,7 +526,7 @@ mod tests {
 
     #[test]
     fn isomorphic_layouts_keep_their_intervals_everywhere() {
-        let wicki = NoteLayout::Wicki.keys();
+        let wicki = NoteLayout::Wicki.keys(&SCALES[0], 0);
         // z is C; right a tone, up-left (a) a fourth, up-right (s) a fifth.
         assert_eq!(
             [wicki[&'z'], wicki[&'x'], wicki[&'a'], wicki[&'s']],
@@ -510,12 +536,27 @@ mod tests {
         assert_eq!([wicki[&'a'], wicki[&'d'], wicki[&'w']], [5, 9, 12]);
         assert_eq!(wicki[&'='], 37);
 
-        let fourths = NoteLayout::Fourths.keys();
+        let fourths = NoteLayout::Fourths.keys(&SCALES[0], 0);
         assert_eq!(
             [fourths[&'z'], fourths[&'x'], fourths[&'a'], fourths[&'q']],
             [0, 1, 5, 10]
         );
         // Octave keys stay octave keys.
         assert!(!wicki.contains_key(&'[') && !fourths.contains_key(&']'));
+    }
+
+    #[test]
+    fn the_scale_layout_plays_only_the_scale() {
+        // A minor: A B C D E F G, then up a row is three steps, a fourth.
+        let minor = NoteLayout::Scale.keys(&SCALES[1], 9);
+        let row: Vec<_> = "zxcvbnm,".chars().map(|c| minor[&c]).collect();
+        assert_eq!(row, [9, 11, 12, 14, 16, 17, 19, 21]);
+        assert_eq!(minor[&'a'], 14);
+        // Pentatonic: up a row is two steps.
+        let pentatonic = NoteLayout::Scale.keys(&SCALES[4], 0);
+        assert_eq!(
+            [pentatonic[&'z'], pentatonic[&'a'], pentatonic[&'q']],
+            [0, 4, 9]
+        );
     }
 }

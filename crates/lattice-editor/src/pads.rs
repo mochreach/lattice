@@ -7,7 +7,7 @@
 
 use lattice_core::{DRUM_ROOT, Note};
 
-use crate::{Editor, Effect, Key, Mode};
+use crate::{Editor, Effect, Key, Mode, NoteLayout};
 
 /// What `/` `*` `-` set the velocity to.
 pub const SOFT: u8 = 60;
@@ -247,11 +247,20 @@ impl Editor {
         };
         self.scale = scale;
         self.root = root;
+        if self.keymap.layout == NoteLayout::Scale {
+            self.lay_out_keys(NoteLayout::Scale);
+        }
         self.message = Some(format!(
             "pads play {} {name}",
             NOTE_NAMES[usize::from(root)]
         ));
         Ok(())
+    }
+
+    /// Lays the notes out on the keyboard for insert mode.
+    pub(crate) fn lay_out_keys(&mut self, layout: NoteLayout) {
+        self.keymap.piano = layout.keys(&SCALES[self.scale], self.root);
+        self.keymap.layout = layout;
     }
 
     /// The scale the pads play, as `C major`.
@@ -427,5 +436,25 @@ mod tests {
             .filter(|&s| e.grid.tracks[0].steps[s].note.is_some())
             .collect();
         assert_eq!(hits, [3, 4, 6, 8]);
+    }
+
+    #[test]
+    fn the_scale_layout_follows_the_scale() {
+        let mut e = editor();
+        command(&mut e, "layout scale");
+        command(&mut e, "scale minor A");
+        assert_eq!(e.keymap.layout, NoteLayout::Scale);
+        e.handle(Key::Char('i'));
+        for c in "zxc".chars() {
+            e.handle(Key::Char(c));
+        }
+        let pitches: Vec<_> = e.grid.tracks[0].steps[..3]
+            .iter()
+            .map(|s| s.note.unwrap().pitch)
+            .collect();
+        assert_eq!(pitches, [69, 71, 72]);
+        // [ and ] still change octave.
+        assert!(e.handle(Key::Char('[')).is_empty());
+        assert_eq!(e.octave, 3);
     }
 }

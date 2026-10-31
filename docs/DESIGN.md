@@ -262,6 +262,9 @@ track stays a real track, with its own rules, length and strip; the group adds:
   with a grid over the four rows (`NoteLayout`): a key's pitch is `row * 5 + column * step`, a
   step of 2 (Wicki–Hayden, where the rows' leftward stagger makes up-left a fourth and up-right
   a fifth) or 1 (fourths, as on a guitar). `[` `]` are left out so they still change octave.
+  `:layout scale` is the same grid in the steps of the pads' scale rather than semitones, from
+  its root: a step to the right, and a row up the number of steps nearest a fourth (3 of seven
+  notes, 2 of five or six). Setting `:scale` lays the keys out again.
 - **Note repeat (done).** Holding the numpad's `0` makes the pads played meanwhile repeat, every
   1, 2 or 4 steps (`.`), as on an MPC. The editor emits `Effect::Repeat`, held like a note key's
   preview, and the engine's `Command::Repeat` is a preview with an `every`: it plays it again on
