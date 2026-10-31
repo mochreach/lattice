@@ -140,8 +140,19 @@ pub struct Svf {
 impl Svf {
     /// Low-pass output. `resonance` runs from 0 to just under 1.
     pub fn lowpass(&mut self, input: f32, cutoff: f32, resonance: f32, sample_rate: f32) -> f32 {
+        self.tick(input, cutoff, resonance, sample_rate).1
+    }
+
+    /// Band-pass output, at unity gain at the centre whatever the resonance.
+    pub fn bandpass(&mut self, input: f32, centre: f32, resonance: f32, sample_rate: f32) -> f32 {
+        let k = damping(resonance);
+        self.tick(input, centre, resonance, sample_rate).0 * k
+    }
+
+    /// The band-pass and low-pass outputs.
+    fn tick(&mut self, input: f32, cutoff: f32, resonance: f32, sample_rate: f32) -> (f32, f32) {
         let g = (PI * cutoff.clamp(20.0, 0.45 * sample_rate) / sample_rate).tan();
-        let k = 2.0 - 2.0 * resonance.clamp(0.0, 0.98);
+        let k = damping(resonance);
         let a1 = 1.0 / (1.0 + g * (g + k));
         let a2 = g * a1;
         let a3 = g * a2;
@@ -150,8 +161,13 @@ impl Svf {
         let v2 = self.ic2 + a2 * self.ic1 + a3 * v3;
         self.ic1 = 2.0 * v1 - self.ic1;
         self.ic2 = 2.0 * v2 - self.ic2;
-        v2
+        (v1, v2)
     }
+}
+
+/// The filter's damping, 2 (none) down to 0.04, for a resonance from 0 to just under 1.
+fn damping(resonance: f32) -> f32 {
+    2.0 - 2.0 * resonance.clamp(0.0, 0.98)
 }
 
 #[cfg(test)]
@@ -213,5 +229,21 @@ mod tests {
             .skip(2_400)
             .fold(0.0, f32::max);
         assert!(peak < 0.01, "{peak}");
+    }
+
+    #[test]
+    fn bandpass_passes_its_centre_at_unity() {
+        let level = |hz: f32| {
+            let mut f = Svf::default();
+            (0..9_600)
+                .map(|i| {
+                    let x = (2.0 * PI * hz * i as f32 / 48_000.0).sin();
+                    f.bandpass(x, 1_000.0, 0.8, 48_000.0).abs()
+                })
+                .skip(4_800)
+                .fold(0.0, f32::max)
+        };
+        assert!((level(1_000.0) - 1.0).abs() < 0.01, "{}", level(1_000.0));
+        assert!(level(100.0) < 0.1, "{}", level(100.0));
     }
 }

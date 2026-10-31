@@ -121,7 +121,7 @@ The current `Synth` is a plain test instrument for exercising the engine, not a 
 ### Rhythmicon, the drum engine
 
 The first engine, named after the Rhythmicon, the first drum machine, which Leon Theremin built
-for Henry Cowell in 1931. It has three drums, each an instrument of its own (`:inst kick`), so one
+for Henry Cowell in 1931. It has five drums, each an instrument of its own (`:inst kick`), so one
 track plays one drum and keeps its own rules, length and mixer strip:
 
 | Drum | Sound | Controls |
@@ -129,6 +129,8 @@ track plays one drum and keeps its own rules, length and mixer strip:
 | `kick` | a sine whose pitch drops from up to 12× its tuning, held at full level for part of its decay (up to 80 ms) before it falls, with a 2 ms click of noise, through off-centre `tanh` drive for even harmonics | model, tune, punch (how far and fast the pitch drops, and the click), decay, drive |
 | `snare` | two shell modes (1 and 1.59×, a membrane's first two) with a small pitch drop, driven, and a burst of high-passed noise for the wires | model, tune, decay, snap (noise against the shell), tone (the noise's brightness) |
 | `hat` | the 808's six detuned square waves, mixed with noise, through a high-pass | model, tune, decay (short closed, long open), tone (the high-pass), noise |
+| `clap` | bursts of noise through a band-pass, a spread apart as hands never quite clap together, with a tail fading in under them | model, tune (the band), decay (the tail), spread, room (the tail's level) |
+| `tom` | a sine bending down onto its pitch, through `tanh`, with a short burst of softened noise for the stick | model, tune, decay, bend, noise |
 
 Each drum's first control is its **model**, a choice that changes the drum's insides; the other
 controls keep their meaning within it, so a kick's punch is still its punch in every model. The
@@ -139,6 +141,8 @@ middle model is the default. Models are named for how they sound rather than aft
 | `kick` | `tight`: no hold, a shorter decay, a faster, shallower drop and more click, the small clicky kick of a Pocket Operator · `boom`: an 808's, holding for a fifth of its decay · `hard`: a 909's, a deeper, faster drop, a loud click and extra drive |
 | `snare` | `tight`: a clean, short shell and noise high-passed at 900 Hz · `fat`: a driven shell that rings nearly as long as the wires, with noise kept down to 180 Hz · `crack`: a 909's, a bigger pitch drop, a hard-driven shell and louder, brighter wires |
 | `hat` | `metal`: the squares multiplied in pairs (XOR, as the 606's and 909's do) for a clang · `ring`: the 808's, the six summed · `sizzle`: mostly noise, through a steeper 18 dB/octave high-pass |
+| `clap` | `tight`: two quick bursts and little tail · `room`: an 808's four, slightly uneven, and its tail · `crowd`: nine bursts at random gaps through a wider band, a room clapping out of time |
+| `tom` | `tight`: short, a small bend and more stick · `round`: an 808's, a long, gentle bend · `hard`: a 909's, a second shell mode, a deeper, faster bend and drive |
 
 Each model is a table of constants (`KickModel` and so on) the voice reads, levelled so each
 model's hit peaks at or below 1 and the three sit at much the same loudness.
@@ -149,7 +153,7 @@ scales the level. Settings apply from the next hit, except decay, which also cha
 that's ringing. Decay is the time to fall by 60 dB. The drums share a `Drum<V>` processor, so
 each `Voice` is only its trigger and a per-sample tick; they're scalar, as one voice is cheap.
 
-Planned next: a clap and a tom, and choke between drums, which comes with groups.
+Planned next: choke between drums, which comes with groups.
 
 ## Track groups (planned)
 

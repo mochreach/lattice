@@ -1,4 +1,4 @@
-//! Rhythmicon, the drum engine: a kick, a snare and a hat, one drum to a track.
+//! Rhythmicon, the drum engine: a kick, a snare, a hat, a clap and a tom, one drum to a track.
 //!
 //! Each drum is a single voice, retriggered by every note, which ignores note-offs and rings out
 //! by its decay. C-4 plays a drum at its tuning; other notes tune it up or down from there.
@@ -7,10 +7,10 @@
 
 use std::f32::consts::TAU;
 
-use lattice_core::instrument::{hat, kick, snare};
+use lattice_core::instrument::{clap, hat, kick, snare, tom};
 use lattice_core::{DRUM_ROOT, InstKind};
 
-use crate::dsp::decay_coef;
+use crate::dsp::{Svf, decay_coef};
 use crate::param::ParamInfo;
 use crate::processor::{Event, EventKind, Processor, Segment, segments};
 
@@ -107,6 +107,8 @@ impl<V: Voice> Processor for Drum<V> {
 type Kick = Drum<KickVoice>;
 type Snare = Drum<SnareVoice>;
 type Hat = Drum<HatVoice>;
+type Clap = Drum<ClapVoice>;
+type Tom = Drum<TomVoice>;
 
 /// The drum for `kind`, starting at `values`. `None` for an instrument that isn't a drum.
 pub fn build(kind: InstKind, sample_rate: f32, values: &[f32]) -> Option<Box<dyn Processor>> {
@@ -114,6 +116,8 @@ pub fn build(kind: InstKind, sample_rate: f32, values: &[f32]) -> Option<Box<dyn
         InstKind::Kick => Box::new(Kick::with_values(sample_rate, values)),
         InstKind::Snare => Box::new(Snare::with_values(sample_rate, values)),
         InstKind::Hat => Box::new(Hat::with_values(sample_rate, values)),
+        InstKind::Clap => Box::new(Clap::with_values(sample_rate, values)),
+        InstKind::Tom => Box::new(Tom::with_values(sample_rate, values)),
         InstKind::Synth => return None,
     })
 }
@@ -306,6 +310,16 @@ impl Voice for KickVoice {
 
 /// The second mode of a circular membrane, relative to the first.
 const SHELL_RATIO: f32 = 1.59;
+
+/// Every drum, for the tests.
+#[cfg(test)]
+const DRUMS: [InstKind; 5] = [
+    InstKind::Kick,
+    InstKind::Snare,
+    InstKind::Hat,
+    InstKind::Clap,
+    InstKind::Tom,
+];
 
 /// What a snare model changes; the settings work within it.
 struct SnareModel {
@@ -568,6 +582,273 @@ impl Voice for HatVoice {
     }
 }
 
+/// What a clap model changes; the settings work within it.
+struct ClapModel {
+    bursts: u32,
+    /// How far each gap may stray from the spread, as a fraction of it.
+    jitter: f32,
+    /// How fast each burst dies, in seconds to fall by 1/e.
+    burst: f32,
+    /// The band's narrowness.
+    resonance: f32,
+    /// Multiplies the room setting.
+    tail: f32,
+    level: f32,
+}
+
+/// By [`clap::MODELS`]: one tight snap; an 808's four claps and a roomy tail; a crowd, out of
+/// time.
+const CLAPS: [ClapModel; 3] = [
+    ClapModel {
+        bursts: 2,
+        jitter: 0.0,
+        burst: 0.004,
+        resonance: 0.5,
+        tail: 0.5,
+        level: 2.6,
+    },
+    ClapModel {
+        bursts: 4,
+        jitter: 0.15,
+        burst: 0.005,
+        resonance: 0.6,
+        tail: 1.0,
+        level: 3.0,
+    },
+    ClapModel {
+        bursts: 9,
+        jitter: 0.9,
+        burst: 0.007,
+        resonance: 0.35,
+        tail: 1.2,
+        level: 1.7,
+    },
+];
+
+struct ClapVoice {
+    sample_rate: f32,
+    model: &'static ClapModel,
+    tune: f32,
+    room: f32,
+    /// In samples.
+    spread: f32,
+    burst_coef: f32,
+    tail_coef: f32,
+    freq: f32,
+    filter: Svf,
+    noise: Noise,
+    /// Samples since the hit, and when the next burst is due.
+    time: f32,
+    next_burst: f32,
+    bursts_left: u32,
+    burst: f32,
+    tail: f32,
+    /// The tail fades in over the bursts, this many samples.
+    onset: f32,
+    velocity: f32,
+}
+
+impl Voice for ClapVoice {
+    const KIND: InstKind = InstKind::Clap;
+
+    fn new(sample_rate: f32) -> Self {
+        Self {
+            sample_rate,
+            model: &CLAPS[1],
+            tune: 1_100.0,
+            room: 0.5,
+            spread: 0.0,
+            burst_coef: 0.0,
+            tail_coef: 0.0,
+            freq: 1_100.0,
+            filter: Svf::default(),
+            noise: Noise(0x0bad_cafe),
+            time: 0.0,
+            next_burst: 0.0,
+            bursts_left: 0,
+            burst: 0.0,
+            tail: 0.0,
+            onset: 1.0,
+            velocity: 0.0,
+        }
+    }
+
+    fn set(&mut self, id: u32, value: f32) {
+        match id {
+            clap::MODEL => self.model = model(&CLAPS, value),
+            clap::TUNE => self.tune = value,
+            clap::DECAY => self.tail_coef = fade(value, self.sample_rate),
+            clap::SPREAD => self.spread = value * self.sample_rate,
+            _ => self.room = value,
+        }
+        self.burst_coef = decay_coef(self.model.burst, self.sample_rate);
+    }
+
+    fn trigger(&mut self, tune: f32, velocity: f32) {
+        self.freq = self.tune * tune;
+        self.time = 0.0;
+        self.next_burst = 0.0;
+        self.bursts_left = self.model.bursts;
+        self.tail = 1.0;
+        self.onset = (self.spread * self.model.bursts as f32).max(1.0);
+        self.velocity = velocity;
+    }
+
+    fn tick(&mut self) -> (f32, bool) {
+        if self.bursts_left > 0 && self.time >= self.next_burst {
+            self.burst = 1.0;
+            self.bursts_left -= 1;
+            let jitter = 1.0 + self.model.jitter * self.noise.next();
+            self.next_burst += self.spread * jitter;
+        }
+        let tail = self.tail * self.room * self.model.tail * (self.time / self.onset).min(1.0);
+        let band = self.filter.bandpass(
+            self.noise.next(),
+            self.freq,
+            self.model.resonance,
+            self.sample_rate,
+        );
+        let out = band * (self.burst + 0.5 * tail);
+        self.burst *= self.burst_coef;
+        self.tail *= self.tail_coef;
+        self.time += 1.0;
+        let sounding = self.bursts_left > 0 || self.burst.max(self.tail) > SILENCE;
+        (out * self.velocity * self.model.level, sounding)
+    }
+}
+
+/// What a tom model changes; the settings work within it.
+struct TomModel {
+    /// Multiply the decay and the bend.
+    decay: f32,
+    bend: f32,
+    /// Seconds for the bend to fall by 1/e.
+    sweep: f32,
+    /// Multiplies the noise setting.
+    noise: f32,
+    /// Level of a second shell mode, a fifth and a bit up.
+    shell: f32,
+    drive: f32,
+    level: f32,
+}
+
+/// By [`tom::MODELS`]: short and dry; an 808's round boom; a 909's harder, ringing shell.
+const TOMS: [TomModel; 3] = [
+    TomModel {
+        decay: 0.5,
+        bend: 0.6,
+        sweep: 0.015,
+        noise: 1.5,
+        shell: 0.0,
+        drive: 1.0,
+        level: 0.8,
+    },
+    TomModel {
+        decay: 1.0,
+        bend: 1.0,
+        sweep: 0.04,
+        noise: 1.0,
+        shell: 0.0,
+        drive: 1.0,
+        level: 0.8,
+    },
+    TomModel {
+        decay: 0.8,
+        bend: 1.3,
+        sweep: 0.02,
+        noise: 1.3,
+        shell: 0.35,
+        drive: 2.5,
+        level: 0.75,
+    },
+];
+
+struct TomVoice {
+    sample_rate: f32,
+    model: &'static TomModel,
+    tune: f32,
+    decay: f32,
+    bend: f32,
+    noise_level: f32,
+    amp_coef: f32,
+    sweep_coef: f32,
+    stick_coef: f32,
+    freq: f32,
+    sweep: f32,
+    phases: [f32; 2],
+    amp: f32,
+    stick: f32,
+    noise: Noise,
+    low: f32,
+    velocity: f32,
+}
+
+impl Voice for TomVoice {
+    const KIND: InstKind = InstKind::Tom;
+
+    fn new(sample_rate: f32) -> Self {
+        Self {
+            sample_rate,
+            model: &TOMS[1],
+            tune: 120.0,
+            decay: 0.4,
+            bend: 0.4,
+            noise_level: 0.2,
+            amp_coef: 0.0,
+            sweep_coef: 0.0,
+            stick_coef: decay_coef(0.008, sample_rate),
+            freq: 120.0,
+            sweep: 0.0,
+            phases: [0.0; 2],
+            amp: 0.0,
+            stick: 0.0,
+            noise: Noise(0x7f4a_7c15),
+            low: 0.0,
+            velocity: 0.0,
+        }
+    }
+
+    fn set(&mut self, id: u32, value: f32) {
+        match id {
+            tom::MODEL => self.model = model(&TOMS, value),
+            tom::TUNE => self.tune = value,
+            tom::DECAY => self.decay = value,
+            tom::BEND => self.bend = value,
+            _ => self.noise_level = value,
+        }
+        self.amp_coef = fade(self.decay * self.model.decay, self.sample_rate);
+        self.sweep_coef = decay_coef(self.model.sweep, self.sample_rate);
+    }
+
+    fn trigger(&mut self, tune: f32, velocity: f32) {
+        self.freq = self.tune * tune;
+        self.sweep = 1.0;
+        self.phases = [0.0; 2];
+        self.amp = 1.0;
+        self.stick = 1.0;
+        self.velocity = velocity;
+    }
+
+    fn tick(&mut self) -> (f32, bool) {
+        let hz = self.freq * (1.0 + 1.5 * self.bend * self.model.bend * self.sweep);
+        self.sweep *= self.sweep_coef;
+        for (phase, ratio) in self.phases.iter_mut().zip([1.0, SHELL_RATIO]) {
+            *phase += hz * ratio / self.sample_rate;
+            *phase -= phase.floor();
+        }
+        let shell = (TAU * self.phases[0]).sin() + self.model.shell * (TAU * self.phases[1]).sin();
+        let drive = self.model.drive;
+        let shell = (shell * self.amp * drive).tanh() / drive.tanh();
+        // The stick: a short burst of noise, softened.
+        self.low += 0.3 * (self.noise.next() - self.low);
+        let stick = self.low * self.stick * self.noise_level * self.model.noise;
+        self.amp *= self.amp_coef;
+        self.stick *= self.stick_coef;
+        let out = shell + stick;
+        (out * self.velocity * self.model.level, self.amp > SILENCE)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -600,7 +881,7 @@ mod tests {
 
     #[test]
     fn every_drum_and_model_hits_at_a_sensible_level_and_stops() {
-        for kind in [InstKind::Kick, InstKind::Snare, InstKind::Hat] {
+        for kind in DRUMS {
             for model in 0..3 {
                 let mut values = Instrument::new(kind).values;
                 // Every drum's model is its first setting.
@@ -619,7 +900,7 @@ mod tests {
 
     #[test]
     fn models_sound_different() {
-        for kind in [InstKind::Kick, InstKind::Snare, InstKind::Hat] {
+        for kind in DRUMS {
             let audio: Vec<_> = (0..3)
                 .map(|model| {
                     let mut values = Instrument::new(kind).values;

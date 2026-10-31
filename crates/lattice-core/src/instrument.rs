@@ -1,6 +1,6 @@
 //! Instruments as a song stores them: which one plays a track, and its settings.
 //!
-//! The drums (kick, snare and hat) are Rhythmicon, Lattice's first engine, named after the
+//! The drums (kick, snare, hat, clap and tom) are Rhythmicon, Lattice's first engine, named after the
 //! first drum machine, which Leon Theremin built for Henry Cowell in 1931. Each plays one drum on
 //! one track: C-4 plays it at its tuning, and other notes tune it up or down from there.
 
@@ -29,14 +29,18 @@ pub enum InstKind {
     Kick,
     Snare,
     Hat,
+    Clap,
+    Tom,
 }
 
 impl InstKind {
-    pub const ALL: [InstKind; 4] = [
+    pub const ALL: [InstKind; 6] = [
         InstKind::Synth,
         InstKind::Kick,
         InstKind::Snare,
         InstKind::Hat,
+        InstKind::Clap,
+        InstKind::Tom,
     ];
 
     pub fn named(name: &str) -> Option<Self> {
@@ -49,6 +53,8 @@ impl InstKind {
             InstKind::Kick => &kick::PARAMS,
             InstKind::Snare => &snare::PARAMS,
             InstKind::Hat => &hat::PARAMS,
+            InstKind::Clap => &clap::PARAMS,
+            InstKind::Tom => &tom::PARAMS,
         }
     }
 }
@@ -60,6 +66,8 @@ impl Kind for InstKind {
             InstKind::Kick => "kick",
             InstKind::Snare => "snare",
             InstKind::Hat => "hat",
+            InstKind::Clap => "clap",
+            InstKind::Tom => "tom",
         }
     }
 
@@ -180,6 +188,59 @@ pub mod hat {
         param(DECAY, "decay", (0.01, 2.0, 0.06), "s", Curve::Log),
         param(TONE, "tone", (2_000.0, 14_000.0, 7_000.0), "Hz", Curve::Log),
         param(NOISE, "noise", (0.0, 1.0, 0.3), "", Curve::Linear),
+    ];
+}
+
+/// Bursts of band-passed noise in quick succession, as hands don't quite clap together, then a
+/// tail.
+pub mod clap {
+    use super::*;
+
+    /// The kind of clap: one tight snap, an 808's handful of claps and a roomy tail, or a crowd
+    /// clapping out of time.
+    pub const MODEL: u32 = 0;
+    /// Where the noise's band sits at [`DRUM_ROOT`].
+    pub const TUNE: u32 = 1;
+    /// How long the tail rings.
+    pub const DECAY: u32 = 2;
+    /// Time between the bursts.
+    pub const SPREAD: u32 = 3;
+    /// The tail against the bursts.
+    pub const ROOM: u32 = 4;
+
+    pub const MODELS: &[&str] = &["tight", "room", "crowd"];
+
+    pub(super) const PARAMS: [ParamInfo; 5] = [
+        param(MODEL, "model", (0.0, 2.0, 1.0), "", Curve::Choice(MODELS)),
+        param(TUNE, "tune", (500.0, 3_000.0, 1_100.0), "Hz", Curve::Log),
+        param(DECAY, "decay", (0.05, 1.5, 0.3), "s", Curve::Log),
+        param(SPREAD, "spread", (0.003, 0.03, 0.011), "s", Curve::Log),
+        param(ROOM, "room", (0.0, 1.0, 0.5), "", Curve::Linear),
+    ];
+}
+
+/// A tuned membrane: a sine that bends down onto its pitch, with a touch of noise for the stick.
+pub mod tom {
+    use super::*;
+
+    /// The kind of tom: short and dry, an 808's round boom, or a 909's harder, ringing shell.
+    pub const MODEL: u32 = 0;
+    /// Its pitch at [`DRUM_ROOT`], once the bend is over.
+    pub const TUNE: u32 = 1;
+    pub const DECAY: u32 = 2;
+    /// How far above its pitch it starts.
+    pub const BEND: u32 = 3;
+    /// The stick's noise against the shell.
+    pub const NOISE: u32 = 4;
+
+    pub const MODELS: &[&str] = &["tight", "round", "hard"];
+
+    pub(super) const PARAMS: [ParamInfo; 5] = [
+        param(MODEL, "model", (0.0, 2.0, 1.0), "", Curve::Choice(MODELS)),
+        param(TUNE, "tune", (50.0, 400.0, 120.0), "Hz", Curve::Log),
+        param(DECAY, "decay", (0.05, 2.0, 0.4), "s", Curve::Log),
+        param(BEND, "bend", (0.0, 1.0, 0.4), "", Curve::Linear),
+        param(NOISE, "noise", (0.0, 1.0, 0.2), "", Curve::Linear),
     ];
 }
 
