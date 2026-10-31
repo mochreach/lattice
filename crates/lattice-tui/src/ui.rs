@@ -240,8 +240,8 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         Span::styled(" ■ STOP ", theme.block(Color::DarkGray))
     };
     let view = match editor.view {
-        View::Source => "written",
-        View::Live => "live",
+        View::Source => "as written",
+        View::Live => "as playing",
     };
     // Named like Helix's status line: `[scratch]` before the song has a file, `[+]` if modified.
     let file = editor
@@ -274,7 +274,7 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         value(editor.octave.to_string()),
         label("   step "),
         value(editor.auto_step.to_string()),
-        label("   view "),
+        label("   pattern "),
         value(view.into()),
         label("   follow "),
         value(on_off(editor.follow).into()),
