@@ -68,6 +68,10 @@ pub enum Action {
     LastTrack,
     GotoMixer,
     GotoPattern,
+    /// The mixer page, on the instrument of the cursor's track.
+    GotoInstrument,
+    /// The mixer page, on the effects of the cursor's track.
+    GotoEffects,
     NextBeat,
     PrevBeat,
     NextBar,
@@ -165,6 +169,8 @@ impl Action {
             Action::LastTrack => "last track",
             Action::GotoMixer => "mixer page",
             Action::GotoPattern => "pattern page",
+            Action::GotoInstrument => "instrument, on the mixer",
+            Action::GotoEffects => "effects, on the mixer",
             Action::NextBeat => "next beat",
             Action::PrevBeat => "previous beat",
             Action::NextBar => "next bar",
@@ -314,6 +320,8 @@ impl Default for Keymap {
                 (Char('l'), LastTrack),
                 (Char('m'), GotoMixer),
                 (Char('p'), GotoPattern),
+                (Char('i'), GotoInstrument),
+                (Char('f'), GotoEffects),
             ],
         };
 

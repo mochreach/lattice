@@ -39,6 +39,8 @@ pub struct ViewState {
     metered: Option<Instant>,
     /// The leftmost track strip on the mixer page, when they don't all fit.
     pub(crate) first_strip: usize,
+    /// How many track strips fit on the mixer page.
+    pub(crate) strips_shown: usize,
 }
 
 impl ViewState {
@@ -750,7 +752,7 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
 
     let (hints, style) = match &editor.mode {
         Mode::Normal if editor.page == Page::Mixer => (
-            "hjkl move · C-a C-x adjust · c set · :inst · :fx-add · d remove · gp pattern".into(),
+            "hl strips · jk detail · ( ) strip · tab chain · C-a C-x adjust · c set · :fx-add · d remove · gp pattern".into(),
             theme.dim,
         ),
         Mode::Normal => (

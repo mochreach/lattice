@@ -19,7 +19,7 @@ mod pattern;
 
 pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
 pub use keymap::{Action, Binding, Key, Keymap, Menu};
-pub use mixer::{MixerCursor, Page, Row, Shown, Strip};
+pub use mixer::{Field, MixerCursor, PARAM_COLUMNS, Page, Row, Shown, Strip};
 
 use std::path::{Path, PathBuf};
 
@@ -992,9 +992,15 @@ impl Editor {
             Action::ToggleGroup => return self.toggle_group(),
             Action::ToggleFold => return self.toggle_fold(),
             Action::GotoMixer => {
+                // From the pattern, onto the cursor's track.
+                if self.page == Page::Pattern {
+                    self.mixer.strip = self.cursor().track;
+                }
                 self.page = Page::Mixer;
                 self.mode = Mode::Normal;
             }
+            Action::GotoInstrument => self.goto_chain(true),
+            Action::GotoEffects => self.goto_chain(false),
             Action::GotoPattern => self.page = Page::Pattern,
             Action::TogglePlay => return vec![Effect::TogglePlay],
             Action::ToggleView => {

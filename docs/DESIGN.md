@@ -431,16 +431,30 @@ differ.
 
 ### The mixer page
 
-`gm` swaps the grid for a page of strips (`gp` goes back): a column per track, then the send and
-master buses, which always stay in view while the tracks scroll. Rows are level, pan, send, a
-meter, each track's instrument, and the effects in each chain. The settings of the instrument or
-effect under the cursor show in a panel straight after it: below the instrument row for an
-instrument, at the bottom for an effect, so `j` always moves down into them. `hjkl` move between strips and rows, `^a` `^x` nudge the value under the cursor (0.5
-dB, 5% of pan, or 1% of a setting's range, with counts), and `c` opens the command line with
-`set ` ready for an exact value (or `inst ` on the instrument row). Settings that pick from a list,
-like the synth's wave, use `Curve::Choice` and nudge one choice at a time. `:fx-add` inserts after
-the cursor and `d` removes the effect under it. The `t` menu still works on the cursor's track. The mixer cursor is the editor's state,
-like the pattern's, and isn't saved.
+`gm` swaps the grid for the mixer (`gp` goes back), opening on the pattern cursor's track. It's
+in two halves, so a balance is a matter of moving sideways and anything about one strip is a few
+keys away:
+
+- **The overview**, above: a column per strip (the tracks, each group's bus, then the send and
+  master buses, which always stay in view while the tracks scroll), with its name, level, pan
+  and meter. `h` `l` move between strips and `^a` `^x` set the level.
+- **The detail**, below, of the strip under the cursor: a rule with its name and where its sound
+  goes (`→ amen → master, and → send`; a bus lists what feeds it), a mix row (level, pan, send
+  and choke; a bus has only a level), its chain from the instrument through the effects in the
+  order the sound passes through them, and the settings of the device on the chain under the
+  cursor, always shown, in a grid of three columns filled a row at a time.
+
+`j` `k` move from the overview down through the mix, the chain and the rows of settings, and `h`
+`l` move along whichever row the cursor is on. `(` `)` change strip from anywhere, keeping the row
+(Helix uses them to cycle selections, which the mixer doesn't have). `tab` jumps between the
+overview and the chain. `gi` and `gf` jump to the instrument and the effects, from the pattern
+page too, on the cursor's track. `^a` `^x` nudge the value under the cursor (0.5 dB, 5% of pan, 1
+of choke, or 1% of a setting's range, with counts), and `c` opens the command line with `set `
+ready for an exact value (or `inst ` on the instrument). Settings that pick from a list, like the
+synth's wave, use `Curve::Choice` and nudge one choice at a time. `:fx-add` inserts after the
+device under the cursor (first, after the instrument) and `d` removes the effect under it. The `t`
+menu still works on the cursor's track. The mixer cursor (`MixerCursor`: a strip, a `Row` and the
+device shown) is the editor's state, like the pattern's, and isn't saved.
 
 ## Song files
 

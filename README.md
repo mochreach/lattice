@@ -92,7 +92,8 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `space` | play / stop |
 | `tab` | show the pattern as written, or as it's playing this pass |
 | `:` | command line |
-| `gm` `gp` | the mixer page, back to the pattern |
+| `gm` `gp` | the mixer page (on this track), back to the pattern |
+| `gi` `gf` | the mixer, on this track's instrument, or its effects |
 
 One deliberate departure from Helix: `space` is play / stop, as in every DAW, rather than a menu.
 
@@ -139,13 +140,16 @@ centre, each with its value written over it; `M` when it's muted and `S` when it
 meter in place of the underline. Muted tracks, and tracks silenced by another's solo, are dimmed.
 Every track can send to a delay on the send bus; sends start off.
 
-The **mixer page** (`gm`) has a strip for each track, each group's bus, and the send and master
-buses: level, pan, send, choke group, a meter, its instrument and its effects. The settings of the instrument or effect
-under the cursor show just below it. `h j k l` move, `^a` `^x` nudge the value under the cursor
-(with counts, so `10^a`), `c` types an exact one (or, on the instrument, another instrument),
-`:fx-add delay` (or `drive`, `comp`) adds an effect after the cursor and `d` removes it. `tm` `ts` still mute and
-solo, and `gp` goes back to the pattern. Instruments, effects and bus levels are saved in the
-song.
+The **mixer page** (`gm`) is in two halves. Above, an overview of every strip (each track, each
+group's bus, and the send and master buses) with its level, pan and meter: `h` `l` move between
+them and `^a` `^x` set the level. Below, the detail of the strip under the cursor: where its sound
+goes, its mix (level, pan, send, choke group), its chain from instrument to effects, and the
+settings of the instrument or effect under the cursor. `j` `k` move down into the detail and
+through its rows, `h` `l` move along a row, `(` `)` change strip, and `tab` jumps between the
+overview and the chain. `^a` `^x` nudge the value under the cursor (with counts, so `10^a`), `c`
+types an exact one (or, on the instrument, another instrument), `:fx-add delay` (or `drive`,
+`comp`) adds an effect after the cursor and `d` removes it. `tm` `ts` still mute and solo, and
+`gp` goes back to the pattern. Instruments, effects and bus levels are saved in the song.
 
 **Instruments:** each track has one. `synth` is a plain test synth. `kick`, `snare`, `hat`, `clap` and `tom` are
 Rhythmicon, the drum engine: one drum per track, played at its tuning by C-4 and tuned up or down
