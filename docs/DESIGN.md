@@ -126,9 +126,22 @@ track plays one drum and keeps its own rules, length and mixer strip:
 
 | Drum | Sound | Controls |
 | --- | --- | --- |
-| `kick` | a sine whose pitch drops from up to 12× its tuning, held at full level for a fifth of its decay (up to 80 ms) before it falls, with a 2 ms click of noise, through off-centre `tanh` drive for even harmonics | tune, punch (how far and fast the pitch drops, and the click), decay, drive |
-| `snare` | two shell modes (1 and 1.59×, a membrane's first two) with a small pitch drop, driven, ringing nearly as long as the noise for the wires, which is high-passed only at 180 Hz to keep its weight | tune, decay, snap (noise against the shell), tone (the noise's brightness) |
-| `hat` | the 808's six detuned square waves, mixed with noise, through a 12 dB/octave high-pass | tune, decay (short closed, long open), tone (the high-pass), noise |
+| `kick` | a sine whose pitch drops from up to 12× its tuning, held at full level for part of its decay (up to 80 ms) before it falls, with a 2 ms click of noise, through off-centre `tanh` drive for even harmonics | model, tune, punch (how far and fast the pitch drops, and the click), decay, drive |
+| `snare` | two shell modes (1 and 1.59×, a membrane's first two) with a small pitch drop, driven, and a burst of high-passed noise for the wires | model, tune, decay, snap (noise against the shell), tone (the noise's brightness) |
+| `hat` | the 808's six detuned square waves, mixed with noise, through a high-pass | model, tune, decay (short closed, long open), tone (the high-pass), noise |
+
+Each drum's first control is its **model**, a choice that changes the drum's insides; the other
+controls keep their meaning within it, so a kick's punch is still its punch in every model. The
+middle model is the default. Models are named for how they sound rather than after machines:
+
+| Drum | Models |
+| --- | --- |
+| `kick` | `tight`: no hold, a shorter decay, a faster, shallower drop and more click, the small clicky kick of a Pocket Operator · `boom`: an 808's, holding for a fifth of its decay · `hard`: a 909's, a deeper, faster drop, a loud click and extra drive |
+| `snare` | `tight`: a clean, short shell and noise high-passed at 900 Hz · `fat`: a driven shell that rings nearly as long as the wires, with noise kept down to 180 Hz · `crack`: a 909's, a bigger pitch drop, a hard-driven shell and louder, brighter wires |
+| `hat` | `metal`: the squares multiplied in pairs (XOR, as the 606's and 909's do) for a clang · `ring`: the 808's, the six summed · `sizzle`: mostly noise, through a steeper 18 dB/octave high-pass |
+
+Each model is a table of constants (`KickModel` and so on) the voice reads, levelled so each
+model's hit peaks at or below 1 and the three sit at much the same loudness.
 
 Each drum is one voice: every note retriggers it, note-offs are ignored, and it rings out by its
 decay. C-4 (`DRUM_ROOT`) plays it at its tuning and other notes tune it up or down. Velocity
@@ -136,8 +149,7 @@ scales the level. Settings apply from the next hit, except decay, which also cha
 that's ringing. Decay is the time to fall by 60 dB. The drums share a `Drum<V>` processor, so
 each `Voice` is only its trigger and a per-sample tick; they're scalar, as one voice is cheap.
 
-Planned next: a clap and a tom; a *model* control that sweeps each drum between machines (an 808
-kick to a 909's) rather than adding knobs; and choke between drums, which comes with groups.
+Planned next: a clap and a tom, and choke between drums, which comes with groups.
 
 ## Track groups (planned)
 
@@ -226,7 +238,7 @@ to check. Things to get right:
 - **Oscillators:** band-limited (PolyBLEP/PolyBLAMP), wavetables later.
 - **Envelopes:** triggered by events, never by watching a level.
 - **Filters:** a TPT/ZDF state-variable filter, later a ladder filter.
-- **Effects:** drive/waveshaping (with oversampling), delay, and a reverb (a Freeverb or FDN to
+- **Effects:** drive (to be oversampled), a compressor, delay, and a reverb (a Freeverb or FDN to
   start).
 - **Housekeeping:** parameter smoothing, polyphony with voice stealing.
 
@@ -361,8 +373,20 @@ master bus → master effects → + click → tanh
 - **Meters:** each track's peak after its strip is published as `f32` bits in an `AtomicU32`
   with `fetch_max`; the UI swaps it for 0 each frame and lets its meter fall at 30 dB/s.
 
-For now the only effect is a plain stereo delay (time, feedback, a lowpass in the feedback path,
-and mix). New songs get one on the send bus, set fully wet; anywhere else it starts at 30% mix.
+There are three effects so far, each usable on any track or bus:
+
+- **`delay`:** a plain stereo delay (time, feedback, a lowpass in the feedback path, and mix).
+  New songs get one on the send bus, set fully wet; anywhere else it starts at 30% mix.
+- **`drive`:** a saturator: `tanh` with up to +36 dB going in (exponential in the control, so it
+  feels even), a little off centre for even harmonics with a 5 Hz DC blocker after, then a
+  one-pole low-pass (tone), mix and an output level. It's scaled so a full-scale input still
+  peaks at 1. It isn't oversampled yet, so it aliases when pushed hard on bright material.
+- **`comp`:** a compressor: threshold, ratio, attack, release, makeup and mix (below 1 for
+  parallel compression). Both channels share one gain from the louder of the two, so the image
+  stays put. The gain reduction in dB follows a 6 dB soft knee with the attack going down and the
+  release coming back.
+
+Together they're the drum bus, once groups land: a group's bus gets a chain of its own.
 
 The chains and the bus levels are part of the song (`Track::effects`, `Song::buses`), so they're
 saved and undone with everything else. An effect is stored as its kind and its parameter values,

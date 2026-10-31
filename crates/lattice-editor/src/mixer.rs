@@ -626,6 +626,14 @@ mod tests {
         assert!(command(&mut e, "inst kick").is_empty(), "already a kick");
 
         // Its settings show below, and nudge like an effect's.
+        keys(&mut e, "j");
+        assert_eq!(at(&e).1, Row::Param(kick::MODEL as usize));
+        keys(&mut e, "A");
+        assert_eq!(
+            e.grid.tracks[1].instrument.get(kick::MODEL),
+            2.0,
+            "the next model"
+        );
         keys(&mut e, "jj");
         assert_eq!(at(&e).1, Row::Param(kick::PUNCH as usize));
         keys(&mut e, "5A");

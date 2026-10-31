@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::device::{Device, Kind, ParamInfo};
+use crate::device::{Curve, Device, Kind, ParamInfo, param};
 use crate::song::MAX_DB;
 
 /// Effects in one chain. The engine preallocates for this.
@@ -14,10 +14,12 @@ pub const MAX_EFFECTS: usize = 8;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FxKind {
     Delay,
+    Drive,
+    Comp,
 }
 
 impl FxKind {
-    pub const ALL: [FxKind; 1] = [FxKind::Delay];
+    pub const ALL: [FxKind; 3] = [FxKind::Delay, FxKind::Drive, FxKind::Comp];
 
     pub fn named(name: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|k| k.name() == name)
@@ -26,6 +28,8 @@ impl FxKind {
     pub const fn params(self) -> &'static [ParamInfo] {
         match self {
             FxKind::Delay => &delay::PARAMS,
+            FxKind::Drive => &drive::PARAMS,
+            FxKind::Comp => &comp::PARAMS,
         }
     }
 }
@@ -34,6 +38,8 @@ impl Kind for FxKind {
     fn name(self) -> &'static str {
         match self {
             FxKind::Delay => "delay",
+            FxKind::Drive => "drive",
+            FxKind::Comp => "comp",
         }
     }
 
@@ -90,6 +96,55 @@ pub mod delay {
             unit: "",
             curve: Curve::Linear,
         },
+    ];
+}
+
+/// A saturator: soft clipping, a little off centre for even harmonics, then a low-pass to tame
+/// the fizz.
+pub mod drive {
+    use super::*;
+
+    /// Gain into the clipper, from clean to crushed.
+    pub const DRIVE: u32 = 0;
+    pub const TONE: u32 = 1;
+    pub const MIX: u32 = 2;
+    /// Out, to make up for or rein in what the drive adds.
+    pub const LEVEL: u32 = 3;
+
+    pub(super) const PARAMS: [ParamInfo; 4] = [
+        param(DRIVE, "drive", (0.0, 1.0, 0.3), "", Curve::Linear),
+        param(TONE, "tone", (500.0, 16_000.0, 8_000.0), "Hz", Curve::Log),
+        param(MIX, "mix", (0.0, 1.0, 1.0), "", Curve::Linear),
+        param(LEVEL, "level", (-24.0, 6.0, 0.0), "dB", Curve::Linear),
+    ];
+}
+
+/// A compressor, both channels together. `mix` below 1 blends the dry signal back in, for
+/// parallel compression.
+pub mod comp {
+    use super::*;
+
+    pub const THRESHOLD: u32 = 0;
+    pub const RATIO: u32 = 1;
+    pub const ATTACK: u32 = 2;
+    pub const RELEASE: u32 = 3;
+    /// Gain after compressing.
+    pub const MAKEUP: u32 = 4;
+    pub const MIX: u32 = 5;
+
+    pub(super) const PARAMS: [ParamInfo; 6] = [
+        param(
+            THRESHOLD,
+            "threshold",
+            (-48.0, 0.0, -18.0),
+            "dB",
+            Curve::Linear,
+        ),
+        param(RATIO, "ratio", (1.0, 20.0, 4.0), "", Curve::Log),
+        param(ATTACK, "attack", (0.000_1, 0.1, 0.005), "s", Curve::Log),
+        param(RELEASE, "release", (0.01, 1.0, 0.15), "s", Curve::Log),
+        param(MAKEUP, "makeup", (0.0, 24.0, 0.0), "dB", Curve::Linear),
+        param(MIX, "mix", (0.0, 1.0, 1.0), "", Curve::Linear),
     ];
 }
 

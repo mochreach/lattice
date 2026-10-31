@@ -209,7 +209,7 @@ mod tests {
         assert_eq!(tracks.engine[last].1.kind, InstKind::Kick);
 
         // Pasted tracks bring their instrument, settings and all.
-        for key in "gmglhhjjjjjAgptytp".chars() {
+        for key in "gmglhhjjjjjjAgptytp".chars() {
             let key = if key == 'A' {
                 Key::Ctrl('a')
             } else {
@@ -219,7 +219,7 @@ mod tests {
         }
         assert_eq!(
             sync(&mut tracks, &editor, &mut engine),
-            [format!("{last}: 1 = 0.51")]
+            [format!("{last}: 2 = 0.51")]
         );
         assert_eq!(
             tracks.engine[last + 1].1,

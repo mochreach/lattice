@@ -33,6 +33,25 @@ pub struct ParamInfo {
     pub curve: Curve,
 }
 
+/// A [`ParamInfo`] in one line, for the tables of them.
+pub(crate) const fn param(
+    id: u32,
+    name: &'static str,
+    (min, max, default): (f32, f32, f32),
+    unit: &'static str,
+    curve: Curve,
+) -> ParamInfo {
+    ParamInfo {
+        id,
+        name,
+        min,
+        max,
+        default,
+        unit,
+        curve,
+    }
+}
+
 /// Nudges in a parameter's whole range.
 const NUDGES: f32 = 100.0;
 

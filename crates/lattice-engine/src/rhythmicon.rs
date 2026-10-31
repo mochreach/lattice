@@ -139,10 +139,65 @@ fn one_pole(hz: f32, sample_rate: f32) -> f32 {
 /// Longest the kick holds its level before it starts to decay.
 const MAX_HOLD: f32 = 0.08;
 
+/// What a kick model changes; the settings work within it.
+struct KickModel {
+    /// The fraction of the decay the body holds at full level before decaying.
+    hold: f32,
+    /// Multiplies the decay.
+    decay: f32,
+    /// Multiply how far and how fast the pitch drops.
+    depth: f32,
+    sweep: f32,
+    /// Level of the noise click.
+    click: f32,
+    /// Added to the drive.
+    drive: f32,
+    level: f32,
+}
+
+/// By [`kick::MODELS`]: short and clicky; an 808's long boom; a 909's hard, driven thump.
+const KICKS: [KickModel; 3] = [
+    KickModel {
+        hold: 0.0,
+        decay: 0.6,
+        depth: 0.8,
+        sweep: 0.5,
+        click: 1.6,
+        drive: 0.0,
+        level: 0.8,
+    },
+    KickModel {
+        hold: 0.2,
+        decay: 1.0,
+        depth: 1.0,
+        sweep: 1.0,
+        click: 1.0,
+        drive: 0.0,
+        level: 0.75,
+    },
+    KickModel {
+        hold: 0.1,
+        decay: 0.8,
+        depth: 1.4,
+        sweep: 0.6,
+        click: 2.2,
+        drive: 0.35,
+        level: 0.8,
+    },
+];
+
+/// The model a choice setting picks, from `models`.
+fn model<T>(models: &'static [T], value: f32) -> &'static T {
+    &models[(value as usize).min(models.len() - 1)]
+}
+
 struct KickVoice {
     sample_rate: f32,
+    model: &'static KickModel,
     tune: f32,
     punch: f32,
+    /// The decay setting, in seconds; the model scales it.
+    decay: f32,
     amp_coef: f32,
     /// Samples the body holds at full level before decaying, like an 808's.
     hold_len: u32,
@@ -172,8 +227,10 @@ impl Voice for KickVoice {
     fn new(sample_rate: f32) -> Self {
         Self {
             sample_rate,
+            model: &KICKS[1],
             tune: 50.0,
             punch: 0.5,
+            decay: 0.45,
             amp_coef: 0.0,
             drive: 0.0,
             freq: 50.0,
@@ -195,22 +252,23 @@ impl Voice for KickVoice {
 
     fn set(&mut self, id: u32, value: f32) {
         match id {
+            kick::MODEL => self.model = model(&KICKS, value),
             kick::TUNE => self.tune = value,
             kick::PUNCH => self.punch = value,
-            kick::DECAY => {
-                self.amp_coef = fade(value, self.sample_rate);
-                self.hold_len = ((value * 0.2).min(MAX_HOLD) * self.sample_rate) as u32;
-            }
+            kick::DECAY => self.decay = value,
             _ => self.drive = value,
         }
+        let decay = self.decay * self.model.decay;
+        self.amp_coef = fade(decay, self.sample_rate);
+        self.hold_len = ((decay * self.model.hold).min(MAX_HOLD) * self.sample_rate) as u32;
     }
 
     fn trigger(&mut self, tune: f32, velocity: f32) {
         self.freq = self.tune * tune;
         // A soft thud starts two octaves up and falls slowly; a hard click starts higher and
         // falls fast.
-        self.depth = 3.0 + 9.0 * self.punch;
-        let time = 0.03 - 0.022 * self.punch;
+        self.depth = (3.0 + 9.0 * self.punch) * self.model.depth;
+        let time = (0.03 - 0.022 * self.punch) * self.model.sweep;
         self.sweep_coef = decay_coef(time, self.sample_rate);
         self.sweep = 1.0;
         self.phase = 0.0;
@@ -225,7 +283,7 @@ impl Voice for KickVoice {
         self.phase += hz / self.sample_rate;
         self.phase -= self.phase.floor();
         self.sweep *= self.sweep_coef;
-        let click = self.noise.next() * self.click * (0.1 + 0.4 * self.punch);
+        let click = self.noise.next() * self.click * (0.1 + 0.4 * self.punch) * self.model.click;
         self.click *= self.click_coef;
         let x = (TAU * self.phase).sin() * self.amp + click;
         if self.hold > 0 {
@@ -235,26 +293,69 @@ impl Voice for KickVoice {
         }
         // Saturation, pushed off centre so it adds even harmonics, which carry the kick on
         // small speakers. Scaled so the larger, negative side of a full-scale sine peaks at 1.
-        let gain = 1.0 + 9.0 * self.drive;
-        let bias = 0.4 * self.drive;
+        let drive = (self.drive + self.model.drive).min(1.0);
+        let gain = 1.0 + 9.0 * drive;
+        let bias = 0.4 * drive;
         let shaped =
             ((x * gain + bias).tanh() - bias.tanh()) / ((gain - bias).tanh() + bias.tanh());
         let out = shaped - self.dc[0] + self.dc_coef * self.dc[1];
         self.dc = [shaped, out];
-        (out * self.velocity * 0.75, self.amp > SILENCE)
+        (out * self.velocity * self.model.level, self.amp > SILENCE)
     }
 }
 
 /// The second mode of a circular membrane, relative to the first.
 const SHELL_RATIO: f32 = 1.59;
-/// Where the wires' noise is high-passed: low enough to keep the snare's weight.
-const WIRES_LOW: f32 = 180.0;
-/// Drive on the shell, which thickens it.
-const SHELL_DRIVE: f32 = 1.8;
+
+/// What a snare model changes; the settings work within it.
+struct SnareModel {
+    /// Drive on the shell, which thickens it.
+    drive: f32,
+    /// Multiplies how long the shell rings, against the decay.
+    body: f32,
+    /// How far above its tuning the shell starts.
+    sweep: f32,
+    /// Where the wires' noise is high-passed: low keeps the snare's weight.
+    wires_low: f32,
+    /// Level of the wires against the shell.
+    wires: f32,
+    level: f32,
+}
+
+/// By [`snare::MODELS`]: thin and short; full and weighty; a 909's bright crack.
+const SNARES: [SnareModel; 3] = [
+    SnareModel {
+        drive: 1.0,
+        body: 0.5,
+        sweep: 0.3,
+        wires_low: 900.0,
+        wires: 2.4,
+        level: 0.7,
+    },
+    SnareModel {
+        drive: 1.8,
+        body: 0.9,
+        sweep: 0.5,
+        wires_low: 180.0,
+        wires: 2.0,
+        level: 0.62,
+    },
+    SnareModel {
+        drive: 3.0,
+        body: 0.6,
+        sweep: 1.0,
+        wires_low: 400.0,
+        wires: 2.8,
+        level: 0.5,
+    },
+];
 
 struct SnareVoice {
     sample_rate: f32,
+    model: &'static SnareModel,
     tune: f32,
+    /// The decay setting, in seconds.
+    decay: f32,
     snap: f32,
     body_coef: f32,
     noise_coef: f32,
@@ -278,12 +379,14 @@ impl Voice for SnareVoice {
     fn new(sample_rate: f32) -> Self {
         Self {
             sample_rate,
+            model: &SNARES[1],
             tune: 180.0,
+            decay: 0.22,
             snap: 0.6,
             body_coef: 0.0,
             noise_coef: 0.0,
             lowpass: 0.0,
-            highpass: one_pole(WIRES_LOW, sample_rate),
+            highpass: 0.0,
             freq: 180.0,
             sweep: 0.0,
             sweep_coef: decay_coef(0.01, sample_rate),
@@ -299,15 +402,16 @@ impl Voice for SnareVoice {
 
     fn set(&mut self, id: u32, value: f32) {
         match id {
+            snare::MODEL => self.model = model(&SNARES, value),
             snare::TUNE => self.tune = value,
-            snare::DECAY => {
-                // The shell dies away a little before the wires do.
-                self.body_coef = fade(value * 0.9, self.sample_rate);
-                self.noise_coef = fade(value, self.sample_rate);
-            }
+            snare::DECAY => self.decay = value,
             snare::SNAP => self.snap = value,
             _ => self.lowpass = one_pole(value, self.sample_rate),
         }
+        // The shell dies away before the wires do.
+        self.body_coef = fade(self.decay * self.model.body, self.sample_rate);
+        self.noise_coef = fade(self.decay, self.sample_rate);
+        self.highpass = one_pole(self.model.wires_low, self.sample_rate);
     }
 
     fn trigger(&mut self, tune: f32, velocity: f32) {
@@ -320,25 +424,26 @@ impl Voice for SnareVoice {
     }
 
     fn tick(&mut self) -> (f32, bool) {
-        let hz = self.freq * (1.0 + 0.5 * self.sweep);
+        let hz = self.freq * (1.0 + self.model.sweep * self.sweep);
         self.sweep *= self.sweep_coef;
         for (phase, ratio) in self.phases.iter_mut().zip([1.0, SHELL_RATIO]) {
             *phase += hz * ratio / self.sample_rate;
             *phase -= phase.floor();
         }
         let shell = 0.6 * (TAU * self.phases[0]).sin() + 0.4 * (TAU * self.phases[1]).sin();
-        let shell = (shell * self.body * SHELL_DRIVE).tanh() / SHELL_DRIVE.tanh();
+        let drive = self.model.drive;
+        let shell = (shell * self.body * drive).tanh() / drive.tanh();
 
-        // Noise, low-passed by the tone, then high-passed only gently, so it keeps some weight.
+        // Noise, low-passed by the tone, then high-passed.
         self.low += self.lowpass * (self.noise.next() - self.low);
         self.high += self.highpass * (self.low - self.high);
-        let wires = (self.low - self.high) * 2.0;
+        let wires = (self.low - self.high) * self.model.wires;
 
         let out = shell * (1.0 - 0.35 * self.snap) + wires * self.rattle * self.snap;
         self.body *= self.body_coef;
         self.rattle *= self.noise_coef;
         (
-            out * self.velocity * 0.62,
+            out * self.velocity * self.model.level,
             self.body.max(self.rattle) > SILENCE,
         )
     }
@@ -347,8 +452,43 @@ impl Voice for SnareVoice {
 /// The 808's six cymbal oscillators, relative to the lowest (205.3 Hz).
 const METAL: [f32; 6] = [1.0, 1.4827, 1.8003, 2.5460, 2.6303, 3.8967];
 
+/// What a hat model changes; the settings work within it.
+struct HatModel {
+    /// Multiply the squares in pairs, as the 606's and 909's do, rather than summing them.
+    pairs: bool,
+    /// Where the noise setting starts from: the noise is this, plus the setting's share of the
+    /// rest.
+    noise: f32,
+    /// High-pass stages, at 6 dB/octave each.
+    stages: usize,
+    level: f32,
+}
+
+/// By [`hat::MODELS`]: clangy metal; an 808's ring; a bright, noisy sizzle.
+const HATS: [HatModel; 3] = [
+    HatModel {
+        pairs: true,
+        noise: 0.0,
+        stages: 2,
+        level: 6.0,
+    },
+    HatModel {
+        pairs: false,
+        noise: 0.0,
+        stages: 2,
+        level: 6.0,
+    },
+    HatModel {
+        pairs: false,
+        noise: 0.6,
+        stages: 3,
+        level: 6.0,
+    },
+];
+
 struct HatVoice {
     sample_rate: f32,
+    model: &'static HatModel,
     tune: f32,
     amp_coef: f32,
     highpass: f32,
@@ -356,8 +496,8 @@ struct HatVoice {
     incs: [f32; 6],
     phases: [f32; 6],
     noise: Noise,
-    /// Two one-pole low-passes, subtracted for a 12 dB/octave high-pass.
-    lows: [f32; 2],
+    /// One-pole low-passes, each subtracted for a stage of high-pass.
+    lows: [f32; 3],
     amp: f32,
     velocity: f32,
 }
@@ -368,6 +508,7 @@ impl Voice for HatVoice {
     fn new(sample_rate: f32) -> Self {
         Self {
             sample_rate,
+            model: &HATS[1],
             tune: 205.0,
             amp_coef: 0.0,
             highpass: 0.0,
@@ -376,7 +517,7 @@ impl Voice for HatVoice {
             // Spread out, so the six don't all switch together on the first sample.
             phases: [0.0, 0.17, 0.39, 0.58, 0.71, 0.93],
             noise: Noise(0x9e37_79b9),
-            lows: [0.0; 2],
+            lows: [0.0; 3],
             amp: 0.0,
             velocity: 0.0,
         }
@@ -384,6 +525,7 @@ impl Voice for HatVoice {
 
     fn set(&mut self, id: u32, value: f32) {
         match id {
+            hat::MODEL => self.model = model(&HATS, value),
             hat::TUNE => self.tune = value,
             hat::DECAY => self.amp_coef = fade(value, self.sample_rate),
             hat::TONE => self.highpass = one_pole(value, self.sample_rate),
@@ -400,22 +542,29 @@ impl Voice for HatVoice {
     }
 
     fn tick(&mut self) -> (f32, bool) {
-        let mut metal = 0.0;
-        for (phase, inc) in self.phases.iter_mut().zip(self.incs) {
+        let mut squares = [0.0; 6];
+        for ((square, phase), inc) in squares.iter_mut().zip(&mut self.phases).zip(self.incs) {
             *phase += inc;
             *phase -= phase.floor();
-            metal += if *phase < 0.5 { 1.0 } else { -1.0 };
+            *square = if *phase < 0.5 { 1.0 } else { -1.0 };
         }
-        let source = metal / 6.0 * (1.0 - self.noise_mix) + self.noise.next() * self.noise_mix;
-        // High-pass: what's left after taking away the lows, twice over.
+        let metal = if self.model.pairs {
+            // Multiplying squares is XOR-ing them: sum and difference tones, and a harsher clang.
+            squares.chunks(2).map(|p| p[0] * p[1]).sum::<f32>() / 3.0
+        } else {
+            squares.iter().sum::<f32>() / 6.0
+        };
+        let noise = self.model.noise + (1.0 - self.model.noise) * self.noise_mix;
+        let source = metal * (1.0 - noise) + self.noise.next() * noise;
+        // High-pass: what's left after taking away the lows, stage by stage.
         let mut x = source;
-        for low in &mut self.lows {
+        for low in &mut self.lows[..self.model.stages] {
             *low += self.highpass * (x - *low);
             x -= *low;
         }
         let out = x * self.amp;
         self.amp *= self.amp_coef;
-        (out * self.velocity * 6.0, self.amp > SILENCE)
+        (out * self.velocity * self.model.level, self.amp > SILENCE)
     }
 }
 
@@ -450,16 +599,42 @@ mod tests {
     }
 
     #[test]
-    fn every_drum_hits_at_a_sensible_level_and_stops() {
+    fn every_drum_and_model_hits_at_a_sensible_level_and_stops() {
         for kind in [InstKind::Kick, InstKind::Snare, InstKind::Hat] {
-            let audio = render(kind, &Instrument::new(kind).values);
-            let p = peak(&audio);
-            assert!((0.2..=1.0).contains(&p), "{kind:?} peaks at {p}");
-            assert!(audio.iter().all(|x| x.is_finite()));
-            assert!(
-                peak(&audio[audio.len() - 1_000..]) < 1e-3,
-                "{kind:?} is silent within a second"
-            );
+            for model in 0..3 {
+                let mut values = Instrument::new(kind).values;
+                // Every drum's model is its first setting.
+                values[0] = model as f32;
+                let audio = render(kind, &values);
+                let p = peak(&audio);
+                assert!((0.2..=1.0).contains(&p), "{kind:?} {model} peaks at {p}");
+                assert!(audio.iter().all(|x| x.is_finite()));
+                assert!(
+                    peak(&audio[audio.len() - 1_000..]) < 1e-3,
+                    "{kind:?} {model} is silent within a second"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn models_sound_different() {
+        for kind in [InstKind::Kick, InstKind::Snare, InstKind::Hat] {
+            let audio: Vec<_> = (0..3)
+                .map(|model| {
+                    let mut values = Instrument::new(kind).values;
+                    values[0] = model as f32;
+                    render(kind, &values)
+                })
+                .collect();
+            for (a, b) in [(0, 1), (1, 2), (0, 2)] {
+                let diff = audio[a]
+                    .iter()
+                    .zip(&audio[b])
+                    .map(|(x, y)| (x - y).abs())
+                    .sum::<f32>();
+                assert!(diff > 10.0, "{kind:?} {a} and {b} differ by {diff}");
+            }
         }
     }
 

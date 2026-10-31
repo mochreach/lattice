@@ -6,8 +6,10 @@
 
 mod click;
 pub mod clock;
+pub mod comp;
 pub mod delay;
 pub mod denormal;
+pub mod drive;
 pub mod dsp;
 pub mod engine;
 pub mod fx;
@@ -18,7 +20,9 @@ pub mod rhythmicon;
 pub mod synth;
 
 pub use clock::Clock;
+pub use comp::Comp;
 pub use delay::Delay;
+pub use drive::Drive;
 pub use dsp::{AdsrParams, Wave};
 pub use engine::{
     Chain, Command, EffectSlot, Engine, Handle, MAX_EFFECTS, MAX_TRACKS, Status, Target,

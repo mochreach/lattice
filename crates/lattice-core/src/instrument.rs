@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::device::{Curve, Device, Kind, ParamInfo};
+use crate::device::{Curve, Device, Kind, ParamInfo, param};
 
 /// The instrument on a track, and its settings.
 pub type Instrument = Device<InstKind>;
@@ -68,24 +68,6 @@ impl Kind for InstKind {
     }
 }
 
-const fn param(
-    id: u32,
-    name: &'static str,
-    (min, max, default): (f32, f32, f32),
-    unit: &'static str,
-    curve: Curve,
-) -> ParamInfo {
-    ParamInfo {
-        id,
-        name,
-        min,
-        max,
-        default,
-        unit,
-        curve,
-    }
-}
-
 /// The test synth: oscillator, low-pass filter with an envelope, amplifier.
 pub mod synth {
     use super::*;
@@ -126,16 +108,22 @@ pub mod synth {
 pub mod kick {
     use super::*;
 
+    /// The kind of kick, which the other settings work within: short and clicky, an 808's long
+    /// boom, or a 909's hard, driven thump.
+    pub const MODEL: u32 = 0;
     /// Its pitch, once the drop is over, at [`DRUM_ROOT`].
-    pub const TUNE: u32 = 0;
+    pub const TUNE: u32 = 1;
     /// How far and how hard the pitch drops at the start: a soft thud to a sharp click.
-    pub const PUNCH: u32 = 1;
+    pub const PUNCH: u32 = 2;
     /// Time to fade by 60 dB.
-    pub const DECAY: u32 = 2;
+    pub const DECAY: u32 = 3;
     /// Saturation, off centre so it adds even harmonics: it fattens the tail and squares it off.
-    pub const DRIVE: u32 = 3;
+    pub const DRIVE: u32 = 4;
 
-    pub(super) const PARAMS: [ParamInfo; 4] = [
+    pub const MODELS: &[&str] = &["tight", "boom", "hard"];
+
+    pub(super) const PARAMS: [ParamInfo; 5] = [
+        param(MODEL, "model", (0.0, 2.0, 1.0), "", Curve::Choice(MODELS)),
         param(TUNE, "tune", (30.0, 120.0, 50.0), "Hz", Curve::Log),
         param(PUNCH, "punch", (0.0, 1.0, 0.5), "", Curve::Linear),
         param(DECAY, "decay", (0.05, 2.0, 0.45), "s", Curve::Log),
@@ -147,15 +135,20 @@ pub mod kick {
 pub mod snare {
     use super::*;
 
+    /// The kind of snare: thin and short, full and weighty, or a 909's bright crack.
+    pub const MODEL: u32 = 0;
     /// The shell's lower mode at [`DRUM_ROOT`].
-    pub const TUNE: u32 = 0;
-    pub const DECAY: u32 = 1;
+    pub const TUNE: u32 = 1;
+    pub const DECAY: u32 = 2;
     /// How much of the wires' noise there is against the shell.
-    pub const SNAP: u32 = 2;
+    pub const SNAP: u32 = 3;
     /// Brightness of the noise.
-    pub const TONE: u32 = 3;
+    pub const TONE: u32 = 4;
 
-    pub(super) const PARAMS: [ParamInfo; 4] = [
+    pub const MODELS: &[&str] = &["tight", "fat", "crack"];
+
+    pub(super) const PARAMS: [ParamInfo; 5] = [
+        param(MODEL, "model", (0.0, 2.0, 1.0), "", Curve::Choice(MODELS)),
         param(TUNE, "tune", (100.0, 400.0, 180.0), "Hz", Curve::Log),
         param(DECAY, "decay", (0.05, 1.0, 0.22), "s", Curve::Log),
         param(SNAP, "snap", (0.0, 1.0, 0.6), "", Curve::Linear),
@@ -167,16 +160,22 @@ pub mod snare {
 pub mod hat {
     use super::*;
 
+    /// The kind of hat: the squares mixed in pairs for a clangy metal, summed for an 808's
+    /// ring, or mostly noise for a bright sizzle.
+    pub const MODEL: u32 = 0;
     /// The lowest of the six at [`DRUM_ROOT`]; the others keep their ratios to it.
-    pub const TUNE: u32 = 0;
+    pub const TUNE: u32 = 1;
     /// Short for a closed hat, long for an open one.
-    pub const DECAY: u32 = 1;
+    pub const DECAY: u32 = 2;
     /// Where the high-pass sits: lower lets more of the metal through.
-    pub const TONE: u32 = 2;
+    pub const TONE: u32 = 3;
     /// Noise against the metal.
-    pub const NOISE: u32 = 3;
+    pub const NOISE: u32 = 4;
 
-    pub(super) const PARAMS: [ParamInfo; 4] = [
+    pub const MODELS: &[&str] = &["metal", "ring", "sizzle"];
+
+    pub(super) const PARAMS: [ParamInfo; 5] = [
+        param(MODEL, "model", (0.0, 2.0, 1.0), "", Curve::Choice(MODELS)),
         param(TUNE, "tune", (100.0, 800.0, 205.0), "Hz", Curve::Log),
         param(DECAY, "decay", (0.01, 2.0, 0.06), "s", Curve::Log),
         param(TONE, "tone", (2_000.0, 14_000.0, 7_000.0), "Hz", Curve::Log),

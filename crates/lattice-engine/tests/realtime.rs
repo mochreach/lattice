@@ -4,8 +4,8 @@ use assert_no_alloc::{AllocDisabler, assert_no_alloc};
 use lattice_core::instrument::kick;
 use lattice_core::{Condition, Grid, InstKind, Instrument, Rule, Step, Track, Transform};
 use lattice_engine::{
-    AdsrParams, Chain, Command, Delay, EffectSlot, Engine, Patch, Processor, Synth, Target,
-    TrackPlayer, Wave, delay,
+    AdsrParams, Chain, Command, Comp, Delay, Drive, EffectSlot, Engine, Patch, Processor, Synth,
+    Target, TrackPlayer, Wave, delay,
 };
 
 #[global_allocator]
@@ -74,6 +74,8 @@ fn rendering_never_allocates() {
     let mut muted = Some(Box::new(muted));
     let mut send_delay = Some(EffectSlot::new(Box::new(Delay::new(48_000.0))));
     let mut track_delay = Some(EffectSlot::new(Box::new(Delay::new(48_000.0))));
+    let mut track_drive = Some(EffectSlot::new(Box::new(Drive::new(48_000.0))));
+    let mut track_comp = Some(EffectSlot::new(Box::new(Comp::new(48_000.0))));
     let mut drums: Vec<_> = [InstKind::Hat, InstKind::Snare, InstKind::Kick]
         .into_iter()
         .map(|kind| lattice_engine::instrument::build(&Instrument::new(kind), 48_000.0))
@@ -126,6 +128,16 @@ fn rendering_never_allocates() {
                         chain: Chain::Track(0),
                         index: 0,
                         effect: track_delay.take().unwrap(),
+                    });
+                    handle.send(Command::InsertEffect {
+                        chain: Chain::Track(0),
+                        index: 0,
+                        effect: track_drive.take().unwrap(),
+                    });
+                    handle.send(Command::InsertEffect {
+                        chain: Chain::Track(0),
+                        index: 1,
+                        effect: track_comp.take().unwrap(),
                     });
                     handle.send(Command::SetParam {
                         target: Target::Effect {
