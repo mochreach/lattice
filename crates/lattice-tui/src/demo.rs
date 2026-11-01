@@ -428,9 +428,10 @@ fn bass() -> Vec<Step> {
 fn acid() -> Vec<Step> {
     notes("F2! F2 F3 . Eb3 F2! . C3 F2 Ab2! F3? C3")
 }
-/// The second, answering stab brighter and ringing, from settings locked on its step.
+/// The second, answering stab brighter and ringing, from settings locked on its step. On the
+/// fifth, which the changes keep in key, as every chord in them has a perfect fifth.
 fn stabs() -> Vec<Step> {
-    let mut steps = notes(". . . Ab3_2 . . . . . . Ab3 . . . . .");
+    let mut steps = notes(". . . C4_2 . . . . . . C4 . . . . .");
     for (param, value) in [(synth::CUTOFF, 3_200.0), (synth::RESONANCE, 0.7)] {
         steps[10].locks.set(Lock {
             fx: None,
@@ -440,8 +441,9 @@ fn stabs() -> Vec<Step> {
     }
     steps
 }
+/// The fifth, then the root, which the changes keep in key.
 fn pad() -> Vec<Step> {
-    notes("C4_16 . . . . . . . . . . . . . . . | Ab3_16 . . . . . . . . . . . . . . .")
+    notes("C4_16 . . . . . . . . . . . . . . . | F3_16 . . . . . . . . . . . . . . .")
 }
 /// Seven steps, turned a step back every other pass.
 fn pluck() -> (Vec<Step>, Vec<Rule>) {
