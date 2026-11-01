@@ -185,7 +185,8 @@ held; elsewhere each is one step. Stopped, insert mode enters notes at the curso
 On the **command line**, commands that fuzzy-match what you've typed are listed above it, and
 `tab` cycles through them. Once the command is named, the parameters still to type are shown
 faintly after the cursor, and shrink as you type over them, and the values that fit the word
-you're typing are listed above it in turn, for `tab` to fill in: the effects after `:fx-add`
+you're typing are listed above it in turn, for `tab` to fill in: a rule's amount (`12`, an octave
+up) and when it applies (`every 4`, then which of the four), the effects after `:fx-add`
 (with their settings), instruments after `:inst`, the track's settings with their values after
 `:lock`, then a setting's choices, macros after `:map`, saved chains, patterns, scales, layouts,
 devices, and files and folders for `:open`, `:w`, `:sample` and the rest. Typing a value's first

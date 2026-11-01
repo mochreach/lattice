@@ -128,11 +128,114 @@ impl Editor {
             ("pattern", 0) => (self.arrangement.patterns.iter().enumerate())
                 .map(|(i, p)| (p.name.clone(), format!("pattern {}", i + 1)))
                 .collect(),
+            ("tr" | "rot" | "drift" | "rev", _) => self.rule_choices(name, before),
             ("input", 0) => devices(&self.inputs),
             ("output", 0) => devices(&self.outputs),
             _ => vec![],
         }
     }
+}
+
+impl Editor {
+    /// What fits a rule's next word: its amount, as an interval or a number of steps, then when
+    /// it applies, `every N [OFFSET]` or `pass K`.
+    fn rule_choices(&self, name: &str, before: &[&str]) -> Vec<(String, String)> {
+        let beat = self.grid.steps_per_beat as i64;
+        let steps = |n: i64, s: &str| match n.abs() {
+            1 => format!("a step {s}"),
+            n if n == beat => format!("a beat {s}"),
+            n if n == 2 * beat => format!("two beats {s}"),
+            n => format!("{n} steps {s}"),
+        };
+        let amount: Vec<(String, String)> = match name {
+            "tr" => [
+                (12, "an octave up"),
+                (-12, "an octave down"),
+                (7, "a fifth up"),
+                (-5, "a fourth down, to the fifth below"),
+                (5, "a fourth up"),
+                (-7, "a fifth down"),
+                (3, "a minor third up"),
+                (4, "a major third up"),
+                (2, "a tone up"),
+                (-2, "a tone down"),
+                (1, "a semitone up"),
+                (-1, "a semitone down"),
+            ]
+            .map(|(n, what)| (n.to_string(), what.to_string()))
+            .to_vec(),
+            "rot" => [1, -1, beat, -beat, 2, -2, 2 * beat]
+                .map(|n| {
+                    (
+                        n.to_string(),
+                        steps(n, if n > 0 { "later" } else { "earlier" }),
+                    )
+                })
+                .to_vec(),
+            "drift" => [1, -1, beat, -beat]
+                .map(|n| {
+                    let way = if n > 0 { "later" } else { "earlier" };
+                    (n.to_string(), steps(n, &format!("{way} each time")))
+                })
+                .to_vec(),
+            _ => vec![],
+        };
+        let values = usize::from(name != "rev");
+        if before.len() < values {
+            return amount;
+        }
+        let pairs = |pairs: Vec<(u32, String)>| {
+            (pairs.into_iter())
+                .map(|(n, what)| (n.to_string(), what))
+                .collect()
+        };
+        match before[values..] {
+            [] => vec![
+                (
+                    "every".into(),
+                    "every N passes, from pass OFFSET (0 if left out)".into(),
+                ),
+                ("pass".into(), "on pass K only, counting from 0".into()),
+            ],
+            ["every"] => pairs(
+                [2, 3, 4, 8]
+                    .map(|n| {
+                        let what = match n {
+                            2 => "every other pass".into(),
+                            n => format!("every {} pass", ordinal(n)),
+                        };
+                        (n, what)
+                    })
+                    .to_vec(),
+            ),
+            ["every", n] => match n.parse::<u32>() {
+                Ok(n @ 1..=16) => pairs(
+                    (0..n)
+                        .map(|k| (k, format!("the {} pass of every {n}", ordinal(k + 1))))
+                        .collect(),
+                ),
+                _ => vec![],
+            },
+            ["pass"] => pairs(
+                (0..4)
+                    .map(|k| (k, format!("the {} pass only", ordinal(k + 1))))
+                    .collect(),
+            ),
+            _ => vec![],
+        }
+    }
+}
+
+/// `1st`, `2nd`, `3rd`, `4th`, `11th`, `21st`.
+pub(crate) fn ordinal(n: u32) -> String {
+    let suffix = match (n % 10, n % 100) {
+        (_, 11..=13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    format!("{n}{suffix}")
 }
 
 /// The commands that take a file first, and the kind of file, if only one kind will do.

@@ -2301,6 +2301,42 @@ mod tests {
     }
 
     #[test]
+    fn rules_suggest_their_amounts_and_when_they_apply() {
+        let mut e = editor();
+        let suggested = |e: &Editor| {
+            (e.completions().into_iter())
+                .map(|c| format!("{} {}", c.text, c.describe))
+                .collect::<Vec<_>>()
+        };
+        typing(&mut e, ":tr ");
+        assert_eq!(suggested(&e)[0], "12 an octave up");
+        typing(&mut e, "7 ");
+        assert_eq!(suggested(&e).len(), 2, "every or pass");
+        typing(&mut e, "e");
+        e.handle(Key::Tab);
+        assert_eq!(line(&e), "tr 7 every");
+        typing(&mut e, " ");
+        assert_eq!(suggested(&e)[0], "2 every other pass");
+        typing(&mut e, "4 ");
+        assert_eq!(suggested(&e)[1], "1 the 2nd pass of every 4");
+        typing(&mut e, "3\n");
+        assert_eq!(
+            e.grid.tracks[0].rules.last().unwrap().when,
+            Condition::Every { n: 4, offset: 3 }
+        );
+        typing(&mut e, ":rot ");
+        assert!(suggested(&e).contains(&"4 a beat later".to_string()));
+        typing(&mut e, "1 pass ");
+        assert_eq!(suggested(&e)[0], "0 the 1st pass only");
+        e.handle(Key::Esc);
+        typing(&mut e, ":rev ");
+        assert_eq!(suggested(&e).len(), 2, "rev takes no amount");
+        e.handle(Key::Esc);
+        assert_eq!(super::suggest::ordinal(12), "12th");
+        assert_eq!(super::suggest::ordinal(22), "22nd");
+    }
+
+    #[test]
     fn up_and_down_go_through_the_commands_run() {
         let mut e = editor();
         typing(&mut e, ":bpm 100\n:follow\n:bpm 120\n:follow\n");
