@@ -9,7 +9,7 @@
 
 use lattice_core::{Arrangement, Buses, FxKind, Grid, InstKind, Instrument, Song, Step, Track};
 
-use crate::keymap::{Action, Binding, Keymap};
+use crate::keymap::{Action, Binding, Key, Keymap};
 use crate::{Editor, Effect, Mode, Page};
 
 /// One lesson.
@@ -24,7 +24,9 @@ struct Lesson {
     /// The commands it teaches, each written in the text as `:name`.
     #[cfg_attr(not(test), allow(dead_code))]
     commands: &'static [&'static str],
-    /// Gets the song and cursor ready, so the lesson can be done (and isn't done already).
+    /// Gets the song ready, so the lesson can be done (and isn't done already), changing as
+    /// little as it can, so each lesson carries on from the last. The text says where to go,
+    /// rather than the setup moving the cursor there.
     setup: fn(&mut Editor),
     /// Something to notice on the way, such as playback having started: see [`Tutor::seen`].
     watch: fn(&Editor) -> bool,
@@ -44,6 +46,8 @@ pub(crate) struct Tutor {
     start: Grid,
     /// Whether the lesson's `watch` has been true since it started.
     seen: bool,
+    /// Done, and waiting for space to go on.
+    complete: bool,
 }
 
 /// The tutor's lesson, for drawing.
@@ -55,6 +59,8 @@ pub struct TutorView {
     pub title: &'static str,
     /// Paragraphs, with keys filled in, `backticks` marking keys and commands.
     pub text: Vec<String>,
+    /// Once it's done: the next lesson's title, or `None` after the last.
+    pub complete: Option<Option<&'static str>>,
 }
 
 /// Actions no lesson teaches yet, so a new action has to be put in one, or here.
@@ -132,12 +138,6 @@ fn index(e: &Editor, name: &str) -> usize {
         .unwrap_or(0)
 }
 
-/// Puts the cursor on `name`'s `step`.
-fn at(e: &mut Editor, name: &str, step: usize) {
-    let t = index(e, name);
-    e.select_point(t, step);
-}
-
 fn has_note(track: &Track, step: usize) -> bool {
     track.steps.get(step).is_some_and(|s| s.note.is_some())
 }
@@ -160,7 +160,7 @@ const LESSONS: &[Lesson] = &[
     Lesson {
         title: "Moving around",
         text: "Welcome to Lattice. The tutor teaches the keys by having you use them: each lesson \
-               says what to do, and once you've done it the next one starts. `:tutor next` skips \
+               says what to do, and once you've done it, `space` goes on to the next. `:tutor next` skips \
                a lesson, `:tutor back` goes back one and `:tutor end` stops.\n\n\
                The grid has a column for each track and a row for each step. Move with \
                {left} {down} {up} {right}; a number first repeats the move, so 4 then {down} goes \
@@ -199,7 +199,7 @@ const LESSONS: &[Lesson] = &[
             Action::PrevNote,
         ],
         commands: &[],
-        setup: |e| e.select_point(0, 0),
+        setup: nothing,
         watch: never,
         done: |e, _| {
             let c = e.cursor();
@@ -214,7 +214,7 @@ const LESSONS: &[Lesson] = &[
                the octave above from `q`. Each note moves the cursor down a step; \
                {clear_advance} clears one instead. {keyboard_octave_up} and \
                {keyboard_octave_down} change the keyboard's octave, and {escape} goes back to \
-               normal mode.\n\nThe cursor's on the LEAD track: put four notes in it, then go \
+               normal mode.\n\nGo to the top of the LEAD track, put four notes in it, then go \
                back to normal mode.",
         teaches: &[
             Action::Insert,
@@ -225,7 +225,7 @@ const LESSONS: &[Lesson] = &[
             Action::Escape,
         ],
         commands: &[],
-        setup: |e| at(e, "LEAD", 0),
+        setup: nothing,
         watch: never,
         done: |e, _| {
             let notes = (track(e, "LEAD").steps.iter())
@@ -233,7 +233,7 @@ const LESSONS: &[Lesson] = &[
                 .count();
             notes >= 4 && e.mode == Mode::Normal
         },
-        solution: "izxcv<esc>",
+        solution: "glggizxcv<esc>",
     },
     Lesson {
         title: "Playing",
@@ -265,7 +265,8 @@ const LESSONS: &[Lesson] = &[
                {select_mode} starts select mode, where moving stretches the selection, and \
                {collapse} shrinks it back to the cursor. {select_rows} selects whole rows. \
                {delete} deletes what's selected, and copies it; {clear} only deletes.\n\nThe \
-               BASS track has a run of notes on steps 04 to 07. Select them and delete them.",
+               BASS track has a run of notes on steps 04 to 07. Select them and delete them, \
+               leaving the rest.",
         teaches: &[
             Action::SelectMode,
             Action::Collapse,
@@ -274,16 +275,13 @@ const LESSONS: &[Lesson] = &[
             Action::Clear,
         ],
         commands: &[],
-        setup: |e| {
-            fill_run(e);
-            at(e, "BASS", 0);
-        },
+        setup: fill_run,
         watch: never,
         done: |e, _| {
             let bass = track(e, "BASS");
             run().all(|s| !has_note(bass, s)) && has_note(bass, 0) && has_note(bass, 8)
         },
-        solution: "4jv3jd",
+        solution: "ghllgg4jv3jd",
     },
     Lesson {
         title: "Undo",
@@ -291,8 +289,12 @@ const LESSONS: &[Lesson] = &[
                notes you deleted.",
         teaches: &[Action::Undo, Action::Redo],
         commands: &[],
-        // Deleted afresh, so there's something to undo however the lesson was reached.
+        // Reached some other way than by deleting them, delete them, to undo.
         setup: |e| {
+            let t = index(e, "BASS");
+            if !e.undo.is_empty() && run().all(|s| !has_note(&e.grid.tracks[t], s)) {
+                return;
+            }
             fill_run(e);
             e.checkpoint();
             let t = index(e, "BASS");
@@ -309,8 +311,8 @@ const LESSONS: &[Lesson] = &[
         text: "{note_up} and {note_down} move the selected notes a semitone, {note_octave_up} \
                and {note_octave_down} an octave, and {longer} and {shorter} make them last \
                longer or shorter. {replace} then a note fills the selection with it, and \
-               {change} clears it and starts insert mode.\n\nSelect the bass notes on steps 04 to \
-               07 again, and raise them an octave.",
+               {change} clears it and starts insert mode.\n\nWith the bass notes on steps 04 to \
+               07 selected (undo brought the selection back too), raise them an octave.",
         teaches: &[
             Action::NoteUp,
             Action::NoteDown,
@@ -322,10 +324,7 @@ const LESSONS: &[Lesson] = &[
             Action::Change,
         ],
         commands: &[],
-        setup: |e| {
-            fill_run(e);
-            at(e, "BASS", 0);
-        },
+        setup: fill_run,
         watch: never,
         done: |e, t| {
             let (now, was) = (track(e, "BASS"), &t.start.tracks[index(e, "BASS")]);
@@ -334,7 +333,7 @@ const LESSONS: &[Lesson] = &[
                 _ => false,
             })
         },
-        solution: "4jv3j>",
+        solution: "ghllgg4jv3j>",
     },
     Lesson {
         title: "Copy and paste",
@@ -343,13 +342,13 @@ const LESSONS: &[Lesson] = &[
                first beat, steps 00 to 03, onto the HAT track at step 08.",
         teaches: &[Action::Yank, Action::Paste, Action::PasteInsert],
         commands: &[],
-        setup: |e| at(e, "KICK", 0),
+        setup: nothing,
         watch: never,
         done: |e, _| {
             let (kick, hat) = (track(e, "KICK"), track(e, "HAT"));
             (0..4).all(|s| kick.steps[s].note == hat.steps[8 + s].note)
         },
-        solution: "v3jyl5jp",
+        solution: "ghggv3jyl5jp",
     },
     Lesson {
         title: "Many selections",
@@ -367,7 +366,7 @@ const LESSONS: &[Lesson] = &[
             Action::KeepPrimary,
         ],
         commands: &[],
-        setup: |e| e.select_point(0, 0),
+        setup: nothing,
         watch: never,
         done: |e, t| {
             let mut raised = false;
@@ -393,17 +392,19 @@ const LESSONS: &[Lesson] = &[
         title: "Mute and solo",
         text: "Some keys open a menu of what can follow, shown in the corner. {toggle_mute} \
                mutes the tracks the selections reach, and {toggle_solo} solos them; \
-               {toggle_pattern_mute} mutes them in this pattern only.\n\nMute the BASS track.",
+               {toggle_pattern_mute} mutes them in this pattern only.\n\nWith several \
+               selections about, {keep_primary} first keeps just one. Then mute the BASS \
+               track, listen, and unmute it.",
         teaches: &[
             Action::ToggleMute,
             Action::ToggleSolo,
             Action::TogglePatternMute,
         ],
         commands: &[],
-        setup: |e| at(e, "BASS", 0),
-        watch: never,
-        done: |e, _| track(e, "BASS").mix.mute,
-        solution: "tm",
+        setup: nothing,
+        watch: |e| track(e, "BASS").mix.mute,
+        done: |e, t| t.seen && !track(e, "BASS").mix.mute,
+        solution: ",ghlltmtm",
     },
     Lesson {
         title: "The command line",
@@ -427,10 +428,10 @@ const LESSONS: &[Lesson] = &[
                playing.\n\nGive the BASS track a rule.",
         teaches: &[Action::ToggleView],
         commands: &["tr", "rot", "pop", "clear", "len", "name"],
-        setup: |e| at(e, "BASS", 0),
+        setup: nothing,
         watch: never,
         done: |e, t| track(e, "BASS").rules.len() > t.start.tracks[index(e, "BASS")].rules.len(),
-        solution: ":tr 12<ret>",
+        solution: ",ghll:tr 12<ret>",
     },
     Lesson {
         title: "The mixer",
@@ -447,13 +448,13 @@ const LESSONS: &[Lesson] = &[
             Action::GotoEffects,
         ],
         commands: &["level", "pan", "send", "set"],
-        setup: |e| at(e, "BASS", 0),
+        setup: nothing,
         watch: never,
         done: |e, t| {
             let was = t.start.tracks[index(e, "BASS")].mix.level;
             track(e, "BASS").mix.level < was && e.page == Page::Pattern
         },
-        solution: "gm<C-x>gp",
+        solution: ",ghllgm<C-x>gp",
     },
     Lesson {
         title: "Instruments and effects",
@@ -462,10 +463,10 @@ const LESSONS: &[Lesson] = &[
                {delete} removes the effect under the cursor.\n\nAdd a reverb to the LEAD track.",
         teaches: &[],
         commands: &["inst", "fx-add"],
-        setup: |e| at(e, "LEAD", 0),
+        setup: nothing,
         watch: never,
         done: |e, _| (track(e, "LEAD").effects.iter()).any(|fx| fx.kind == FxKind::Reverb),
-        solution: ":fx-add reverb<ret>",
+        solution: ",gl:fx-add reverb<ret>",
     },
     Lesson {
         title: "Locks",
@@ -476,7 +477,7 @@ const LESSONS: &[Lesson] = &[
                changed.\n\nLock the LEAD track's cutoff on step 00.",
         teaches: &[Action::LockSetting],
         commands: &["lock", "unlock"],
-        setup: |e| at(e, "LEAD", 0),
+        setup: nothing,
         watch: never,
         done: |e, _| {
             let lead = track(e, "LEAD");
@@ -485,7 +486,7 @@ const LESSONS: &[Lesson] = &[
                 (lead.steps[0].locks.iter()).any(|l| l.fx.is_none() && u32::from(l.param) == p.id)
             })
         },
-        solution: ":lock cutoff 2000<ret>",
+        solution: ",glgg:lock cutoff 2000<ret>",
     },
     Lesson {
         title: "Patterns and the song",
@@ -508,7 +509,8 @@ const LESSONS: &[Lesson] = &[
         text: "{add_track} adds a track after the cursor's, and {remove_track} removes the \
                selected tracks. {select_tracks} selects whole tracks; {yank_tracks} copies \
                them, and {paste_tracks_after} {paste_tracks_before} paste them. \
-               {move_track_left} and {move_track_right} move them.\n\nAdd a track.",
+               {move_track_left} and {move_track_right} move them.\n\nGo back to the pattern \
+               page and add a track.",
         teaches: &[
             Action::AddTrack,
             Action::RemoveTrack,
@@ -520,10 +522,10 @@ const LESSONS: &[Lesson] = &[
             Action::MoveTrackRight,
         ],
         commands: &[],
-        setup: |e| at(e, "BASS", 0),
+        setup: nothing,
         watch: never,
-        done: |e, t| e.grid.tracks.len() > t.start.tracks.len(),
-        solution: "ta",
+        done: |e, t| e.grid.tracks.len() > t.start.tracks.len() && e.page == Page::Pattern,
+        solution: "gpta",
     },
     Lesson {
         title: "Finding more",
@@ -573,7 +575,17 @@ fn song() -> Song {
                 track(
                     "BASS",
                     InstKind::Synth,
-                    &[(0, 36), (3, 36), (8, 36), (11, 31), (14, 34)],
+                    &[
+                        (0, 36),
+                        (3, 36),
+                        (4, 39),
+                        (5, 41),
+                        (6, 43),
+                        (7, 46),
+                        (8, 36),
+                        (11, 31),
+                        (14, 34),
+                    ],
                 ),
                 track("LEAD", InstKind::Synth, &[]),
             ],
@@ -641,6 +653,7 @@ impl Editor {
             lesson: 0,
             start: self.grid.clone(),
             seen: false,
+            complete: false,
         });
         effects.extend(self.start_lesson(0));
         effects
@@ -679,13 +692,19 @@ impl Editor {
             text: (lesson.text.split("\n\n"))
                 .map(|p| fill(p, &self.keymap))
                 .collect(),
+            complete: (tutor.complete).then(|| LESSONS.get(tutor.lesson + 1).map(|l| l.title)),
         })
     }
 
-    /// Checks the lesson, moving on once it's done. Call it after each key, and as playback
-    /// starts and stops.
+    /// Checks the lesson, and once it's done waits for space to go on. Call it after each key,
+    /// and as playback starts and stops.
     pub fn tutor_tick(&mut self) -> Vec<Effect> {
-        let Some(at) = self.tutor.as_ref().map(|t| t.lesson) else {
+        let Some(at) = self
+            .tutor
+            .as_ref()
+            .filter(|t| !t.complete)
+            .map(|t| t.lesson)
+        else {
             return vec![];
         };
         let lesson = &LESSONS[at];
@@ -693,31 +712,43 @@ impl Editor {
         let tutor = self.tutor.as_mut().expect("tutoring");
         tutor.seen |= seen;
         let tutor = self.tutor.as_ref().expect("tutoring");
-        if !(lesson.done)(self, tutor) {
-            return vec![];
+        if (lesson.done)(self, tutor) {
+            self.tutor.as_mut().expect("tutoring").complete = true;
+        }
+        vec![]
+    }
+
+    /// Space (or return) on a finished lesson goes on to the next. Other keys work as usual,
+    /// so there's time to look at what was done.
+    pub(crate) fn tutor_key(&mut self, key: Key) -> Option<Vec<Effect>> {
+        let tutor = self.tutor.as_ref().filter(|t| t.complete)?;
+        if !matches!(key, Key::Char(' ') | Key::Enter)
+            || !matches!(self.mode, Mode::Normal | Mode::Select)
+        {
+            return None;
         }
         let next = tutor.lesson + 1;
         if next == LESSONS.len() {
-            self.end_tutor("✓ that's the tutor done");
-            return vec![];
+            self.end_tutor("that's the tutor done: :tutor starts it again");
+            return Some(vec![]);
         }
-        let effects = self.start_lesson(next);
-        self.message = Some(format!("✓ {}", lesson.title));
-        effects
+        Some(self.start_lesson(next))
     }
 
+    /// Starts a lesson from wherever the last one left off: its setup changes only what it
+    /// must.
     fn start_lesson(&mut self, lesson: usize) -> Vec<Effect> {
         let lesson = lesson.min(LESSONS.len() - 1);
         let before = self.grid.clone();
         self.mode = Mode::Normal;
         self.pending = None;
         self.count = None;
-        self.page = Page::Pattern;
         (LESSONS[lesson].setup)(self);
         self.tutor = Some(Tutor {
             lesson,
             start: self.grid.clone(),
             seen: false,
+            complete: false,
         });
         // Setting up changes the song without undo, so send what it changed.
         (self.grid.tracks.iter().zip(&before.tracks))
@@ -793,10 +824,17 @@ mod tests {
                 lesson.title
             );
             // Not done before it's begun.
-            assert!(e.tutor_tick().is_empty() && e.tutor.as_ref().unwrap().lesson == i);
+            e.tutor_tick();
+            assert_eq!(e.tutor_view().unwrap().complete, None, "{}", lesson.title);
             play(&mut e, lesson.solution);
-            let message = e.message.clone().unwrap_or_default();
-            assert!(message.starts_with('✓'), "{}: {message}", lesson.title);
+            let next = LESSONS.get(i + 1).map(|l| l.title);
+            assert_eq!(
+                e.tutor_view().unwrap().complete,
+                Some(next),
+                "{}",
+                lesson.title
+            );
+            e.handle(Key::Char(' '));
         }
         assert!(!e.tutoring());
         assert!(!e.modified(), "the tutor's song isn't left unsaved");
@@ -808,8 +846,11 @@ mod tests {
             let mut e = editor();
             e.start_lesson(i);
             play(&mut e, lesson.solution);
-            let message = e.message.clone().unwrap_or_default();
-            assert!(message.starts_with('✓'), "{}: {message}", lesson.title);
+            assert!(
+                e.tutor_view().unwrap().complete.is_some(),
+                "{}",
+                lesson.title
+            );
         }
     }
 

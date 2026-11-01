@@ -739,6 +739,9 @@ impl Editor {
 
     fn handle_key(&mut self, key: Key) -> Vec<Effect> {
         self.message = None;
+        if let Some(effects) = self.tutor_key(key) {
+            return effects;
+        }
         match (key, &self.mode) {
             // On the command line, the numpad types digits.
             (Key::Pad(n), Mode::Command(_)) => return self.command_key(Key::Char(pad_digit(n))),

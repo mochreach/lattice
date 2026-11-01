@@ -34,7 +34,8 @@ Debug builds abort if the audio callback ever allocates, which catches real-time
 ## Keys
 
 New to it? `:tutor` (or `lattice --tutor`) teaches the keys a lesson at a time, on a song of its
-own, as Helix's tutor does. Each lesson moves on once you've done what it asks; `:tutor next`,
+own, as Helix's tutor does. Once you've done what a lesson asks, a box says so and `space` goes on to the
+next, from where you left off; `:tutor next`,
 `back` and `end` move through it.
 
 Modelled on [Helix](https://helix-editor.com): select first, then act, so you see what will

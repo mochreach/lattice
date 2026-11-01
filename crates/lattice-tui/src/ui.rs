@@ -124,6 +124,11 @@ pub fn draw(
     if editor.show_keys {
         view.keys.draw(frame, grid, theme);
     }
+    if let Some(view) = editor.tutor_view()
+        && let Some(next) = view.complete
+    {
+        draw_lesson_done(frame, grid, &view, next, theme);
+    }
     if let Some(infobox) = editor.infobox() {
         draw_infobox(frame, grid, &infobox, theme);
     }
@@ -685,6 +690,49 @@ fn held(steps: &[Step]) -> Vec<bool> {
             held
         })
         .collect()
+}
+
+/// The box saying a lesson's done, in the middle of the page, until space goes on.
+fn draw_lesson_done(
+    frame: &mut Frame,
+    area: Rect,
+    view: &TutorView,
+    next: Option<&str>,
+    theme: &Theme,
+) {
+    let accent = Style::new().fg(theme.accent).add_modifier(Modifier::BOLD);
+    let key = |k: &str| Span::styled(k.to_string(), accent);
+    let lines = match next {
+        Some(next) => vec![
+            Line::from(Span::styled(format!("✓ {}", view.title), accent)),
+            Line::default(),
+            Line::from(vec![
+                Span::styled("Next: ", theme.dim),
+                Span::raw(next.to_string()),
+            ]),
+            Line::from(vec![key("space"), Span::styled(" to go on", theme.dim)]),
+        ],
+        None => vec![
+            Line::from(Span::styled(format!("✓ {}", view.title), accent)),
+            Line::default(),
+            Line::from("That's every lesson."),
+            Line::from(vec![key("space"), Span::styled(" to finish", theme.dim)]),
+        ],
+    };
+    let width = (lines.iter().map(Line::width).max().unwrap_or(0) as u16 + 6).min(area.width);
+    let height = (lines.len() as u16 + 2).min(area.height);
+    let rect = Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + (area.height - height) / 2,
+        width,
+        height,
+    };
+    let block = Block::bordered()
+        .border_style(Style::new().fg(theme.accent))
+        .padding(Padding::horizontal(2))
+        .title(Span::styled(" LESSON DONE ", accent));
+    frame.render_widget(Clear, rect);
+    frame.render_widget(Paragraph::new(lines).block(block), rect);
 }
 
 /// A tutor lesson's paragraphs, wrapped to fit inside its box, with keys and commands (in
