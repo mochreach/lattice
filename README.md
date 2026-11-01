@@ -216,7 +216,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:fx-send LANE [DB]` | on the fx page, add a send after the cursor into lane `LANE` (`B`, say); the next letter after the last lane adds one. Into its own lane or one to its left it's feedback, at -6 dB unless given, and at most 0 dB |
 | `:lock PARAM VALUE` | lock a setting of the track's instrument or effects on every step the selections reach: `:lock cutoff 800`, `:lock filter.mix 0.5` (or `2.mix`, the second effect's). `:lock cutoff 200..4000` sweeps it across each selection. Locked steps are marked `◆`, and the cursor's locks are shown in the status line |
 | `:macro NAME` | add a macro to the track: one knob, from 0 to 1, that turns several of its settings |
-| `:map NAME [DEPTH]` | on the mixer or fx page, have macro `NAME` turn the setting under the cursor, by `DEPTH` of its range (-1 to 1, 0.5 if left out) at full turn, adding the macro if it's new |
+| `:map NAME [DEPTH]` | on the mixer or fx page, have macro `NAME` (or its number, `1`) turn the setting under the cursor, by `DEPTH` of its range (-1 to 1, 0.5 if left out) at full turn, adding the macro if it's new |
 | `:unmap NAME` | stop macro `NAME` turning the setting under the cursor |
 | `:unlock [PARAM]` | clear a setting's locks, or all of them, from the steps the selections reach |
 | `:choke N` | choke group (1–8, 0 for none) for every track the selections reach: within a track group, a hit cuts off the other tracks with the same number, as a closed hat stops an open one |

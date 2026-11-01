@@ -97,7 +97,7 @@ impl Editor {
     /// and changes the depth if it already turns the setting.
     pub(crate) fn map_macro(&mut self, args: &str) -> Result<Vec<Effect>, String> {
         let mut words = args.split_whitespace();
-        let name = macro_name(words.next().unwrap_or(""))?;
+        let word = words.next().unwrap_or("");
         let depth = match words.next() {
             Some(word) => word
                 .parse::<f32>()
@@ -109,7 +109,12 @@ impl Editor {
         let (t, fx, param) = self.setting_under_cursor().ok_or(
             "map works on a track's setting: move onto one on the mixer (gm) or fx page (gf)",
         )?;
-        let index = self.find_macro(t, &name);
+        // An existing macro by name or number, or a new one's name.
+        let index = self.find_macro(t, word);
+        let name = match index {
+            Some(m) => self.grid.tracks[t].macros[m].name.clone(),
+            None => macro_name(word)?,
+        };
         let macros = &self.grid.tracks[t].macros;
         let existing = index.and_then(|m| macros[m].targets.iter().position(|g| g.is(fx, param)));
         if index.is_none() && macros.len() == MAX_MACROS {
@@ -301,6 +306,9 @@ mod tests {
         // Mapping it again changes the depth.
         keys(&mut e, ":map bloom 1\n");
         assert_eq!(targets(&e)[1], "filter.resonance 1");
+        // Or by its number.
+        keys(&mut e, ":map 1 0.75\n");
+        assert_eq!(targets(&e)[1], "filter.resonance 0.75");
         assert!(keys(&mut e, ":map 9lives\n").is_empty());
         assert!(e.message.as_ref().unwrap().contains("macro's name"));
 
