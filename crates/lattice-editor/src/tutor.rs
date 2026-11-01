@@ -633,10 +633,12 @@ const LESSONS: &[Lesson] = &[
                playing, it records a pass, from step 00 round to 00 again (`●`), and plays it, \
                cut into a piece a step. Each pass after that overdubs the last, and {undo} takes \
                one off. `:arm!` records a new loop over the old one, and `:arm` again disarms. \
-               If what you play comes back late or early, `:latency 20` moves it by \
+               `:input` chooses what to record from: type `:input ` and the devices are \
+               listed, then a number or part of a name picks one; `:output` chooses what you \
+               hear. If what you play comes back late or early, `:latency 20` moves it by \
                milliseconds, or `:latency -20`.\n\nArm the chop track.",
         teaches: &[],
-        commands: &["arm", "arm!", "latency"],
+        commands: &["arm", "arm!", "input", "output", "latency"],
         setup: nothing,
         watch: never,
         done: |e, _| e.armed().is_some(),

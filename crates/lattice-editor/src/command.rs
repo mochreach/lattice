@@ -11,7 +11,7 @@ use lattice_core::{
     Condition, MAX_CHOKE, MAX_DB, MAX_STEPS, MAX_TRACKS, MIN_DB, Mix, Rule, Step, Track, Transform,
 };
 
-use crate::{Editor, Effect, NoteLayout};
+use crate::{Direction, Editor, Effect, NoteLayout};
 
 /// What a command takes after its name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -318,6 +318,18 @@ pub const COMMANDS: &[Spec] = &[
         alias: None,
         params: &[],
         describe: "arm this track to record a new loop over the one it plays",
+    },
+    Spec {
+        name: "input",
+        alias: None,
+        params: &[optional_text("DEVICE", "device")],
+        describe: "the device the looper records: a number from the list, or part of a name",
+    },
+    Spec {
+        name: "output",
+        alias: None,
+        params: &[optional_text("DEVICE", "device")],
+        describe: "the device you hear Lattice through: a number from the list, or part of a name",
     },
     Spec {
         name: "latency",
@@ -1062,6 +1074,8 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             editor.arm(command.spec.name == "arm!");
             Ok(vec![])
         }
+        "input" => editor.choose_device(Direction::Input, command.text(0)),
+        "output" => editor.choose_device(Direction::Output, command.text(0)),
         "latency" => {
             editor.latency = command.int(0);
             editor.message = Some(format!("latency adjusted by {} ms", editor.latency));

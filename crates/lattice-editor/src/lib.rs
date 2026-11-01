@@ -12,6 +12,7 @@
 //! tested by feeding in key sequences.
 
 mod command;
+mod devices;
 mod export;
 mod group;
 mod help;
@@ -28,6 +29,7 @@ mod song;
 mod tutor;
 
 pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
+pub use devices::{Device, Devices, Direction};
 pub use export::{Export, Part, SAMPLES, file_name, scratch};
 pub use help::{Help, HelpLine};
 pub use keymap::{Action, Binding, Key, Keymap, Menu, NoteLayout};
@@ -172,6 +174,8 @@ pub enum Effect {
     Export(Box<Export>),
     /// Allow this many more milliseconds of latency when recording the input, or fewer.
     Latency(i32),
+    /// Switch to this device, by id, or the system's default; see [`devices`].
+    Device(Direction, Option<String>),
     Quit,
 }
 
@@ -338,6 +342,9 @@ pub struct Editor {
     armed: Option<looper::Armed>,
     /// Milliseconds added to the latency the looper allows for, or taken off.
     pub latency: i32,
+    /// The audio devices, as the frontend found them.
+    pub inputs: Devices,
+    pub outputs: Devices,
     saved: Saved,
     pub mode: Mode,
     pub view: View,
@@ -448,6 +455,8 @@ impl Editor {
             last_export: None,
             armed: None,
             latency: 0,
+            inputs: Devices::default(),
+            outputs: Devices::default(),
             mode: Mode::Normal,
             view: View::Source,
             page: Page::Pattern,
@@ -634,7 +643,10 @@ impl Editor {
 
     /// The keys available after a prefix key, while it waits for the next one.
     pub fn infobox(&self) -> Option<Infobox> {
-        match self.pending? {
+        let Some(pending) = self.pending else {
+            return self.device_infobox();
+        };
+        match pending {
             Pending::Menu(key) => {
                 let Some(Binding::Menu(menu)) = self.keymap.normal.get(&key) else {
                     return None;

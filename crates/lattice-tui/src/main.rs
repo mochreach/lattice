@@ -2,6 +2,7 @@ mod audio;
 mod bars;
 mod config;
 mod demo;
+mod devices;
 mod export;
 mod file;
 mod help_page;
@@ -32,8 +33,8 @@ use ratatui::crossterm::event::{
 };
 use ratatui::crossterm::{execute, terminal};
 
+use crate::devices::Machine;
 use crate::export::Exports;
-use crate::looper::Looper;
 use crate::mixer::Mixer;
 use crate::sequencer::Sequencer;
 use crate::splash::Splash;
@@ -84,18 +85,18 @@ fn main() -> Result<()> {
         let _ = editor.start_tutor();
     }
 
-    let mut audio = audio::start(&editor.grid, editor.bpm)?;
-    let mut tracks = Tracks::new(&editor, audio.sample_rate);
+    let (mut machine, mut handle) = Machine::start(&editor.grid.clone(), editor.bpm, &mut editor)?;
+    let sample_rate = machine.output.sample_rate;
+    let mut tracks = Tracks::new(&editor, sample_rate);
     if let Some(problem) = tracks.take_problem() {
         editor.message = Some(problem);
     }
-    let mut mixer = Mixer::new(audio.sample_rate);
-    let mut exports = Exports::new(audio.sample_rate);
-    let mut looper = Looper::new(audio.sample_rate, audio.input_latency.clone());
-    mixer.sync(&editor, &mut audio.handle);
+    let mut mixer = Mixer::new(sample_rate);
+    let mut exports = Exports::new(sample_rate);
+    mixer.sync(&editor, &mut handle);
     if args.iter().any(|a| a == "--no-click") {
         editor.click = false;
-        audio.handle.send(Command::SetClick(false));
+        handle.send(Command::SetClick(false));
     }
     editor.show_keys = args.iter().any(|a| a == "--show-keys");
 
@@ -129,8 +130,8 @@ fn main() -> Result<()> {
         &mut tracks,
         &mut mixer,
         &mut exports,
-        &mut looper,
-        &mut audio.handle,
+        &mut machine,
+        &mut handle,
         &theme,
         splash,
     );
@@ -148,7 +149,7 @@ fn run(
     tracks: &mut Tracks,
     mixer: &mut Mixer,
     exports: &mut Exports,
-    looper: &mut Looper,
+    machine: &mut Machine,
     handle: &mut Handle,
     theme: &Theme,
     mut splash: Option<Splash>,
@@ -168,18 +169,23 @@ fn run(
                 mixer,
                 exports,
                 &sequencer,
+                machine,
                 handle,
             );
         }
-        for effect in looper.tick(editor, handle) {
-            apply(effect, editor, tracks, mixer, exports, &sequencer, handle);
+        for effect in machine.tick(editor, handle) {
+            apply(
+                effect, editor, tracks, mixer, exports, &sequencer, machine, handle,
+            );
         }
         sequencer.sync(editor, handle);
         // Watched every frame, so it sees each step start within a frame of it.
         editor.set_transport(playhead.transport(handle.status(), editor, Instant::now()));
         // The tutor checks its lesson as playback starts and stops, and after each key.
         for effect in editor.tutor_tick() {
-            if let Flow::Quit = apply(effect, editor, tracks, mixer, exports, &sequencer, handle) {
+            if let Flow::Quit = apply(
+                effect, editor, tracks, mixer, exports, &sequencer, machine, handle,
+            ) {
                 return Ok(());
             }
         }
@@ -222,7 +228,9 @@ fn run(
                     }
                 };
                 for effect in effects {
-                    match apply(effect, editor, tracks, mixer, exports, &sequencer, handle) {
+                    match apply(
+                        effect, editor, tracks, mixer, exports, &sequencer, machine, handle,
+                    ) {
                         Flow::Next => {}
                         Flow::Stop => break,
                         Flow::Quit => return Ok(()),
@@ -275,6 +283,7 @@ impl Playhead {
 }
 
 /// Carries out an editor effect.
+#[allow(clippy::too_many_arguments)]
 fn apply(
     effect: Effect,
     editor: &mut Editor,
@@ -282,6 +291,7 @@ fn apply(
     mixer: &mut Mixer,
     exports: &mut Exports,
     sequencer: &Sequencer,
+    machine: &mut Machine,
     handle: &mut Handle,
 ) -> Flow {
     let command = match effect {
@@ -357,13 +367,22 @@ fn apply(
                 }
             };
         }
-        Effect::Open(path) => return open(path, editor, tracks, mixer, exports, sequencer, handle),
+        Effect::Open(path) => {
+            return open(
+                path, editor, tracks, mixer, exports, sequencer, machine, handle,
+            );
+        }
         Effect::Export(export) => {
             exports.start(*export, editor);
             return Flow::Next;
         }
         Effect::Latency(ms) => {
-            Command::SetLatencyOffset(i64::from(ms) * i64::from(tracks.sample_rate() as u32) / 1000)
+            machine.set_latency(ms, editor, handle);
+            return Flow::Next;
+        }
+        Effect::Device(direction, id) => {
+            machine.choose(direction, id, editor, handle);
+            return Flow::Next;
         }
         Effect::Quit => return Flow::Quit,
     };
@@ -374,6 +393,7 @@ fn apply(
 }
 
 /// Replaces the song with the one at `path`, or a new one if there's no such file.
+#[allow(clippy::too_many_arguments)]
 fn open(
     path: PathBuf,
     editor: &mut Editor,
@@ -381,6 +401,7 @@ fn open(
     mixer: &mut Mixer,
     exports: &mut Exports,
     sequencer: &Sequencer,
+    machine: &mut Machine,
     handle: &mut Handle,
 ) -> Flow {
     let (song, new) = match file::open(&path, Some(editor.grid.steps_per_beat)) {
@@ -392,7 +413,9 @@ fn open(
     };
     let message = new.then(|| format!("{} (new file)", path.display()));
     for effect in editor.load(song, path) {
-        apply(effect, editor, tracks, mixer, exports, sequencer, handle);
+        apply(
+            effect, editor, tracks, mixer, exports, sequencer, machine, handle,
+        );
     }
     if message.is_some() {
         editor.message = message;

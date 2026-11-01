@@ -44,10 +44,6 @@ impl Tracks {
             .collect()
     }
 
-    pub fn sample_rate(&self) -> f32 {
-        self.sample_rate
-    }
-
     /// A sampler's file that couldn't be read since the last call.
     pub fn take_problem(&mut self) -> Option<String> {
         self.problem.take()

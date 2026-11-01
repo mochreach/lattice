@@ -8,12 +8,14 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use anyhow::{Context, Result, bail};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use lattice_editor::{Editor, Effect};
+use anyhow::Result;
+use cpal::Host;
+use cpal::traits::{DeviceTrait, StreamTrait};
+use lattice_editor::{Direction, Editor, Effect};
 use lattice_engine::{Command, Handle, Sample, Take};
 use rtrb::{Consumer, RingBuffer};
 
+use crate::devices;
 use crate::export::write_wav;
 use crate::samples;
 
@@ -29,6 +31,8 @@ pub struct Looper {
     input: Option<cpal::Stream>,
     /// Why the input couldn't be opened, so it's not tried again until the track's armed anew.
     failed: bool,
+    /// The device to record, by id; `None` for the system's default.
+    device: Option<String>,
     /// Takes sent to the engine and not back yet.
     waiting: usize,
     /// Whether the engine's been told to stop recording since a take was last sent.
@@ -36,12 +40,13 @@ pub struct Looper {
 }
 
 impl Looper {
-    pub fn new(sample_rate: f32, input_latency: Arc<AtomicU64>) -> Self {
+    pub fn new(sample_rate: f32, input_latency: Arc<AtomicU64>, device: Option<String>) -> Self {
         Self {
             sample_rate,
             input_latency,
             input: None,
             failed: false,
+            device,
             waiting: 0,
             stopped: true,
         }
@@ -50,12 +55,13 @@ impl Looper {
     /// Called every frame: opens the input once a track's armed, keeps takes waiting while
     /// there's something to record, and saves the passes recorded. Returns what the editor
     /// makes of them.
-    pub fn tick(&mut self, editor: &mut Editor, handle: &mut Handle) -> Vec<Effect> {
+    pub fn tick(&mut self, editor: &mut Editor, handle: &mut Handle, host: &Host) -> Vec<Effect> {
         let armed = editor.armed();
         if armed.is_none() {
             self.failed = false;
         } else if self.input.is_none() && !self.failed {
-            match open_input(self.sample_rate, Arc::clone(&self.input_latency)) {
+            let latency = Arc::clone(&self.input_latency);
+            match open_input(host, self.device.as_deref(), self.sample_rate, latency) {
                 Ok((stream, input)) => {
                     handle.send(Command::SetInput(input));
                     self.input = Some(stream);
@@ -91,6 +97,14 @@ impl Looper {
             }
         }
         effects
+    }
+
+    /// Records the device `id`, or the system's default, from now on: the input's opened again
+    /// when it's next wanted.
+    pub fn switch(&mut self, id: Option<String>) {
+        self.device = id;
+        self.input = None;
+        self.failed = false;
     }
 
     /// Frames to leave room for, for a pass of track `t`: a tenth more, in case the tempo
@@ -138,36 +152,21 @@ fn at(sample: &Sample, pos: f64) -> (f32, f32) {
     (lerp(&sample.left), lerp(&sample.right))
 }
 
-/// Opens the default input at `rate`, the output's, feeding stereo frames to the engine and
-/// its latency to `latency`.
-fn open_input(rate: f32, latency: Arc<AtomicU64>) -> Result<(cpal::Stream, Consumer<f32>)> {
-    let device = cpal::default_host()
-        .default_input_device()
-        .context("no audio input device")?;
-    let wanted = rate as cpal::SampleRate;
-    let config = match device.default_input_config()? {
-        config if config.sample_rate() == wanted => config,
-        default => (device.supported_input_configs()?)
-            .filter(|c| c.sample_format() == cpal::SampleFormat::F32)
-            .find_map(|c| c.try_with_sample_rate(wanted))
-            .with_context(|| {
-                format!(
-                    "the input runs at {} Hz and the output at {wanted} Hz",
-                    default.sample_rate()
-                )
-            })?,
-    };
-    if config.sample_format() != cpal::SampleFormat::F32 {
-        bail!(
-            "the input gives {:?} samples; only f32 is supported so far",
-            config.sample_format()
-        );
-    }
-    let channels = usize::from(config.channels()).max(1);
+/// Opens the input `id`, or the default, at `rate`, the output's, feeding stereo frames to the
+/// engine and its latency to `latency`.
+fn open_input(
+    host: &Host,
+    id: Option<&str>,
+    rate: f32,
+    latency: Arc<AtomicU64>,
+) -> Result<(cpal::Stream, Consumer<f32>)> {
+    let device = devices::device(host, Direction::Input, id)?;
+    let config = devices::config(&device, Direction::Input, Some(rate as u32))?;
+    let channels = usize::from(config.channels).max(1);
     // A second, plenty for the engine to keep up.
     let (mut frames, input) = RingBuffer::new(rate as usize * 2);
     let stream = device.build_input_stream(
-        config.into(),
+        config,
         move |data: &[f32], info: &cpal::InputCallbackInfo| {
             let at = info.timestamp();
             let seconds = at.callback.duration_since(at.capture).as_secs_f64();

@@ -205,7 +205,8 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:set VALUE` | on the mixer page, set the value under the cursor (also `c`) |
 | `:inst INSTRUMENT` | the instrument for every track the selections reach (or the mixer cursor's): `synth`, `string`, `sampler`, `chop`, `kick`, `snare`, `hat`, `clap` or `tom` |
 | `:arm`, `:arm!` | arm the track for the looper, or disarm it: with record on (`R`), playing records the audio input a pass of the track at a time into a chop track. `:arm` records over what a chop track plays; `:arm!` starts a new loop |
-| `:latency MS` | move what the looper records earlier (negative) or later, if it's out of time with what you heard (-500 to 500) |
+| `:input [DEVICE]`, `:output [DEVICE]` | the device the looper records, or that you hear Lattice through: type `:input ` to list them, then a number, or part of a name; 0 is the system's default. Remembered between runs; with nothing typed, says which is in use |
+| `:latency MS` | move what the looper records earlier (negative) or later, if it's out of time with what you heard (-500 to 500); remembered for each input |
 | `:chop [PATH]` | cut a WAV file into a piece a step, on every track the selections reach (or the mixer cursor's), each step playing its own; with no path, the last selection exported |
 | `:sample [PATH]` | play a WAV file on a sampler, on every track the selections reach (or the mixer cursor's); with no path, the selection last exported with `:export-sel` or `:export-loop` |
 | `:fx-add EFFECT` | add an effect (`delay`, `reverb`, `filter`, `drive` or `comp`) after the mixer cursor, or at the end of this track's chain |
@@ -312,10 +313,16 @@ the top bar `ARMED`), turn record on with `R` and play: from the track's first s
 is recorded (`●`, and `● LOOP`), saved in `samples` as a new take, and chopped onto the track, so
 the next pass plays it back. Each pass after the first is recorded over the last, so the loop
 builds up layer by layer until you stop or turn record off; `u` takes a layer back off. `:arm` on a
-chop track records over its loop, `:arm!` starts a new one, and `:arm` again disarms it. The input
-must run at the output's rate; Lattice doesn't play the input back to you, so listen through your
-interface. If the recording sits late or early against what you heard, `:latency -20` (in ms) moves
-it; it isn't saved with the song.
+chop track records over its loop, `:arm!` starts a new one, and `:arm` again disarms it. Lattice
+doesn't play the input back to you, so listen through your interface. If the recording sits late or
+early against what you heard, `:latency -20` (in ms) moves it.
+
+`:input` chooses what the looper records, and `:output` what you hear Lattice through, even while
+it plays: type `:input ` and the devices are listed in the corner, then a number (`:input 2`), part
+of a name (`:input scarlett`), or 0 for the system's default picks one. The choices, and `:latency`
+for each input, belong to the computer rather than the song, so they're remembered in
+`~/.config/lattice/audio.toml`. On Linux, Lattice goes through PulseAudio (which PipeWire serves),
+so the devices have the names the desktop gives them, falling back to ALSA without it.
 
 The demo song is techno at 130 BPM in F minor, in six sections (`gs` shows them; `^space` plays the
 lot). It opens on `peak`, which has everything: drums folded into a group with drive and a

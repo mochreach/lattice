@@ -276,7 +276,7 @@ playing stops. Sound files from elsewhere, such as a sample library, are left wh
 ### The looper
 
 The looper records the audio input into a chop track, a pass of the track at a time. Arming is the
-editor's (`Editor::armed`); the frontend (`lattice-tui`'s `looper.rs`) opens the default input
+editor's (`Editor::armed`); the frontend (`lattice-tui`'s `looper.rs`) opens the input chosen
 with cpal once a track is armed, at the output's rate and as f32, and feeds the engine stereo
 frames through a ring buffer (`Command::SetInput`). While record is on and the song plays, it
 keeps two `Take`s waiting in the engine, each allocated off the audio thread with room for a pass
@@ -296,6 +296,26 @@ read when the first take starts and held while takes follow on: measured afresh 
 wavers, by up to a block, which would make the passes differ in length. Lattice doesn't monitor
 the input (play it out), as that would add the whole round trip to what you hear; listen to the
 input through the interface.
+
+### Audio devices
+
+`:input` and `:output` choose the devices. The frontend (`devices.rs`) finds them on a thread of
+its own, as asking takes some tens of milliseconds, once at the start and every second while
+`:input ` or `:output ` is on the command line, and hands the lists to the editor (`Devices`),
+whose infobox shows them numbered; the command picks by number or by part of a name, and the
+frontend switches. The input's switched by dropping its stream, to be opened on the new device
+when it's next wanted. The output's switched by stopping its stream and starting one on the new
+device at the same rate: the engine sits behind a mutex that only the stream playing it locks, so
+the audio thread never waits for it, and the song plays on. If the new device fails it goes back
+to the old. Devices are remembered by cpal's `DeviceId`, with `:latency` for each input, in
+`audio.toml` beside the config; Lattice writes that file, and leaves the hand-written config
+alone.
+
+On Linux the host is PulseAudio's (PipeWire serves it too) where there is one, as through ALSA the
+devices are dozens of cards, plugins and raw `hw:` devices under names that don't say what they
+are. Left to itself, PulseAudio buffers about two seconds, so streams ask for 512-frame buffers
+wherever the device allows them: about 28 ms out and 16 ms in, against ALSA's 43 ms. Elsewhere the
+host is the system's own (CoreAudio, WASAPI).
 
 ## Track groups
 
@@ -500,7 +520,7 @@ Not needed until there's something to release; this is the plan for when there i
   installers rather than writing them by hand. Check whether it can choose between CPU-level
   variants such as v3; if not, extend its installer or write a small script of our own.
 - **Linux details:** binaries link the system ALSA library, which is fine on desktop Linux and
-  Raspberry Pi OS. Build against an older glibc (an older Ubuntu runner, or `cargo-zigbuild`) so
+  Raspberry Pi OS; PulseAudio is spoken directly, needing no library. Build against an older glibc (an older Ubuntu runner, or `cargo-zigbuild`) so
   binaries run on older distributions.
 - **Building from source** stays supported: `cargo install`, or a package in the Nix flake, with
   `-C target-cpu=native` for a build tuned to the exact CPU. The repository's
