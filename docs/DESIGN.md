@@ -490,6 +490,16 @@ garbage queue was full. The UI thread looks once a second and writes what's new 
 status line said. Three late blocks in a second, or a stream error, also go on the status line. A
 panic hook writes the backtrace to the log, since the terminal UI owns the screen.
 
+**Driving it from outside.** Each Lattice listens on a Unix socket of its own,
+`$XDG_RUNTIME_DIR/lattice/<pid>.sock` (mode 600, in a 700 folder), so a script or an agent can
+see what's on screen and work it: `lattice ctl screen`, `state` (JSON), `keys`, `cmd` and `log`.
+A request is one line and the answer is what comes back. The UI thread checks for requests once
+a frame and answers them after drawing, so `screen` is what was just drawn. Keys and commands go
+through `Editor::handle` and the same effects as typed ones, so they're undoable and show on the
+status line; saving, opening, quitting, saving chains and the commands that throw the song away
+(`new!`, `open!`, `quit!`, `tutor!`) are refused unless Lattice was started with
+`--allow-agent-save`. An MCP server could wrap it later.
+
 ## DSP
 
 We write our own DSP rather than using fundsp. A tracker's signal flow is fixed:

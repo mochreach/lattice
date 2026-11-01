@@ -1402,8 +1402,8 @@ impl Editor {
         vec![Effect::TracksChanged]
     }
 
-    /// Runs a command line for a key, showing any error as `:` would.
-    fn run_command(&mut self, line: &str) -> Vec<Effect> {
+    /// Runs a command line as `:` would, showing any error.
+    pub fn run_command(&mut self, line: &str) -> Vec<Effect> {
         command::run(self, line).unwrap_or_else(|message| {
             self.message = Some(message);
             vec![]

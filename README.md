@@ -354,6 +354,21 @@ last run's as `lattice.log.1`: the devices it opened, the commands you ran, what
 said, any trouble the audio had keeping up, and a crash's backtrace. If the audio keeps falling
 behind, or a device fails, the status line says so too.
 
+Scripts and agents can drive a running Lattice with `lattice ctl`, through a socket only you can
+open (`$XDG_RUNTIME_DIR/lattice/<pid>.sock`):
+
+```sh
+lattice ctl screen                  # the screen as text
+lattice ctl state                   # page, cursor, tracks, transport and status line, as JSON
+lattice ctl keys 'gp:bpm 140<ret>'  # type keys; <ret>, <esc>, <C-a>, <space>, <lt> for <
+lattice ctl cmd 'fx-add delay'      # run a command, as : would
+lattice ctl log 20                  # the end of the log
+```
+
+What it types goes the same way as your own keys, so `u` undoes it. It can't save, open or quit,
+or start over with `:new!`, unless Lattice was started with `--allow-agent-save`. With more than
+one Lattice running, `--pid` says which.
+
 The demo song is techno at 130 BPM in F minor, in six sections (`gs` shows them; `^space` plays the
 lot). It opens on `peak`, which has everything: drums folded into a group with drive and a
 compressor on its bus (`tz` unfolds it), hats sharing a choke, a five-step tom and a seven-step

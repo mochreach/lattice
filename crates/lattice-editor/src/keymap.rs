@@ -75,6 +75,31 @@ impl Key {
         };
         Some(key)
     }
+
+    /// Keys typed in a row, as the tutor writes them: `gp:bpm 140<ret>`, with any key that isn't
+    /// a character by its name in angle brackets, and `<lt>` for `<`.
+    pub fn sequence(keys: &str) -> Result<Vec<Key>, String> {
+        let mut out = vec![];
+        let mut rest = keys;
+        while let Some(c) = rest.chars().next() {
+            rest = &rest[c.len_utf8()..];
+            if c != '<' {
+                out.push(Key::Char(c));
+                continue;
+            }
+            let Some((name, after)) = rest.split_once('>') else {
+                return Err("a < without its >: <lt> types a <".into());
+            };
+            let key = match name {
+                "lt" => Some(Key::Char('<')),
+                "gt" => Some(Key::Char('>')),
+                _ => Key::parse(name),
+            };
+            out.push(key.ok_or_else(|| format!("no key called <{name}>"))?);
+            rest = after;
+        }
+        Ok(out)
+    }
 }
 
 impl fmt::Display for Key {
@@ -891,6 +916,26 @@ mod tests {
             Action::named("toggle_pattern_mute"),
             Some(Action::TogglePatternMute)
         );
+    }
+
+    #[test]
+    fn sequences_name_keys_in_brackets() {
+        assert_eq!(
+            Key::sequence("g:a b<ret><C-a><lt><esc>"),
+            Ok(vec![
+                Key::Char('g'),
+                Key::Char(':'),
+                Key::Char('a'),
+                Key::Char(' '),
+                Key::Char('b'),
+                Key::Enter,
+                Key::Ctrl('a'),
+                Key::Char('<'),
+                Key::Esc,
+            ])
+        );
+        assert!(Key::sequence("<nope>").is_err());
+        assert!(Key::sequence("a<ret").is_err());
     }
 
     #[test]

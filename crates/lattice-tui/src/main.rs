@@ -2,6 +2,7 @@ mod audio;
 mod bars;
 mod chains;
 mod config;
+mod ctl;
 mod demo;
 mod devices;
 mod export;
@@ -63,6 +64,10 @@ enum Flow {
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // `lattice ctl …` talks to a Lattice that's running.
+    if args.first().is_some_and(|a| a == "ctl") {
+        return ctl::client(&args[1..]);
+    }
     log::start();
     log!("arguments: {args:?}");
     let demo = demo::song();
@@ -131,6 +136,7 @@ fn main() -> Result<()> {
         .is_ok();
     editor.releases = enhanced;
     let splash = (!args.iter().any(|a| a == "--no-splash")).then(|| Splash::new(Instant::now()));
+    let server = ctl::Server::start(args.iter().any(|a| a == "--allow-agent-save"));
     let result = run(
         &mut terminal,
         &mut editor,
@@ -141,6 +147,7 @@ fn main() -> Result<()> {
         &mut handle,
         &theme,
         splash,
+        server.as_ref(),
     );
     if enhanced {
         let _ = execute!(std::io::stdout(), PopKeyboardEnhancementFlags);
@@ -164,6 +171,7 @@ fn run(
     handle: &mut Handle,
     theme: &Theme,
     mut splash: Option<Splash>,
+    server: Option<&ctl::Server>,
 ) -> Result<()> {
     let mut view = ui::ViewState::default();
     let mut playhead = Playhead::default();
@@ -216,13 +224,48 @@ fn run(
         if splash.as_ref().is_some_and(|s| s.done(now)) {
             splash = None;
         }
-        terminal.draw(|frame| {
+        let requests = server.map(ctl::Server::requests).unwrap_or_default();
+        let drawn = terminal.draw(|frame| {
             ui::draw(frame, editor, handle.status(), theme, &mut view);
             if let Some(splash) = &splash {
                 let area = frame.area();
                 splash.draw(frame.buffer_mut(), area, theme, now);
             }
         })?;
+        let screen =
+            (requests.iter().any(|r| r.line.trim() == "screen")).then(|| ctl::screen(drawn.buffer));
+        // Answered after drawing, so `screen` shows what's just been drawn.
+        for request in requests {
+            let allow_save = server.is_some_and(|s| s.allow_save);
+            let (answer, flow) = match ctl::Ask::parse(&request.line) {
+                Err(e) => (Err(e), Flow::Next),
+                Ok(ctl::Ask::Screen) => (Ok(screen.clone().unwrap_or_default()), Flow::Next),
+                Ok(ctl::Ask::State) => (Ok(ctl::state(editor, handle.status())), Flow::Next),
+                Ok(ask) => {
+                    let said = editor.message.clone();
+                    let (refused, flow) = serve(
+                        ask, allow_save, editor, tracks, mixer, exports, &sequencer, machine,
+                        handle,
+                    );
+                    let answer = match refused {
+                        Some(why) => Err(why),
+                        // What the status line says now, if the request changed it.
+                        None if editor.message != said => {
+                            Ok(editor.message.clone().unwrap_or_default())
+                        }
+                        None => Ok(String::new()),
+                    };
+                    (answer, flow)
+                }
+            };
+            match answer {
+                Ok(text) => request.answer(&text),
+                Err(why) => request.answer(&format!("error: {why}\n")),
+            }
+            if let Flow::Quit = flow {
+                return Ok(());
+            }
+        }
 
         if !event::poll(FRAME)? {
             continue;
@@ -308,6 +351,76 @@ impl Playhead {
             count_in: count_in as usize,
         })
     }
+}
+
+/// Types keys or runs a command for [`ctl`], returning why it was refused, if it was.
+#[allow(clippy::too_many_arguments)]
+fn serve(
+    ask: ctl::Ask,
+    allow_save: bool,
+    editor: &mut Editor,
+    tracks: &mut Tracks,
+    mixer: &mut Mixer,
+    exports: &mut Exports,
+    sequencer: &Sequencer,
+    machine: &mut Machine,
+    handle: &mut Handle,
+) -> (Option<String>, Flow) {
+    let keys = match ask {
+        ctl::Ask::Keys(keys) => keys,
+        ctl::Ask::Command(line) => {
+            if let Some(why) = ctl::refuse_command(&line, allow_save) {
+                return (Some(why), Flow::Next);
+            }
+            let effects = editor.run_command(&line);
+            return run_outside(
+                effects, allow_save, editor, tracks, mixer, exports, sequencer, machine, handle,
+            );
+        }
+        ctl::Ask::Screen | ctl::Ask::State => return (None, Flow::Next),
+    };
+    for key in keys {
+        if let Some(why) = ctl::refuse_key(editor, key, allow_save) {
+            editor.mode = Mode::Normal;
+            return (Some(why), Flow::Next);
+        }
+        let effects = editor.handle(key);
+        match run_outside(
+            effects, allow_save, editor, tracks, mixer, exports, sequencer, machine, handle,
+        ) {
+            (None, Flow::Next) => {}
+            done => return done,
+        }
+    }
+    (None, Flow::Next)
+}
+
+/// Carries out effects asked for from outside, stopping at one that isn't allowed.
+#[allow(clippy::too_many_arguments)]
+fn run_outside(
+    effects: Vec<Effect>,
+    allow_save: bool,
+    editor: &mut Editor,
+    tracks: &mut Tracks,
+    mixer: &mut Mixer,
+    exports: &mut Exports,
+    sequencer: &Sequencer,
+    machine: &mut Machine,
+    handle: &mut Handle,
+) -> (Option<String>, Flow) {
+    for effect in effects {
+        if let Some(why) = ctl::refuse_effect(&effect, allow_save) {
+            return (Some(why.into()), Flow::Next);
+        }
+        match apply(
+            effect, editor, tracks, mixer, exports, sequencer, machine, handle,
+        ) {
+            Flow::Next => {}
+            Flow::Stop => break,
+            Flow::Quit => return (None, Flow::Quit),
+        }
+    }
+    (None, Flow::Next)
 }
 
 /// Carries out an editor effect.
