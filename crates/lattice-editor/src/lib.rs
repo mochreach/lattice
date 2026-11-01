@@ -2115,6 +2115,20 @@ mod tests {
     }
 
     #[test]
+    fn rules_can_be_typed_as_they_are_shown() {
+        let mut e = editor();
+        for line in ["rev /2+1", "tr 5 /4", "rot 1 @3"] {
+            command(&mut e, line);
+        }
+        let shown: Vec<String> = e.grid.tracks[0]
+            .rules
+            .iter()
+            .map(|r| r.to_string())
+            .collect();
+        assert_eq!(shown, ["rev/2+1", "tr+5/4", "rot+1@3"]);
+    }
+
+    #[test]
     fn commands_report_errors() {
         let mut e = editor();
         command(&mut e, "tr lots");

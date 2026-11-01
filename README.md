@@ -182,7 +182,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 
 | Commands | |
 | --- | --- |
-| `:rot N`, `:drift N`, `:rev`, `:tr N` | add a rule to the track, optionally `every N [OFFSET]` or `pass K` |
+| `:rot N`, `:drift N`, `:rev`, `:tr N` | add a rule to the track, optionally `every N [OFFSET]` or `pass K`, or as they're shown, `/N[+OFFSET]` or `@K` |
 | `:pop`, `:clear` | remove the last rule, or all of them |
 | `:len N` | track length (1–256) |
 | `:bpm N`, `:step N`, `:oct N` | tempo, auto-step, keyboard octave |

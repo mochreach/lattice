@@ -876,6 +876,25 @@ impl<'a> Words<'a> {
         let Some((word, typing)) = self.next() else {
             return Ok(Some(Condition::Always));
         };
+        // The short forms rules are shown in: `/4`, `/4+1` and `@2`.
+        if let Some(rest) = word.text.strip_prefix('/') {
+            let (n, offset) = rest.split_once('+').unwrap_or((rest, "0"));
+            return match (EVERY.int(n), OFFSET.int(offset)) {
+                (Some(n), Some(offset)) => Ok(Some(Condition::Every {
+                    n: whole(n),
+                    offset: whole(offset),
+                })),
+                _ if typing && (n.is_empty() || offset.is_empty()) => Ok(None),
+                _ => Err(Problem::new(word.range, "expected /N or /N+OFFSET")),
+            };
+        }
+        if let Some(k) = word.text.strip_prefix('@') {
+            return match PASS.int(k) {
+                Some(k) => Ok(Some(Condition::Pass(whole(k)))),
+                None if typing && k.is_empty() => Ok(None),
+                None => Err(Problem::new(word.range, "expected @K")),
+            };
+        }
         match word.text {
             "every" => {
                 let Some(n) = self.int(&EVERY)? else {
@@ -898,7 +917,7 @@ impl<'a> Words<'a> {
             partial if typing && ["every", "pass"].iter().any(|k| k.starts_with(partial)) => {
                 Ok(None)
             }
-            _ => Err(Problem::new(word.range, "expected every or pass")),
+            _ => Err(Problem::new(word.range, "expected every, pass, /N or @K")),
         }
     }
 }
@@ -1267,6 +1286,10 @@ mod tests {
             "tr 5 every 0",
             "rev every 2 1",
             "rev p",
+            "tr 5 /",
+            "tr 5 /4",
+            "tr 5 /4+",
+            "tr 5 @",
             "len 25",
             "name",
             "name My  lead",
@@ -1287,9 +1310,15 @@ mod tests {
         assert_eq!(flagged("tr -129"), flag("-129", "semitones is -128 to 127"));
         assert_eq!(flagged("zz"), flag("zz", "unknown command"));
         assert_eq!(flagged("fo "), flag("fo", "unknown command"));
-        assert_eq!(flagged("tr 5 x"), flag("x", "expected every or pass"));
+        assert_eq!(
+            flagged("tr 5 x"),
+            flag("x", "expected every, pass, /N or @K")
+        );
         assert_eq!(flagged("tr 5 every 0 "), flag("0", "every is 1 or more"));
         assert_eq!(flagged("rev pass x"), flag("x", "pass is a whole number"));
+        assert_eq!(flagged("tr 5 /0"), flag("/0", "expected /N or /N+OFFSET"));
+        assert_eq!(flagged("tr 5 /x"), flag("/x", "expected /N or /N+OFFSET"));
+        assert_eq!(flagged("tr 5 @x"), flag("@x", "expected @K"));
         assert_eq!(flagged("pop now"), flag("now", "too many arguments"));
         assert_eq!(flagged("bpm 120 5"), flag("5", "too many arguments"));
         assert_eq!(flagged("rev every 2 1 3"), flag("3", "too many arguments"));
@@ -1307,7 +1336,7 @@ mod tests {
         assert_eq!(problem("bpm 4").unwrap().message, "bpm is 20 to 400");
         assert_eq!(
             problem("tr 5 ev").unwrap().message,
-            "expected every or pass"
+            "expected every, pass, /N or @K"
         );
         assert_eq!(problem("tr 5 every").unwrap().message, "every is 1 or more");
         assert_eq!(problem("name ").unwrap().message, "expected a name");

@@ -461,7 +461,7 @@ const LESSONS: &[Lesson] = &[
                backwards.\n\nAdd `every 4` and a rule applies only every fourth pass; `every \
                4 2` picks which of the four (counting from 0), and `pass 2` applies it on one \
                pass only. Rules are listed above their track, written short: `:tr 5 every 4` \
-               shows as `tr+5/4`. `:pop` removes the track's last rule, and `:clear` all of \
+               shows as `tr+5/4`, and you can type them short too, as `:tr 5 /4`. `:pop` removes the track's last rule, and `:clear` all of \
                them. {toggle_view} switches the grid between the notes as written and as \
                they're playing.\n\n`:len 12` makes a track 12 steps long, so it lands \
                differently against the others each time, and `:name` renames it.\n\nGive the \
