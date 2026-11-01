@@ -17,7 +17,10 @@ pub use arrangement::{
     Arrangement, BEATS_PER_BAR, Entry, Lane, MAX_BARS, MAX_ENTRIES, MAX_PATTERNS, MAX_REPEATS,
     Pattern, pattern_name,
 };
-pub use chain::{FxChain, FxLane, FxRow, MAX_LANES, MAX_SENDS, RowAt, is_feedback, max_send};
+pub use chain::{
+    FxChain, FxLane, FxRow, MAX_LANES, MAX_SENDS, PRESETS, RowAt, SavedChain, is_feedback,
+    max_send, preset,
+};
 pub use device::{Curve, Device, Kind, ParamInfo};
 pub use file::{FileError, from_ron, to_ron};
 pub use fx::{Bus, Buses, Fx, FxKind, MAX_EFFECTS};

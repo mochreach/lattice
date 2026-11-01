@@ -629,7 +629,7 @@ master bus → master effects → + click → tanh
 - **Meters:** each track's peak after its strip is published as `f32` bits in an `AtomicU32`
   with `fetch_max`; the UI swaps it for 0 each frame and lets its meter fall at 30 dB/s.
 
-There are five effects so far, each usable on any track or bus:
+There are six effects so far, each usable on any track or bus:
 
 - **`delay`:** a plain stereo delay (time, feedback, a lowpass in the feedback path, and mix).
   New songs get one on the send bus, set fully wet; anywhere else it starts at 30% mix.
@@ -653,6 +653,13 @@ There are five effects so far, each usable on any track or bus:
   parallel compression). Both channels share one gain from the louder of the two, so the image
   stays put. The gain reduction in dB follows a 6 dB soft knee with the attack going down and the
   release coming back.
+
+- **`pitch`:** a delay-line pitch shifter: the sound is written into a short line and read back
+  by two heads half a window apart, each sweeping the delay across the window (20 to 200 ms)
+  faster or slower than the writing, and faded in and out by a squared sine, so the two sum to
+  one and neither's jump back is heard. Pitch is whole semitones, ±2 octaves, with `fine` in
+  cents. It smears transients, being overlapping grains, which suits its job: the octave in a
+  shimmer's feedback.
 
 In the demo, the acid line's filter opens and closes over four bars, and the send bus's echoes
 go on into a plate mixed at 35%.
@@ -692,6 +699,13 @@ each effect, and mixes their outs. When only the levels change, the new routing 
 old one's feedback and glides from its gains, so turning a send down doesn't cut the tail. The
 TUI's `Mixer` keeps the lanes it last sent beside the effects, and sends a new routing when they
 differ.
+
+Chains can be saved on their own (`SavedChain`: the effects and lanes, as a song saves them) to
+`chains/NAME.toml` beside the config. The editor asks for it with `Effect::SaveChain` and
+`Effect::LoadChain`, the TUI reads and writes the TOML, and `Editor::put_chain` puts a loaded one
+on the strip. Presets (`lattice_core::preset`) are built in code. The first, `shimmer`, is lane
+A's plate reverb sending into lane B, which high-passes at 400 Hz, shifts up an octave and feeds
+back into A at -4 dB; a test renders it to check it rings on for seconds and then dies away.
 
 The fx page (`Page::Fx`, `lattice-editor/src/fx_page.rs`) is a second view of the mixer's cursor:
 it shares the strip, and moving onto an effect or one of its settings puts the mixer's cursor

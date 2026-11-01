@@ -1,5 +1,6 @@
 mod audio;
 mod bars;
+mod chains;
 mod config;
 mod demo;
 mod devices;
@@ -383,6 +384,26 @@ fn apply(
         }
         Effect::Device(direction, id) => {
             machine.choose(direction, id, editor, handle);
+            return Flow::Next;
+        }
+        Effect::SaveChain(name, chain) => {
+            editor.message = Some(match chains::save(&name, *chain) {
+                Ok(saved) => saved,
+                Err(e) => format!("{e:#}"),
+            });
+            return Flow::Next;
+        }
+        Effect::LoadChain(name) => {
+            match chains::load(&name) {
+                Ok(chain) => {
+                    for effect in editor.put_chain(&name, chain) {
+                        apply(
+                            effect, editor, tracks, mixer, exports, sequencer, machine, handle,
+                        );
+                    }
+                }
+                Err(e) => editor.message = Some(format!("{e:#}")),
+            }
             return Flow::Next;
         }
         Effect::Quit => return Flow::Quit,

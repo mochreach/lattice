@@ -322,4 +322,45 @@ mod tests {
         other.take_over(&routing);
         assert_eq!(run(&mut other, 1, MAX_BLOCK)[0], 1.0, "just the input");
     }
+
+    #[test]
+    fn the_shimmer_rings_on_and_dies_away() {
+        const RATE: f32 = 48_000.0;
+        let chain = lattice_core::preset("shimmer").unwrap();
+        let mut effects: Vec<_> = (chain.iter())
+            .map(|fx| crate::fx::build(fx, RATE))
+            .collect();
+        let mut routing = Routing::new(&chain).unwrap();
+        // A tenth of a second of a 220 Hz sine, then 20 seconds of silence, in blocks.
+        let mut energy = vec![];
+        for b in 0..(20.1 * RATE) as usize / MAX_BLOCK {
+            let mut left: Vec<f32> = (0..MAX_BLOCK)
+                .map(|i| {
+                    let t = (b * MAX_BLOCK + i) as f32 / RATE;
+                    if t < 0.1 {
+                        (std::f32::consts::TAU * 220.0 * t).sin() * 0.5
+                    } else {
+                        0.0
+                    }
+                })
+                .collect();
+            let mut right = left.clone();
+            routing.run(&mut left, &mut right, |i, l, r| {
+                effects[i].process(&[], l, r);
+            });
+            assert!(left.iter().all(|x| x.is_finite()));
+            energy.push(left.iter().map(|x| x * x).sum::<f32>());
+        }
+        let second = |s: f32| {
+            let blocks = RATE as usize / MAX_BLOCK;
+            let at = (s * RATE) as usize / MAX_BLOCK;
+            energy[at..at + blocks].iter().sum::<f32>()
+        };
+        assert!(second(2.0) > 1e-3, "still ringing: {}", second(2.0));
+        assert!(
+            second(19.0) < second(2.0) * 1e-3,
+            "dying away: {}",
+            second(19.0)
+        );
+    }
 }

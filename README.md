@@ -210,7 +210,9 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:latency MS` | move what the looper records earlier (negative) or later, if it's out of time with what you heard (-500 to 500); remembered for each input |
 | `:chop [PATH]` | cut a WAV file into a piece a step, on every track the selections reach (or the mixer cursor's), each step playing its own; with no path, the last selection exported |
 | `:sample [PATH]` | play a WAV file on a sampler, on every track the selections reach (or the mixer cursor's); with no path, the selection last exported with `:export-sel` or `:export-loop` |
-| `:fx-add EFFECT` | add an effect (`delay`, `reverb`, `filter`, `drive` or `comp`) after the mixer or fx page cursor, or at the end of this track's chain |
+| `:fx-add EFFECT` | add an effect (`delay`, `reverb`, `filter`, `drive`, `comp` or `pitch`) after the mixer or fx page cursor, or at the end of this track's chain |
+| `:chain-save NAME` | save the strip's chain of effects (on the pattern page, the cursor's track's) as `~/.config/lattice/chains/NAME.toml`, to load on any strip of any song |
+| `:chain-load NAME` | put a saved chain on the strip, in place of its own (its effects' locks go with them); Lattice comes with `shimmer` |
 | `:fx-send LANE [DB]` | on the fx page, add a send after the cursor into lane `LANE` (`B`, say); the next letter after the last lane adds one. Into its own lane or one to its left it's feedback, at -6 dB unless given, and at most 0 dB |
 | `:lock PARAM VALUE` | lock a setting of the track's instrument or effects on every step the selections reach: `:lock cutoff 800`, `:lock filter.mix 0.5` (or `2.mix`, the second effect's). `:lock cutoff 200..4000` sweeps it across each selection. Locked steps are marked `◆`, and the cursor's locks are shown in the status line |
 | `:unlock [PARAM]` | clear a setting's locks, or all of them, from the steps the selections reach |
@@ -251,7 +253,7 @@ settings of the instrument or effect under the cursor. `j` `k` move down into th
 through its rows, `h` `l` move along a row, `(` `)` change strip, and `tab` jumps between the
 overview and the chain. `^a` `^x` nudge the value under the cursor (with counts, so `10^a`), `c`
 types an exact one (or, on the instrument, another instrument), `:fx-add delay` (or `reverb`,
-`filter`, `drive`, `comp`) adds an effect after the cursor and `d` removes it. `tm` `ts` still
+`filter`, `drive`, `comp`, `pitch`) adds an effect after the cursor and `d` removes it. `tm` `ts` still
 mute and solo, and `gp` goes back to the pattern. Instruments, effects and bus levels are saved
 in the song.
 
@@ -266,6 +268,12 @@ settings, and `h` `l` move across the lanes on the same line. `:fx-add` adds an 
 cursor's, and `d` on an effect's name or a send removes it, or on an out, the whole lane. `L`
 locks settings as on the mixer. `(` `)` change strip, and `gm` and `gp` go to the mixer and the
 pattern.
+
+`:chain-save wash` saves a chain to load on any strip with `:chain-load wash`. Lattice comes with
+one, `shimmer`: a long reverb in lane A that sends into lane B, which high-passes it and shifts it
+up an octave with the `pitch` effect, then feeds it back into the reverb, so every trip round adds
+an octave above, rising as it fades, as on Eno and Lanois's records. Put it on a slow pad, and try
+the feedback send's level, the reverb's decay, or `pitch` at 7 for fifths.
 
 **Locks** automate settings by step, as on Elektron machines: a step can lock up to four of its
 track's instrument or effect settings with `:lock`. A lock holds from its step until the next step

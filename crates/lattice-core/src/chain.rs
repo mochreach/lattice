@@ -353,6 +353,86 @@ impl FxChain {
     }
 }
 
+/// A chain saved on its own, to put on other strips and in other songs, as a song saves one.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SavedChain {
+    pub effects: Vec<Fx>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub lanes: Vec<FxLane>,
+}
+
+impl From<FxChain> for SavedChain {
+    fn from(chain: FxChain) -> Self {
+        let (effects, lanes) = chain.into_parts();
+        Self { effects, lanes }
+    }
+}
+
+impl TryFrom<SavedChain> for FxChain {
+    type Error = String;
+
+    fn try_from(saved: SavedChain) -> Result<Self, String> {
+        FxChain::from_parts(saved.effects, saved.lanes)
+    }
+}
+
+/// The chains Lattice comes with.
+pub const PRESETS: &[&str] = &["shimmer"];
+
+/// A chain Lattice comes with, by name.
+pub fn preset(name: &str) -> Option<FxChain> {
+    match name {
+        "shimmer" => Some(shimmer()),
+        _ => None,
+    }
+}
+
+/// A shimmer reverb, as Eno and Lanois made them: a long reverb whose sound is sent round again
+/// an octave up, so each trip adds a higher octave, rising and fading like a choir. Lane A is the
+/// reverb; it sends into lane B, which takes off the low end and shifts the rest up an octave,
+/// then feeds it back into the reverb. A little of B is heard as it is.
+fn shimmer() -> FxChain {
+    use crate::fx::{FxKind, filter, pitch, reverb};
+
+    let with = |kind, values: &[(u32, f32)]| {
+        let mut fx = Fx::new(kind);
+        for &(id, value) in values {
+            fx.values[id as usize] = value;
+        }
+        fx
+    };
+    let effects = vec![
+        with(
+            FxKind::Reverb,
+            &[
+                (reverb::SIZE, 0.85),
+                (reverb::DECAY, 0.85),
+                (reverb::TONE, 5_000.0),
+                (reverb::PREDELAY, 0.03),
+                (reverb::MIX, 0.6),
+            ],
+        ),
+        with(
+            FxKind::Filter,
+            &[(filter::TYPE, 2.0), (filter::CUTOFF, 400.0)],
+        ),
+        with(FxKind::Pitch, &[(pitch::PITCH, 12.0), (pitch::WINDOW, 0.1)]),
+    ];
+    let lanes = vec![
+        FxLane {
+            rows: vec![FxRow::Fx, FxRow::Send { to: 1, level: 0.0 }],
+            ..FxLane::default()
+        },
+        FxLane {
+            rows: vec![FxRow::Fx, FxRow::Fx, FxRow::Send { to: 0, level: -4.0 }],
+            out: -9.0,
+            ..FxLane::default()
+        },
+    ];
+    FxChain::from_parts(effects, lanes).expect("the shimmer is a chain")
+}
+
 /// Whether a send from lane `from` into lane `to` is feedback, heard a block later.
 pub fn is_feedback(from: usize, to: usize) -> bool {
     to <= from
@@ -446,6 +526,16 @@ mod tests {
         assert!(!chain.remove_send(at(0, 0)), "an effect");
         chain.set_out(1, -60.0);
         assert_eq!(chain.lanes[1].out, -60.0);
+    }
+
+    #[test]
+    fn the_presets_are_chains() {
+        for name in PRESETS {
+            let chain = preset(name).unwrap();
+            assert_eq!(chain.check(), Ok(()), "{name}");
+            let saved = SavedChain::from(chain.clone());
+            assert_eq!(FxChain::try_from(saved), Ok(chain));
+        }
     }
 
     #[test]

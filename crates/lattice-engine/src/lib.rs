@@ -19,6 +19,7 @@ pub mod instrument;
 pub mod looper;
 pub mod monochord;
 pub mod param;
+pub mod pitch;
 pub mod processor;
 pub mod reverb;
 pub mod rhythmicon;

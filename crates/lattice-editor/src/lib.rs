@@ -11,6 +11,7 @@
 //! for the frontend to carry out. Nothing here knows about terminals, audio or files, so it's
 //! tested by feeding in key sequences.
 
+mod chains;
 mod command;
 mod devices;
 mod export;
@@ -44,7 +45,7 @@ pub use tutor::TutorView;
 use std::path::{Path, PathBuf};
 
 use lattice_core::{
-    Arrangement, Buses, Grid, Lock, MAX_STEPS, MAX_TRACKS, Note, Song, Step, Track,
+    Arrangement, Buses, FxChain, Grid, Lock, MAX_STEPS, MAX_TRACKS, Note, Song, Step, Track,
 };
 
 use crate::pattern::Pattern;
@@ -178,6 +179,10 @@ pub enum Effect {
     Latency(i32),
     /// Switch to this device, by id, or the system's default; see [`devices`].
     Device(Direction, Option<String>),
+    /// Save this chain under this name, for `:chain-load` to put on any strip.
+    SaveChain(String, Box<FxChain>),
+    /// Read the chain saved under this name, and give it to [`Editor::put_chain`].
+    LoadChain(String),
     Quit,
 }
 

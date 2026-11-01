@@ -19,15 +19,17 @@ pub enum FxKind {
     Comp,
     Reverb,
     Filter,
+    Pitch,
 }
 
 impl FxKind {
-    pub const ALL: [FxKind; 5] = [
+    pub const ALL: [FxKind; 6] = [
         FxKind::Delay,
         FxKind::Reverb,
         FxKind::Filter,
         FxKind::Drive,
         FxKind::Comp,
+        FxKind::Pitch,
     ];
 
     pub fn named(name: &str) -> Option<Self> {
@@ -41,6 +43,7 @@ impl FxKind {
             FxKind::Comp => &comp::PARAMS,
             FxKind::Reverb => &reverb::PARAMS,
             FxKind::Filter => &filter::PARAMS,
+            FxKind::Pitch => &pitch::PARAMS,
         }
     }
 }
@@ -53,6 +56,7 @@ impl Kind for FxKind {
             FxKind::Comp => "comp",
             FxKind::Reverb => "reverb",
             FxKind::Filter => "filter",
+            FxKind::Pitch => "pitch",
         }
     }
 
@@ -221,6 +225,31 @@ pub mod filter {
         param(RESONANCE, "resonance", (0.0, 0.95, 0.2), "", Curve::Linear),
         param(RATE, "rate", (0.02, 20.0, 0.25), "Hz", Curve::Log),
         param(SWEEP, "sweep", (0.0, 4.0, 0.0), "oct", Curve::Linear),
+        param(MIX, "mix", (0.0, 1.0, 1.0), "", Curve::Linear),
+    ];
+}
+
+/// A pitch shifter: the sound read back from a delay line faster or slower, by two heads half a
+/// window apart, each faded in and out as it sweeps across the window.
+pub mod pitch {
+    use super::*;
+
+    /// How far, in semitones: 12 is an octave up.
+    pub const PITCH: u32 = 0;
+    /// And in cents, to detune it a little.
+    pub const FINE: u32 = 1;
+    /// How long each head's sweep is: shorter is tighter but buzzier, longer smoother but
+    /// smeared.
+    pub const WINDOW: u32 = 2;
+    pub const MIX: u32 = 3;
+
+    /// The longest window, in seconds.
+    pub const MAX_WINDOW: f32 = 0.2;
+
+    pub(super) const PARAMS: [ParamInfo; 4] = [
+        param(PITCH, "pitch", (-24.0, 24.0, 12.0), "st", Curve::Whole),
+        param(FINE, "fine", (-50.0, 50.0, 0.0), "ct", Curve::Linear),
+        param(WINDOW, "window", (0.02, MAX_WINDOW, 0.08), "s", Curve::Log),
         param(MIX, "mix", (0.0, 1.0, 1.0), "", Curve::Linear),
     ];
 }

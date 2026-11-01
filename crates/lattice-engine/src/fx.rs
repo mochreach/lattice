@@ -6,6 +6,7 @@ use crate::comp::Comp;
 use crate::delay::Delay;
 use crate::drive::Drive;
 use crate::filter::Filter;
+use crate::pitch::Pitch;
 use crate::processor::Processor;
 use crate::reverb::Reverb;
 
@@ -17,5 +18,6 @@ pub fn build(fx: &Fx, sample_rate: f32) -> Box<dyn Processor> {
         FxKind::Comp => Box::new(Comp::with_values(sample_rate, &fx.values)),
         FxKind::Reverb => Box::new(Reverb::with_values(sample_rate, &fx.values)),
         FxKind::Filter => Box::new(Filter::with_values(sample_rate, &fx.values)),
+        FxKind::Pitch => Box::new(Pitch::with_values(sample_rate, &fx.values)),
     }
 }

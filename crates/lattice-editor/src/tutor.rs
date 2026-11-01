@@ -533,7 +533,7 @@ const LESSONS: &[Lesson] = &[
     Lesson {
         title: "Instruments and effects",
         text: "`:inst string` changes the cursor's track's instrument, and `:sample kick.wav` \
-               plays a sound file on it. `:fx-add delay` adds an effect to it: `delay`, `reverb`, `filter`, `drive` or `comp`. On the mixer, \
+               plays a sound file on it. `:fx-add delay` adds an effect to it: `delay`, `reverb`, `filter`, `drive`, `comp` or `pitch`. On the mixer, \
                {delete} removes the effect under the cursor.\n\nAdd a reverb to the LEAD track.",
         teaches: &[],
         commands: &["inst", "sample", "fx-add"],
@@ -565,6 +565,25 @@ const LESSONS: &[Lesson] = &[
             })
         },
         solution: "gpglgf:fx-send B<ret>l:fx-add delay<ret>gp",
+    },
+    Lesson {
+        title: "Shimmer",
+        text: "A chain can be saved, to put on any track of any song. `:chain-save wash` saves \
+               the cursor's track's chain (on the mixer and fx pages, the strip's) as `wash`, \
+               and `:chain-load wash` puts it on another, in place of its own. Lattice comes \
+               with `shimmer`, a reverb whose sound goes round again an octave up, through a \
+               `pitch` shifter, so it rises as it fades, as on Eno's ambient records.\n\n\
+               Load the shimmer onto the LEAD track, look at it on the fx page, and come back \
+               to the pattern.",
+        teaches: &[],
+        commands: &["chain-save", "chain-load"],
+        setup: nothing,
+        watch: never,
+        done: |e, _| {
+            (track(e, "LEAD").effects.iter()).any(|fx| fx.kind == FxKind::Pitch)
+                && e.page == Page::Pattern
+        },
+        solution: "gpgl:chain-load shimmer<ret>gfgp",
     },
     Lesson {
         title: "Locks",
