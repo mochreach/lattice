@@ -536,9 +536,9 @@ There are three effects so far, each usable on any track or bus:
   stays put. The gain reduction in dB follows a 6 dB soft knee with the attack going down and the
   release coming back.
 
-Together they're a drum bus. The demo's drums are a folded group, `amen`, whose bus has a
-little drive (mixed at 60%) and then a compressor with a 10 ms attack, so the hits' fronts get
-through, mixed in at 70%.
+Together they're a drum bus. The demo's drums are a folded group, `drums`, whose bus has a
+little drive (mixed at 50%) and then a compressor with a 10 ms attack, so the hits' fronts get
+through, mixed in at 60%.
 
 The chains and the bus levels are part of the song (`Track::effects`, `Song::buses`), so they're
 saved and undone with everything else. An effect is stored as its kind and its parameter values,
@@ -558,7 +558,7 @@ keys away:
   master buses, which always stay in view while the tracks scroll), with its name, level, pan
   and meter. `h` `l` move between strips and `^a` `^x` set the level.
 - **The detail**, below, of the strip under the cursor: a rule with its name and where its sound
-  goes (`→ amen → master, and → send`; a bus lists what feeds it), a mix row (level, pan, send
+  goes (`→ drums → master, and → send`; a bus lists what feeds it), a mix row (level, pan, send
   and choke; a bus has only a level), its chain from the instrument through the effects in the
   order the sound passes through them, and the settings of the device on the chain under the
   cursor, always shown, in a grid of three columns filled a row at a time.

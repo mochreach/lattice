@@ -199,9 +199,16 @@ mod tests {
 
     #[test]
     fn groups_route_their_tracks_and_have_buses() {
-        let mut grid = crate::demo::song();
+        let mut grid = crate::demo::song().grid;
         grid.groups.clear();
-        let mut editor = Editor::new(grid, 120.0).with_buses(crate::demo::buses());
+        for track in &mut grid.tracks {
+            track.effects.clear();
+        }
+        let buses = lattice_core::Buses {
+            master: Default::default(),
+            ..crate::demo::buses()
+        };
+        let mut editor = Editor::new(grid, 120.0).with_buses(buses);
         let mut mixer = Mixer::new(48_000.0);
         sync(&mut mixer, &editor);
         editor.grid.groups = vec![lattice_core::Group::new("kit", 1..3)];
@@ -233,9 +240,16 @@ mod tests {
 
     #[test]
     fn chains_follow_the_song() {
-        let mut grid = crate::demo::song();
+        let mut grid = crate::demo::song().grid;
         grid.groups.clear();
-        let mut editor = Editor::new(grid, 120.0).with_buses(crate::demo::buses());
+        for track in &mut grid.tracks {
+            track.effects.clear();
+        }
+        let buses = lattice_core::Buses {
+            master: Default::default(),
+            ..crate::demo::buses()
+        };
+        let mut editor = Editor::new(grid, 120.0).with_buses(buses);
         let mut mixer = Mixer::new(48_000.0);
         assert_eq!(sync(&mut mixer, &editor), ["insert Send 0"]);
         assert!(sync(&mut mixer, &editor).is_empty(), "already in line");

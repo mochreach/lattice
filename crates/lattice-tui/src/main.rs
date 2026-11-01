@@ -52,8 +52,10 @@ enum Flow {
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let grid = demo::song();
-    let mut editor = Editor::new(grid, demo::BPM).with_buses(demo::buses());
+    let demo = demo::song();
+    let mut editor = Editor::new(demo.grid, demo.bpm)
+        .with_buses(demo.buses)
+        .with_arrangement(demo.arrangement);
     // `lattice song.lattice` opens the song, or starts a new one there, like Helix.
     if let Some(path) = args
         .iter()

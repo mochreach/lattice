@@ -458,6 +458,13 @@ impl Editor {
         self
     }
 
+    /// Starts with these patterns, the grid's tracks holding the current one's lanes.
+    pub fn with_arrangement(mut self, arrangement: Arrangement) -> Self {
+        self.saved.arrangement = arrangement.clone();
+        self.arrangement = arrangement;
+        self
+    }
+
     /// Each track's id, in the order of `grid.tracks`.
     pub fn track_ids(&self) -> &[TrackId] {
         &self.ids

@@ -216,8 +216,12 @@ and `sitar` (buzzing against its bridge), with pluck (soft thumb to hard, clicki
 the string), decay, tone and bow (a real bowed string while the note is held, light to heavy;
 it takes over from the pluck as it's turned up, and long notes suit it). Strings ring on after a
 note ends, as a harp's do; a note-off only lifts the bow. The demo song
-is the Amen break at 136 BPM, on a kick, snare, ride and crash, under the synths. The drums are a
-folded group, `amen`, with drive and a compressor on its bus; `tz` unfolds it.
+is techno at 130 BPM in F minor, in six sections (`gs` shows them; `^space` plays the lot). It
+opens on `peak`, which has everything: drums folded into a group with drive and a compressor on
+its bus (`tz` unfolds it), hats sharing a choke, a five-step tom and a seven-step sitar drifting
+against the bar, a bowed steel pad, dub stabs into the send's dotted-eighth echo, and an acid line
+through a drive. The bass, stabs and pad follow a chord change every four passes with
+`transpose` rules.
 
 Tracks can be added, removed and moved while playing, and undo brings a removed track back with
 its notes and its instrument. When there are more than fit across the terminal, the grid scrolls

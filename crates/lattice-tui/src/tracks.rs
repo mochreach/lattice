@@ -154,7 +154,7 @@ mod tests {
     }
 
     fn editor() -> Editor {
-        Editor::new(crate::demo::song(), 120.0)
+        Editor::new(crate::demo::song().grid, 120.0)
     }
 
     #[test]
