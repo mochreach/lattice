@@ -30,7 +30,10 @@ const PAGES: &[(&str, &str)] = &[
         "mixer (gm)",
         "h l strips · j k into the detail · ( ) strip · tab chain",
     ),
-    ("", "C-a C-x adjust · c set · :fx-add · d remove effect"),
+    (
+        "",
+        "C-a C-x adjust · c set · L lock on the selected steps · :fx-add · d remove effect",
+    ),
     (
         "song (gs)",
         "j k entries · h l pattern · + - repeats · o O add · d delete",

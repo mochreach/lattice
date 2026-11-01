@@ -3,7 +3,7 @@
 
 use lattice_core::{Curve, Kind, Lock, MAX_LOCKS, ParamInfo, Track};
 
-use crate::{Editor, Effect, changed};
+use crate::{Editor, Effect, Row, Strip, changed};
 
 /// A setting a lock can hold on one track, found by name.
 struct Setting {
@@ -132,6 +132,62 @@ impl Editor {
             self.grid.tracks[t].steps[step].locks.set(lock);
         }
         Ok(changed(edits.into_iter().map(|(t, ..)| t)))
+    }
+
+    /// `L` on the mixer page: locks the setting under the cursor, at the value it has now, onto
+    /// the steps the selections cover, in the mixer's track. So a sound found on the mixer can be
+    /// put on a few steps without typing its name.
+    pub(crate) fn lock_shown(&mut self) -> Result<Vec<Effect>, String> {
+        let cursor = self.mixer_cursor();
+        let Row::Param(p) = cursor.row else {
+            return Err("move onto an instrument or effect setting to lock it".into());
+        };
+        let shown = self.shown().ok_or("nothing here to lock")?;
+        let Strip::Track(t) = shown.strip else {
+            return Err("locks are on tracks' steps; buses have none".into());
+        };
+        let (params, value) = (shown.params, shown.values[p]);
+        let info = &params[p];
+        let lock = Lock {
+            fx: shown.slot.map(|fx| fx as u8),
+            param: info.id as u8,
+            value,
+        };
+        // The selections' steps, whichever tracks they're on.
+        let len = self.track_len(t);
+        let mut steps: Vec<usize> = (self.selections.iter())
+            .flat_map(|s| {
+                let r = s.region();
+                r.first_step.min(len)..(r.last_step + 1).min(len)
+            })
+            .collect();
+        steps.sort_unstable();
+        steps.dedup();
+        let locks = |step: usize| &self.grid.tracks[t].steps[step].locks;
+        if (steps.iter()).any(|&s| locks(s).find(&lock).is_none() && locks(s).len() == MAX_LOCKS) {
+            return Err(format!("a step holds at most {MAX_LOCKS} locks"));
+        }
+        let (Some(&first), Some(&last)) = (steps.first(), steps.last()) else {
+            return Err("no steps selected in this track".into());
+        };
+        self.checkpoint();
+        for &step in &steps {
+            self.grid.tracks[t].steps[step].locks.set(lock);
+        }
+        let setting = Setting { fx: lock.fx, info };
+        let track = &self.grid.tracks[t];
+        let at = match (steps.len(), first == last) {
+            (_, true) => format!("step {first}"),
+            (n, _) if n == last - first + 1 => format!("steps {first}–{last}"),
+            (n, _) => format!("{n} steps"),
+        };
+        self.message = Some(format!(
+            "◆ {} {} on {} {at}",
+            setting.name(track),
+            info.format(value),
+            track.name
+        ));
+        Ok(changed([t]))
     }
 
     /// `:unlock [PARAM]`: one setting's locks, or all of them, from every step the selections
@@ -301,6 +357,32 @@ mod tests {
         run(&mut e, "lock cutoff 900").unwrap();
         assert_eq!(locks(&e, 0)[0], "cutoff 900Hz");
         assert_eq!(locks(&e, 1), Vec::<String>::new(), "only where selected");
+    }
+
+    #[test]
+    fn l_on_the_mixer_locks_the_setting_under_the_cursor() {
+        use crate::keymap::Key;
+        let mut e = editor();
+        // Steps 1 to 3, then the filter's first setting on the mixer.
+        for c in "jvjjgm".chars() {
+            e.handle(Key::Char(c));
+        }
+        assert_eq!(e.page, crate::Page::Mixer);
+        e.mixer.instrument = false;
+        e.mixer.effect = 1;
+        e.mixer.row = Row::Param(0);
+        let name = e.shown().unwrap().params[0].name;
+        assert_eq!(e.handle(Key::Char('L')), [Effect::TrackChanged(0)]);
+        assert_eq!(locks(&e, 0), Vec::<String>::new());
+        for step in 1..=3 {
+            assert_eq!(locks(&e, step).len(), 1);
+            assert!(locks(&e, step)[0].starts_with(&format!("filter.{name} ")));
+        }
+        assert!(e.message.as_ref().unwrap().contains("steps 1–3"));
+        // Not on the strip's level.
+        e.mixer.row = Row::Strips;
+        assert_eq!(e.handle(Key::Char('L')), []);
+        assert!(e.message.as_ref().unwrap().contains("move onto"));
     }
 
     #[test]

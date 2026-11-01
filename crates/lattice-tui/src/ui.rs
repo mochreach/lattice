@@ -821,7 +821,7 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
     };
     let (hints, style) = match &editor.mode {
         Mode::Normal if editor.page == Page::Mixer => (
-            "hl strips · jk detail · ( ) strip · tab chain · C-a C-x adjust · c set · :fx-add · d remove · gp pattern".into(),
+            "hl strips · jk detail · ( ) strip · tab chain · C-a C-x adjust · c set · L lock · :fx-add · d remove · gp pattern".into(),
             theme.dim,
         ),
         Mode::Normal if editor.page == Page::Help => (

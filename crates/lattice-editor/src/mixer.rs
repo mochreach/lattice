@@ -396,6 +396,12 @@ impl Editor {
                 }
             }
             Action::Delete | Action::Clear => return Some(self.remove_effect()),
+            Action::LockSetting => {
+                return Some(self.lock_shown().unwrap_or_else(|message| {
+                    self.message = Some(message);
+                    vec![]
+                }));
+            }
             Action::Undo
             | Action::Redo
             | Action::CommandLine

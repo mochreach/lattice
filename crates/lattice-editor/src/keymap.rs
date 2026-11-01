@@ -196,6 +196,9 @@ pub enum Action {
     ToggleMute,
     /// The same, in this pattern only.
     TogglePatternMute,
+    /// On the mixer page, lock the setting under the cursor, at its value, onto the selected
+    /// steps.
+    LockSetting,
     ToggleSolo,
     AddTrack,
     /// Copy, then remove, every track the selections reach.
@@ -290,6 +293,7 @@ impl Action {
         Action::KeyboardOctaveDown,
         Action::ToggleMute,
         Action::TogglePatternMute,
+        Action::LockSetting,
         Action::ToggleSolo,
         Action::AddTrack,
         Action::RemoveTrack,
@@ -396,6 +400,7 @@ impl Action {
             Action::KeyboardOctaveDown => "keyboard octave down",
             Action::ToggleMute => "mute / unmute",
             Action::TogglePatternMute => "mute / unmute in this pattern",
+            Action::LockSetting => "lock this setting on the selected steps (mixer)",
             Action::ToggleSolo => "solo / unsolo",
             Action::AddTrack => "add a track after this one",
             Action::RemoveTrack => "remove tracks (and copy)",
@@ -689,6 +694,7 @@ impl Default for Keymap {
                 (Char('('), RotateBackward),
                 (Char('s'), SelectNotes),
                 (Char('K'), KeepNotes),
+                (Char('L'), LockSetting),
                 (Alt('K'), RemoveNotes),
                 (Char('i'), Insert),
                 (Char('a'), Append),
