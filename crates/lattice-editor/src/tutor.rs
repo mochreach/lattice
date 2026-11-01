@@ -10,7 +10,7 @@
 use lattice_core::{Arrangement, Buses, FxKind, Grid, InstKind, Instrument, Song, Step, Track};
 
 use crate::keymap::{Action, Binding, Key, Keymap};
-use crate::{Editor, Effect, Mode, Page};
+use crate::{Cursor, Editor, Effect, Mode, Page, Selection};
 
 /// One lesson.
 struct Lesson {
@@ -71,10 +71,6 @@ pub const NOT_TAUGHT: &[Action] = &[
     Action::CopyDown,
     Action::CopyUp,
     Action::SplitRows,
-    Action::MergeAll,
-    Action::RemovePrimary,
-    Action::RotateForward,
-    Action::RotateBackward,
     // Song page keys.
     Action::OpenBelow,
     Action::OpenAbove,
@@ -355,15 +351,13 @@ const LESSONS: &[Lesson] = &[
         text: "There can be several selections, and every change applies to each. \
                {select_all} selects everything; then {select_notes} keeps just the notes \
                matching what you type, such as `C`, or `C E G` for several. {keep_notes} and \
-               {remove_notes} keep or drop the selections with matching notes, and \
-               {keep_primary} keeps just the one with the solid cursor.\n\nSelect every C in \
-               the pattern, and raise them all a semitone.",
+               {remove_notes} keep or drop the selections with matching notes.\n\nSelect every \
+               C in the pattern, and raise them all a semitone.",
         teaches: &[
             Action::SelectAll,
             Action::SelectNotes,
             Action::KeepNotes,
             Action::RemoveNotes,
-            Action::KeepPrimary,
         ],
         commands: &[],
         setup: nothing,
@@ -389,11 +383,48 @@ const LESSONS: &[Lesson] = &[
         solution: "%sC<ret><C-a>",
     },
     Lesson {
+        title: "Back to one cursor",
+        text: "One selection is the primary, with the solid cursor; the view follows it. \
+               {rotate_forward} and {rotate_backward} make the next or previous one primary, \
+               and {remove_primary} drops it. {keep_primary} keeps just the primary, \
+               {merge_all} merges them all into one, and {collapse} shrinks each selection \
+               down to its cursor.\n\nGet back to a single cursor.",
+        teaches: &[
+            Action::RotateForward,
+            Action::RotateBackward,
+            Action::RemovePrimary,
+            Action::KeepPrimary,
+            Action::MergeAll,
+            Action::Collapse,
+        ],
+        commands: &[],
+        // Reached some other way, select each kick, to have several.
+        setup: |e| {
+            if e.selections.len() > 1 {
+                return;
+            }
+            let t = index(e, "KICK");
+            let points: Vec<Selection> = (0..e.track_len(t))
+                .filter(|&s| has_note(&e.grid.tracks[t], s))
+                .map(|step| {
+                    let point = Cursor { track: t, step };
+                    e.clamped(point, point)
+                })
+                .collect();
+            e.set_selections(points, 0);
+        },
+        watch: never,
+        done: |e, _| {
+            let r = e.selection();
+            e.selections.len() == 1 && r.first_track == r.last_track && r.first_step == r.last_step
+        },
+        solution: ",;",
+    },
+    Lesson {
         title: "Mute and solo",
         text: "Some keys open a menu of what can follow, shown in the corner. {toggle_mute} \
                mutes the tracks the selections reach, and {toggle_solo} solos them; \
-               {toggle_pattern_mute} mutes them in this pattern only.\n\nWith several \
-               selections about, {keep_primary} first keeps just one. Then mute the BASS \
+               {toggle_pattern_mute} mutes them in this pattern only.\n\nMute the BASS \
                track, listen, and unmute it.",
         teaches: &[
             Action::ToggleMute,
@@ -404,7 +435,7 @@ const LESSONS: &[Lesson] = &[
         setup: nothing,
         watch: |e| track(e, "BASS").mix.mute,
         done: |e, t| t.seen && !track(e, "BASS").mix.mute,
-        solution: ",ghlltmtm",
+        solution: "ghlltmtm",
     },
     Lesson {
         title: "The command line",
@@ -431,7 +462,7 @@ const LESSONS: &[Lesson] = &[
         setup: nothing,
         watch: never,
         done: |e, t| track(e, "BASS").rules.len() > t.start.tracks[index(e, "BASS")].rules.len(),
-        solution: ",ghll:tr 12<ret>",
+        solution: "ghll:tr 12<ret>",
     },
     Lesson {
         title: "The mixer",
@@ -454,7 +485,7 @@ const LESSONS: &[Lesson] = &[
             let was = t.start.tracks[index(e, "BASS")].mix.level;
             track(e, "BASS").mix.level < was && e.page == Page::Pattern
         },
-        solution: ",ghllgm<C-x>gp",
+        solution: "ghllgm<C-x>gp",
     },
     Lesson {
         title: "Instruments and effects",
@@ -466,7 +497,7 @@ const LESSONS: &[Lesson] = &[
         setup: nothing,
         watch: never,
         done: |e, _| (track(e, "LEAD").effects.iter()).any(|fx| fx.kind == FxKind::Reverb),
-        solution: ",gl:fx-add reverb<ret>",
+        solution: "gl:fx-add reverb<ret>",
     },
     Lesson {
         title: "Locks",
@@ -486,7 +517,7 @@ const LESSONS: &[Lesson] = &[
                 (lead.steps[0].locks.iter()).any(|l| l.fx.is_none() && u32::from(l.param) == p.id)
             })
         },
-        solution: ",glgg:lock cutoff 2000<ret>",
+        solution: "glgg:lock cutoff 2000<ret>",
     },
     Lesson {
         title: "Patterns and the song",
