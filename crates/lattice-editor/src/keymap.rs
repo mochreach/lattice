@@ -30,6 +30,53 @@ pub enum Key {
     PadOp(char),
 }
 
+impl Key {
+    /// A key as Helix writes it in its config: `a`, `C-a`, `A-;`, `esc`, `ret`, `space`,
+    /// `minus`. The opposite of how it's shown.
+    pub fn parse(name: &str) -> Option<Key> {
+        let single = |s: &str| {
+            let mut chars = s.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), None) => Some(c),
+                _ => match s {
+                    "space" => Some(' '),
+                    "minus" => Some('-'),
+                    _ => None,
+                },
+            }
+        };
+        if let Some(rest) = name.strip_prefix("C-") {
+            return single(rest).map(|c| Key::Ctrl(c.to_ascii_lowercase()));
+        }
+        if let Some(rest) = name.strip_prefix("A-") {
+            return single(rest).map(Key::Alt);
+        }
+        let key = match name {
+            "esc" => Key::Esc,
+            "ret" => Key::Enter,
+            "backspace" => Key::Backspace,
+            "del" => Key::Delete,
+            "tab" => Key::Tab,
+            "up" => Key::Up,
+            "down" => Key::Down,
+            "left" => Key::Left,
+            "right" => Key::Right,
+            "pageup" => Key::PageUp,
+            "pagedown" => Key::PageDown,
+            "home" => Key::Home,
+            "end" => Key::End,
+            _ => match name.strip_prefix("pad") {
+                Some(rest) if !rest.is_empty() => match single(rest)? {
+                    c @ '0'..='9' => Key::Pad(c as u8 - b'0'),
+                    c => Key::PadOp(c),
+                },
+                _ => Key::Char(single(name)?),
+            },
+        };
+        Some(key)
+    }
+}
+
 impl fmt::Display for Key {
     /// Helix-style names: `g`, `C-a`, `A-;`, `esc`.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -172,6 +219,111 @@ pub enum Action {
 }
 
 impl Action {
+    /// Every action, in the order they're declared, for finding them by name.
+    pub const ALL: &[Action] = &[
+        Action::Left,
+        Action::Right,
+        Action::Up,
+        Action::Down,
+        Action::HalfPageUp,
+        Action::HalfPageDown,
+        Action::PageUp,
+        Action::PageDown,
+        Action::FirstStep,
+        Action::LastStep,
+        Action::FirstTrack,
+        Action::LastTrack,
+        Action::GotoMixer,
+        Action::GotoPattern,
+        Action::GotoSong,
+        Action::GotoInstrument,
+        Action::GotoEffects,
+        Action::NextBeat,
+        Action::PrevBeat,
+        Action::NextBar,
+        Action::NextPattern,
+        Action::PrevPattern,
+        Action::PrevBar,
+        Action::NextNote,
+        Action::PrevNote,
+        Action::SelectRows,
+        Action::SelectAll,
+        Action::SelectTracks,
+        Action::Collapse,
+        Action::Flip,
+        Action::SelectMode,
+        Action::CopyDown,
+        Action::CopyUp,
+        Action::SplitRows,
+        Action::MergeAll,
+        Action::KeepPrimary,
+        Action::RemovePrimary,
+        Action::RotateForward,
+        Action::RotateBackward,
+        Action::SelectNotes,
+        Action::KeepNotes,
+        Action::RemoveNotes,
+        Action::Insert,
+        Action::Append,
+        Action::OpenBelow,
+        Action::OpenAbove,
+        Action::Open,
+        Action::Change,
+        Action::CommandLine,
+        Action::Escape,
+        Action::Delete,
+        Action::Clear,
+        Action::ClearAdvance,
+        Action::Yank,
+        Action::Paste,
+        Action::PasteInsert,
+        Action::Replace,
+        Action::Undo,
+        Action::Redo,
+        Action::NoteUp,
+        Action::NoteDown,
+        Action::NoteOctaveUp,
+        Action::NoteOctaveDown,
+        Action::Longer,
+        Action::Shorter,
+        Action::KeyboardOctaveUp,
+        Action::KeyboardOctaveDown,
+        Action::ToggleMute,
+        Action::TogglePatternMute,
+        Action::ToggleSolo,
+        Action::AddTrack,
+        Action::RemoveTrack,
+        Action::YankTracks,
+        Action::PasteTracksAfter,
+        Action::PasteTracksBefore,
+        Action::MoveTrackLeft,
+        Action::MoveTrackRight,
+        Action::ToggleGroup,
+        Action::ToggleFold,
+        Action::TogglePlay,
+        Action::PlaySong,
+        Action::ToggleRecord,
+        Action::ToggleView,
+        Action::Quit,
+    ];
+
+    /// What a config file calls it: the variant in snake case, as Helix names its commands
+    /// (`goto_mixer`, `toggle_pattern_mute`).
+    pub fn name(self) -> String {
+        let mut name = String::new();
+        for (i, c) in format!("{self:?}").chars().enumerate() {
+            if c.is_ascii_uppercase() && i > 0 {
+                name.push('_');
+            }
+            name.push(c.to_ascii_lowercase());
+        }
+        name
+    }
+
+    pub fn named(name: &str) -> Option<Action> {
+        Action::ALL.iter().copied().find(|a| a.name() == name)
+    }
+
     /// One-line description, for the infobox and help.
     pub fn describe(self) -> &'static str {
         match self {
@@ -264,17 +416,58 @@ impl Action {
 }
 
 /// A prefix key's menu, shown in the infobox while it waits for the next key.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Menu {
-    pub title: &'static str,
-    /// In display order.
-    pub items: Vec<(Key, Action)>,
+    pub title: String,
+    /// In display order. Never menus themselves.
+    pub items: Vec<(Key, Binding)>,
 }
 
-#[derive(Debug, Clone)]
+impl Menu {
+    fn new(title: &str, items: &[(Key, Action)]) -> Self {
+        Self {
+            title: title.into(),
+            items: (items.iter())
+                .map(|&(key, action)| (key, Binding::Action(action)))
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Binding {
     Action(Action),
+    /// A command line, without its `:`, run as though typed.
+    Command(String),
     Menu(Menu),
+}
+
+impl Binding {
+    /// What it does, for the infobox and help.
+    pub fn describe(&self) -> String {
+        match self {
+            Binding::Action(action) => action.describe().into(),
+            Binding::Command(line) => format!(":{line}"),
+            Binding::Menu(menu) => format!("{}…", menu.title),
+        }
+    }
+
+    /// What a config file binds a key to: an action's name, a command line after a `:`, or
+    /// `none` for nothing.
+    fn parse(target: &str) -> Result<Option<Binding>, String> {
+        if target == "none" {
+            return Ok(None);
+        }
+        if let Some(line) = target.strip_prefix(':') {
+            let name = line.split_whitespace().next().unwrap_or_default();
+            crate::command::find(name).ok_or_else(|| format!("no command :{name}"))?;
+            return Ok(Some(Binding::Command(line.trim().into())));
+        }
+        match Action::named(target) {
+            Some(action) => Ok(Some(Binding::Action(action))),
+            None => Err(format!("no action called {target:?}")),
+        }
+    }
 }
 
 /// The two-row piano layout used by most trackers: Z–M is the lower octave, Q–U the upper.
@@ -414,9 +607,9 @@ impl Default for Keymap {
             (Ctrl('c'), Quit),
         ];
 
-        let goto = Menu {
-            title: "goto",
-            items: vec![
+        let goto = Menu::new(
+            "goto",
+            &[
                 (Char('g'), FirstStep),
                 (Char('e'), LastStep),
                 (Char('h'), FirstTrack),
@@ -427,31 +620,31 @@ impl Default for Keymap {
                 (Char('i'), GotoInstrument),
                 (Char('f'), GotoEffects),
             ],
-        };
+        );
 
-        let next = Menu {
-            title: "next",
-            items: vec![
+        let next = Menu::new(
+            "next",
+            &[
                 (Char('b'), NextBeat),
                 (Char('m'), NextBar),
                 (Char('n'), NextNote),
                 (Char('p'), NextPattern),
             ],
-        };
-        let previous = Menu {
-            title: "previous",
-            items: vec![
+        );
+        let previous = Menu::new(
+            "previous",
+            &[
                 (Char('b'), PrevBeat),
                 (Char('m'), PrevBar),
                 (Char('n'), PrevNote),
                 (Char('p'), PrevPattern),
             ],
-        };
+        );
 
         // Not Helix's `t` (select till a character), which has no use on a grid.
-        let track = Menu {
-            title: "track",
-            items: vec![
+        let track = Menu::new(
+            "track",
+            &[
                 (Char('t'), SelectTracks),
                 (Char('m'), ToggleMute),
                 (Char('M'), TogglePatternMute),
@@ -466,7 +659,7 @@ impl Default for Keymap {
                 (Char('g'), ToggleGroup),
                 (Char('z'), ToggleFold),
             ],
-        };
+        );
 
         let normal = common
             .into_iter()
@@ -549,6 +742,65 @@ impl Default for Keymap {
     }
 }
 
+impl Keymap {
+    /// Binds `key` in normal and select mode, or within the menu `prefix` opens (making it one
+    /// if it isn't), to `target`: an action's name, a `:command`, or `none` to unbind it.
+    pub fn bind_normal(
+        &mut self,
+        prefix: Option<Key>,
+        key: Key,
+        target: &str,
+    ) -> Result<(), String> {
+        let binding = Binding::parse(target)?;
+        let Some(prefix) = prefix else {
+            match binding {
+                Some(binding) => self.normal.insert(key, binding),
+                None => self.normal.remove(&key),
+            };
+            return Ok(());
+        };
+        let menu = match self.normal.get_mut(&prefix) {
+            Some(Binding::Menu(menu)) => menu,
+            _ => {
+                let menu = Menu {
+                    title: prefix.to_string(),
+                    items: vec![],
+                };
+                self.normal.insert(prefix, Binding::Menu(menu));
+                match self.normal.get_mut(&prefix) {
+                    Some(Binding::Menu(menu)) => menu,
+                    _ => unreachable!("just put there"),
+                }
+            }
+        };
+        let at = menu.items.iter().position(|(k, _)| *k == key);
+        match (binding, at) {
+            (Some(binding), Some(i)) => menu.items[i].1 = binding,
+            (Some(binding), None) => menu.items.push((key, binding)),
+            (None, Some(i)) => {
+                menu.items.remove(i);
+            }
+            (None, None) => {}
+        }
+        Ok(())
+    }
+
+    /// Binds `key` in insert mode to an action, or `none` to unbind it. Insert mode's other keys
+    /// play notes, so commands aren't bound there.
+    pub fn bind_insert(&mut self, key: Key, target: &str) -> Result<(), String> {
+        match Binding::parse(target)? {
+            Some(Binding::Action(action)) => {
+                self.insert.insert(key, action);
+            }
+            None => {
+                self.insert.remove(&key);
+            }
+            Some(_) => return Err("insert mode keys take actions, not commands".into()),
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -587,5 +839,69 @@ mod tests {
             [pentatonic[&'z'], pentatonic[&'a'], pentatonic[&'q']],
             [0, 4, 9]
         );
+    }
+
+    #[test]
+    fn every_bound_action_has_a_name() {
+        let keymap = Keymap::default();
+        let mut bound: Vec<Action> = keymap.insert.values().copied().collect();
+        for binding in keymap.normal.values() {
+            match binding {
+                Binding::Action(action) => bound.push(*action),
+                Binding::Menu(menu) => {
+                    bound.extend(menu.items.iter().filter_map(|(_, b)| match b {
+                        Binding::Action(action) => Some(*action),
+                        _ => None,
+                    }))
+                }
+                Binding::Command(_) => {}
+            }
+        }
+        for action in bound {
+            assert!(Action::ALL.contains(&action), "{action:?} missing from ALL");
+            assert_eq!(Action::named(&action.name()), Some(action));
+        }
+        assert_eq!(Action::GotoMixer.name(), "goto_mixer");
+        assert_eq!(
+            Action::named("toggle_pattern_mute"),
+            Some(Action::TogglePatternMute)
+        );
+    }
+
+    #[test]
+    fn keys_parse_as_helix_writes_them() {
+        let keys = [
+            ("a", Key::Char('a')),
+            ("C-a", Key::Ctrl('a')),
+            ("C-space", Key::Ctrl(' ')),
+            ("A-x", Key::Alt('x')),
+            ("space", Key::Char(' ')),
+            ("minus", Key::Char('-')),
+            ("ret", Key::Enter),
+            ("esc", Key::Esc),
+            ("pageup", Key::PageUp),
+            ("pad7", Key::Pad(7)),
+        ];
+        for (name, key) in keys {
+            assert_eq!(Key::parse(name), Some(key), "{name}");
+        }
+        assert_eq!(Key::parse("hyper-x"), None);
+        assert_eq!(Key::parse(""), None);
+    }
+
+    #[test]
+    fn binds_and_unbinds() {
+        let mut keymap = Keymap::default();
+        keymap.bind_normal(None, Key::Ctrl('s'), ":w").unwrap();
+        assert_eq!(keymap.normal[&Key::Ctrl('s')], Binding::Command("w".into()));
+        keymap
+            .bind_normal(Some(Key::Char('g')), Key::Char('e'), "none")
+            .unwrap();
+        let Binding::Menu(goto) = &keymap.normal[&Key::Char('g')] else {
+            panic!()
+        };
+        assert!(goto.items.iter().all(|(k, _)| *k != Key::Char('e')));
+        assert!(keymap.bind_normal(None, Key::Char('Q'), "fly").is_err());
+        assert!(keymap.bind_insert(Key::Ctrl('s'), ":w").is_err());
     }
 }

@@ -25,6 +25,7 @@ nix develop               # or bring your own Rust toolchain plus alsa-lib
 cargo test
 cargo run --release       # opens the tracker with a demo song; add `-- --no-click` to mute the metronome, `-- --show-keys` to show keys as they're pressed, `-- --no-splash` to skip the opening animation (any key skips it too)
 cargo run --release -- song.lattice   # opens a song, or starts a new one there
+cargo run --release -- --config my.toml   # reads that config in place of the usual one
 ```
 
 Debug builds abort if the audio callback ever allocates, which catches real-time mistakes early.
@@ -38,6 +39,32 @@ selection onto it. In select mode (`v`) the same motions extend it instead. Coun
 Helix (`4j`, `3+`). Prefix keys such as `g` show what can follow them in a box in the corner.
 `:help` lists every key and command, made from the keymap and the command table, so it's always
 up to date; `j` `k` scroll it and `esc` goes back.
+
+Keys and colours can be changed in `~/.config/lattice/config.toml` (or under `$XDG_CONFIG_HOME`),
+written as in Helix. Keys are bound to actions by name (`:help` shows each one's, dimmed, before
+what it does), to a command line after a `:`, or to `none` to unbind them. A table under
+`keys.normal` is a menu opened by that key, adding to one that's already there. Colours are
+names (`light-blue`), palette indexes, `#rrggbb`, or `default` for the terminal's own; anything
+not set follows the terminal's palette. Mistakes are shown when Lattice starts, and the rest
+still applies.
+
+```toml
+[keys.normal]
+C-s = ":w"
+X = "none"
+
+[keys.normal.space]          # a new menu, opened by space
+m = "goto_mixer"
+s = "goto_song"
+
+[keys.insert]
+C-c = "escape"
+
+[theme]
+accent = "magenta"           # also text, dim, faint, playing, visual, error, selection
+beat-row = "none"            # unshaded, or a colour
+tracks = ["#ff8800", "cyan", 12]
+```
 
 As in Helix, there can be several selections at once. Every motion and action applies to each
 of them, and selections that come to overlap merge. The view follows the primary selection,

@@ -1,5 +1,6 @@
 mod audio;
 mod bars;
+mod config;
 mod demo;
 mod export;
 mod file;
@@ -58,11 +59,13 @@ fn main() -> Result<()> {
     let mut editor = Editor::new(demo.grid, demo.bpm)
         .with_buses(demo.buses)
         .with_arrangement(demo.arrangement);
+    // `--config PATH` reads that config in place of the usual one.
+    let config = args.iter().position(|a| a == "--config");
+    let named = config.and_then(|i| args.get(i + 1)).map(PathBuf::from);
     // `lattice song.lattice` opens the song, or starts a new one there, like Helix.
-    if let Some(path) = args
-        .iter()
-        .find(|a| !a.starts_with("--"))
-        .map(PathBuf::from)
+    if let Some(path) = (args.iter().enumerate())
+        .find(|&(i, a)| !a.starts_with("--") && config.is_none_or(|c| i != c + 1))
+        .map(|(_, a)| PathBuf::from(a))
     {
         let (song, new) = file::open(&path, None)?;
         // The engine starts from the editor's song, so nothing needs sending yet.
@@ -86,7 +89,12 @@ fn main() -> Result<()> {
     }
     editor.show_keys = args.iter().any(|a| a == "--show-keys");
 
-    let theme = Theme::detect();
+    let mut theme = Theme::detect();
+    if let Some(path) = named.clone().or_else(config::default_path)
+        && let Some(problem) = config::load(&path, named.is_some(), &mut editor.keymap, &mut theme)
+    {
+        editor.message = Some(problem);
+    }
     let mut terminal = ratatui::init();
     // Ask for every key as a code (the kitty protocol), as only then are the numpad's digits told
     // apart from the number row's, so they can be pads; with the shifted character, so `%` and

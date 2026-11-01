@@ -277,9 +277,9 @@ enum Pending {
 /// What the infobox shows while a key is pending.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Infobox {
-    pub title: &'static str,
+    pub title: String,
     /// Key and description, in display order.
-    pub items: Vec<(String, &'static str)>,
+    pub items: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone)]
@@ -592,19 +592,17 @@ impl Editor {
                     return None;
                 };
                 Some(Infobox {
-                    title: menu.title,
-                    items: menu
-                        .items
-                        .iter()
-                        .map(|(key, action)| (key.to_string(), action.describe()))
+                    title: menu.title.clone(),
+                    items: (menu.items.iter())
+                        .map(|(key, binding)| (key.to_string(), binding.describe()))
                         .collect(),
                 })
             }
             Pending::Replace => Some(Infobox {
-                title: "replace",
+                title: "replace".into(),
                 items: vec![
-                    ("z–m q–u".into(), "fill with this note"),
-                    ("esc".into(), "cancel"),
+                    ("z–m q–u".into(), "fill with this note".into()),
+                    ("esc".into(), "cancel".into()),
                 ],
             }),
         }
@@ -733,13 +731,13 @@ impl Editor {
             }
             Some(Pending::Menu(prefix)) => {
                 let n = self.count.take().unwrap_or(1);
-                let action = match self.keymap.normal.get(&prefix) {
-                    Some(Binding::Menu(menu)) => {
-                        menu.items.iter().find(|(k, _)| *k == key).map(|&(_, a)| a)
-                    }
+                let binding = match self.keymap.normal.get(&prefix) {
+                    Some(Binding::Menu(menu)) => (menu.items.iter())
+                        .find(|(k, _)| *k == key)
+                        .map(|(_, b)| b.clone()),
                     _ => None,
                 };
-                return action.map_or_else(Vec::new, |a| self.act(a, n));
+                return binding.map_or_else(Vec::new, |b| self.bound(&b, n));
             }
             None => {}
         }
@@ -750,20 +748,29 @@ impl Editor {
             self.count = Some((self.count.unwrap_or(0) * 10 + digit).min(9_999));
             return vec![];
         }
-        match self.keymap.normal.get(&key) {
+        match self.keymap.normal.get(&key).cloned() {
             // Keep the count for the menu's action.
             Some(Binding::Menu(_)) => {
                 self.pending = Some(Pending::Menu(key));
                 vec![]
             }
-            Some(&Binding::Action(action)) => {
+            Some(binding) => {
                 let n = self.count.take().unwrap_or(1);
-                self.act(action, n)
+                self.bound(&binding, n)
             }
             None => {
                 self.count = None;
                 vec![]
             }
+        }
+    }
+
+    /// Does what a key's bound to, `n` times for an action. A command runs once.
+    fn bound(&mut self, binding: &Binding, n: usize) -> Vec<Effect> {
+        match binding {
+            Binding::Action(action) => self.act(*action, n),
+            Binding::Command(line) => self.run_command(line),
+            Binding::Menu(_) => vec![],
         }
     }
 
@@ -1797,7 +1804,7 @@ mod tests {
         keys(&mut e, "g");
         let infobox = e.infobox().unwrap();
         assert_eq!(infobox.title, "goto");
-        assert!(infobox.items.contains(&("e".into(), "last step")));
+        assert!(infobox.items.contains(&("e".into(), "last step".into())));
         keys(&mut e, "e");
         assert_eq!(e.cursor().step, 15);
         assert_eq!(e.infobox(), None);

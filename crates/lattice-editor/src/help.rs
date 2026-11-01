@@ -7,7 +7,7 @@ use crate::{COMMANDS, Editor, Effect, Mode, Page};
 /// A line of the help page.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HelpLine {
-    Heading(&'static str),
+    Heading(String),
     /// Keys (or a command), what they take, and what they do.
     Item {
         keys: String,
@@ -41,6 +41,10 @@ const PAGES: &[(&str, &str)] = &[
     ),
 ];
 
+fn heading(title: &str) -> HelpLine {
+    HelpLine::Heading(title.into())
+}
+
 fn item(keys: impl Into<String>, what: impl Into<String>) -> HelpLine {
     HelpLine::Item {
         keys: keys.into(),
@@ -66,7 +70,12 @@ fn by_action(bindings: impl Iterator<Item = (Key, Action)>) -> Vec<HelpLine> {
             // Letters before the arrows and the like.
             keys.sort_by_key(|k| (!matches!(k, Key::Char(_)), k.to_string()));
             let keys: Vec<String> = keys.iter().map(Key::to_string).collect();
-            item(keys.join(" "), action.describe())
+            // Its name, for binding it in the config.
+            HelpLine::Item {
+                keys: keys.join(" "),
+                args: action.name(),
+                what: action.describe().into(),
+            }
         })
         .collect()
 }
@@ -86,35 +95,50 @@ impl Editor {
 
     /// Every key, then every command.
     pub fn help_lines(&self) -> Vec<HelpLine> {
-        let mut lines = vec![HelpLine::Heading("normal and select mode")];
+        let mut lines = vec![heading("normal and select mode")];
         let normal = self
             .keymap
             .normal
             .iter()
             .filter_map(|(key, binding)| match binding {
                 Binding::Action(action) => Some((*key, *action)),
-                Binding::Menu(_) => None,
+                _ => None,
             });
         lines.extend(by_action(normal));
+        // Keys bound to commands in the config, in the order of their keys.
+        let mut commands: Vec<_> = (self.keymap.normal.iter())
+            .filter(|(_, binding)| matches!(binding, Binding::Command(_)))
+            .map(|(key, binding)| item(key.to_string(), binding.describe()))
+            .collect();
+        commands.sort_by_key(|line| format!("{line:?}"));
+        lines.extend(commands);
 
         // The menus, in the order of their keys.
         let mut menus: Vec<_> = (self.keymap.normal.iter())
             .filter_map(|(key, binding)| match binding {
                 Binding::Menu(menu) => Some((key.to_string(), menu)),
-                Binding::Action(_) => None,
+                _ => None,
             })
             .collect();
         menus.sort_by(|a, b| a.0.cmp(&b.0));
         for (prefix, menu) in menus {
             lines.push(HelpLine::Blank);
-            lines.push(HelpLine::Heading(menu.title));
-            for (key, action) in &menu.items {
-                lines.push(item(format!("{prefix}{key}"), action.describe()));
+            lines.push(HelpLine::Heading(menu.title.clone()));
+            for (key, binding) in &menu.items {
+                let keys = format!("{prefix}{key}");
+                lines.push(match binding {
+                    Binding::Action(action) => HelpLine::Item {
+                        keys,
+                        args: action.name(),
+                        what: action.describe().into(),
+                    },
+                    _ => item(keys, binding.describe()),
+                });
             }
         }
 
         lines.push(HelpLine::Blank);
-        lines.push(HelpLine::Heading("insert mode"));
+        lines.push(heading("insert mode"));
         lines.push(item(
             "notes",
             "as laid out by :layout, in the keyboard octave",
@@ -122,13 +146,13 @@ impl Editor {
         lines.extend(by_action(self.keymap.insert.iter().map(|(k, a)| (*k, *a))));
 
         lines.push(HelpLine::Blank);
-        lines.push(HelpLine::Heading("pages"));
+        lines.push(heading("pages"));
         for (page, keys) in PAGES {
             lines.push(item(*page, *keys));
         }
 
         lines.push(HelpLine::Blank);
-        lines.push(HelpLine::Heading("commands"));
+        lines.push(heading("commands"));
         for spec in COMMANDS {
             let keys = match spec.alias {
                 Some(alias) => format!(":{} :{alias}", spec.name),
