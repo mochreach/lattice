@@ -70,7 +70,7 @@ fn columns(
     let track_columns = (view.first_strip..tracks).take(fits).map(|i| {
         let track = &editor.grid.tracks[i];
         let colour = theme.track(i);
-        let audible = !track.mix.mute && (track.mix.solo || !any_solo);
+        let audible = !track.mix.mute && !track.pattern_mute && (track.mix.solo || !any_solo);
         let style = Style::new().fg(colour);
         Column {
             index: i,
@@ -201,10 +201,11 @@ fn overview(
     lines
 }
 
-/// `M` when muted, `S` when soloed.
+/// `M` when muted, `m` when muted in this pattern, `S` when soloed.
 fn flag(editor: &Editor, strip: Strip, theme: &Theme) -> (&'static str, Color) {
     match strip {
         Strip::Track(i) if editor.grid.tracks[i].mix.mute => ("M", theme.error),
+        Strip::Track(i) if editor.grid.tracks[i].pattern_mute => ("m", theme.error),
         Strip::Track(i) if editor.grid.tracks[i].mix.solo => ("S", theme.accent),
         _ => (" ", theme.accent),
     }

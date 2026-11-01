@@ -79,8 +79,7 @@ pub fn render(export: &Export, buses: Buses, bpm: f64, sample_rate: f32) -> Resu
     let mut parts = export.parts.iter();
     let first = parts.next().context("nothing to export")?;
     for (track, lane) in grid.tracks.iter_mut().zip(&first.lanes) {
-        track.steps = lane.steps.clone();
-        track.rules = lane.rules.clone();
+        lane.clone().swap(track);
     }
     let editor = Editor::new(grid, bpm).with_buses(buses);
     let instruments = Tracks::instruments(&editor.grid, sample_rate);
@@ -190,6 +189,7 @@ mod tests {
 
     fn export(steps: u64) -> Export {
         let mut track = Track {
+            pattern_mute: false,
             name: "t".into(),
             steps: vec![Step::default(); 4],
             mix: Default::default(),
@@ -205,6 +205,7 @@ mod tests {
         });
         let part = Part {
             lanes: vec![Lane {
+                mute: false,
                 steps: track.steps.clone(),
                 rules: vec![],
             }],
@@ -243,6 +244,7 @@ mod tests {
         let mut x = export(4);
         let silent = Part {
             lanes: vec![Lane {
+                mute: false,
                 steps: vec![Step::default(); 4],
                 rules: vec![],
             }],

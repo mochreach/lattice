@@ -713,6 +713,13 @@ patterns, each with its own steps and rules for every track: a lane per track. S
 tracks keeps one mixer, and lets delays, reverbs and held notes ring on across a change of
 pattern; a different sound for a section is a track left empty in the other patterns.
 
+A lane can also be muted (`Lane::mute`, in the grid's track as `Track::pattern_mute`): its steps
+stay, but the engine plays none of them, and notes already sounding ring on as they would after
+their last step. It's apart from the mixer's mute, which is for the whole song and fades the
+strip out. So a part can sit out a section, with its notes kept to bring back: `tM` or
+`:pattern-mute` toggles it on the selected tracks, and the header shows `m` where the mixer's mute
+shows `M`. It swaps in and out with the steps and rules, at a change of pattern as well.
+
 The pattern being edited keeps its lanes in the grid's tracks, so everything that works on tracks
 works on it unchanged; `Arrangement::select` swaps lanes in and out. Adding, removing and moving a
 track does the same to every other pattern's lanes. Undo snapshots the arrangement with the grid,

@@ -1151,6 +1151,7 @@ impl Editor {
             Action::NextPattern => return self.step_pattern(n as isize),
             Action::PrevPattern => return self.step_pattern(-(n as isize)),
             Action::ToggleMute => return self.run_command("mute"),
+            Action::TogglePatternMute => return self.run_command("pattern-mute"),
             Action::ToggleSolo => return self.run_command("solo"),
             Action::AddTrack => return self.run_command("track-add"),
             Action::RemoveTrack => return self.delete_tracks(),
@@ -1713,6 +1714,7 @@ mod tests {
 
     fn editor() -> Editor {
         let track = |name: &str, len| Track {
+            pattern_mute: false,
             name: name.into(),
             steps: vec![Step::default(); len],
             mix: Default::default(),

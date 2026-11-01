@@ -1221,7 +1221,11 @@ impl Engine {
             }
             t.position = u64::from(t.pass) << 32 | t.playhead as u64;
             self.status.set_position(index, t.position);
-            let step = t.steps[t.playhead];
+            // Muted in this pattern, its steps go by unplayed.
+            let step = match t.track.pattern_mute {
+                true => Step::default(),
+                false => t.steps[t.playhead],
+            };
             if step.triggers() {
                 // Before the note, so it plays with the step's settings.
                 t.lock(step.locks, offset);
@@ -1277,8 +1281,7 @@ impl Engine {
                         .all(|l| (1..=MAX_STEPS).contains(&l.steps.len()));
                 if fits {
                     for (t, lane) in self.tracks.iter_mut().zip(&mut section.lanes) {
-                        std::mem::swap(&mut t.track.steps, &mut lane.steps);
-                        std::mem::swap(&mut t.track.rules, &mut lane.rules);
+                        lane.swap(&mut t.track);
                     }
                     self.pattern_len = section.steps;
                     self.swaps += 1;
@@ -1396,6 +1399,7 @@ mod tests {
 
     fn lead() -> Track {
         Track {
+            pattern_mute: false,
             name: "lead".into(),
             steps: [60, 0, 63, 67, 0, 70, 72]
                 .map(|p| {
@@ -1465,6 +1469,7 @@ mod tests {
         let (mut engine, mut handle) = with_synth(48_000.0);
         let step = 48_000.0 * 60.0 / (133.0 * 4.0);
         let lane = Lane {
+            mute: false,
             steps: vec![Step::note(50); 3],
             rules: vec![],
         };
@@ -1510,6 +1515,37 @@ mod tests {
     }
 
     #[test]
+    fn a_track_muted_in_a_pattern_plays_nothing_there() {
+        let grid = Grid {
+            name: "mutes".into(),
+            steps_per_beat: 4,
+            tracks: vec![Track {
+                steps: vec![Step::note(60); 4],
+                rules: vec![],
+                pattern_mute: true,
+                ..lead()
+            }],
+            groups: vec![],
+        };
+        let (mut engine, mut handle) = Engine::new(1_000.0, 120.0, &grid, vec![Box::new(Ticks)]);
+        engine.click_enabled = false;
+        engine.play();
+        // 125 samples a step: four steps of a muted pattern, then one where it plays.
+        handle.send(Command::SetLength(4));
+        handle.send(Command::Cue(Cue::Pattern(Box::new(Section {
+            lanes: vec![Lane {
+                steps: vec![Step::note(60); 2],
+                ..Lane::default()
+            }],
+            steps: 4,
+            at_bar: false,
+        }))));
+        let (left, _) = render_stereo(&mut engine, 750);
+        assert_eq!(onsets(&left), [500, 625]);
+        assert!(!engine.tracks[0].track.pattern_mute);
+    }
+
+    #[test]
     fn a_looping_pattern_leaves_its_tracks_running() {
         let (mut engine, mut handle) = with_synth(48_000.0);
         let step = 48_000.0 * 60.0 / (133.0 * 4.0);
@@ -1529,6 +1565,7 @@ mod tests {
         handle.send(Command::SetLength(64));
         handle.send(Command::Cue(Cue::Pattern(Box::new(Section {
             lanes: vec![Lane {
+                mute: false,
                 steps: vec![Step::note(50); 3],
                 rules: vec![],
             }],

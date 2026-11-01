@@ -16,6 +16,7 @@ static ALLOCATOR: AllocDisabler = AllocDisabler;
 #[test]
 fn rendering_never_allocates() {
     let track = Track {
+        pattern_mute: false,
         name: "lead".into(),
         steps: (0..7)
             .map(|i| {
@@ -133,6 +134,7 @@ fn rendering_never_allocates() {
     // Another pattern to change to, with a rule to realise.
     let mut section = Some(Box::new(Section {
         lanes: vec![Lane {
+            mute: false,
             steps: vec![Step::note(48); 5],
             rules: vec![Rule {
                 transform: Transform::Reverse,

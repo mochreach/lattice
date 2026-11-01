@@ -380,6 +380,12 @@ pub const COMMANDS: &[Spec] = &[
         describe: "rename this pattern",
     },
     Spec {
+        name: "pattern-mute",
+        alias: Some("pm"),
+        params: &[],
+        describe: "mute or unmute in this pattern only (also tM)",
+    },
+    Spec {
         name: "pattern-remove",
         alias: None,
         params: &[],
@@ -937,6 +943,16 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![])
         }
         "pattern-remove" => editor.remove_pattern(),
+        "pattern-mute" => {
+            let tracks = editor.mix_targets()?;
+            // Toggled together, as mutes are.
+            let on = tracks.iter().any(|&t| !editor.grid.tracks[t].pattern_mute);
+            editor.checkpoint();
+            for &t in &tracks {
+                editor.grid.tracks[t].pattern_mute = on;
+            }
+            Ok(tracks.into_iter().map(Effect::TrackChanged).collect())
+        }
         "bars" => {
             editor.set_bars(command.text(0))?;
             Ok(vec![])
@@ -1089,11 +1105,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             let track = Track {
                 name,
                 steps: vec![Step::default(); NEW_TRACK_STEPS],
-                mix: Default::default(),
-                instrument: Default::default(),
-                effects: vec![],
-                choke: 0,
-                rules: vec![],
+                ..Track::default()
             };
             editor.insert_track(editor.cursor().track + 1, track);
             editor.select_point(editor.cursor().track + 1, editor.cursor().step);

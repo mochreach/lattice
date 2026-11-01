@@ -91,6 +91,7 @@ impl Editor {
             lanes.push(Lane {
                 steps,
                 rules: track.rules.clone(),
+                mute: false,
             });
         }
         let path = self.wav_path(path, "-selection")?;
@@ -142,6 +143,7 @@ mod tests {
 
     fn track(len: usize, rules: Vec<Rule>) -> Track {
         Track {
+            pattern_mute: false,
             name: "t".into(),
             steps: vec![Step::default(); len],
             mix: Default::default(),

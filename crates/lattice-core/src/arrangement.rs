@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::song::{Grid, MAX_STEPS, Step};
+use crate::song::{Grid, MAX_STEPS, Step, Track};
 use crate::transform::Rule;
 
 /// Most patterns a song can have.
@@ -26,6 +26,26 @@ pub const BEATS_PER_BAR: u32 = 4;
 pub struct Lane {
     pub steps: Vec<Step>,
     pub rules: Vec<Rule>,
+    /// Muted in this pattern: see [`Track::pattern_mute`](crate::Track::pattern_mute).
+    pub mute: bool,
+}
+
+impl Lane {
+    /// The lane `track` holds, for the pattern being edited.
+    pub fn of(track: &Track) -> Self {
+        Self {
+            steps: track.steps.clone(),
+            rules: track.rules.clone(),
+            mute: track.pattern_mute,
+        }
+    }
+
+    /// Puts the lane in `track`, giving back the one it held.
+    pub fn swap(&mut self, track: &mut Track) {
+        std::mem::swap(&mut self.steps, &mut track.steps);
+        std::mem::swap(&mut self.rules, &mut track.rules);
+        std::mem::swap(&mut self.mute, &mut track.pattern_mute);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -99,32 +119,18 @@ impl Arrangement {
         if index == self.current || index >= self.patterns.len() {
             return;
         }
-        self.patterns[self.current].lanes = grid
-            .tracks
-            .iter_mut()
-            .map(|t| Lane {
-                steps: std::mem::take(&mut t.steps),
-                rules: std::mem::take(&mut t.rules),
-            })
-            .collect();
-        let lanes = std::mem::take(&mut self.patterns[index].lanes);
-        for (track, lane) in grid.tracks.iter_mut().zip(lanes) {
-            track.steps = lane.steps;
-            track.rules = lane.rules;
+        let mut lanes = std::mem::take(&mut self.patterns[index].lanes);
+        for (track, lane) in grid.tracks.iter_mut().zip(&mut lanes) {
+            lane.swap(track);
         }
+        self.patterns[self.current].lanes = lanes;
         self.current = index;
     }
 
     /// Pattern `index`'s lanes, wherever they are.
     pub fn lanes(&self, grid: &Grid, index: usize) -> Vec<Lane> {
         if index == self.current {
-            grid.tracks
-                .iter()
-                .map(|t| Lane {
-                    steps: t.steps.clone(),
-                    rules: t.rules.clone(),
-                })
-                .collect()
+            grid.tracks.iter().map(Lane::of).collect()
         } else {
             self.patterns[index].lanes.clone()
         }
@@ -192,7 +198,7 @@ impl Arrangement {
         for pattern in self.others_mut() {
             let lane = Lane {
                 steps: vec![Step::default(); len],
-                rules: vec![],
+                ..Lane::default()
             };
             pattern.lanes.insert(index, lane);
         }
@@ -275,6 +281,12 @@ struct SparseLane {
     steps: BTreeMap<usize, Step>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     rules: Vec<Rule>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    mute: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !b
 }
 
 impl From<Lane> for SparseLane {
@@ -288,6 +300,7 @@ impl From<Lane> for SparseLane {
                 .filter(|(_, s)| !s.is_empty())
                 .collect(),
             rules: lane.rules,
+            mute: lane.mute,
         }
     }
 }
@@ -311,6 +324,7 @@ impl TryFrom<SparseLane> for Lane {
         Ok(Self {
             steps,
             rules: sparse.rules,
+            mute: sparse.mute,
         })
     }
 }
@@ -345,6 +359,7 @@ mod tests {
             None,
             vec![
                 Lane {
+                    mute: false,
                     steps: vec![Step::note(40); 4],
                     rules: vec![]
                 };
@@ -366,6 +381,7 @@ mod tests {
     fn tracks_added_moved_and_removed_follow_into_every_pattern() {
         let mut a = Arrangement::default();
         let lane = |len| Lane {
+            mute: false,
             steps: vec![Step::default(); len],
             rules: vec![],
         };

@@ -147,6 +147,7 @@ mod tests {
 
     fn song() -> Song {
         let mut bass = Track {
+            pattern_mute: false,
             name: "bass".into(),
             steps: vec![Step::default(); 16],
             mix: Default::default(),
@@ -186,6 +187,7 @@ mod tests {
         bass.instrument = Instrument::new(InstKind::Kick);
         bass.instrument.values[kick::PUNCH as usize] = 0.8;
         let empty = Track {
+            pattern_mute: false,
             name: "empty".into(),
             steps: vec![Step::default(); 6],
             mix: Default::default(),
@@ -218,10 +220,12 @@ mod tests {
                         bars: Some(2),
                         lanes: vec![
                             Lane {
+                                mute: false,
                                 steps: vec![Step::note(40), Step::default()],
                                 rules: vec![],
                             },
                             Lane {
+                                mute: false,
                                 steps: vec![Step::default(); 3],
                                 rules: vec![],
                             },

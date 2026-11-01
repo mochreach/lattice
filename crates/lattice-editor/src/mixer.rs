@@ -402,6 +402,7 @@ impl Editor {
             | Action::Escape
             | Action::Quit
             | Action::ToggleMute
+            | Action::TogglePatternMute
             | Action::ToggleSolo
             | Action::GotoMixer
             | Action::GotoPattern

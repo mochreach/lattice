@@ -146,6 +146,8 @@ pub enum Action {
     KeyboardOctaveDown,
     /// Mute or unmute every track the selections reach.
     ToggleMute,
+    /// The same, in this pattern only.
+    TogglePatternMute,
     ToggleSolo,
     AddTrack,
     /// Copy, then remove, every track the selections reach.
@@ -240,6 +242,7 @@ impl Action {
             Action::KeyboardOctaveUp => "keyboard octave up",
             Action::KeyboardOctaveDown => "keyboard octave down",
             Action::ToggleMute => "mute / unmute",
+            Action::TogglePatternMute => "mute / unmute in this pattern",
             Action::ToggleSolo => "solo / unsolo",
             Action::AddTrack => "add a track after this one",
             Action::RemoveTrack => "remove tracks (and copy)",
@@ -450,6 +453,7 @@ impl Default for Keymap {
             items: vec![
                 (Char('t'), SelectTracks),
                 (Char('m'), ToggleMute),
+                (Char('M'), TogglePatternMute),
                 (Char('s'), ToggleSolo),
                 (Char('a'), AddTrack),
                 (Char('d'), RemoveTrack),

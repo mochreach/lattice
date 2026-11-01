@@ -198,6 +198,9 @@ pub struct Track {
     pub steps: Vec<Step>,
     /// Transforms applied, in order, to realise the track for each pass.
     pub rules: Vec<Rule>,
+    /// Muted in this pattern only: its steps stay, but none of them play. Kept with the steps
+    /// and rules, in the pattern's lane.
+    pub pattern_mute: bool,
     /// What plays the notes.
     pub instrument: Instrument,
     /// Effects after the instrument, before the mixer strip.
@@ -287,6 +290,8 @@ struct SparseTrack {
     steps: BTreeMap<usize, Step>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     rules: Vec<Rule>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pattern_mute: bool,
     #[serde(default)]
     instrument: Instrument,
     #[serde(default, skip_serializing_if = "Mix::is_default")]
@@ -313,6 +318,7 @@ impl From<Track> for SparseTrack {
                 .filter(|(_, step)| !step.is_empty())
                 .collect(),
             rules: track.rules,
+            pattern_mute: track.pattern_mute,
             instrument: track.instrument,
             mix: track.mix,
             effects: track.effects,
@@ -345,6 +351,7 @@ impl TryFrom<SparseTrack> for Track {
             name: sparse.name,
             steps,
             rules: sparse.rules,
+            pattern_mute: sparse.pattern_mute,
             instrument: sparse.instrument,
             mix: sparse.mix,
             effects: sparse.effects,

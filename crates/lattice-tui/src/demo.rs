@@ -1,6 +1,7 @@
 //! The demo song: a techno track in F minor, arranged in six sections, that uses a bit of
-//! everything: every instrument, every effect, groups, a choke, sends, locks, tracks of different
-//! lengths drifting against each other, and rules that change the parts as they repeat.
+//! everything: every instrument, every effect, groups, a choke, sends, locks, a pattern mute,
+//! tracks of different lengths drifting against each other, and rules that change the parts as
+//! they repeat.
 
 use lattice_core::fx::{comp, delay, drive, filter, reverb};
 use lattice_core::instrument::{clap, hat, kick, snare, string, synth, tom};
@@ -379,13 +380,18 @@ fn synth(
 fn section(parts: Vec<(usize, Vec<Step>, Vec<Rule>)>) -> Vec<Lane> {
     let mut lanes = vec![
         Lane {
+            mute: false,
             steps: vec![Step::default(); 16],
             rules: vec![],
         };
         TRACKS
     ];
     for (track, steps, rules) in parts {
-        lanes[track] = Lane { steps, rules };
+        lanes[track] = Lane {
+            steps,
+            rules,
+            mute: false,
+        };
     }
     lanes
 }
@@ -545,14 +551,25 @@ fn sections() -> Vec<(&'static str, u32, Vec<Lane>)> {
         (
             "outro",
             4,
-            section(vec![
-                (KICK, four_to_the_floor(), vec![]),
-                (HAT, hats(), vec![]),
-                (PAD, pad(), vec![]),
-                pluck(),
-            ]),
+            // The bass is still written out, but muted in this pattern: `tM` brings it back.
+            muted(
+                section(vec![
+                    (KICK, four_to_the_floor(), vec![]),
+                    (HAT, hats(), vec![]),
+                    (BASS, bass(), vec![]),
+                    (PAD, pad(), vec![]),
+                    pluck(),
+                ]),
+                BASS,
+            ),
         ),
     ]
+}
+
+/// The lanes with `track`'s muted.
+fn muted(mut lanes: Vec<Lane>, track: usize) -> Vec<Lane> {
+    lanes[track].mute = true;
+    lanes
 }
 
 /// Which section is open to begin with: the one with everything in it.
@@ -648,6 +665,7 @@ pub fn song() -> Song {
             for (track, lane) in tracks.iter_mut().zip(lanes) {
                 track.steps = lane.steps;
                 track.rules = lane.rules;
+                track.pattern_mute = lane.mute;
             }
             vec![]
         } else {

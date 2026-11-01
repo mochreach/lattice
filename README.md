@@ -58,6 +58,7 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `%` | select everything |
 | `tt` | select every step of the tracks the selections reach |
 | `tm` `ts` | mute / solo every track the selections reach (not Helix's `t`, which has no use on a grid) |
+| `tM` | mute / unmute in this pattern only: the notes stay, ready to bring back, and the other patterns play them (shown `m`) |
 | `ta`, `th` `tl` | add a track after this one, move it left / right |
 | `ty`, `td` | copy the tracks the selections reach; remove them, copying them first |
 | `tp` `tP` | paste copied tracks after / before this one, with their notes, rules, mix and instrument |
@@ -170,6 +171,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:w [PATH]`, `:wq [PATH]` | save the song (to a `.lattice` file), save and quit |
 | `:pattern NAME` (`:pat`) | go to a pattern, by name or number; while playing, it's cued and takes over at the next bar (the header shows `pat A → B`) |
 | `:pattern-new [NAME]` (`:pn`), `:pattern-dup [NAME]` (`:pd`) | add an empty pattern after this one, or a copy of this one, and go to it; it's added to the end of the song, played once. Named A, B, C… unless named |
+| `:pattern-mute` (`:pm`) | mute or unmute every track the selections reach in this pattern only (also `tM`) |
 | `:pattern-name NAME`, `:pattern-remove` | rename this pattern; remove it, and its places in the song |
 | `:bars [N \| auto]` | how long this pattern plays in the song: N bars, or `auto` (the default), as long as its longest track, rounded up to a whole bar. Looping on its own, a pattern never restarts its tracks, so tracks of different lengths keep drifting against each other |
 | `:export [PATH] [BARS]` | render the song to a 24-bit WAV, faster than real time, while you carry on: each pattern in the song's order, for its length, then the tail until it's quiet; or with BARS, this pattern for that many bars. With no path, it goes beside the song's file |

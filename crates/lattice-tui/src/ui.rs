@@ -412,7 +412,7 @@ impl<'a> Column<'a> {
             playhead: position.map(|(step, _)| step),
             pass: position.map(|(_, pass)| pass),
             colour: theme.track(index),
-            audible: !track.mix.mute && (track.mix.solo || !any_solo),
+            audible: !track.mix.mute && !track.pattern_mute && (track.mix.solo || !any_solo),
             meter,
         }
     }
@@ -537,7 +537,7 @@ fn group_line(columns: &[Column], groups: &[Group], theme: &Theme) -> Option<Lin
     Some(Line::from(spans))
 }
 
-/// Track names with mute and solo flags, lengths and passes, level and pan, then the rules one
+/// Track names with mute (`M`, or `m` in this pattern only) and solo flags, lengths and passes, level and pan, then the rules one
 /// per line, then a meter underlining it all. Arrows by the names show there are more tracks
 /// off to the (left, right).
 fn header_lines(
@@ -564,9 +564,10 @@ fn header_lines(
                     style = style.add_modifier(Modifier::DIM);
                 }
                 let mix = c.track.mix;
-                let (flag, flag_style) = match (mix.mute, mix.solo) {
-                    (true, _) => ("M", Style::new().fg(theme.error)),
-                    (false, true) => ("S", Style::new().fg(theme.accent)),
+                let (flag, flag_style) = match (mix.mute, c.track.pattern_mute, mix.solo) {
+                    (true, ..) => ("M", Style::new().fg(theme.error)),
+                    (_, true, _) => ("m", Style::new().fg(theme.error)),
+                    (.., true) => ("S", Style::new().fg(theme.accent)),
                     _ => (" ", Style::new()),
                 };
                 [

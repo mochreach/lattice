@@ -102,7 +102,7 @@ impl Editor {
                 .iter()
                 .map(|t| Lane {
                     steps: vec![Step::default(); t.steps.len()],
-                    rules: vec![],
+                    ..Lane::default()
                 })
                 .collect()
         };
@@ -275,6 +275,28 @@ mod tests {
             into_step: 0.0,
             count_in: 0,
         }));
+    }
+
+    #[test]
+    fn a_pattern_mute_stays_with_its_pattern() {
+        let mut e = editor();
+        e.handle(Key::Char('t'));
+        assert_eq!(e.handle(Key::Char('M')), [Effect::TrackChanged(0)]);
+        assert!(e.grid.tracks[0].pattern_mute);
+        run(&mut e, "pn");
+        assert!(
+            !e.grid.tracks[0].pattern_mute,
+            "a new pattern plays everything"
+        );
+        run(&mut e, "pat A");
+        assert!(e.grid.tracks[0].pattern_mute);
+        assert!(!e.arrangement.lanes(&e.grid, 1)[0].mute);
+        // And it's undone like any edit.
+        e.handle(Key::Char('t'));
+        e.handle(Key::Char('M'));
+        assert!(!e.grid.tracks[0].pattern_mute);
+        e.handle(Key::Char('u'));
+        assert!(e.grid.tracks[0].pattern_mute);
     }
 
     #[test]
