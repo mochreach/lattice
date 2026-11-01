@@ -203,6 +203,7 @@ pub fn state(editor: &Editor, status: &Status) -> String {
         Page::Song => "song",
         Page::Mixer => "mixer",
         Page::Fx => "fx",
+        Page::Instrument => "instrument",
         Page::Help => "help",
     };
     let tracks: Vec<String> = (editor.grid.tracks.iter()).map(|t| json(&t.name)).collect();

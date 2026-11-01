@@ -138,7 +138,7 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `tab` | show the pattern as written, or as it's playing this pass |
 | `:` | command line |
 | `gm` `gs` `gp` | the mixer page (on this track), the song page, back to the pattern |
-| `gi` | the mixer, on this track's instrument |
+| `gi` | the instrument page, on this track |
 | `gf` | the fx page: this track's effects (or the mixer strip's), in lanes |
 
 One deliberate departure from Helix: `space` is play / stop, as in every DAW, rather than a menu.
@@ -268,6 +268,13 @@ types an exact one (or, on the instrument, another instrument), `:fx-add delay` 
 `filter`, `drive`, `comp`, `pitch`) adds an effect after the cursor and `d` removes it. `tm` `ts` still
 mute and solo, and `gp` goes back to the pattern. Instruments, effects and bus levels are saved
 in the song.
+
+The **instrument page** (`gi`) shows every track's instrument side by side, a column each: its
+name, its settings, a line each with a bar, the track's macros, and last its effects. `h` `l` move
+across the tracks on the same line, `j` `k` down a column, and `w` `b` from part to part. `^a` `^x`
+turn the setting or macro under the cursor and `c` sets it, or on the instrument's name, changes
+the instrument; `:map`, `L` and recording locks work as on the mixer, and `enter` on the effects
+opens them on the fx page.
 
 The **fx page** (`gf`) shows one strip's effects the way the pattern shows notes: the sound goes
 down through them, each effect's settings on the lines under its name, and they can branch into up to four **lanes**, side by side. A **send** row,

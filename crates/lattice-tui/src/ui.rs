@@ -19,7 +19,7 @@ use crate::bars;
 use crate::key_log::KeyLog;
 use crate::theme::Theme;
 use crate::wave::{Peaks, Waves};
-use crate::{fx_page, help_page, mixer_page, song_page};
+use crate::{fx_page, help_page, inst_page, mixer_page, song_page};
 
 /// Width of the step-number column.
 pub(crate) const GUTTER: usize = 4;
@@ -47,6 +47,9 @@ pub struct ViewState {
     pub(crate) strips_shown: usize,
     /// The first line shown on the fx page, when they don't all fit.
     pub(crate) fx_top: usize,
+    /// The instrument page's first line and leftmost track shown, when they don't all fit.
+    pub(crate) inst_top: usize,
+    pub(crate) inst_left: usize,
     /// The keys just pressed, shown when the editor's `show_keys` is on.
     pub keys: KeyLog,
     /// The waveforms of the files chop tracks play.
@@ -124,6 +127,7 @@ pub fn draw(
         Page::Pattern => draw_grid(frame, grid, editor, status, theme, view),
         Page::Mixer => mixer_page::draw(frame, grid, editor, status, theme, view),
         Page::Fx => fx_page::draw(frame, grid, editor, status, theme, view),
+        Page::Instrument => inst_page::draw(frame, grid, editor, status, theme, view),
         Page::Song => song_page::draw(frame, grid, editor, status, theme),
         Page::Help => help_page::draw(frame, grid, editor, theme),
     }
@@ -326,6 +330,7 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         Page::Pattern => " PATTERN ",
         Page::Mixer => " MIXER ",
         Page::Fx => " FX ",
+        Page::Instrument => " INST ",
         Page::Song => " SONG ",
         Page::Help => " HELP ",
     };
@@ -1096,7 +1101,8 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
     };
     let (hints, style) = match &editor.mode {
         Mode::Normal
-            if matches!(editor.page, Page::Mixer | Page::Fx) && editor.locking().is_some() =>
+            if matches!(editor.page, Page::Mixer | Page::Fx | Page::Instrument)
+                && editor.locking().is_some() =>
         {
             (
             format!(
@@ -1108,6 +1114,10 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
         }
         Mode::Normal if editor.page == Page::Fx => (
             "hl lanes · jk lines · w b effects · C-a C-x adjust · c set · :fx-add · :fx-send B · :map macro · d remove · L lock · ( ) strip · gp pattern".into(),
+            theme.dim,
+        ),
+        Mode::Normal if editor.page == Page::Instrument => (
+            "hl tracks · jk lines · w b parts · C-a C-x adjust · c set · :map macro · L lock · ret effects · gp pattern".into(),
             theme.dim,
         ),
         Mode::Normal if editor.page == Page::Mixer => (

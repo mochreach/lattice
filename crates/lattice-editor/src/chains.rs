@@ -13,7 +13,7 @@ impl Editor {
     /// the cursor's track.
     fn chain_strip(&self) -> Strip {
         match self.page {
-            Page::Mixer | Page::Fx => self.fx_strip(),
+            Page::Mixer | Page::Fx | Page::Instrument => self.fx_strip(),
             Page::Pattern | Page::Song | Page::Help => Strip::Track(self.cursor().track),
         }
     }

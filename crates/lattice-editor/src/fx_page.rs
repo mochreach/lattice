@@ -190,9 +190,14 @@ impl Editor {
 
     /// `gf`: opens the fx page, on the pattern cursor's track if coming from the pattern.
     pub(crate) fn goto_fx(&mut self) {
-        if self.page == Page::Pattern {
-            self.mixer.strip = self.cursor().track;
-            self.fx = FxCursor::default();
+        match self.page {
+            Page::Pattern => {
+                self.mixer.strip = self.cursor().track;
+                self.fx = FxCursor::default();
+            }
+            // The mixer's cursor is on the instrument page's track already.
+            Page::Instrument => self.fx = FxCursor::default(),
+            _ => {}
         }
         self.page = Page::Fx;
         self.mode = Mode::Normal;

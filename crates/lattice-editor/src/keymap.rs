@@ -382,7 +382,7 @@ impl Action {
             Action::GotoMixer => "mixer page",
             Action::GotoPattern => "pattern page",
             Action::GotoSong => "song page",
-            Action::GotoInstrument => "instrument, on the mixer",
+            Action::GotoInstrument => "instrument page: every track's instrument, side by side",
             Action::GotoEffects => "fx page: the track's effects, in lanes",
             Action::NextBeat => "next beat",
             Action::PrevBeat => "previous beat",

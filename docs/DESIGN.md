@@ -830,14 +830,26 @@ keys away:
 `j` `k` move from the overview down through the mix, the chain and the rows of settings, and `h`
 `l` move along whichever row the cursor is on. `(` `)` change strip from anywhere, keeping the row
 (Helix uses them to cycle selections, which the mixer doesn't have). `tab` jumps between the
-overview and the chain. `gi` and `gf` jump to the instrument and the effects, from the pattern
-page too, on the cursor's track. `^a` `^x` nudge the value under the cursor (0.5 dB, 5% of pan, 1
+overview and the chain. `gi` and `gf` open the instrument and fx pages, from the pattern page
+too, on the cursor's track. `^a` `^x` nudge the value under the cursor (0.5 dB, 5% of pan, 1
 of choke, or 1% of a setting's range, with counts), and `c` opens the command line with `set `
 ready for an exact value (or `inst ` on the instrument). Settings that pick from a list, like the
 synth's wave, use `Curve::Choice` and nudge one choice at a time. `:fx-add` inserts after the
 device under the cursor (first, after the instrument) and `d` removes the effect under it. The `t`
 menu still works on the cursor's track. The mixer cursor (`MixerCursor`: a strip, a `Row` and the
 device shown) is the editor's state, like the pattern's, and isn't saved.
+
+### The instrument page
+
+The instrument page (`Page::Instrument`, `lattice-editor/src/inst_page.rs`) shows every track's
+instrument side by side, a column each, read top to bottom like the fx page's lanes: the
+instrument's name, its settings, the track's macros, and its chain (`InstLine`). Its cursor
+(`InstCursor`) is a track and a line, so `h` `l` keep to the line across tracks, and `w` `b` stop on
+the first line of each part. Like the fx page, it's a view of the mixer's cursor: moving puts the
+mixer's on the track's instrument and the setting under the cursor, so nudging, `:set`, `:map`,
+`L` and recorded locks go through the mixer's code. Macros are set directly, and `enter` on the
+chain opens the fx page. The TUI scrolls the columns sideways to keep the cursor's track in view.
+A preset's face will open at the top of its column.
 
 ### The command line's suggestions and history
 

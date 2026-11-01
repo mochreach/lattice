@@ -34,6 +34,8 @@ pub enum Page {
     Mixer,
     /// One strip's chain of effects, in lanes.
     Fx,
+    /// Every track's instrument, side by side.
+    Instrument,
     Song,
     /// Every key and command.
     Help,
@@ -340,25 +342,6 @@ impl Editor {
         self.mixer = self.mixer_cursor();
     }
 
-    /// `gi`: opens the mixer page on the pattern cursor's track, if coming from the pattern, at
-    /// the chain: on the instrument, or the first effect.
-    pub(crate) fn goto_chain(&mut self, instrument: bool) {
-        if self.page == Page::Pattern {
-            self.mixer.strip = self.cursor().track;
-            self.page = Page::Mixer;
-            self.mode = Mode::Normal;
-        }
-        let mut cursor = self.mixer_cursor();
-        cursor.row = Row::Chain;
-        cursor.instrument = instrument;
-        cursor.effect = 0;
-        self.mixer = cursor;
-        self.mixer = self.mixer_cursor();
-        if instrument && !self.mixer.instrument {
-            self.message = Some("buses have no instrument".into());
-        }
-    }
-
     /// Handles a key's action on the mixer page. `None` for the actions both pages share.
     pub(crate) fn mixer_act(&mut self, action: Action, n: usize) -> Option<Vec<Effect>> {
         let by = n as i32;
@@ -469,11 +452,17 @@ impl Editor {
 
     /// Sets the value under the mixer cursor, in the units [`Editor::cursor_value`] gives.
     pub(crate) fn set_mixer_value(&mut self, value: f32) -> Result<Vec<Effect>, String> {
-        if !matches!(self.page, Page::Mixer | Page::Fx) {
-            return Err("set works on the mixer (gm) and fx (gf) pages".into());
+        if !matches!(self.page, Page::Mixer | Page::Fx | Page::Instrument) {
+            return Err("set works on the mixer (gm), fx (gf) and instrument (gi) pages".into());
         }
         if self.page == Page::Fx && !self.on_fx_param() {
             return self.set_fx_value(value);
+        }
+        if let Some((t, m)) = self.inst_macro() {
+            if !(0.0..=1.0).contains(&value) {
+                return Err("a macro goes from 0 to 1".into());
+            }
+            return Ok(self.set_macro(t, m, value));
         }
         let Some((old, min, max)) = self.cursor_value() else {
             return Err("nothing to set here: move onto a level or setting".into());
@@ -571,6 +560,10 @@ impl Editor {
                     _ => len,
                 };
                 (strip, index)
+            }
+            Page::Instrument => {
+                let track = self.inst_cursor().track;
+                (Strip::Track(track), self.grid.tracks[track].effects.len())
             }
             Page::Pattern | Page::Song | Page::Help => {
                 let track = self.cursor().track;
@@ -921,14 +914,15 @@ mod tests {
     }
 
     #[test]
-    fn gi_and_gm_open_the_mixer_on_the_cursors_track_and_gf_its_effects() {
+    fn gi_gm_and_gf_open_on_the_cursors_track() {
         let mut e = editor();
         keys(&mut e, "gpl");
         command(&mut e, "fx-add delay");
+        // gi opens the instrument page, with the mixer's cursor on the track's instrument.
         keys(&mut e, "gi");
         assert_eq!(
             (e.page, at(&e)),
-            (Page::Mixer, (Strip::Track(1), Row::Chain))
+            (Page::Instrument, (Strip::Track(1), Row::Param(0)))
         );
         assert_eq!(e.shown().unwrap().name, "synth");
         // gf opens the fx page, on the effect at the top of the chain.
@@ -938,8 +932,9 @@ mod tests {
         assert_eq!(e.shown().unwrap().slot, Some(0));
         keys(&mut e, "gphgm");
         assert_eq!(at(&e).0, Strip::Track(0));
+        // From a bus, the instrument page stays on the track it was last on.
         keys(&mut e, "))gi");
-        assert_eq!(e.message.as_deref(), Some("buses have no instrument"));
+        assert_eq!((e.page, at(&e).0), (Page::Instrument, Strip::Track(1)));
     }
 
     #[test]

@@ -10,6 +10,7 @@ mod file;
 mod fx_page;
 mod help_page;
 mod history;
+mod inst_page;
 mod key_log;
 mod keys;
 mod log;

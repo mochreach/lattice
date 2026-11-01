@@ -33,7 +33,7 @@ impl Editor {
     /// The track the macro commands work on: the mixer's or fx page's, or the pattern cursor's.
     pub(crate) fn macro_track(&self) -> Result<usize, String> {
         match self.page {
-            Page::Mixer | Page::Fx => match self.fx_strip() {
+            Page::Mixer | Page::Fx | Page::Instrument => match self.fx_strip() {
                 Strip::Track(t) => Ok(t),
                 _ => Err("macros are on tracks; buses have none".into()),
             },
@@ -75,7 +75,7 @@ impl Editor {
     /// The track's setting under the mixer cursor, or the fx page's, as the effect it's on (or
     /// `None` for the instrument) and its id.
     fn setting_under_cursor(&self) -> Option<(usize, Option<u8>, u8)> {
-        if !matches!(self.page, Page::Mixer | Page::Fx) {
+        if !matches!(self.page, Page::Mixer | Page::Fx | Page::Instrument) {
             return None;
         }
         let Row::Param(p) = self.mixer_cursor().row else {

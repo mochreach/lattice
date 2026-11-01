@@ -515,15 +515,11 @@ const LESSONS: &[Lesson] = &[
     Lesson {
         title: "The mixer",
         text: "{goto_mixer} opens the mixer on the cursor's track, and {goto_pattern} comes \
-               back; {goto_instrument} goes straight to the track's instrument. There, {left} {right} move between strips, {down} goes into the \
+               back. There, {left} {right} move between strips, {down} goes into the \
                detail, and {note_up} {note_down} turn what's under the cursor. `:level -6`, \
                `:pan 20` and `:send -12` set them by number, and `:set` the setting under the cursor.\n\n\
                Turn the BASS track's level down, then come back to the pattern.",
-        teaches: &[
-            Action::GotoMixer,
-            Action::GotoPattern,
-            Action::GotoInstrument,
-        ],
+        teaches: &[Action::GotoMixer, Action::GotoPattern],
         commands: &["level", "pan", "send", "set"],
         setup: nothing,
         watch: never,
@@ -535,10 +531,14 @@ const LESSONS: &[Lesson] = &[
     },
     Lesson {
         title: "Instruments and effects",
-        text: "`:inst string` changes the cursor's track's instrument, and `:sample kick.wav` \
-               plays a sound file on it. `:fx-add delay` adds an effect to it: `delay`, `reverb`, `filter`, `drive`, `comp` or `pitch`. On the mixer, \
-               {delete} removes the effect under the cursor.\n\nAdd a reverb to the LEAD track.",
-        teaches: &[],
+        text: "{goto_instrument} opens the instrument page: every track's instrument side by \
+               side, a column each, with its settings, the track's macros and its effects. \
+               {left} {right} move across the tracks and {up} {down} down a column, and \
+               {note_up} {note_down} turn a setting; {change} on the instrument's name changes \
+               it. `:inst string` does too, and `:sample kick.wav` plays a sound file on it. \
+               `:fx-add delay` adds an effect: `delay`, `reverb`, `filter`, `drive`, `comp` or \
+               `pitch`.\n\nAdd a reverb to the LEAD track.",
+        teaches: &[Action::GotoInstrument],
         commands: &["inst", "sample", "fx-add"],
         setup: nothing,
         watch: never,
