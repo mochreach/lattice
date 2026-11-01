@@ -31,8 +31,8 @@ pub struct Lane {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Pattern {
     pub name: String,
-    /// How long it plays before the next, or `None` for once round its loop: until every
-    /// track's steps and rules come round together (see [`cycle`]), up to [`DEFAULT_MAX_BARS`].
+    /// How long it plays before the next, or `None` for as long as its longest track, rounded up
+    /// to a whole bar.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bars: Option<u32>,
     /// A lane per track, or none for the pattern being edited, whose lanes are in the tracks.
@@ -55,9 +55,6 @@ fn one() -> u32 {
 fn is_one(n: &u32) -> bool {
     *n == 1
 }
-
-/// The longest a pattern plays by default.
-pub const DEFAULT_MAX_BARS: u32 = 64;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Arrangement {
@@ -139,13 +136,16 @@ impl Arrangement {
         match self.patterns[index].bars {
             Some(bars) => u64::from(bars) * bar,
             None => {
-                let loop_steps = if index == self.current {
-                    cycle(grid.tracks.iter().map(|t| (t.steps.len(), &t.rules[..])))
+                let longest = if index == self.current {
+                    grid.tracks.iter().map(|t| t.steps.len()).max()
                 } else {
-                    let lanes = &self.patterns[index].lanes;
-                    cycle(lanes.iter().map(|l| (l.steps.len(), &l.rules[..])))
+                    self.patterns[index]
+                        .lanes
+                        .iter()
+                        .map(|l| l.steps.len())
+                        .max()
                 };
-                loop_steps.min(u64::from(DEFAULT_MAX_BARS) * bar)
+                (longest.unwrap_or(0) as u64).div_ceil(bar).max(1) * bar
             }
         }
     }
@@ -266,38 +266,6 @@ impl Arrangement {
     }
 }
 
-/// Steps until every track, `(length, rules)`, is back at its first step on a pass where its
-/// rules do the same as on the first: the length of a pattern's loop.
-pub fn cycle<'a>(tracks: impl Iterator<Item = (usize, &'a [Rule])>) -> u64 {
-    use crate::transform::{Condition, Transform};
-    tracks
-        .map(|(len, rules)| {
-            let len = len.max(1) as u64;
-            let passes = rules.iter().fold(1, |passes, rule| {
-                let every = match rule.when {
-                    Condition::Every { n, .. } => u64::from(n.max(1)),
-                    Condition::Always | Condition::Pass(_) => 1,
-                };
-                // Drifting comes round when it's rotated by a whole number of tracks.
-                let drift = match rule.transform {
-                    Transform::Drift(n) => len / gcd(len, u64::from(n.unsigned_abs())),
-                    _ => 1,
-                };
-                lcm(passes, every * drift)
-            });
-            len * passes
-        })
-        .fold(1, lcm)
-}
-
-fn gcd(a: u64, b: u64) -> u64 {
-    if b == 0 { a } else { gcd(b, a % b) }
-}
-
-fn lcm(a: u64, b: u64) -> u64 {
-    a / gcd(a, b) * b
-}
-
 /// How a [`Lane`] is written to a file.
 #[derive(Serialize, Deserialize)]
 #[serde(rename = "Lane")]
@@ -351,7 +319,6 @@ impl TryFrom<SparseLane> for Lane {
 mod tests {
     use super::*;
     use crate::song::Track;
-    use crate::transform::{Condition, Transform};
 
     fn grid(lens: &[usize]) -> Grid {
         Grid {
@@ -437,16 +404,11 @@ mod tests {
     }
 
     #[test]
-    fn a_pattern_lasts_its_bars_or_its_loop() {
-        let mut g = grid(&[16, 12]);
+    fn a_pattern_lasts_its_bars_or_its_longest_track() {
         let mut a = Arrangement::default();
-        assert_eq!(a.steps(&g, 0), 48);
-        g.tracks[0].rules.push(Rule {
-            transform: Transform::Drift(-4),
-            when: Condition::Every { n: 3, offset: 0 },
-        });
-        // Drifting by 4 of 16 every third pass comes round in 12 passes.
-        assert_eq!(a.steps(&g, 0), 192);
+        assert_eq!(a.steps(&grid(&[16, 12]), 0), 16);
+        assert_eq!(a.steps(&grid(&[7, 20]), 0), 32, "rounded up to whole bars");
+        let g = grid(&[16, 12]);
         a.patterns[0].bars = Some(2);
         assert_eq!(a.steps(&g, 0), 32);
     }

@@ -181,11 +181,11 @@ mod tests {
         assert!(e.message.as_deref().unwrap().contains("no file name"));
 
         let x = export(run(&mut e, "export out"));
-        assert_eq!((x.path.clone(), x.steps()), ("out.wav".into(), 48));
+        assert_eq!((x.path.clone(), x.steps()), ("out.wav".into(), 16));
         let x = export(run(&mut e, "export my song.wav 8"));
         assert_eq!((x.path.clone(), x.steps()), ("my song.wav".into(), 8 * 16));
 
-        // As arranged: A, then B twice, two bars each.
+        // As arranged: A for a bar, then B twice, two bars each.
         e.handle(Key::Esc);
         run(&mut e, "pattern-new");
         run(&mut e, "bars 2");
@@ -202,7 +202,7 @@ mod tests {
         let x = export(run(&mut e, "export out"));
         assert_eq!(
             x.parts.iter().map(|p| p.steps).collect::<Vec<_>>(),
-            [48, 32, 32]
+            [16, 32, 32]
         );
         assert_eq!(x.parts[1].lanes[1].steps.len(), 12);
 

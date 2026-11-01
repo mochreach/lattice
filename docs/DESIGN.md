@@ -657,8 +657,10 @@ track does the same to every other pattern's lanes. Undo snapshots the arrangeme
 so undoing a change in another pattern goes back to it.
 
 The pattern being edited is always the one playing. A pattern's length is `:bars`, or by default
-once round its loop: the least common multiple of each track's length times the passes its
-`every` and `drift` rules take to come round, up to 64 bars. The frontend's `Sequencer` sends the
+as long as its longest track, rounded up to a whole bar. (Once round its whole loop, until every
+track and rule lines up again, was tried first: a polymetric pattern ran for a minute or more
+before the song moved on.) Looping, the engine leaves the tracks running, so polymeters carry on
+drifting; a change of pattern starts every track from its top. The frontend's `Sequencer` sends the
 engine that length and a cue for when it ends: loop, change to a pattern (its lanes, built off the
 audio thread), or stop. The editor decides which, through `Editor::next`: the pattern picked by
 hand (which takes over at the next bar rather than waiting out a long loop), or the next entry in

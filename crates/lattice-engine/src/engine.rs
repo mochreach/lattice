@@ -1123,7 +1123,13 @@ impl Engine {
                 self.stop();
                 return;
             }
-            Cue::Loop => {}
+            Cue::Loop => {
+                // Each track carries on round its own loop, so tracks of different lengths keep
+                // drifting against each other.
+                self.pattern_step = 0;
+                self.status.boundaries.fetch_add(1, Ordering::Relaxed);
+                return;
+            }
             Cue::Pattern(mut section) => {
                 let fits = section.lanes.len() == self.tracks.len()
                     && section
@@ -1361,6 +1367,18 @@ mod tests {
         render(&mut engine, 256, step as usize);
         assert!(!handle.status().playing());
         assert_eq!(handle.status().boundaries(), 0);
+    }
+
+    #[test]
+    fn a_looping_pattern_leaves_its_tracks_running() {
+        let (mut engine, mut handle) = with_synth(48_000.0);
+        let step = 48_000.0 * 60.0 / (133.0 * 4.0);
+        assert_eq!(engine.tracks[0].track.steps.len(), 7);
+        handle.send(Command::SetLength(4));
+        render(&mut engine, 256, (step * 5.5) as usize);
+        // Round the pattern once, but the seven-step track's still on its first pass.
+        assert_eq!(handle.status().boundaries(), 1);
+        assert_eq!(handle.status().position(0), Some((5, 0)));
     }
 
     #[test]

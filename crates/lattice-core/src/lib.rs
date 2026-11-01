@@ -13,8 +13,8 @@ pub mod song;
 pub mod transform;
 
 pub use arrangement::{
-    Arrangement, BEATS_PER_BAR, DEFAULT_MAX_BARS, Entry, Lane, MAX_BARS, MAX_ENTRIES, MAX_PATTERNS,
-    MAX_REPEATS, Pattern, cycle, pattern_name,
+    Arrangement, BEATS_PER_BAR, Entry, Lane, MAX_BARS, MAX_ENTRIES, MAX_PATTERNS, MAX_REPEATS,
+    Pattern, pattern_name,
 };
 pub use device::{Curve, Device, Kind, ParamInfo};
 pub use file::{FileError, from_ron, to_ron};

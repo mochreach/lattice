@@ -153,13 +153,16 @@ impl Editor {
         self.arrangement.patterns[current].bars = bars;
         let bar = u64::from(BEATS_PER_BAR * self.grid.steps_per_beat.max(1));
         let steps = self.pattern_steps();
-        self.message = Some(match bars {
-            Some(_) => format!("{} plays {} bars", self.pattern_name(), steps / bar),
-            None => format!(
-                "{} plays once round its loop: {steps} steps",
-                self.pattern_name()
-            ),
-        });
+        let auto = if bars.is_some() {
+            ""
+        } else {
+            ", as long as its longest track"
+        };
+        self.message = Some(format!(
+            "{} plays {} bars{auto}",
+            self.pattern_name(),
+            steps / bar
+        ));
         Ok(())
     }
 
@@ -274,7 +277,7 @@ mod tests {
         e.handle(Key::Char('i'));
         e.handle(Key::Char('z'));
         assert_eq!(e.pattern_name(), "A");
-        assert_eq!(e.pattern_steps(), 48, "16 and 12 come round together");
+        assert_eq!(e.pattern_steps(), 16, "the longest track");
 
         // A copy, then an empty one.
         let effects = run(&mut e, "pattern-dup");
@@ -322,7 +325,7 @@ mod tests {
         run(&mut e, "bars 2");
         assert_eq!(e.pattern_steps(), 32);
         run(&mut e, "bars auto");
-        assert_eq!(e.pattern_steps(), 48);
+        assert_eq!(e.pattern_steps(), 16);
         run(&mut e, "bars 0");
         assert!(e.message.as_deref().unwrap().contains("1 to 256"));
     }

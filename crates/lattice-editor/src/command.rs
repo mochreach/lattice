@@ -371,13 +371,13 @@ pub const COMMANDS: &[Spec] = &[
         name: "bars",
         alias: None,
         params: &[optional_text("[BARS | auto]", "bars")],
-        describe: "how long this pattern plays, in bars; auto (the default) is once round its loop",
+        describe: "how long this pattern plays, in bars; auto (the default) is as long as its longest track",
     },
     Spec {
         name: "export",
         alias: None,
         params: &[optional_text("[PATH] [BARS]", "path")],
-        describe: "render the song to a WAV file, by default once round its loop",
+        describe: "render the song to a WAV file, by default as arranged",
     },
     Spec {
         name: "export-sel",
