@@ -88,7 +88,7 @@ pub fn draw(
     view.update_meters(status);
     match editor.page {
         Page::Pattern => draw_grid(frame, grid, editor, status, theme, view),
-        Page::Mixer => mixer_page::draw(frame, grid, editor, theme, view),
+        Page::Mixer => mixer_page::draw(frame, grid, editor, status, theme, view),
         Page::Song => song_page::draw(frame, grid, editor, status, theme),
         Page::Help => help_page::draw(frame, grid, editor, theme),
     }
@@ -359,6 +359,8 @@ struct Column<'a> {
     shown: Vec<Step>,
     /// Rows covered by an earlier note's length.
     tails: Vec<bool>,
+    /// Rows an earlier step's locks still hold over: until the next note or lock.
+    held: Vec<bool>,
     playhead: Option<usize>,
     pass: Option<u32>,
     colour: Color,
@@ -409,6 +411,7 @@ impl<'a> Column<'a> {
             index,
             track,
             width,
+            held: held(&shown),
             shown,
             tails,
             playhead: position.map(|(step, _)| step),
@@ -645,6 +648,20 @@ fn header_lines(
     lines
 }
 
+/// The rows a lock holds over after its own step, up to the next step with a note or lock.
+fn held(steps: &[Step]) -> Vec<bool> {
+    let mut holding = false;
+    (steps.iter())
+        .map(|step| {
+            let held = holding && !step.triggers();
+            if step.triggers() {
+                holding = !step.locks.is_empty();
+            }
+            held
+        })
+        .collect()
+}
+
 /// Spans followed by the gap between columns.
 fn spaced(spans: impl IntoIterator<Item = Span<'static>>) -> Vec<Span<'static>> {
     spans.into_iter().chain([Span::raw(" ")]).collect()
@@ -723,11 +740,12 @@ fn grid_row(
             ),
             None => (" ···".into(), theme.faint),
         };
-        // A step that locks settings is marked at its end.
-        let text = if step.locks.is_empty() || c.width == FOLDED {
-            text
-        } else {
-            format!("{}◆", fit(&text, c.width - 1))
+        // A step that locks settings is marked at its end, and the steps it holds over too.
+        let mark = match () {
+            _ if c.width == FOLDED => None,
+            _ if !step.locks.is_empty() => Some("◆"),
+            _ if c.held[row] => Some("╎"),
+            _ => None,
         };
         // In the live view, highlight what the rules have changed.
         if editor.view == View::Live && c.track.steps.get(row) != Some(step) {
@@ -742,6 +760,7 @@ fn grid_row(
             _ => Color::Reset,
         };
         let selected = here.iter().any(|s| s.region().contains(i, row));
+        let plain = style;
         if at(primary) {
             style = theme.block(mode_colour);
         } else if here.iter().any(|s| at(s.cursor)) {
@@ -756,7 +775,19 @@ fn grid_row(
             style = style.bg(theme.selection);
         }
 
-        spans.push(Span::styled(fit(&text, c.width), style));
+        match mark {
+            Some(mark) => {
+                spans.push(Span::styled(fit(&text, c.width - 1), style));
+                // In the track's colour, unless the cell is highlighted.
+                let mark_style = if style == plain {
+                    c.style().patch(band)
+                } else {
+                    style
+                };
+                spans.push(Span::styled(mark, mark_style));
+            }
+            None => spans.push(Span::styled(fit(&text, c.width), style)),
+        }
         spans.push(Span::styled(" ", band));
     }
     Line::from(spans)
@@ -933,6 +964,29 @@ fn note_name(pitch: u8) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn locks_hold_until_the_next_note_or_lock() {
+        let lock = lattice_core::Lock {
+            fx: None,
+            param: 0,
+            value: 1.0,
+        };
+        let mut locked = Step::note(60);
+        locked.locks.set(lock);
+        let mut trigless = Step::default();
+        trigless.locks.set(lock);
+        let steps = [
+            locked,
+            Step::default(),
+            Step::default(),
+            Step::note(62),
+            Step::default(),
+            trigless,
+            Step::default(),
+        ];
+        assert_eq!(held(&steps), [false, true, true, false, false, false, true]);
+    }
 
     #[test]
     fn note_names() {

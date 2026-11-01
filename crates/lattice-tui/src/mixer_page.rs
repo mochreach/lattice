@@ -1,8 +1,9 @@
 //! Drawing the mixer page: the overview of every strip above (a strip per track, then the groups'
 //! buses and the send and master buses), and the detail of the strip under the cursor below.
 
-use lattice_core::{Kind, MIN_DB};
+use lattice_core::{Kind, Locks, MIN_DB};
 use lattice_editor::{Editor, Field, PARAM_COLUMNS, Row, Strip};
+use lattice_engine::Status;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -31,13 +32,20 @@ struct Column {
     meter: f32,
 }
 
-pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, theme: &Theme, view: &mut ViewState) {
+pub fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    editor: &Editor,
+    status: &Status,
+    theme: &Theme,
+    view: &mut ViewState,
+) {
     let cursor = editor.mixer_cursor();
     let columns = columns(editor, theme, view, area, cursor.strip);
     let mut lines = overview(editor, theme, view, &columns);
     lines.push(Line::raw(""));
     if let Some(column) = columns.iter().find(|c| c.index == cursor.strip) {
-        lines.extend(detail(editor, theme, column, area.width as usize));
+        lines.extend(detail(editor, status, theme, column, area.width as usize));
     }
     frame.render_widget(Paragraph::new(lines), area);
 }
@@ -248,7 +256,13 @@ fn route(editor: &Editor, strip: Strip) -> String {
 
 /// Everything about the cursor's strip: where it goes, its mix, its chain, and the settings of
 /// the device on the chain under the cursor.
-fn detail(editor: &Editor, theme: &Theme, column: &Column, width: usize) -> Vec<Line<'static>> {
+fn detail(
+    editor: &Editor,
+    status: &Status,
+    theme: &Theme,
+    column: &Column,
+    width: usize,
+) -> Vec<Line<'static>> {
     let cursor = editor.mixer_cursor();
     let strip = column.strip;
     let colour = column.colour;
@@ -373,6 +387,12 @@ fn detail(editor: &Editor, theme: &Theme, column: &Column, width: usize) -> Vec<
         return lines;
     };
     lines.push(Line::raw(""));
+    // While it plays, a setting a step has locked shows the lock's value.
+    let locks = match shown.strip {
+        Strip::Track(t) => status.locks(t),
+        _ => Locks::default(),
+    };
+    let slot = shown.slot.map(|s| s as u8);
     let cell = (width.saturating_sub(1) / PARAM_COLUMNS).max(PARAM_LABEL + 8);
     let bar = cell.saturating_sub(PARAM_LABEL + 3).min(PARAM_BAR);
     for (r, row) in shown.params.chunks(PARAM_COLUMNS).enumerate() {
@@ -380,14 +400,27 @@ fn detail(editor: &Editor, theme: &Theme, column: &Column, width: usize) -> Vec<
         for (k, info) in row.iter().enumerate() {
             let p = r * PARAM_COLUMNS + k;
             let here = cursor.row == Row::Param(p);
-            spans.push(label_width(info.name, here, PARAM_LABEL));
-            spans.extend(bars::param(
-                info,
-                shown.values[p],
-                bar,
-                value_style(here),
-                theme,
-            ));
+            let lock = (locks.iter()).find(|l| l.fx == slot && u32::from(l.param) == info.id);
+            match lock {
+                Some(lock) => {
+                    let mark = Style::new().fg(theme.accent).add_modifier(Modifier::BOLD);
+                    spans.push(Span::styled(
+                        fit(&format!("◆{}", info.name), PARAM_LABEL),
+                        mark,
+                    ));
+                    spans.extend(bars::param(info, lock.value, bar, mark, theme));
+                }
+                None => {
+                    spans.push(label_width(info.name, here, PARAM_LABEL));
+                    spans.extend(bars::param(
+                        info,
+                        shown.values[p],
+                        bar,
+                        value_style(here),
+                        theme,
+                    ));
+                }
+            }
             spans.push(Span::raw(" ".repeat(cell - PARAM_LABEL - bar)));
         }
         lines.push(Line::from(spans));

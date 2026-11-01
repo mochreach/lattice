@@ -14,7 +14,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 use lattice_core::{
-    Grid, Lane, Locks, MAX_PARAMS, MAX_STEPS, Mix, ParamInfo, Step, Track, db_to_gain, realise_into,
+    Grid, Lane, Lock, Locks, MAX_LOCKS, MAX_PARAMS, MAX_STEPS, Mix, ParamInfo, Step, Track,
+    db_to_gain, realise_into,
 };
 pub use lattice_core::{MAX_EFFECTS, MAX_GROUPS, MAX_TRACKS};
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
@@ -364,6 +365,25 @@ pub struct Status {
     swaps: AtomicU64,
     /// The step playing, counted from the top of the pattern.
     pattern_step: AtomicU64,
+    /// Per track index: the locks in force, each packed by [`pack_lock`], 0 for none.
+    locks: [[AtomicU64; MAX_LOCKS]; MAX_TRACKS],
+}
+
+/// A lock in one atomic: a present bit, the effect (255 for the instrument), the setting and the
+/// value's bits.
+fn pack_lock(lock: &Lock) -> u64 {
+    1 << 48
+        | u64::from(lock.fx.unwrap_or(u8::MAX)) << 40
+        | u64::from(lock.param) << 32
+        | u64::from(lock.value.to_bits())
+}
+
+fn unpack_lock(packed: u64) -> Option<Lock> {
+    (packed >> 48 == 1).then(|| Lock {
+        fx: Some((packed >> 40) as u8).filter(|&fx| fx != u8::MAX),
+        param: (packed >> 32) as u8,
+        value: f32::from_bits(packed as u32),
+    })
 }
 
 impl Status {
@@ -378,6 +398,7 @@ impl Status {
             peaks: std::array::from_fn(|_| AtomicU32::new(0)),
             bus_peaks: std::array::from_fn(|_| AtomicU32::new(0)),
             group_peaks: std::array::from_fn(|_| AtomicU32::new(0)),
+            locks: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU64::new(0))),
         }
     }
 
@@ -435,6 +456,24 @@ impl Status {
         f32::from_bits(peak.swap(0, Ordering::Relaxed))
     }
 
+    /// The locks `track` is playing with: none when it's stopped, or between locked steps.
+    pub fn locks(&self, track: usize) -> Locks {
+        let mut locks = Locks::default();
+        for packed in self.locks.get(track).into_iter().flatten() {
+            if let Some(lock) = unpack_lock(packed.load(Ordering::Relaxed)) {
+                locks.set(lock);
+            }
+        }
+        locks
+    }
+
+    fn set_locks(&self, track: usize, locks: &Locks) {
+        let mut packed = locks.iter().map(pack_lock);
+        for slot in &self.locks[track] {
+            slot.store(packed.next().unwrap_or(0), Ordering::Relaxed);
+        }
+    }
+
     fn add_peak(&self, track: usize, peak: f32) {
         self.peaks[track].fetch_max(peak.to_bits(), Ordering::Relaxed);
     }
@@ -451,6 +490,9 @@ impl Status {
         self.pattern_step.store(0, Ordering::Relaxed);
         for p in &self.positions {
             p.store(u64::MAX, Ordering::Relaxed);
+        }
+        for slot in self.locks.iter().flatten() {
+            slot.store(0, Ordering::Relaxed);
         }
     }
 }
@@ -1124,6 +1166,7 @@ impl Engine {
             };
             let peak = t.strip.apply([tl, tr], out, [sl, sr]);
             self.status.add_peak(index, peak);
+            self.status.set_locks(index, &t.locked);
         }
         for (g, group) in self.groups.iter_mut().enumerate() {
             // A bus with no tracks still runs its effects, so their tails ring out.
@@ -2166,7 +2209,7 @@ mod tests {
 
     #[test]
     fn locks_hold_until_the_next_note_or_lock() {
-        let lock = |param, value| lattice_core::Lock {
+        let lock = |param, value| Lock {
             fx: None,
             param,
             value,
@@ -2195,6 +2238,9 @@ mod tests {
         engine.play();
         // 125 samples a step. While the lock holds, the mixer's change waits.
         render_stereo(&mut engine, 200);
+        // The UI sees the locks in force.
+        let held: Vec<Lock> = handle.status().locks(0).iter().copied().collect();
+        assert_eq!(held, [lock(2, 5.0), lock(3, 1.0)]);
         handle.send(Command::SetParam {
             target: Target::Instrument(0),
             id: 2,
@@ -2208,6 +2254,7 @@ mod tests {
         render_stereo(&mut engine, 400);
         handle.send(Command::Stop);
         render_stereo(&mut engine, 10);
+        assert!(handle.status().locks(0).is_empty());
         let log = log.lock().unwrap();
         let log: Vec<(usize, &str)> = (log.iter())
             .map(|(at, what)| (*at, what.as_str()))

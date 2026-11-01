@@ -232,7 +232,9 @@ in the song.
 
 **Locks** automate settings by step, as on Elektron machines: a step can lock up to four of its
 track's instrument or effect settings with `:lock`. A lock holds from its step until the next step
-with a note or a lock, and then the setting goes back to the mixer's. Or select the steps, go to
+with a note or a lock, and then the setting goes back to the mixer's. A locked step is marked `◆`, and the
+steps it holds over `╎`; while it plays, the mixer page shows a held lock's value, in the accent
+colour and marked `◆`, in place of the track's own. Or select the steps, go to
 the mixer (`gm`), press `L`, and change the track's settings by ear; `L` again locks each setting
 that changed onto the selected steps and puts the track's own settings back (`esc`, or leaving the
 mixer, cancels). A lock on a step with no

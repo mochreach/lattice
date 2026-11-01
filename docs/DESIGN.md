@@ -613,7 +613,11 @@ that differs onto the steps the selections cover (whichever tracks they were mad
 settings back, and drops the undo steps the changes made, so the whole thing is one undo. `esc`,
 or anything that leaves the mixer page, puts them back without locking. If the chain changed in
 between, the settings no longer line up, so nothing is locked or put back. The grid marks a locked step with `◆` at its
-end, and the status line lists the cursor's locks in place of the key hints.
+end, and the steps it holds over (to the next note or lock) with `╎`; the status line lists the
+cursor's locks in place of the key hints. The engine publishes each track's locks in force every
+block (`Status::locks`, one atomic per lock: a present bit, the effect, the setting and the
+value's bits), and the mixer page shows those values while they hold, so its knobs move with the
+pattern.
 
 ### The mixer page
 
