@@ -1,18 +1,21 @@
 //! The fx page: one strip's chain of effects, drawn like the pattern. Its lanes are columns side
 //! by side, read top to bottom, and each row is an effect or a send that copies the sound into
-//! another lane (into its own or one to its left, it's feedback, heard a block later). Each lane
-//! ends in its `out`, the level it goes into the chain's output at.
+//! another lane (into its own or one to its left, it's feedback, heard a block later). Under each
+//! effect are its settings, a line each, and each lane ends in its `out`, the level it goes into
+//! the chain's output at, drawn along the bottom.
 //!
-//! It shares the mixer's cursor for the strip and the effect whose settings are shown, so moving
-//! onto an effect here shows its settings below, as on the mixer, and `tab` goes down into them:
-//! nudging, `:set`, locking and recording locks all work as they do there. On the lanes, `h` `l`
-//! change lane and `j` `k` row, `C-a` `C-x` nudge a send or out, `d` removes the row, or on an
-//! out the whole lane, and `:fx-add` and `:fx-send` add rows after the cursor.
+//! The cursor moves over the lines as over the pattern's steps: `j` `k` line by line, onto the
+//! empty lines below a short lane too, `h` `l` from lane to lane on the same line, and `w` `b`
+//! from effect to effect, past their settings. `C-a` `C-x` turn whatever the cursor's on, a
+//! setting, a send or an out. Settings go through the mixer's cursor, which the page keeps on
+//! the effect and setting under its own, so `:set`, locking and recorded locks work as there.
+//! `d` removes an effect or a send, or on an out, the whole lane, and `:fx-add` and `:fx-send`
+//! add rows after the cursor.
 
 use lattice_core::{FxChain, FxLane, FxRow, MAX_LANES, MIN_DB, RowAt, is_feedback, max_send};
 
 use crate::keymap::Action;
-use crate::mixer::{PARAM_COLUMNS, Page, Row, Strip};
+use crate::mixer::{Page, Row, Strip};
 use crate::{Editor, Effect, Mode, PromptKind};
 
 /// What a nudge moves a send or an out by, in dB.
@@ -21,23 +24,82 @@ const LEVEL_STEP: f32 = 0.5;
 const FORWARD_DB: f32 = 0.0;
 const FEEDBACK_DB: f32 = -6.0;
 
-/// Where the fx page's cursor is on the lanes.
+/// Where the fx page's cursor is: a lane, and a line down the page. The lines past a lane's
+/// last are empty, down to the outs, on the line after the longest lane's last.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct FxCursor {
     pub lane: usize,
-    /// The row in the lane; past its last, the lane's out.
-    pub row: usize,
-    /// On the lane's out, which it stays on when changing lane.
-    pub out: bool,
+    pub line: usize,
 }
 
-impl FxCursor {
-    pub fn at(self) -> RowAt {
-        RowAt {
-            lane: self.lane,
-            row: self.row,
+/// A line of the fx page, in one lane.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FxLine {
+    /// An effect's name: the row, and the effect's index in the chain.
+    Fx {
+        row: usize,
+        effect: usize,
+    },
+    /// One of an effect's settings, by its place in the effect's list.
+    Param {
+        row: usize,
+        effect: usize,
+        param: usize,
+    },
+    Send {
+        row: usize,
+        to: usize,
+        level: f32,
+    },
+    /// Below the lane's last row.
+    Empty,
+    Out,
+}
+
+impl FxLine {
+    /// The row it's part of.
+    pub fn row(self) -> Option<usize> {
+        match self {
+            FxLine::Fx { row, .. } | FxLine::Param { row, .. } | FxLine::Send { row, .. } => {
+                Some(row)
+            }
+            FxLine::Empty | FxLine::Out => None,
         }
     }
+
+    /// Whether `w` and `b` stop on it: an effect's name, a send, or the out.
+    fn is_stop(self) -> bool {
+        !matches!(self, FxLine::Param { .. } | FxLine::Empty)
+    }
+}
+
+/// Each lane's lines, top to bottom, down to its last row's.
+pub fn fx_lines(chain: &FxChain) -> Vec<Vec<FxLine>> {
+    let mut lanes = vec![vec![]; chain.lanes().len()];
+    for (at, row, effect) in chain.rows() {
+        let lines = &mut lanes[at.lane];
+        match (row, effect) {
+            (FxRow::Send { to, level }, _) => lines.push(FxLine::Send {
+                row: at.row,
+                to,
+                level,
+            }),
+            (FxRow::Fx, Some(effect)) => {
+                lines.push(FxLine::Fx {
+                    row: at.row,
+                    effect,
+                });
+                let params = chain[effect].params().len();
+                lines.extend((0..params).map(|param| FxLine::Param {
+                    row: at.row,
+                    effect,
+                    param,
+                }));
+            }
+            (FxRow::Fx, None) => {}
+        }
+    }
+    lanes
 }
 
 impl Editor {
@@ -46,21 +108,36 @@ impl Editor {
         self.strip(self.mixer_cursor().strip)
     }
 
-    /// The fx page's cursor, kept within the lanes and rows there are now.
+    /// The fx page's lines, lane by lane, and the line the outs are on.
+    pub fn fx_page_lines(&self) -> (Vec<Vec<FxLine>>, usize) {
+        let lanes = fx_lines(self.chain(self.fx_strip()));
+        let outs = lanes.iter().map(Vec::len).max().unwrap_or(0);
+        (lanes, outs)
+    }
+
+    /// The fx page's cursor, kept within the lanes and lines there are now.
     pub fn fx_cursor(&self) -> FxCursor {
-        let chain = self.chain(self.fx_strip());
-        let lane = self.fx.lane.min(chain.lanes().len() - 1);
-        let len = chain.lanes()[lane].rows.len();
-        let out = self.fx.out || self.fx.row >= len;
+        let (lanes, outs) = self.fx_page_lines();
         FxCursor {
-            lane,
-            row: if out { len } else { self.fx.row },
-            out,
+            lane: self.fx.lane.min(lanes.len() - 1),
+            line: self.fx.line.min(outs),
         }
     }
 
-    /// Whether the fx page's cursor is down in the settings rather than on the lanes.
-    pub fn in_fx_settings(&self) -> bool {
+    /// What's under the fx page's cursor.
+    pub fn fx_line(&self) -> FxLine {
+        let cursor = self.fx_cursor();
+        let (lanes, outs) = self.fx_page_lines();
+        match lanes[cursor.lane].get(cursor.line) {
+            Some(&line) => line,
+            None if cursor.line == outs => FxLine::Out,
+            None => FxLine::Empty,
+        }
+    }
+
+    /// Whether the fx page's cursor is on one of an effect's settings, which the mixer's
+    /// cursor is then on too.
+    pub(crate) fn on_fx_param(&self) -> bool {
         matches!(self.mixer_cursor().row, Row::Param(_))
     }
 
@@ -72,36 +149,61 @@ impl Editor {
         }
         self.page = Page::Fx;
         self.mode = Mode::Normal;
-        self.mixer.row = Row::Chain;
-        self.show_fx_row();
+        self.show_fx_line();
     }
 
-    /// Moves the fx cursor, keeping it within the lanes, and shows the effect it's on.
+    /// Moves the fx cursor, keeping it within the lanes, and puts the mixer's on the effect and
+    /// setting it's on.
     fn move_fx(&mut self, to: FxCursor) {
         self.fx = to;
         self.fx = self.fx_cursor();
-        self.show_fx_row();
+        self.show_fx_line();
     }
 
-    /// Shows the settings of the effect under the fx cursor, if it's on one.
-    fn show_fx_row(&mut self) {
-        let cursor = self.fx_cursor();
-        let chain = self.chain(self.fx_strip());
-        let row = chain.rows().find(|(at, _, _)| *at == cursor.at());
-        if let Some((_, _, Some(effect))) = row {
-            self.mixer.effect = effect;
-            self.mixer.instrument = false;
+    fn show_fx_line(&mut self) {
+        self.mixer.row = Row::Chain;
+        match self.fx_line() {
+            FxLine::Fx { effect, .. } => {
+                self.mixer.effect = effect;
+                self.mixer.instrument = false;
+            }
+            FxLine::Param { effect, param, .. } => {
+                self.mixer.effect = effect;
+                self.mixer.instrument = false;
+                self.mixer.row = Row::Param(param);
+            }
+            _ => {}
         }
+    }
+
+    /// The `n`th line from the cursor's, in its lane, that `w` (or going back, `b`) stops on.
+    fn fx_stop(&self, n: usize, forward: bool) -> usize {
+        let cursor = self.fx_cursor();
+        let (lanes, outs) = self.fx_page_lines();
+        let lane = &lanes[cursor.lane];
+        let stop = |line: usize| line >= lane.len() || lane[line].is_stop();
+        let mut line = cursor.line;
+        for _ in 0..n {
+            line = if forward {
+                // Past the lane's last row, onto its out.
+                match (line + 1..lane.len()).find(|&l| stop(l)) {
+                    Some(l) => l,
+                    None => outs,
+                }
+            } else {
+                let last = line.min(lane.len());
+                (0..last).rev().find(|&l| stop(l)).unwrap_or(0)
+            };
+        }
+        line
     }
 
     /// Handles a key's action on the fx page. `None` for the actions the pages share.
     pub(crate) fn fx_act(&mut self, action: Action, n: usize) -> Option<Vec<Effect>> {
-        if self.in_fx_settings() {
-            return self.fx_settings_act(action, n);
-        }
         let cursor = self.fx_cursor();
         let lanes = self.chain(self.fx_strip()).lanes().len();
         let by = n as i32;
+        let line = |line| FxCursor { line, ..cursor };
         match action {
             Action::Left => self.move_fx(FxCursor {
                 lane: cursor.lane.saturating_sub(n),
@@ -111,34 +213,26 @@ impl Editor {
                 lane: (cursor.lane + n).min(lanes - 1),
                 ..cursor
             }),
-            Action::Up => self.move_fx(FxCursor {
-                row: cursor.row.saturating_sub(n),
-                out: false,
-                ..cursor
-            }),
-            Action::Down if cursor.out => self.enter_fx_settings(),
-            Action::Down => self.move_fx(FxCursor {
-                row: cursor.row + n,
-                out: false,
-                ..cursor
-            }),
-            Action::FirstStep => self.move_fx(FxCursor {
-                row: 0,
-                out: false,
-                ..cursor
-            }),
-            Action::LastStep => self.move_fx(FxCursor {
-                out: true,
-                ..cursor
-            }),
-            Action::ToggleView => self.enter_fx_settings(),
-            Action::NoteUp | Action::Longer => return Some(self.fx_nudge(by)),
-            Action::NoteDown | Action::Shorter => return Some(self.fx_nudge(-by)),
+            Action::Up => self.move_fx(line(cursor.line.saturating_sub(n))),
+            Action::Down => self.move_fx(line(cursor.line + n)),
+            Action::NextNote => self.move_fx(line(self.fx_stop(n, true))),
+            Action::PrevNote => self.move_fx(line(self.fx_stop(n, false))),
+            Action::FirstStep => self.move_fx(line(0)),
+            Action::LastStep => self.move_fx(line(usize::MAX)),
+            Action::ToggleView => {}
+            Action::NoteUp | Action::Longer | Action::NoteDown | Action::Shorter => {
+                let up = matches!(action, Action::NoteUp | Action::Longer);
+                if self.on_fx_param() {
+                    // The mixer nudges settings.
+                    return self.mixer_act(action, n);
+                }
+                return Some(self.fx_nudge(if up { by } else { -by }));
+            }
             Action::Delete | Action::Clear => return Some(self.fx_delete()),
             Action::Change => {
-                let line = match self.fx_value() {
-                    Some(_) => "set ",
-                    None => "fx-add ",
+                let line = match self.fx_line() {
+                    FxLine::Param { .. } | FxLine::Send { .. } | FxLine::Out => "set ",
+                    _ => "fx-add ",
                 };
                 self.open_prompt(PromptKind::Command);
                 if let Mode::Command(prompt) = &mut self.mode {
@@ -149,34 +243,7 @@ impl Editor {
             // The strip, locking and the rest work as on the mixer.
             _ => {
                 let effects = self.mixer_act(action, n);
-                self.mixer.row = Row::Chain;
-                return effects;
-            }
-        }
-        Some(vec![])
-    }
-
-    /// Down into the settings of the effect last on, if there is one.
-    fn enter_fx_settings(&mut self) {
-        match self.shown() {
-            Some(shown) if shown.slot.is_some() => self.mixer.row = Row::Param(0),
-            _ => self.message = Some("no effect to show the settings of".into()),
-        }
-    }
-
-    /// In the settings, keys work as on the mixer, but up from the top row and `tab` go back
-    /// to the lanes.
-    fn fx_settings_act(&mut self, action: Action, n: usize) -> Option<Vec<Effect>> {
-        match (action, self.mixer_cursor().row) {
-            (Action::ToggleView, _) => self.mixer.row = Row::Chain,
-            (Action::Up, Row::Param(p)) if p < PARAM_COLUMNS => self.mixer.row = Row::Chain,
-            (Action::FirstStep, _) => self.mixer.row = Row::Chain,
-            _ => {
-                let effects = self.mixer_act(action, n);
-                // The mixer's rows above the settings aren't on this page.
-                if !self.in_fx_settings() {
-                    self.mixer.row = Row::Chain;
-                }
+                self.show_fx_line();
                 return effects;
             }
         }
@@ -185,22 +252,21 @@ impl Editor {
 
     /// The send's or out's level under the fx cursor, and the range it can take, in dB.
     pub(crate) fn fx_value(&self) -> Option<(f32, f32, f32)> {
-        let cursor = self.fx_cursor();
-        let chain = self.chain(self.fx_strip());
-        if cursor.out {
-            let out = chain.lanes()[cursor.lane].out;
-            return Some((out, MIN_DB, lattice_core::MAX_DB));
-        }
-        match chain.row(cursor.at())? {
-            FxRow::Send { to, level } => Some((level, MIN_DB, max_send(cursor.lane, to))),
-            FxRow::Fx => None,
+        let lane = self.fx_cursor().lane;
+        match self.fx_line() {
+            FxLine::Out => {
+                let out = self.chain(self.fx_strip()).lanes()[lane].out;
+                Some((out, MIN_DB, lattice_core::MAX_DB))
+            }
+            FxLine::Send { to, level, .. } => Some((level, MIN_DB, max_send(lane, to))),
+            _ => None,
         }
     }
 
     /// Sets the send's or out's level under the fx cursor, in dB.
     pub(crate) fn set_fx_value(&mut self, value: f32) -> Result<Vec<Effect>, String> {
         let Some((old, min, max)) = self.fx_value() else {
-            return Err("nothing to set here: move onto a send, an out or a setting".into());
+            return Err("nothing to set here: move onto a setting, a send or an out".into());
         };
         if !(min..=max).contains(&value) {
             return Err(format!("this goes from {min} to {max}"));
@@ -209,12 +275,12 @@ impl Editor {
             return Ok(vec![]);
         }
         self.checkpoint();
-        let cursor = self.fx_cursor();
+        let lane = self.fx_cursor().lane;
+        let line = self.fx_line();
         let chain = self.chain_mut(self.fx_strip());
-        if cursor.out {
-            chain.set_out(cursor.lane, value);
-        } else {
-            chain.set_send_level(cursor.at(), value);
+        match line {
+            FxLine::Send { row, .. } => chain.set_send_level(RowAt { lane, row }, value),
+            _ => chain.set_out(lane, value),
         }
         Ok(vec![Effect::MixerChanged])
     }
@@ -231,68 +297,68 @@ impl Editor {
     fn fx_delete(&mut self) -> Vec<Effect> {
         let cursor = self.fx_cursor();
         let strip = self.fx_strip();
-        let chain = self.chain(strip);
-        if cursor.out {
-            if cursor.lane == 0 {
+        let effects = match self.fx_line() {
+            FxLine::Out if cursor.lane == 0 => {
                 self.message = Some("lane A takes the chain's input, so it stays".into());
                 return vec![];
             }
-            self.checkpoint();
-            let removed = self.chain_mut(strip).remove_lane(cursor.lane);
-            let mut effects = vec![Effect::MixerChanged];
-            for index in removed {
-                effects.extend(self.chain_changed(strip, index, false));
+            FxLine::Out => {
+                self.checkpoint();
+                let removed = self.chain_mut(strip).remove_lane(cursor.lane);
+                let mut effects = vec![Effect::MixerChanged];
+                for index in removed {
+                    effects.extend(self.chain_changed(strip, index, false));
+                }
+                effects.dedup();
+                self.message = Some(format!("lane {} removed", FxLane::letter(cursor.lane)));
+                effects
             }
-            effects.dedup();
-            self.message = Some(format!("lane {} removed", FxLane::letter(cursor.lane)));
-            self.move_fx(cursor);
-            return effects;
-        }
-        let effect = chain
-            .rows()
-            .find(|(at, _, _)| *at == cursor.at())
-            .map(|(_, _, effect)| effect);
-        let effects = match effect {
-            None => {
-                self.message = Some("nothing here to remove".into());
+            FxLine::Fx { effect, .. } => {
+                self.checkpoint();
+                self.chain_mut(strip).remove(effect);
+                self.chain_changed(strip, effect, false)
+            }
+            FxLine::Send { row, .. } => {
+                self.checkpoint();
+                (self.chain_mut(strip)).remove_send(RowAt {
+                    lane: cursor.lane,
+                    row,
+                });
+                vec![Effect::MixerChanged]
+            }
+            FxLine::Param { .. } => {
+                self.message = Some("d on the effect's name removes it".into());
                 return vec![];
             }
-            Some(Some(index)) => {
-                self.checkpoint();
-                self.chain_mut(strip).remove(index);
-                self.chain_changed(strip, index, false)
-            }
-            Some(None) => {
-                self.checkpoint();
-                self.chain_mut(strip).remove_send(cursor.at());
-                vec![Effect::MixerChanged]
+            FxLine::Empty => {
+                self.message = Some("nothing here to remove".into());
+                return vec![];
             }
         };
         self.move_fx(cursor);
         effects
     }
 
-    /// Where a row added on the fx page goes: after the cursor's, or at the end of the lane
-    /// from its out.
+    /// Where a row added on the fx page goes: after the cursor's row, or at the end of the lane
+    /// from below it.
     pub(crate) fn fx_insert_at(&self) -> RowAt {
-        let cursor = self.fx_cursor();
-        let row = if cursor.out {
-            cursor.row
-        } else {
-            cursor.row + 1
+        let lane = self.fx_cursor().lane;
+        let row = match self.fx_line().row() {
+            Some(row) => row + 1,
+            None => self.chain(self.fx_strip()).lanes()[lane].rows.len(),
         };
-        RowAt {
-            lane: cursor.lane,
-            row,
-        }
+        RowAt { lane, row }
     }
 
     /// Moves the fx cursor onto the row at `at`, after adding it.
     pub(crate) fn fx_onto(&mut self, at: RowAt) {
+        let (lanes, _) = self.fx_page_lines();
+        let line = (lanes[at.lane].iter())
+            .position(|l| l.row() == Some(at.row))
+            .unwrap_or(0);
         self.move_fx(FxCursor {
             lane: at.lane,
-            row: at.row,
-            out: false,
+            line,
         });
     }
 
@@ -402,10 +468,14 @@ mod tests {
             [vec![FxRow::Fx, FxRow::Send { to: 1, level: 0.0 }], vec![]],
             "a new lane, sent into at unity"
         );
-        // Onto B's out, then a delay at the end of B, and a send back into A.
+        // Across onto B's empty line, a delay at the top of B, and a send back into A.
         keys(&mut e, "l:fx-add delay\n:fx-send a\n");
-        assert_eq!(e.fx_cursor().at(), RowAt { lane: 1, row: 1 });
-        assert_eq!(rows(&e)[1][1], FxRow::Send { to: 0, level: -6.0 });
+        let send = FxLine::Send {
+            row: 1,
+            to: 0,
+            level: -6.0,
+        };
+        assert_eq!(e.fx_line(), send);
         assert_eq!(e.shown().unwrap().slot, Some(1), "the delay's still shown");
         // Feedback stops at 0 dB.
         keys(&mut e, "20A");
@@ -413,7 +483,8 @@ mod tests {
         assert!(keys(&mut e, ":set 3\n").is_empty());
 
         // Its out, and a lock on the delay, which goes with the lane.
-        keys(&mut e, "jX");
+        keys(&mut e, "geX");
+        assert_eq!(e.fx_line(), FxLine::Out);
         assert_eq!(e.grid.tracks[0].effects.lanes()[1].out, -0.5);
         let lock = Lock {
             fx: Some(1),
@@ -433,17 +504,38 @@ mod tests {
     }
 
     #[test]
-    fn the_settings_are_below_the_lanes() {
+    fn settings_are_lines_under_their_effect() {
         let mut e = editor();
-        keys(&mut e, "gf:fx-add delay\n\t");
-        assert!(e.in_fx_settings());
+        keys(&mut e, "gf:fx-add delay\n:fx-add reverb\n");
+        assert_eq!(e.fx_line(), FxLine::Fx { row: 1, effect: 1 });
+        // b goes back to the delay's name, past its settings.
+        keys(&mut e, "b");
+        assert_eq!(e.fx_line(), FxLine::Fx { row: 0, effect: 0 });
+        keys(&mut e, "j");
+        assert_eq!(
+            e.fx_line(),
+            FxLine::Param {
+                row: 0,
+                effect: 0,
+                param: 0
+            }
+        );
         let before = e.grid.tracks[0].effects[0].values[0];
         keys(&mut e, "A");
-        assert_ne!(e.grid.tracks[0].effects[0].values[0], before);
-        keys(&mut e, "k");
-        assert!(
-            !e.in_fx_settings(),
-            "up from the top row, back to the lanes"
+        assert_ne!(
+            e.grid.tracks[0].effects[0].values[0], before,
+            "turned as passed"
+        );
+        // w skips the rest of the delay's settings, onto the reverb, then the out.
+        keys(&mut e, "w");
+        assert_eq!(e.fx_line(), FxLine::Fx { row: 1, effect: 1 });
+        keys(&mut e, "w");
+        assert_eq!(e.fx_line(), FxLine::Out);
+        keys(&mut e, "kd");
+        assert_eq!(
+            e.grid.tracks[0].effects.len(),
+            2,
+            "d on a setting doesn't remove"
         );
         assert!(e.add_send("E").is_err());
     }

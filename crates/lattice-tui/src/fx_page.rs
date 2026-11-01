@@ -1,9 +1,10 @@
 //! Drawing the fx page: the chain of the strip under the mixer cursor, its lanes side by side as
-//! columns read top to bottom, like the pattern's tracks, each ending in its out; and below, the
-//! settings of the effect under the cursor, as on the mixer.
+//! columns read top to bottom, like the pattern's tracks. Each effect's name is followed by its
+//! settings, a line each with a bar, sends have a line each, and along the bottom are the lanes'
+//! outs.
 
-use lattice_core::{FxLane, FxRow, Kind, MIN_DB, is_feedback};
-use lattice_editor::{Editor, Strip};
+use lattice_core::{FxLane, Kind, Locks, MIN_DB, is_feedback};
+use lattice_editor::{Editor, FxLine, Strip};
 use lattice_engine::Status;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -12,33 +13,39 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::bars;
-use crate::mixer_page::{flag, route, settings};
+use crate::mixer_page::{flag, route};
 use crate::theme::Theme;
-use crate::ui::{CELL, fit};
+use crate::ui::{ViewState, fit};
 
-/// Width of the row numbers down the left.
-const LABEL: usize = 6;
-/// Width of a lane.
-const LANE: usize = 18;
+/// Width of the line numbers down the left.
+const LABEL: usize = 5;
+/// Narrowest and widest a lane gets.
+const MIN_LANE: usize = 22;
+const MAX_LANE: usize = 34;
+/// Width of a setting's name.
+const PARAM_LABEL: usize = 12;
+/// Lines above the lanes (the rule, a gap and the lanes' letters) and below (the outs).
+const ABOVE: usize = 3;
+const BELOW: usize = 1;
 
-pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, theme: &Theme) {
+pub fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    editor: &Editor,
+    status: &Status,
+    theme: &Theme,
+    view: &mut ViewState,
+) {
     let width = area.width as usize;
     let strip = editor.fx_strip();
     let (name, colour) = look(editor, theme, strip);
     let chain = editor.chain(strip);
-    let lanes = chain.lanes();
+    let (lanes, outs) = editor.fx_page_lines();
     let cursor = editor.fx_cursor();
-    let on_lanes = !editor.in_fx_settings();
-    let here = |lane: usize, row: usize, out: bool| {
-        on_lanes && cursor.lane == lane && cursor.out == out && (out || cursor.row == row)
-    };
-    let cell = |text: String, style: Style, here: bool| {
-        let style = if here {
-            theme.block(Color::Reset)
-        } else {
-            style
-        };
-        vec![Span::styled(fit(&text, LANE - 1), style), Span::raw(" ")]
+    let lane_width = (width.saturating_sub(LABEL) / lanes.len()).clamp(MIN_LANE, MAX_LANE);
+    let locks = match strip {
+        Strip::Track(t) => status.locks(t),
+        _ => Locks::default(),
     };
 
     // A rule with the strip's name and where its sound goes, as on the mixer.
@@ -64,9 +71,9 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
     for k in 0..lanes.len() {
         let mut from: Vec<String> = (k == 0).then(|| "in".to_string()).into_iter().collect();
         for (l, lane) in lanes.iter().enumerate() {
-            for row in &lane.rows {
-                if let FxRow::Send { to, .. } = row
-                    && *to == k
+            for line in lane {
+                if let FxLine::Send { to, .. } = *line
+                    && to == k
                 {
                     let letter = FxLane::letter(l).to_string();
                     if !from.contains(&letter) {
@@ -76,74 +83,135 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
             }
         }
         let style = Style::new().fg(colour).add_modifier(Modifier::BOLD);
-        spans.push(Span::styled(FxLane::letter(k).to_string(), style));
+        spans.push(Span::styled(format!(" {}", FxLane::letter(k)), style));
         spans.push(Span::styled(
-            fit(&format!(" ← {}", from.join(" ")), LANE - 1),
+            fit(&format!(" ← {}", from.join(" ")), lane_width - 2),
             theme.dim,
         ));
     }
     lines.push(Line::from(spans));
 
-    // The rows, lane beside lane, numbered like the pattern's steps.
-    let effects: Vec<Option<usize>> = chain.rows().map(|(_, _, effect)| effect).collect();
-    let shown = editor.shown().filter(|s| s.slot.is_some());
-    let rows = lanes.iter().map(|l| l.rows.len()).max().unwrap_or(0);
-    let mut first = 0;
-    let starts: Vec<usize> = lanes
-        .iter()
-        .map(|l| {
-            first += l.rows.len();
-            first - l.rows.len()
-        })
-        .collect();
-    for r in 0..rows.max(1) {
-        let mut spans = vec![Span::styled(fit(&format!(" {r:>2}"), LABEL), theme.faint)];
-        for (k, lane) in lanes.iter().enumerate() {
-            let here = here(k, r, false);
-            spans.extend(match lane.rows.get(r) {
-                Some(FxRow::Fx) => {
-                    let effect = effects[starts[k] + r].unwrap_or(0);
-                    let mut style = Style::new().fg(colour);
-                    if !on_lanes && shown.is_some_and(|s| s.slot == Some(effect)) {
-                        style = style.add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
+    // As many lines as fit, scrolled to keep the cursor's in view.
+    let room = (area.height as usize).saturating_sub(ABOVE + BELOW).max(1);
+    if cursor.line < outs {
+        if cursor.line < view.fx_top {
+            view.fx_top = cursor.line;
+        } else if cursor.line >= view.fx_top + room {
+            view.fx_top = cursor.line + 1 - room;
+        }
+    }
+    view.fx_top = view.fx_top.min(outs.saturating_sub(room));
+
+    let name_style = |here: bool| {
+        if here {
+            theme.text.add_modifier(Modifier::BOLD)
+        } else {
+            theme.dim
+        }
+    };
+    // The value under the cursor in the terminal's own colour, as on the mixer.
+    let value_style = |here: bool| {
+        if here {
+            Style::new().fg(Color::Reset)
+        } else {
+            Style::new().fg(colour)
+        }
+    };
+    // One lane's line, a lane wide.
+    let cell = |lane: usize, line: FxLine, here: bool| -> Vec<Span<'static>> {
+        let w = lane_width - 1;
+        let block = |style: Style| {
+            if here {
+                theme.block(Color::Reset)
+            } else {
+                style
+            }
+        };
+        let mut spans = match line {
+            FxLine::Fx { effect, .. } => {
+                let name = chain[effect].kind.name();
+                let rule = "─".repeat(w.saturating_sub(name.chars().count() + 2));
+                vec![
+                    Span::styled(
+                        format!(" {name}"),
+                        block(Style::new().fg(colour).add_modifier(Modifier::BOLD)),
+                    ),
+                    Span::styled(format!(" {rule}"), Style::new().fg(colour)),
+                ]
+            }
+            FxLine::Param { effect, param, .. } => {
+                let fx = &chain[effect];
+                let info = &fx.params()[param];
+                let bar = w - PARAM_LABEL;
+                // While it plays, a setting a step has locked shows the lock's value.
+                let lock = (locks.iter())
+                    .find(|l| l.fx == Some(effect as u8) && u32::from(l.param) == info.id);
+                let (label, value, label_style, style) = match lock {
+                    Some(lock) => {
+                        let mark = Style::new().fg(theme.accent).add_modifier(Modifier::BOLD);
+                        (format!(" ◆{}", info.name), lock.value, mark, mark)
                     }
-                    cell(chain[effect].kind.name().into(), style, here)
-                }
-                Some(&FxRow::Send { to, level }) => {
-                    let (arrow, style) = if is_feedback(k, to) {
-                        ("↺", Style::new().fg(theme.visual))
-                    } else {
-                        ("→", Style::new().fg(theme.accent))
-                    };
-                    let level = if level <= MIN_DB {
-                        "off".into()
-                    } else {
-                        format!("{level:+.1} dB")
-                    };
-                    cell(
-                        format!("{arrow} {} {level}", FxLane::letter(to)),
-                        style,
-                        here,
-                    )
-                }
-                // The lane flows on down to its out.
-                None if here => cell("·".into(), theme.faint, true),
-                None => cell(" │".into(), theme.faint, false),
-            });
+                    None => (
+                        format!("  {}", info.name),
+                        fx.values[param],
+                        name_style(here),
+                        value_style(here),
+                    ),
+                };
+                let mut spans = vec![Span::styled(fit(&label, PARAM_LABEL), label_style)];
+                spans.extend(bars::param(info, value, bar, style, theme));
+                spans
+            }
+            FxLine::Send { to, level, .. } => {
+                let (arrow, colour) = if is_feedback(lane, to) {
+                    ("↺", theme.visual)
+                } else {
+                    ("→", theme.accent)
+                };
+                let level = if level <= MIN_DB {
+                    "off".into()
+                } else {
+                    format!("{level:+.1} dB")
+                };
+                let style = Style::new().fg(colour).add_modifier(Modifier::BOLD);
+                let text = format!(" {arrow} {}  {level}", FxLane::letter(to));
+                vec![Span::styled(text, block(style))]
+            }
+            // The lane flows on down to its out.
+            FxLine::Empty => vec![Span::styled(" │", block(theme.faint))],
+            FxLine::Out => vec![],
+        };
+        let used: usize = spans.iter().map(|s| s.content.chars().count()).sum();
+        spans.push(Span::raw(" ".repeat(lane_width.saturating_sub(used))));
+        spans
+    };
+
+    for l in (view.fx_top..outs).take(room) {
+        let number = if cursor.line == l {
+            theme.text
+        } else {
+            theme.faint
+        };
+        let mut spans = vec![Span::styled(fit(&format!(" {l:02}"), LABEL), number)];
+        for (k, lane) in lanes.iter().enumerate() {
+            let line = lane.get(l).copied().unwrap_or(FxLine::Empty);
+            spans.extend(cell(k, line, cursor.lane == k && cursor.line == l));
         }
         lines.push(Line::from(spans));
     }
 
-    // Each lane's level into the chain's output.
-    let mut spans = vec![Span::styled(fit(" out", LABEL), theme.dim)];
-    for (k, lane) in lanes.iter().enumerate() {
-        let style = if here(k, 0, true) {
-            Style::new().fg(Color::Reset)
-        } else {
-            Style::new().fg(colour)
-        };
-        spans.extend(bars::level(lane.out, CELL, style, theme));
-        spans.push(Span::raw(" ".repeat(LANE.saturating_sub(CELL))));
+    // Each lane's level into the chain's output, below the longest lane.
+    let more = if view.fx_top + room < outs {
+        "↓"
+    } else {
+        " "
+    };
+    let mut spans = vec![Span::styled(fit(&format!("{more}out"), LABEL), theme.dim)];
+    for k in 0..lanes.len() {
+        let here = cursor.lane == k && cursor.line == outs;
+        let out = chain.lanes()[k].out;
+        spans.extend(bars::level(out, lane_width - 1, value_style(here), theme));
+        spans.push(Span::raw(" "));
     }
     lines.push(Line::from(spans));
     if chain.is_empty() && lanes.len() == 1 {
@@ -152,13 +220,6 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
             " no effects yet: :fx-add adds one, and :fx-send B branches into a new lane",
             theme.faint,
         ));
-    }
-
-    if let Some(shown) = shown {
-        lines.push(Line::raw(""));
-        lines.push(Line::styled(format!(" {}", shown.name), theme.dim));
-        let row = editor.mixer_cursor().row;
-        lines.extend(settings(&shown, row, status, theme, colour, width));
     }
     frame.render_widget(Paragraph::new(lines), area);
 }

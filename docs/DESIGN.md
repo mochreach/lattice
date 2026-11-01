@@ -694,9 +694,12 @@ TUI's `Mixer` keeps the lanes it last sent beside the effects, and sends a new r
 differ.
 
 The fx page (`Page::Fx`, `lattice-editor/src/fx_page.rs`) is a second view of the mixer's cursor:
-it shares the strip, and moving onto an effect sets the mixer's effect, so the settings below,
-`:set`, nudges, locking and recorded locks all go through the mixer's code. Its own cursor
-(`FxCursor`) is a lane and a row, or the lane's out, which it stays on when changing lane.
+it shares the strip, and moving onto an effect or one of its settings puts the mixer's cursor
+there too, so `:set`, nudges, locking and recorded locks on settings all go through the mixer's
+code. The page is lines, like the pattern's steps (`FxLine`): an effect's name, then a line for
+each of its settings, or a send; the lines below a lane's last are empty, and the outs are on the
+line after the longest lane's. Its cursor (`FxCursor`) is a lane and a line, so `h` `l` keep to
+the line, and `w` `b` stop only on names, sends and the out.
 
 ### Locks
 

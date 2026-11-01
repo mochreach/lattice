@@ -256,15 +256,16 @@ mute and solo, and `gp` goes back to the pattern. Instruments, effects and bus l
 in the song.
 
 The **fx page** (`gf`) shows one strip's effects the way the pattern shows notes: the sound goes
-down through them, and they can branch into up to four **lanes**, side by side. A **send** row,
+down through them, each effect's settings on the lines under its name, and they can branch into up to four **lanes**, side by side. A **send** row,
 `→ B -3.0 dB`, copies the sound at that point into lane B; added with `:fx-send B`, it starts lane
 B if there isn't one. A send into its own lane or one to its left is **feedback** (`↺`), heard
 again 256 samples later and kept to 0 dB or below, so it dies away. Each lane ends in an **out**,
-its level into the strip. `h` `l` move between lanes and `j` `k` along them, `^a` `^x` (or `c`)
-set a send or an out, `:fx-add` adds an effect after the cursor and `d` removes the row under it,
-or on an out, the whole lane. `tab` goes down into the settings of the effect under the cursor,
-as on the mixer, where nudging, `c` and `L` work as they do there; `tab` or `k` from the top
-comes back. `(` `)` change strip, and `gm` and `gp` go to the mixer and the pattern.
+its level into the strip, along the bottom. `j` `k` move line by line, so `^a` `^x` (or `c`)
+turn each setting, send or out as you pass it, `w` `b` jump from effect to effect past their
+settings, and `h` `l` move across the lanes on the same line. `:fx-add` adds an effect after the
+cursor's, and `d` on an effect's name or a send removes it, or on an out, the whole lane. `L`
+locks settings as on the mixer. `(` `)` change strip, and `gm` and `gp` go to the mixer and the
+pattern.
 
 **Locks** automate settings by step, as on Elektron machines: a step can lock up to four of its
 track's instrument or effect settings with `:lock`. A lock holds from its step until the next step

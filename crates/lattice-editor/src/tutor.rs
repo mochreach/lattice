@@ -545,7 +545,9 @@ const LESSONS: &[Lesson] = &[
     Lesson {
         title: "Effects in lanes",
         text: "{goto_effects} opens the fx page: the track's effects drawn like the pattern, \
-               the sound going down through them, and {goto_pattern} comes back. They can \
+               the sound going down through them, each with its settings on the lines below \
+               it. {note_up} {note_down} turn the setting under the cursor as you pass it, and \
+               {next_note} {prev_note} jump from effect to effect. {goto_pattern} comes back. They can \
                branch: `:fx-send B` adds a row after the cursor that sends the sound into lane \
                B, beside the first, starting it if it's new. A send into its own lane or one to \
                its left is feedback, heard again a moment later, and kept below 0 dB so it dies \

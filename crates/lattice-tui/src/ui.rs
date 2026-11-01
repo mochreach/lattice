@@ -45,6 +45,8 @@ pub struct ViewState {
     pub(crate) first_strip: usize,
     /// How many track strips fit on the mixer page.
     pub(crate) strips_shown: usize,
+    /// The first line shown on the fx page, when they don't all fit.
+    pub(crate) fx_top: usize,
     /// The keys just pressed, shown when the editor's `show_keys` is on.
     pub keys: KeyLog,
     /// The waveforms of the files chop tracks play.
@@ -121,7 +123,7 @@ pub fn draw(
     match editor.page {
         Page::Pattern => draw_grid(frame, grid, editor, status, theme, view),
         Page::Mixer => mixer_page::draw(frame, grid, editor, status, theme, view),
-        Page::Fx => fx_page::draw(frame, grid, editor, status, theme),
+        Page::Fx => fx_page::draw(frame, grid, editor, status, theme, view),
         Page::Song => song_page::draw(frame, grid, editor, status, theme),
         Page::Help => help_page::draw(frame, grid, editor, theme),
     }
@@ -1093,12 +1095,8 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             Style::new().fg(theme.accent),
         )
         }
-        Mode::Normal if editor.page == Page::Fx && editor.in_fx_settings() => (
-            "hjkl settings · C-a C-x adjust · c set · L lock · tab lanes · ( ) strip · gm mixer · gp pattern".into(),
-            theme.dim,
-        ),
         Mode::Normal if editor.page == Page::Fx => (
-            "hl lanes · jk rows · tab settings · C-a C-x level · :fx-add · :fx-send B · d remove · ( ) strip · gp pattern".into(),
+            "hl lanes · jk lines · w b effects · C-a C-x adjust · c set · :fx-add · :fx-send B · d remove · L lock · ( ) strip · gp pattern".into(),
             theme.dim,
         ),
         Mode::Normal if editor.page == Page::Mixer => (

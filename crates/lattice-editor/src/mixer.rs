@@ -472,7 +472,7 @@ impl Editor {
         if !matches!(self.page, Page::Mixer | Page::Fx) {
             return Err("set works on the mixer (gm) and fx (gf) pages".into());
         }
-        if self.page == Page::Fx && !self.in_fx_settings() {
+        if self.page == Page::Fx && !self.on_fx_param() {
             return self.set_fx_value(value);
         }
         let Some((old, min, max)) = self.cursor_value() else {
