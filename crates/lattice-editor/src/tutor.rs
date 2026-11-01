@@ -348,11 +348,13 @@ const LESSONS: &[Lesson] = &[
     },
     Lesson {
         title: "Many selections",
-        text: "There can be several selections, and every change applies to each. \
-               {select_all} selects everything; then {select_notes} keeps just the notes \
-               matching what you type, such as `C`, or `C E G` for several. {keep_notes} and \
-               {remove_notes} keep or drop the selections with matching notes.\n\nSelect every \
-               C in the pattern, and raise them all a semitone.",
+        text: "You can have many cursors at once: Lattice keeps several \
+               selections, each with its own cursor, and every key you press acts at all of \
+               them together. {select_all} selects everything; then {select_notes} splits that \
+               into one selection for each note matching what you type, such as `C`, or `C E G` \
+               for several. {keep_notes} and {remove_notes} keep or drop the selections with \
+               matching notes.\n\nSelect every C in the pattern, so there's a cursor on each, \
+               and raise them all a semitone with one key.",
         teaches: &[
             Action::SelectAll,
             Action::SelectNotes,
@@ -384,11 +386,13 @@ const LESSONS: &[Lesson] = &[
     },
     Lesson {
         title: "Back to one cursor",
-        text: "One selection is the primary, with the solid cursor; the view follows it. \
-               {rotate_forward} and {rotate_backward} make the next or previous one primary, \
-               and {remove_primary} drops it. {keep_primary} keeps just the primary, \
-               {merge_all} merges them all into one, and {collapse} shrinks each selection \
-               down to its cursor.\n\nGet back to a single cursor.",
+        text: "You now have a cursor on every C: the status line shows how \
+               many selections there are, and which is the primary, the one with the solid \
+               cursor that the view follows. {rotate_forward} and {rotate_backward} make the \
+               next or previous one primary, {remove_primary} drops it, and {merge_all} merges \
+               them all into one.\n\nTo get back to a single cursor, {keep_primary} drops \
+               every selection but the primary, then {collapse} shrinks it to just its cursor \
+               (it may already be one step). Do that now.",
         teaches: &[
             Action::RotateForward,
             Action::RotateBackward,
