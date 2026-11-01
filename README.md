@@ -163,6 +163,8 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:inst INSTRUMENT` | the instrument for every track the selections reach (or the mixer cursor's): `synth`, `string`, `sampler`, `kick`, `snare`, `hat`, `clap` or `tom` |
 | `:sample [PATH]` | play a WAV file on a sampler, on every track the selections reach (or the mixer cursor's); with no path, the selection last exported with `:export-sel` |
 | `:fx-add EFFECT` | add an effect (`delay`, `reverb`, `filter`, `drive` or `comp`) after the mixer cursor, or at the end of this track's chain |
+| `:lock PARAM VALUE` | lock a setting of the track's instrument or effects on every step the selections reach: `:lock cutoff 800`, `:lock filter.mix 0.5` (or `2.mix`, the second effect's). `:lock cutoff 200..4000` sweeps it across each selection. Locked steps are marked `◆`, and the cursor's locks are shown in the status line |
+| `:unlock [PARAM]` | clear a setting's locks, or all of them, from the steps the selections reach |
 | `:choke N` | choke group (1–8, 0 for none) for every track the selections reach: within a track group, a hit cuts off the other tracks with the same number, as a closed hat stops an open one |
 | `:mute`, `:solo` | toggle mute or solo for every track the selections reach (also `tm`, `ts`) |
 | `:w [PATH]`, `:wq [PATH]` | save the song (to a `.lattice` file), save and quit |
@@ -192,8 +194,16 @@ settings of the instrument or effect under the cursor. `j` `k` move down into th
 through its rows, `h` `l` move along a row, `(` `)` change strip, and `tab` jumps between the
 overview and the chain. `^a` `^x` nudge the value under the cursor (with counts, so `10^a`), `c`
 types an exact one (or, on the instrument, another instrument), `:fx-add delay` (or `reverb`,
-`filter`, `drive`, `comp`) adds an effect after the cursor and `d` removes it. `tm` `ts` still mute and solo, and
-`gp` goes back to the pattern. Instruments, effects and bus levels are saved in the song.
+`filter`, `drive`, `comp`) adds an effect after the cursor and `d` removes it. `tm` `ts` still
+mute and solo, and `gp` goes back to the pattern. Instruments, effects and bus levels are saved
+in the song.
+
+**Locks** automate settings by step, as on Elektron machines: a step can lock up to four of its
+track's instrument or effect settings with `:lock`. A lock holds from its step until the next step
+with a note or a lock, and then the setting goes back to the mixer's. A lock on a step with no
+note changes the setting on its own, so a few locks down an empty stretch move an effect along.
+In the demo, the second stab in each bar is brighter and rings, from its locked cutoff and
+resonance.
 
 The **song page** (`gs`) is the arrangement: the patterns in the order they play, each entry
 repeated some number of times. A strip across the top shows the whole song, each entry as wide as

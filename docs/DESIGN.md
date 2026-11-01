@@ -577,6 +577,39 @@ the TUI's `Mixer` brings the engine in line by diffing each chain: it keeps the 
 match at either end, removes and inserts the ones between, and sends `SetParam` for values that
 differ.
 
+### Locks
+
+Settings change over time by step, with parameter locks as on Elektron machines. A `Step` holds up
+to `MAX_LOCKS` (4) `Lock`s: an effect's place in the track's chain (or `None` for the
+instrument), a parameter id and a value in the parameter's own units. They're kept in a fixed
+array (`Locks`), not a `Vec`, so steps stay `Copy` and the engine realises a pass without
+allocating. Rules move locks with their steps, as they're part of the step; a transpose leaves
+them alone.
+
+A lock holds from its step until the next step that has a note or a lock (`Step::triggers`).
+Then the setting goes back to the mixer's, unless that step locks it again, in which case it
+isn't reset in between. So a locked note keeps its sound for as long as it rings, and a lock on
+an empty step changes the setting on its own. Stopping, and a change of pattern, end every lock.
+
+The engine keeps each setting's base value, the mixer's, for when a lock ends. A `TrackPlayer`
+keeps one for its instrument and an `EffectSlot` one for its effect, each a `[f32; MAX_PARAMS]`.
+They start from the values the processor was built with (`EffectSlot::with_values`; a track's
+instrument values) and follow every `SetParam`. While a lock holds a setting, a `SetParam` for
+it only moves the base, so the lock still wins until it ends. A new instrument starts at its
+defaults, and the TUI sends the settings that differ after it.
+
+The locks follow their effects. When an effect is added or removed in a track's chain, the
+editor moves the locks of later effects along, and drops the removed effect's, in every pattern.
+Changing the instrument drops the instrument's locks. The engine ends a track's effect locks
+before its chain changes, so each setting goes back on the effect it was locked on.
+
+`:lock PARAM VALUE` finds the setting by name on each selected track: the instrument's first,
+then each effect's in order. `EFFECT.PARAM` picks an effect, by its kind's name or its number from
+1, and `inst.PARAM` picks the instrument. The value is a number in the setting's range, or a
+choice by name. `FROM..TO` sweeps across each selection, evenly along the setting's curve, so a
+cutoff sweep rises by the same interval each step. The grid marks a locked step with `◆` at its
+end, and the status line lists the cursor's locks in place of the key hints.
+
 ### The mixer page
 
 `gm` swaps the grid for the mixer (`gp` goes back), opening on the pattern cursor's track. It's

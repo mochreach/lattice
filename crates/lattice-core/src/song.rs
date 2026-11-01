@@ -50,10 +50,13 @@ fn is_one(n: &u16) -> bool {
     *n == 1
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct Step {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<Note>,
+    /// Settings of the track's instrument or effects that change on this step.
+    #[serde(default, skip_serializing_if = "Locks::is_empty")]
+    pub locks: Locks,
 }
 
 impl Step {
@@ -64,11 +67,124 @@ impl Step {
                 velocity: DEFAULT_VELOCITY,
                 length: 1,
             }),
+            locks: Locks::default(),
         }
+    }
+
+    pub fn with_note(note: Note) -> Self {
+        Self {
+            note: Some(note),
+            locks: Locks::default(),
+        }
+    }
+
+    /// Whether the step changes what's playing: a note, or a lock. Locks hold until the next.
+    pub fn triggers(&self) -> bool {
+        self.note.is_some() || !self.locks.is_empty()
     }
 
     pub fn is_empty(&self) -> bool {
         *self == Self::default()
+    }
+}
+
+/// Most settings a step can lock.
+pub const MAX_LOCKS: usize = 4;
+
+/// Most parameters an instrument or effect has, so players can keep each one's setting without
+/// allocating.
+pub const MAX_PARAMS: usize = 16;
+
+/// A setting held from one step: a parameter of the track's instrument, or of one of its
+/// effects, at a value in the parameter's own units. It lasts until the next step with a note or
+/// a lock, then the setting goes back to what the mixer says.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Lock {
+    /// The effect, by its place in the track's chain, or `None` for the instrument.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fx: Option<u8>,
+    pub param: u8,
+    pub value: f32,
+}
+
+impl Lock {
+    /// Whether it's of the same setting as `other`, whatever the value.
+    pub fn same_param(&self, other: &Lock) -> bool {
+        self.fx == other.fx && self.param == other.param
+    }
+}
+
+/// Up to [`MAX_LOCKS`] locks, kept in place so steps copy without allocating. Saved as a list.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "Vec<Lock>", into = "Vec<Lock>")]
+pub struct Locks([Option<Lock>; MAX_LOCKS]);
+
+impl Locks {
+    pub fn is_empty(&self) -> bool {
+        self.0.iter().all(Option::is_none)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Lock> {
+        self.0.iter().flatten()
+    }
+
+    pub fn len(&self) -> usize {
+        self.iter().count()
+    }
+
+    /// The lock of the same setting as `lock`, if there is one.
+    pub fn find(&self, lock: &Lock) -> Option<&Lock> {
+        self.iter().find(|l| l.same_param(lock))
+    }
+
+    /// Sets `lock`, replacing one of the same setting. False if there's no room for it.
+    pub fn set(&mut self, lock: Lock) -> bool {
+        let slot = match self
+            .0
+            .iter()
+            .position(|l| l.is_some_and(|l| l.same_param(&lock)))
+        {
+            Some(i) => i,
+            None => match self.0.iter().position(Option::is_none) {
+                Some(i) => i,
+                None => return false,
+            },
+        };
+        self.0[slot] = Some(lock);
+        true
+    }
+
+    /// Keeps only the locks `keep` says to, letting it change them as it goes.
+    pub fn retain(&mut self, mut keep: impl FnMut(&mut Lock) -> bool) {
+        for slot in &mut self.0 {
+            if slot.as_mut().is_some_and(|l| !keep(l)) {
+                *slot = None;
+            }
+        }
+    }
+
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+}
+
+impl TryFrom<Vec<Lock>> for Locks {
+    type Error = String;
+
+    fn try_from(list: Vec<Lock>) -> Result<Self, String> {
+        let mut locks = Locks::default();
+        for lock in list {
+            if !locks.set(lock) {
+                return Err(format!("a step has at most {MAX_LOCKS} locks"));
+            }
+        }
+        Ok(locks)
+    }
+}
+
+impl From<Locks> for Vec<Lock> {
+    fn from(locks: Locks) -> Self {
+        locks.iter().copied().collect()
     }
 }
 

@@ -720,6 +720,12 @@ fn grid_row(
             ),
             None => (" ···".into(), theme.faint),
         };
+        // A step that locks settings is marked at its end.
+        let text = if step.locks.is_empty() || c.width == FOLDED {
+            text
+        } else {
+            format!("{}◆", fit(&text, c.width - 1))
+        };
         // In the live view, highlight what the rules have changed.
         if editor.view == View::Live && c.track.steps.get(row) != Some(step) {
             style = style.add_modifier(Modifier::BOLD | Modifier::ITALIC);
@@ -819,10 +825,18 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             "hl pattern · + - repeats · o add · d delete · ret edit · space play from here · gp pattern".into(),
             theme.dim,
         ),
-        Mode::Normal => (
-            "v select · x rows · g goto · ] next · i insert · d delete · : command".into(),
-            theme.dim,
-        ),
+        Mode::Normal => {
+            let cursor = editor.cursor();
+            let locks = editor.describe_locks(cursor.track, cursor.step);
+            if locks.is_empty() {
+                (
+                    "v select · x rows · g goto · ] next · i insert · d delete · : command".into(),
+                    theme.dim,
+                )
+            } else {
+                (format!("◆ {}", locks.join(" · ")), theme.text)
+            }
+        }
         Mode::Insert if editor.record && editor.in_folded_group() => (
             format!("recording: 1–9 pads · {notes} at the playhead, while playing · R off · esc done"),
             theme.dim,

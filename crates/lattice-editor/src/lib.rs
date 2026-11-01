@@ -15,6 +15,7 @@ mod command;
 mod export;
 mod group;
 mod keymap;
+mod locks;
 mod mixer;
 mod pads;
 mod pattern;
@@ -1859,7 +1860,7 @@ mod tests {
         let mut e = editor();
         notes(&mut e, "zx");
         let len = e.grid.tracks[0].steps.len();
-        e.grid.tracks[0].steps[len - 1] = e.grid.tracks[0].steps[0].clone();
+        e.grid.tracks[0].steps[len - 1] = e.grid.tracks[0].steps[0];
         keys(&mut e, "ggvjy");
         keys(&mut e, "ggP");
         assert_eq!(

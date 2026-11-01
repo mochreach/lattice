@@ -13,7 +13,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
-use lattice_core::{Grid, Lane, MAX_STEPS, Mix, Step, Track, db_to_gain, realise_into};
+use lattice_core::{
+    Grid, Lane, Locks, MAX_PARAMS, MAX_STEPS, Mix, ParamInfo, Step, Track, db_to_gain, realise_into,
+};
 pub use lattice_core::{MAX_EFFECTS, MAX_GROUPS, MAX_TRACKS};
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
 
@@ -164,6 +166,8 @@ pub enum Target {
 pub struct EffectSlot {
     processor: Box<dyn Processor>,
     events: Vec<Event>,
+    /// Each parameter's setting, to go back to when a step's lock ends.
+    base: [f32; MAX_PARAMS],
 }
 
 impl EffectSlot {
@@ -171,10 +175,30 @@ impl EffectSlot {
     /// [`Command::InsertEffect`].
     pub fn new(processor: Box<dyn Processor>) -> Box<Self> {
         Box::new(Self {
+            base: defaults(processor.params()),
             processor,
             events: Vec::with_capacity(MAX_EVENTS),
         })
     }
+
+    /// Like [`EffectSlot::new`], for a processor built with these settings rather than its
+    /// defaults.
+    pub fn with_values(processor: Box<dyn Processor>, values: &[f32]) -> Box<Self> {
+        let mut slot = Self::new(processor);
+        for (base, &value) in slot.base.iter_mut().zip(values) {
+            *base = value;
+        }
+        slot
+    }
+}
+
+/// Each parameter's default, in a fixed array.
+fn defaults(params: &[ParamInfo]) -> [f32; MAX_PARAMS] {
+    let mut values = [0.0; MAX_PARAMS];
+    for (value, param) in values.iter_mut().zip(params) {
+        *value = param.default;
+    }
+    values
 }
 
 impl std::fmt::Debug for EffectSlot {
@@ -491,13 +515,23 @@ pub struct TrackPlayer {
     right: Vec<f32>,
     /// What was last published to [`Status`], so it can be published again if the track moves.
     position: u64,
+    /// The instrument's settings, to go back to when a step's lock ends.
+    base: [f32; MAX_PARAMS],
+    /// The locks in force, from the last step with a note or a lock.
+    locked: Locks,
 }
 
 impl TrackPlayer {
     /// Allocates, so call it off the audio thread, then send the player with
     /// [`Command::InsertTrack`].
     pub fn new(track: Track, instrument: Box<dyn Processor>, sample_rate: f32) -> Box<Self> {
+        let mut base = defaults(instrument.params());
+        for (base, &value) in base.iter_mut().zip(&track.instrument.values) {
+            *base = value;
+        }
         Box::new(Self {
+            base,
+            locked: Locks::default(),
             track,
             instrument,
             effects: effects(),
@@ -513,6 +547,58 @@ impl TrackPlayer {
             right: vec![0.0; MAX_BLOCK],
             position: u64::MAX,
         })
+    }
+}
+
+impl TrackPlayer {
+    /// Ends the locks in force that `next` doesn't set again, then sets `next`'s, at `offset`.
+    fn lock(&mut self, next: Locks, offset: u32) {
+        let ending = self.locked;
+        for lock in ending.iter().filter(|l| next.find(l).is_none()) {
+            let base = match lock.fx {
+                None => self.base.get(usize::from(lock.param)),
+                Some(fx) => (self.effects.get(usize::from(fx)))
+                    .and_then(|slot| slot.base.get(usize::from(lock.param))),
+            };
+            if let Some(&base) = base {
+                self.param_event(lock.fx, lock.param, base, offset);
+            }
+        }
+        for lock in next.iter() {
+            self.param_event(lock.fx, lock.param, lock.value, offset);
+        }
+        self.locked = next;
+    }
+
+    /// Ends the effects' locks, leaving the instrument's: before the chain changes, so the
+    /// settings go back to the effects they were on.
+    fn unlock_effects(&mut self) {
+        let mut next = self.locked;
+        next.retain(|l| l.fx.is_none());
+        self.lock(next, 0);
+    }
+
+    fn param_event(&mut self, fx: Option<u8>, id: u8, value: f32, offset: u32) {
+        let event = Event {
+            offset,
+            kind: EventKind::Param {
+                id: u32::from(id),
+                value,
+            },
+        };
+        match fx {
+            None => push(&mut self.events, event),
+            Some(fx) => {
+                if let Some(slot) = self.effects.get_mut(usize::from(fx)) {
+                    push(&mut slot.events, event);
+                }
+            }
+        }
+    }
+
+    /// Whether a step's lock holds this setting, so the mixer's change waits until it ends.
+    fn is_locked(&self, fx: Option<usize>, id: u32) -> bool {
+        (self.locked.iter()).any(|l| l.fx.map(usize::from) == fx && u32::from(l.param) == id)
     }
 }
 
@@ -665,6 +751,7 @@ impl Engine {
             for h in t.held.drain(..) {
                 push(&mut t.events, note_off(0, h.pitch));
             }
+            t.lock(Locks::default(), 0);
             t.playhead = 0;
             t.pass = 0;
             t.position = u64::MAX;
@@ -782,7 +869,7 @@ impl Engine {
                     chain,
                     index,
                     effect,
-                } => match self.chain_mut(chain) {
+                } => match self.unlock_effects(chain).chain_mut(chain) {
                     Some(effects) if effects.len() < MAX_EFFECTS => {
                         // Within capacity, so it never reallocates.
                         effects.insert(index.min(effects.len()), effect);
@@ -790,7 +877,7 @@ impl Engine {
                     _ => self.discard(Garbage::Effect(effect)),
                 },
                 Command::RemoveEffect { chain, index } => {
-                    if let Some(effects) = self.chain_mut(chain)
+                    if let Some(effects) = self.unlock_effects(chain).chain_mut(chain)
                         && index < effects.len()
                     {
                         let effect = effects.remove(index);
@@ -803,6 +890,9 @@ impl Engine {
                             // Notes held on the old instrument end with it.
                             t.held.clear();
                             t.previews.clear();
+                            // The new one starts at its own settings, which follow.
+                            t.base = defaults(instrument.params());
+                            t.locked.retain(|l| l.fx.is_some());
                             std::mem::replace(&mut t.instrument, instrument)
                         }
                         None => instrument,
@@ -824,28 +914,59 @@ impl Engine {
                         t.group = group.filter(|&g| g < MAX_GROUPS);
                     }
                 }
-                Command::SetParam { target, id, value } => {
-                    let events = match target {
-                        Target::Instrument(track) => {
-                            self.tracks.get_mut(track).map(|t| &mut t.events)
-                        }
-                        Target::Effect { chain, slot } => self
-                            .chain_mut(chain)
-                            .and_then(|effects| effects.get_mut(slot))
-                            .map(|slot| &mut slot.events),
-                    };
-                    if let Some(events) = events {
-                        push(
-                            events,
-                            Event {
-                                offset: 0,
-                                kind: EventKind::Param { id, value },
-                            },
-                        );
-                    }
-                }
+                Command::SetParam { target, id, value } => self.set_param(target, id, value),
             }
         }
+    }
+
+    /// Sets a parameter from the mixer. While a step's lock holds it, only the setting to go
+    /// back to changes.
+    fn set_param(&mut self, target: Target, id: u32, value: f32) {
+        let (track, fx) = match target {
+            Target::Instrument(track) => (Some(track), None),
+            Target::Effect {
+                chain: Chain::Track(track),
+                slot,
+            } => (Some(track), Some(slot)),
+            Target::Effect { .. } => (None, None),
+        };
+        let locked = track
+            .and_then(|t| self.tracks.get(t))
+            .is_some_and(|t| t.is_locked(fx, id));
+        let (events, base) = match target {
+            Target::Instrument(track) => match self.tracks.get_mut(track) {
+                Some(t) => (&mut t.events, &mut t.base),
+                None => return,
+            },
+            Target::Effect { chain, slot } => {
+                match self.chain_mut(chain).and_then(|e| e.get_mut(slot)) {
+                    Some(slot) => (&mut slot.events, &mut slot.base),
+                    None => return,
+                }
+            }
+        };
+        if let Some(base) = base.get_mut(id as usize) {
+            *base = value;
+        }
+        if !locked {
+            push(
+                events,
+                Event {
+                    offset: 0,
+                    kind: EventKind::Param { id, value },
+                },
+            );
+        }
+    }
+
+    /// Ends the effect locks on a track's chain before it changes. For chaining.
+    fn unlock_effects(&mut self, chain: Chain) -> &mut Self {
+        if let Chain::Track(track) = chain
+            && let Some(t) = self.tracks.get_mut(track)
+        {
+            t.unlock_effects();
+        }
+        self
     }
 
     fn chain_mut(&mut self, chain: Chain) -> Option<&mut Effects> {
@@ -1100,7 +1221,12 @@ impl Engine {
             }
             t.position = u64::from(t.pass) << 32 | t.playhead as u64;
             self.status.set_position(index, t.position);
-            if let Some(note) = t.steps[t.playhead].note {
+            let step = t.steps[t.playhead];
+            if step.triggers() {
+                // Before the note, so it plays with the step's settings.
+                t.lock(step.locks, offset);
+            }
+            if let Some(note) = step.note {
                 // Retriggering a held pitch, or out of room: end the old note first.
                 let existing = t.held.iter().position(|h| h.pitch == note.pitch);
                 let full = (t.held.len() == MAX_HELD).then_some(0);
@@ -1163,6 +1289,7 @@ impl Engine {
             }
         }
         for t in &mut self.tracks {
+            t.lock(Locks::default(), 0);
             t.playhead = 0;
             t.pass = 0;
         }
@@ -1976,6 +2103,100 @@ mod tests {
         // Step 0 chokes track 1 twice, and step 2 chokes tracks 0 and 2; tracks 0 and 2 don't
         // choke each other.
         assert_eq!(counts, [1, 2, 1, 0, 0]);
+    }
+
+    /// Notes down each setting it's sent, with when, and the time of each note.
+    #[derive(Default)]
+    struct Settings {
+        at: usize,
+        log: std::sync::Arc<std::sync::Mutex<Vec<(usize, String)>>>,
+    }
+
+    impl Processor for Settings {
+        fn process(&mut self, events: &[Event], left: &mut [f32], _: &mut [f32]) {
+            let mut log = self.log.lock().unwrap();
+            for e in events {
+                let at = self.at + e.offset as usize;
+                match e.kind {
+                    EventKind::Param { id, value } => log.push((at, format!("{id}={value}"))),
+                    EventKind::NoteOn { .. } => log.push((at, "note".into())),
+                    _ => {}
+                }
+            }
+            self.at += left.len();
+        }
+    }
+
+    #[test]
+    fn locks_hold_until_the_next_note_or_lock() {
+        let lock = |param, value| lattice_core::Lock {
+            fx: None,
+            param,
+            value,
+        };
+        let mut locked = Step::note(60);
+        locked.locks.set(lock(2, 5.0));
+        locked.locks.set(lock(3, 1.0));
+        let mut trigless = Step::default();
+        trigless.locks.set(lock(2, 7.0));
+        let mut track = Track {
+            steps: vec![locked, Step::default(), Step::note(62), trigless],
+            rules: vec![],
+            ..lead()
+        };
+        track.instrument.values = vec![0.0, 0.0, 2.0, 3.0];
+        let grid = Grid {
+            name: "locks".into(),
+            steps_per_beat: 4,
+            tracks: vec![track],
+            groups: vec![],
+        };
+        let settings = Settings::default();
+        let log = settings.log.clone();
+        let (mut engine, mut handle) = Engine::new(1_000.0, 120.0, &grid, vec![Box::new(settings)]);
+        engine.click_enabled = false;
+        engine.play();
+        // 125 samples a step. While the lock holds, the mixer's change waits.
+        render_stereo(&mut engine, 200);
+        handle.send(Command::SetParam {
+            target: Target::Instrument(0),
+            id: 2,
+            value: 9.0,
+        });
+        handle.send(Command::SetParam {
+            target: Target::Instrument(0),
+            id: 1,
+            value: 4.0,
+        });
+        render_stereo(&mut engine, 400);
+        handle.send(Command::Stop);
+        render_stereo(&mut engine, 10);
+        let log = log.lock().unwrap();
+        let log: Vec<(usize, &str)> = (log.iter())
+            .map(|(at, what)| (*at, what.as_str()))
+            .collect();
+        assert_eq!(
+            log,
+            [
+                (0, "2=5"),
+                (0, "3=1"),
+                (0, "note"),
+                // Unlocked, it goes through at once.
+                (200, "1=4"),
+                // Step 2's note ends the locks, back to the latest settings.
+                (250, "2=9"),
+                (250, "3=3"),
+                (250, "note"),
+                // Step 3 locks with no note; step 0 locks it again, so it isn't reset between.
+                (375, "2=7"),
+                (500, "2=5"),
+                (500, "3=1"),
+                (500, "note"),
+                // Stopping ends them.
+                (600, "2=9"),
+                (600, "3=3"),
+            ]
+        );
     }
 
     #[test]

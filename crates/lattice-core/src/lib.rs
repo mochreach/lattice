@@ -22,7 +22,7 @@ pub use fx::{Bus, Buses, Fx, FxKind, MAX_EFFECTS};
 pub use group::{Group, MAX_GROUPS};
 pub use instrument::{DRUM_ROOT, InstKind, Instrument};
 pub use song::{
-    Grid, MAX_CHOKE, MAX_DB, MAX_STEPS, MAX_TRACKS, MIN_DB, Mix, Note, Song, Step, Track,
-    db_to_gain,
+    Grid, Lock, Locks, MAX_CHOKE, MAX_DB, MAX_LOCKS, MAX_PARAMS, MAX_STEPS, MAX_TRACKS, MIN_DB,
+    Mix, Note, Song, Step, Track, db_to_gain,
 };
 pub use transform::{Condition, Rule, Transform, realise, realise_into};

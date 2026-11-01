@@ -101,8 +101,10 @@ impl Tracks {
                 if !send(Command::SetInstrument { index, instrument }) {
                     return false;
                 }
-                *sent = wanted.clone();
-                continue;
+                // The engine takes it to be at its defaults, to go back to after a step's lock,
+                // so send it the settings that differ.
+                *sent = Instrument::new(wanted.kind);
+                sent.file = wanted.file.clone();
             }
             for (id, &value) in wanted.values.iter().enumerate() {
                 if sent.values[id] != value {

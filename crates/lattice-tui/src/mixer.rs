@@ -150,7 +150,7 @@ fn sync_chain(
         .take(wanted.len() - after)
         .skip(before)
     {
-        let effect = EffectSlot::new(fx::build(fx, sample_rate));
+        let effect = EffectSlot::with_values(fx::build(fx, sample_rate), &fx.values);
         if !send(Command::InsertEffect {
             chain,
             index,

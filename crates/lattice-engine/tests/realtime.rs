@@ -3,7 +3,7 @@
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
 use lattice_core::instrument::{kick, string};
 use lattice_core::{
-    Condition, Fx, FxKind, Grid, InstKind, Instrument, Lane, Rule, Step, Track, Transform,
+    Condition, Fx, FxKind, Grid, InstKind, Instrument, Lane, Lock, Rule, Step, Track, Transform,
 };
 use lattice_engine::{
     AdsrParams, Chain, Command, Comp, Cue, Delay, Drive, EffectSlot, Engine, Patch, Processor,
@@ -19,11 +19,22 @@ fn rendering_never_allocates() {
         name: "lead".into(),
         steps: (0..7)
             .map(|i| {
-                if i % 2 == 0 {
+                let mut step = if i % 2 == 0 {
                     Step::note(60 + i)
                 } else {
                     Step::default()
+                };
+                // Locks on the instrument and on effects, some there and some not.
+                if i % 3 == 0 {
+                    for fx in [None, Some(0), Some(5)] {
+                        step.locks.set(Lock {
+                            fx,
+                            param: 1,
+                            value: 0.3,
+                        });
+                    }
                 }
+                step
             })
             .collect(),
         mix: Default::default(),

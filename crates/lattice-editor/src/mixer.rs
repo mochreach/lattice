@@ -539,7 +539,7 @@ impl Editor {
             self.mixer.effect = index;
             self.mixer.instrument = false;
         }
-        Ok(vec![Effect::MixerChanged])
+        Ok(self.chain_changed(strip, index, true))
     }
 
     /// Puts a new instrument, at its default settings, on the tracks `:inst` changes. Tracks
@@ -561,14 +561,19 @@ impl Editor {
             return Ok(vec![]);
         }
         self.checkpoint();
+        let mut effects = vec![Effect::MixerChanged];
         for t in tracks {
             self.grid.tracks[t].instrument = Instrument::new(kind);
+            // The old instrument's settings mean nothing to the new one.
+            if self.retain_locks(t, |lock| lock.fx.is_some()) {
+                effects.push(Effect::TrackChanged(t));
+            }
         }
         if self.page == Page::Mixer {
             self.mixer.row = Row::Chain;
             self.mixer.instrument = true;
         }
-        Ok(vec![Effect::MixerChanged])
+        Ok(effects)
     }
 
     /// `:sample [PATH]`: the tracks play the WAV file at `path`, or the last selection exported,
@@ -621,7 +626,19 @@ impl Editor {
         self.checkpoint();
         self.chain_mut(strip).remove(cursor.effect);
         self.mixer = self.mixer_cursor();
-        vec![Effect::MixerChanged]
+        self.chain_changed(strip, cursor.effect, false)
+    }
+
+    /// After an effect's been added to or removed from a chain at `index`: a track's locks
+    /// follow their effects.
+    fn chain_changed(&mut self, strip: Strip, index: usize, inserted: bool) -> Vec<Effect> {
+        let mut effects = vec![Effect::MixerChanged];
+        if let Strip::Track(t) = strip
+            && self.shift_locks(t, index, inserted)
+        {
+            effects.push(Effect::TrackChanged(t));
+        }
+        effects
     }
 
     /// The tracks `:level`, `:pan`, `:send`, `:mute`, `:solo` and `:inst` change: on the mixer

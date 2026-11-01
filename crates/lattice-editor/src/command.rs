@@ -201,6 +201,18 @@ pub const COMMANDS: &[Spec] = &[
         describe: "mixer: solo or unsolo",
     },
     Spec {
+        name: "lock",
+        alias: None,
+        params: &[text("PARAM VALUE", "setting and value")],
+        describe: "lock a setting on the selected steps; FROM..TO sweeps across them",
+    },
+    Spec {
+        name: "unlock",
+        alias: None,
+        params: &[optional_text("[PARAM]", "setting")],
+        describe: "clear a setting's locks from the selected steps, or all of them",
+    },
+    Spec {
         name: "set",
         alias: None,
         params: &[text("VALUE", "value")],
@@ -1054,6 +1066,8 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                 .ok_or_else(|| format!("{word:?} isn't a number"))?;
             editor.set_mixer_value(value)
         }
+        "lock" => editor.lock(command.text(0)),
+        "unlock" => editor.unlock(command.text(0)),
         "fx-add" => editor.add_effect(command.text(0)),
         "inst" => editor.set_instrument(command.text(0)),
         "sample" => editor.set_sample(command.text(0)),

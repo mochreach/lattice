@@ -1,12 +1,12 @@
 //! The demo song: a techno track in F minor, arranged in six sections, that uses a bit of
-//! everything: every instrument, every effect, groups, a choke, sends, tracks of different
+//! everything: every instrument, every effect, groups, a choke, sends, locks, tracks of different
 //! lengths drifting against each other, and rules that change the parts as they repeat.
 
 use lattice_core::fx::{comp, delay, drive, filter, reverb};
 use lattice_core::instrument::{clap, hat, kick, snare, string, synth, tom};
 use lattice_core::{
     Arrangement, Bus, Buses, Condition, DRUM_ROOT, Entry, Fx, FxKind, Grid, Group, InstKind,
-    Instrument, Lane, Note, Pattern, Rule, Song, Step, Track, Transform,
+    Instrument, Lane, Lock, Note, Pattern, Rule, Song, Step, Track, Transform,
 };
 
 pub const BPM: f64 = 130.0;
@@ -28,13 +28,11 @@ fn hits(s: &str) -> Vec<Step> {
                 '.' => return Step::default(),
                 _ => panic!("bad hit {c:?}"),
             };
-            Step {
-                note: Some(Note {
-                    pitch: DRUM_ROOT,
-                    velocity,
-                    length: 1,
-                }),
-            }
+            Step::with_note(Note {
+                pitch: DRUM_ROOT,
+                velocity,
+                length: 1,
+            })
         })
         .collect()
 }
@@ -60,13 +58,11 @@ fn notes(s: &str) -> Vec<Step> {
                 None => (tok, 1),
             };
             let pitch = note_number(name).unwrap_or_else(|| panic!("bad note {name}"));
-            Step {
-                note: Some(Note {
-                    pitch,
-                    velocity,
-                    length,
-                }),
-            }
+            Step::with_note(Note {
+                pitch,
+                velocity,
+                length,
+            })
         })
         .collect()
 }
@@ -424,8 +420,17 @@ fn bass() -> Vec<Step> {
 fn acid() -> Vec<Step> {
     notes("F2! F2 F3 . Eb3 F2! . C3 F2 Ab2! F3? C3")
 }
+/// The second, answering stab brighter and ringing, from settings locked on its step.
 fn stabs() -> Vec<Step> {
-    notes(". . . Ab3_2 . . . . . . Ab3 . . . . .")
+    let mut steps = notes(". . . Ab3_2 . . . . . . Ab3 . . . . .");
+    for (param, value) in [(synth::CUTOFF, 3_200.0), (synth::RESONANCE, 0.7)] {
+        steps[10].locks.set(Lock {
+            fx: None,
+            param: param as u8,
+            value,
+        });
+    }
+    steps
 }
 fn pad() -> Vec<Step> {
     notes("C4_16 . . . . . . . . . . . . . . . | Ab3_16 . . . . . . . . . . . . . . .")
