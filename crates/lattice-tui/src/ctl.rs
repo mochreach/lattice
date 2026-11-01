@@ -89,7 +89,8 @@ impl Server {
             let Ok(mut reader) = stream.try_clone().map(BufReader::new) else {
                 continue;
             };
-            if reader.read_line(&mut line).is_ok() {
+            // A client looking for the Lattice running hangs up without asking anything.
+            if reader.read_line(&mut line).is_ok_and(|n| n > 0) {
                 let line = line.trim_end_matches(['\r', '\n']).to_string();
                 log!("ctl: {line}");
                 requests.push(Request { stream, line });
