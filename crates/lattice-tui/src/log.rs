@@ -202,6 +202,20 @@ impl Watch {
     }
 }
 
+impl Drop for Watch {
+    /// How close the audio came to falling behind, so a quiet log still says how much room
+    /// there was.
+    fn drop(&mut self) {
+        let peak = self.peak.max(HEALTH.worst.load(Ordering::Relaxed));
+        let late = HEALTH.late.load(Ordering::Relaxed);
+        let missed = HEALTH.missed.load(Ordering::Relaxed);
+        log!(
+            "audio this run: the worst block took {:.0}% of its time; {late} late, {missed} missed",
+            peak as f64 / 10.0
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

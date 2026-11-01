@@ -178,6 +178,8 @@ fn run(
     let mut sequencer = Sequencer::default();
     let mut watch = Watch::new();
     let mut said = None;
+    let mut page = editor.page;
+    let mut playing = false;
     loop {
         handle.collect_garbage();
         if let Some(problem) = watch.look(handle.status().leaked()) {
@@ -189,6 +191,18 @@ fn run(
                 log!("says: {message}");
             }
             said.clone_from(&editor.message);
+        }
+        if editor.page != page {
+            page = editor.page;
+            log!("page: {}", whereabouts(editor));
+        }
+        if handle.status().playing() != playing {
+            playing = !playing;
+            log!(
+                "{} at {} BPM",
+                if playing { "playing" } else { "stopped" },
+                editor.bpm
+            );
         }
         let written = exports.poll(editor);
         if !written.is_empty() {
@@ -290,7 +304,7 @@ fn run(
                         if let (Key::Enter, Mode::Command(prompt)) = (key, &editor.mode)
                             && prompt.kind == PromptKind::Command
                         {
-                            log!(":{}", prompt.line);
+                            log!(":{}  ({})", prompt.line, whereabouts(editor));
                         }
                         let effects = editor.handle(key);
                         let typing = matches!(editor.mode, Mode::Command(_));
@@ -351,6 +365,13 @@ impl Playhead {
             count_in: count_in as usize,
         })
     }
+}
+
+/// Where the player is, for the log: `pattern page, on SPARKLE`.
+fn whereabouts(editor: &Editor) -> String {
+    let page = format!("{:?}", editor.page).to_lowercase();
+    let track = (editor.grid.tracks.get(editor.cursor().track)).map_or("", |t| t.name.as_str());
+    format!("{page} page, on {}", track.to_uppercase())
 }
 
 /// Types keys or runs a command for [`ctl`], returning why it was refused, if it was.

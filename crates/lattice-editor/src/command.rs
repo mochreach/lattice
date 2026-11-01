@@ -423,13 +423,13 @@ pub const COMMANDS: &[Spec] = &[
     },
     Spec {
         name: "new",
-        alias: None,
+        alias: Some("n"),
         params: &[optional_text("[PATH]", "path")],
         describe: "start an empty song, to save at PATH, or wherever :w says",
     },
     Spec {
         name: "new!",
-        alias: None,
+        alias: Some("n!"),
         params: &[optional_text("[PATH]", "path")],
         describe: "start an empty song, discarding unsaved changes",
     },
@@ -552,6 +552,25 @@ impl Spec {
     }
 }
 
+/// The names a value can take, for those that are one of a few.
+fn choices(what: &str) -> Option<Vec<&'static str>> {
+    match what {
+        "effect" => Some(
+            lattice_core::FxKind::ALL
+                .into_iter()
+                .map(lattice_core::Kind::name)
+                .collect(),
+        ),
+        "instrument" => Some(
+            lattice_core::InstKind::ALL
+                .into_iter()
+                .map(lattice_core::Kind::name)
+                .collect(),
+        ),
+        _ => None,
+    }
+}
+
 impl Value {
     /// What's wanted, for when it's missing or wrong: `bpm is 20 to 400`.
     pub fn expected(&self) -> String {
@@ -568,7 +587,10 @@ impl Value {
                 } else {
                     "a"
                 };
-                format!("expected {a} {what}")
+                match choices(what) {
+                    Some(names) => format!("expected {a} {what}: {}", names.join(", ")),
+                    None => format!("expected {a} {what}"),
+                }
             }
         }
     }
@@ -1449,7 +1471,10 @@ mod tests {
         );
         assert_eq!(problem("tr 5 every").unwrap().message, "every is 1 or more");
         assert_eq!(problem("name ").unwrap().message, "expected a name");
-        assert_eq!(problem("fx-add ").unwrap().message, "expected an effect");
+        assert_eq!(
+            problem("fx-add ").unwrap().message,
+            "expected an effect: delay, reverb, filter, drive, comp, pitch"
+        );
         assert_eq!(problem("fo").unwrap().message, "unknown command");
         assert_eq!(problem("rev every 2 1"), None);
         assert_eq!(problem(""), None);

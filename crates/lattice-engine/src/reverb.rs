@@ -285,6 +285,16 @@ mod tests {
         (energy, left, right)
     }
 
+    /// Fed the same in both, the two sides are as loud as each other overall, though at any one
+    /// pitch they differ, as each is tapped from different points in the tank.
+    #[test]
+    fn both_sides_are_as_loud() {
+        let (_, left, right) = tail(&[], 4);
+        let db = |v: &[f32]| 10.0 * v.iter().map(|x| x * x).sum::<f32>().log10();
+        let (l, r) = (db(&left), db(&right));
+        assert!((l - r).abs() < 1.0, "left {l:.2} dB, right {r:.2} dB");
+    }
+
     #[test]
     fn rings_on_and_dies_away() {
         let (energy, left, right) = tail(&[], 4);
