@@ -562,7 +562,14 @@ impl Value {
             Kind::Int { min, max } | Kind::Decimal { min, max } => {
                 format!("{what} is {min} to {max}")
             }
-            Kind::Text | Kind::OptionalText => format!("expected a {what}"),
+            Kind::Text | Kind::OptionalText => {
+                let a = if what.starts_with(['a', 'e', 'i', 'o', 'u']) {
+                    "an"
+                } else {
+                    "a"
+                };
+                format!("expected {a} {what}")
+            }
         }
     }
 
@@ -1442,6 +1449,7 @@ mod tests {
         );
         assert_eq!(problem("tr 5 every").unwrap().message, "every is 1 or more");
         assert_eq!(problem("name ").unwrap().message, "expected a name");
+        assert_eq!(problem("fx-add ").unwrap().message, "expected an effect");
         assert_eq!(problem("fo").unwrap().message, "unknown command");
         assert_eq!(problem("rev every 2 1"), None);
         assert_eq!(problem(""), None);
