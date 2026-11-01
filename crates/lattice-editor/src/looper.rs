@@ -17,17 +17,12 @@ pub(crate) struct Armed {
 }
 
 impl Editor {
-    /// `:arm`, or `:arm!` to record afresh: arms the cursor's track, or disarms it if it's
-    /// armed already.
+    /// `:arm`, or `:arm!` to record afresh: arms the cursor's track, in place of any other.
+    /// Arming it again only says so, rather than disarming it, which would be easy to miss.
     pub(crate) fn arm(&mut self, fresh: bool) {
         let t = self.cursor().track;
         let track = self.ids[t];
         let name = &self.grid.tracks[t].name;
-        if self.armed.is_some_and(|a| a.track == track) && !fresh {
-            self.armed = None;
-            self.message = Some(format!("{name} disarmed"));
-            return;
-        }
         self.armed = Some(Armed { track, fresh });
         let how = if self.overdubbing(t).is_some() {
             "overdubbing its loop"
@@ -39,6 +34,15 @@ impl Editor {
         ));
     }
 
+    /// `:disarm`.
+    pub(crate) fn disarm(&mut self) {
+        self.message = Some(match self.armed() {
+            Some(t) => format!("{} disarmed", self.grid.tracks[t].name),
+            None => "nothing's armed".into(),
+        });
+        self.armed = None;
+    }
+
     /// The armed track's index, if it's still there.
     pub fn armed(&self) -> Option<usize> {
         let armed = self.armed?;
@@ -46,13 +50,16 @@ impl Editor {
     }
 
     /// The sound file a pass recorded into track `t` is mixed onto: the one it plays, unless
-    /// it's recording afresh or plays none.
+    /// it's recording afresh, plays none, or has no notes left to play it with, when what's
+    /// recorded over would be silent.
     pub fn overdubbing(&self, t: usize) -> Option<&Path> {
         let fresh = self
             .armed
             .is_some_and(|a| a.fresh && Some(t) == self.armed());
-        let instrument = &self.grid.tracks.get(t)?.instrument;
-        (!fresh && instrument.kind == InstKind::Chop)
+        let track = self.grid.tracks.get(t)?;
+        let playing = track.steps.iter().any(|s| s.note.is_some());
+        let instrument = &track.instrument;
+        (!fresh && playing && instrument.kind == InstKind::Chop)
             .then_some(instrument.file.as_deref())
             .flatten()
     }
@@ -146,6 +153,20 @@ mod tests {
     }
 
     #[test]
+    fn a_loop_with_its_steps_deleted_records_afresh() {
+        let mut e = editor();
+        run(&mut e, "arm");
+        e.recorded(0, "/s/take-1.wav".into());
+        e.grid.tracks[0].steps.fill(Step::default());
+        assert_eq!(e.overdubbing(0), None, "nothing plays it to overdub");
+        e.recorded(0, "/s/take-2.wav".into());
+        assert_eq!(
+            e.grid.tracks[0].steps[3].note.unwrap().pitch,
+            chop::pitch(3)
+        );
+    }
+
+    #[test]
     fn arming_afresh_records_over_the_loop_once() {
         let mut e = editor();
         e.recorded(0, "/s/take-1.wav".into());
@@ -156,12 +177,14 @@ mod tests {
     }
 
     #[test]
-    fn arm_follows_its_track_and_toggles() {
+    fn arm_follows_its_track_until_disarmed() {
         let mut e = editor();
         run(&mut e, "arm");
         run(&mut e, "track-move 1");
         assert_eq!(e.armed(), Some(1));
         run(&mut e, "arm");
+        assert_eq!(e.armed(), Some(1), "arming again leaves it armed");
+        run(&mut e, "disarm");
         assert_eq!(e.armed(), None);
         run(&mut e, "arm");
         run(&mut e, "track-remove");

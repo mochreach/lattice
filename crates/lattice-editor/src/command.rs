@@ -311,7 +311,13 @@ pub const COMMANDS: &[Spec] = &[
         name: "arm",
         alias: None,
         params: &[],
-        describe: "arm this track to record the audio input a pass at a time, or disarm it",
+        describe: "arm this track to record the audio input a pass at a time",
+    },
+    Spec {
+        name: "disarm",
+        alias: None,
+        params: &[],
+        describe: "disarm the track armed to record the audio input",
     },
     Spec {
         name: "arm!",
@@ -1074,6 +1080,10 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             editor.arm(command.spec.name == "arm!");
             Ok(vec![])
         }
+        "disarm" => {
+            editor.disarm();
+            Ok(vec![])
+        }
         "input" => editor.choose_device(Direction::Input, command.text(0)),
         "output" => editor.choose_device(Direction::Output, command.text(0)),
         "latency" => {
@@ -1270,7 +1280,7 @@ mod tests {
         assert_eq!(names("tr")[0], "tr");
         assert_eq!(names("q")[..2], ["quit", "quit!"]);
         assert_eq!(names("wq")[0], "write-quit", "aliases match exactly");
-        assert_eq!(names("dr"), ["drift"]);
+        assert_eq!(names("dr"), ["drift", "disarm"]);
         assert!(names("fl").starts_with(&["follow"]));
         assert_eq!(names("zz"), Vec::<&str>::new());
         assert_eq!(complete("rv")[0].spec.name, "rev");
