@@ -243,6 +243,12 @@ pub const COMMANDS: &[Spec] = &[
         describe: "add an effect (delay, reverb, filter, drive, comp) after the one under the cursor",
     },
     Spec {
+        name: "fx-send",
+        alias: None,
+        params: &[text("LANE [DB]", "lane and level")],
+        describe: "fx page: send into a lane after the cursor (the next letter adds one); into this lane or one to its left, it's feedback",
+    },
+    Spec {
         name: "track-add",
         alias: Some("ta"),
         params: &[optional_text("[NAME]", "name")],
@@ -1185,6 +1191,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         "lock" => editor.lock(command.text(0)),
         "unlock" => editor.unlock(command.text(0)),
         "fx-add" => editor.add_effect(command.text(0)),
+        "fx-send" => editor.add_send(command.text(0)),
         "inst" => editor.set_instrument(command.text(0)),
         "sample" => editor.set_sample(command.text(0)),
         "chop" => editor.set_chop(command.text(0)),

@@ -693,6 +693,11 @@ old one's feedback and glides from its gains, so turning a send down doesn't cut
 TUI's `Mixer` keeps the lanes it last sent beside the effects, and sends a new routing when they
 differ.
 
+The fx page (`Page::Fx`, `lattice-editor/src/fx_page.rs`) is a second view of the mixer's cursor:
+it shares the strip, and moving onto an effect sets the mixer's effect, so the settings below,
+`:set`, nudges, locking and recorded locks all go through the mixer's code. Its own cursor
+(`FxCursor`) is a lane and a row, or the lane's out, which it stays on when changing lane.
+
 ### Locks
 
 Settings change over time by step, with parameter locks as on Elektron machines. A `Step` holds up

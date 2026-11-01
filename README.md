@@ -138,7 +138,8 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `tab` | show the pattern as written, or as it's playing this pass |
 | `:` | command line |
 | `gm` `gs` `gp` | the mixer page (on this track), the song page, back to the pattern |
-| `gi` `gf` | the mixer, on this track's instrument, or its effects |
+| `gi` | the mixer, on this track's instrument |
+| `gf` | the fx page: this track's effects (or the mixer strip's), in lanes |
 
 One deliberate departure from Helix: `space` is play / stop, as in every DAW, rather than a menu.
 
@@ -209,7 +210,8 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:latency MS` | move what the looper records earlier (negative) or later, if it's out of time with what you heard (-500 to 500); remembered for each input |
 | `:chop [PATH]` | cut a WAV file into a piece a step, on every track the selections reach (or the mixer cursor's), each step playing its own; with no path, the last selection exported |
 | `:sample [PATH]` | play a WAV file on a sampler, on every track the selections reach (or the mixer cursor's); with no path, the selection last exported with `:export-sel` or `:export-loop` |
-| `:fx-add EFFECT` | add an effect (`delay`, `reverb`, `filter`, `drive` or `comp`) after the mixer cursor, or at the end of this track's chain |
+| `:fx-add EFFECT` | add an effect (`delay`, `reverb`, `filter`, `drive` or `comp`) after the mixer or fx page cursor, or at the end of this track's chain |
+| `:fx-send LANE [DB]` | on the fx page, add a send after the cursor into lane `LANE` (`B`, say); the next letter after the last lane adds one. Into its own lane or one to its left it's feedback, at -6 dB unless given, and at most 0 dB |
 | `:lock PARAM VALUE` | lock a setting of the track's instrument or effects on every step the selections reach: `:lock cutoff 800`, `:lock filter.mix 0.5` (or `2.mix`, the second effect's). `:lock cutoff 200..4000` sweeps it across each selection. Locked steps are marked `◆`, and the cursor's locks are shown in the status line |
 | `:unlock [PARAM]` | clear a setting's locks, or all of them, from the steps the selections reach |
 | `:choke N` | choke group (1–8, 0 for none) for every track the selections reach: within a track group, a hit cuts off the other tracks with the same number, as a closed hat stops an open one |
@@ -252,6 +254,17 @@ types an exact one (or, on the instrument, another instrument), `:fx-add delay` 
 `filter`, `drive`, `comp`) adds an effect after the cursor and `d` removes it. `tm` `ts` still
 mute and solo, and `gp` goes back to the pattern. Instruments, effects and bus levels are saved
 in the song.
+
+The **fx page** (`gf`) shows one strip's effects the way the pattern shows notes: the sound goes
+down through them, and they can branch into up to four **lanes**, side by side. A **send** row,
+`→ B -3.0 dB`, copies the sound at that point into lane B; added with `:fx-send B`, it starts lane
+B if there isn't one. A send into its own lane or one to its left is **feedback** (`↺`), heard
+again 256 samples later and kept to 0 dB or below, so it dies away. Each lane ends in an **out**,
+its level into the strip. `h` `l` move between lanes and `j` `k` along them, `^a` `^x` (or `c`)
+set a send or an out, `:fx-add` adds an effect after the cursor and `d` removes the row under it,
+or on an out, the whole lane. `tab` goes down into the settings of the effect under the cursor,
+as on the mixer, where nudging, `c` and `L` work as they do there; `tab` or `k` from the top
+comes back. `(` `)` change strip, and `gm` and `gp` go to the mixer and the pattern.
 
 **Locks** automate settings by step, as on Elektron machines: a step can lock up to four of its
 track's instrument or effect settings with `:lock`. A lock holds from its step until the next step

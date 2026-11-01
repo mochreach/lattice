@@ -19,7 +19,7 @@ use crate::bars;
 use crate::key_log::KeyLog;
 use crate::theme::Theme;
 use crate::wave::{Peaks, Waves};
-use crate::{help_page, mixer_page, song_page};
+use crate::{fx_page, help_page, mixer_page, song_page};
 
 /// Width of the step-number column.
 pub(crate) const GUTTER: usize = 4;
@@ -121,6 +121,7 @@ pub fn draw(
     match editor.page {
         Page::Pattern => draw_grid(frame, grid, editor, status, theme, view),
         Page::Mixer => mixer_page::draw(frame, grid, editor, status, theme, view),
+        Page::Fx => fx_page::draw(frame, grid, editor, status, theme),
         Page::Song => song_page::draw(frame, grid, editor, status, theme),
         Page::Help => help_page::draw(frame, grid, editor, theme),
     }
@@ -311,6 +312,7 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
     let page = match editor.page {
         Page::Pattern => " PATTERN ",
         Page::Mixer => " MIXER ",
+        Page::Fx => " FX ",
         Page::Song => " SONG ",
         Page::Help => " HELP ",
     };
@@ -1080,12 +1082,24 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
         layout => format!("{} notes", layout.name()),
     };
     let (hints, style) = match &editor.mode {
-        Mode::Normal if editor.page == Page::Mixer && editor.locking().is_some() => (
+        Mode::Normal
+            if matches!(editor.page, Page::Mixer | Page::Fx) && editor.locking().is_some() =>
+        {
+            (
             format!(
                 "◆ locking {}: change settings · L lock them on the selected steps · esc cancel",
                 editor.grid.tracks[editor.locking().unwrap_or(0)].name
             ),
             Style::new().fg(theme.accent),
+        )
+        }
+        Mode::Normal if editor.page == Page::Fx && editor.in_fx_settings() => (
+            "hjkl settings · C-a C-x adjust · c set · L lock · tab lanes · ( ) strip · gm mixer · gp pattern".into(),
+            theme.dim,
+        ),
+        Mode::Normal if editor.page == Page::Fx => (
+            "hl lanes · jk rows · tab settings · C-a C-x level · :fx-add · :fx-send B · d remove · ( ) strip · gp pattern".into(),
+            theme.dim,
         ),
         Mode::Normal if editor.page == Page::Mixer => (
             "hl strips · jk detail · ( ) strip · tab chain · C-a C-x adjust · c set · L lock · :fx-add · d remove · gp pattern".into(),

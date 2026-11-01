@@ -358,7 +358,7 @@ impl Action {
             Action::GotoPattern => "pattern page",
             Action::GotoSong => "song page",
             Action::GotoInstrument => "instrument, on the mixer",
-            Action::GotoEffects => "effects, on the mixer",
+            Action::GotoEffects => "fx page: the track's effects, in lanes",
             Action::NextBeat => "next beat",
             Action::PrevBeat => "previous beat",
             Action::NextBar => "next bar",

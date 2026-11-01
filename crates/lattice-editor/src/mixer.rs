@@ -32,6 +32,8 @@ pub enum Page {
     #[default]
     Pattern,
     Mixer,
+    /// One strip's chain of effects, in lanes.
+    Fx,
     Song,
     /// Every key and command.
     Help,
@@ -157,14 +159,14 @@ impl Editor {
         }
     }
 
-    pub fn chain(&self, strip: Strip) -> &[Fx] {
+    pub fn chain(&self, strip: Strip) -> &FxChain {
         match strip {
             Strip::Track(i) => &self.grid.tracks[i].effects,
             _ => &self.bus(strip).expect("a bus").effects,
         }
     }
 
-    fn chain_mut(&mut self, strip: Strip) -> &mut FxChain {
+    pub(crate) fn chain_mut(&mut self, strip: Strip) -> &mut FxChain {
         match strip {
             Strip::Track(i) => &mut self.grid.tracks[i].effects,
             _ => &mut self.bus_mut(strip).expect("a bus").effects,
@@ -338,8 +340,8 @@ impl Editor {
         self.mixer = self.mixer_cursor();
     }
 
-    /// `gi` and `gf`: opens the mixer page on the pattern cursor's track, if coming from the
-    /// pattern, at the chain: on the instrument, or the first effect.
+    /// `gi`: opens the mixer page on the pattern cursor's track, if coming from the pattern, at
+    /// the chain: on the instrument, or the first effect.
     pub(crate) fn goto_chain(&mut self, instrument: bool) {
         if self.page == Page::Pattern {
             self.mixer.strip = self.cursor().track;
@@ -467,8 +469,11 @@ impl Editor {
 
     /// Sets the value under the mixer cursor, in the units [`Editor::cursor_value`] gives.
     pub(crate) fn set_mixer_value(&mut self, value: f32) -> Result<Vec<Effect>, String> {
-        if self.page != Page::Mixer {
-            return Err("set works on the mixer page (gm)".into());
+        if !matches!(self.page, Page::Mixer | Page::Fx) {
+            return Err("set works on the mixer (gm) and fx (gf) pages".into());
+        }
+        if self.page == Page::Fx && !self.in_fx_settings() {
+            return self.set_fx_value(value);
         }
         let Some((old, min, max)) = self.cursor_value() else {
             return Err("nothing to set here: move onto a level or setting".into());
@@ -545,6 +550,17 @@ impl Editor {
         })?;
         let cursor = self.mixer_cursor();
         let (strip, index) = match self.page {
+            Page::Fx => {
+                let strip = self.fx_strip();
+                if self.chain(strip).len() >= MAX_EFFECTS {
+                    return Err(format!("at most {MAX_EFFECTS} effects in a chain"));
+                }
+                self.checkpoint();
+                let at = self.fx_insert_at();
+                let index = self.chain_mut(strip).insert_at(at, Fx::new(kind));
+                self.fx_onto(at);
+                return Ok(self.chain_changed(strip, index, true));
+            }
             Page::Mixer => {
                 let strip = self.strip(cursor.strip);
                 let len = self.chain(strip).len();
@@ -710,7 +726,12 @@ impl Editor {
 
     /// After an effect's been added to or removed from a chain at `index`: a track's locks
     /// follow their effects.
-    fn chain_changed(&mut self, strip: Strip, index: usize, inserted: bool) -> Vec<Effect> {
+    pub(crate) fn chain_changed(
+        &mut self,
+        strip: Strip,
+        index: usize,
+        inserted: bool,
+    ) -> Vec<Effect> {
         let mut effects = vec![Effect::MixerChanged];
         if let Strip::Track(t) = strip
             && self.shift_locks(t, index, inserted)
@@ -898,7 +919,7 @@ mod tests {
     }
 
     #[test]
-    fn gi_gf_and_gm_open_the_mixer_on_the_cursors_track() {
+    fn gi_and_gm_open_the_mixer_on_the_cursors_track_and_gf_its_effects() {
         let mut e = editor();
         keys(&mut e, "gpl");
         command(&mut e, "fx-add delay");
@@ -908,13 +929,9 @@ mod tests {
             (Page::Mixer, (Strip::Track(1), Row::Chain))
         );
         assert_eq!(e.shown().unwrap().name, "synth");
+        // gf opens the fx page, on the effect at the top of the chain.
         keys(&mut e, "gphgf");
-        assert_eq!(at(&e), (Strip::Track(0), Row::Chain));
-        assert_eq!(
-            e.shown().unwrap().name,
-            "synth",
-            "no effects, so the instrument"
-        );
+        assert_eq!((e.page, at(&e)), (Page::Fx, (Strip::Track(0), Row::Chain)));
         keys(&mut e, "gplgf");
         assert_eq!(e.shown().unwrap().slot, Some(0));
         keys(&mut e, "gphgm");

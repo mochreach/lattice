@@ -2,7 +2,7 @@
 //! buses and the send and master buses), and the detail of the strip under the cursor below.
 
 use lattice_core::{Kind, Locks, MIN_DB};
-use lattice_editor::{Editor, Field, PARAM_COLUMNS, Row, Strip};
+use lattice_editor::{Editor, Field, PARAM_COLUMNS, Row, Shown, Strip};
 use lattice_engine::Status;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -210,7 +210,7 @@ fn overview(
 }
 
 /// `M` when muted, `m` when muted in this pattern, `S` when soloed.
-fn flag(editor: &Editor, strip: Strip, theme: &Theme) -> (&'static str, Color) {
+pub fn flag(editor: &Editor, strip: Strip, theme: &Theme) -> (&'static str, Color) {
     match strip {
         Strip::Track(i) if editor.grid.tracks[i].mix.mute => ("M", theme.error),
         Strip::Track(i) if editor.grid.tracks[i].pattern_mute => ("m", theme.error),
@@ -220,7 +220,7 @@ fn flag(editor: &Editor, strip: Strip, theme: &Theme) -> (&'static str, Color) {
 }
 
 /// Where a strip's sound goes, and for a bus, where it comes from.
-fn route(editor: &Editor, strip: Strip) -> String {
+pub fn route(editor: &Editor, strip: Strip) -> String {
     let names = |tracks: &mut dyn Iterator<Item = &lattice_core::Track>| {
         tracks
             .map(|t| t.name.as_str())
@@ -387,7 +387,35 @@ fn detail(
         return lines;
     };
     lines.push(Line::raw(""));
-    // While it plays, a setting a step has locked shows the lock's value.
+    lines.extend(settings(&shown, cursor.row, status, theme, colour, width));
+    lines
+}
+
+/// The settings of an instrument or effect, in a grid filled a row at a time, with the one at
+/// `row` under the cursor. While it plays, a setting a step has locked shows the lock's value.
+pub fn settings(
+    shown: &Shown,
+    row: Row,
+    status: &Status,
+    theme: &Theme,
+    colour: Color,
+    width: usize,
+) -> Vec<Line<'static>> {
+    let label = |text: &str, here: bool| {
+        let style = if here {
+            theme.text.add_modifier(Modifier::BOLD)
+        } else {
+            theme.dim
+        };
+        Span::styled(fit(&format!(" {text}"), PARAM_LABEL), style)
+    };
+    let value_style = |here: bool| {
+        if here {
+            Style::new().fg(Color::Reset)
+        } else {
+            Style::new().fg(colour)
+        }
+    };
     let locks = match shown.strip {
         Strip::Track(t) => status.locks(t),
         _ => Locks::default(),
@@ -395,11 +423,12 @@ fn detail(
     let slot = shown.slot.map(|s| s as u8);
     let cell = (width.saturating_sub(1) / PARAM_COLUMNS).max(PARAM_LABEL + 8);
     let bar = cell.saturating_sub(PARAM_LABEL + 3).min(PARAM_BAR);
-    for (r, row) in shown.params.chunks(PARAM_COLUMNS).enumerate() {
+    let mut lines = vec![];
+    for (r, params) in shown.params.chunks(PARAM_COLUMNS).enumerate() {
         let mut spans = vec![];
-        for (k, info) in row.iter().enumerate() {
+        for (k, info) in params.iter().enumerate() {
             let p = r * PARAM_COLUMNS + k;
-            let here = cursor.row == Row::Param(p);
+            let here = row == Row::Param(p);
             let lock = (locks.iter()).find(|l| l.fx == slot && u32::from(l.param) == info.id);
             match lock {
                 Some(lock) => {
@@ -411,7 +440,7 @@ fn detail(
                     spans.extend(bars::param(info, lock.value, bar, mark, theme));
                 }
                 None => {
-                    spans.push(label_width(info.name, here, PARAM_LABEL));
+                    spans.push(label(info.name, here));
                     spans.extend(bars::param(
                         info,
                         shown.values[p],

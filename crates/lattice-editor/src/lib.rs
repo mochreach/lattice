@@ -14,6 +14,7 @@
 mod command;
 mod devices;
 mod export;
+mod fx_page;
 mod group;
 mod help;
 mod keymap;
@@ -31,6 +32,7 @@ mod tutor;
 pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
 pub use devices::{Device, Devices, Direction};
 pub use export::{Export, Part, SAMPLES, file_name, scratch};
+pub use fx_page::FxCursor;
 pub use help::{Help, HelpLine};
 pub use keymap::{Action, Binding, Key, Keymap, Menu, NoteLayout};
 pub use mixer::{Field, MixerCursor, PARAM_COLUMNS, Page, Row, Shown, Strip};
@@ -351,6 +353,7 @@ pub struct Editor {
     pub page: Page,
     /// Where the cursor is on the mixer page; see [`Editor::mixer_cursor`].
     mixer: MixerCursor,
+    fx: FxCursor,
     /// Where the cursor is on the song page; see [`Editor::song_cursor`].
     song: song::SongCursor,
     /// Where the help page is scrolled to.
@@ -461,6 +464,7 @@ impl Editor {
             view: View::Source,
             page: Page::Pattern,
             mixer: MixerCursor::default(),
+            fx: FxCursor::default(),
             song: Default::default(),
             help: Help::default(),
             locking: None,
@@ -719,7 +723,7 @@ impl Editor {
         let holds = self.releases && self.plays(key);
         let mut effects = self.handle_key(key);
         // Leaving the mixer leaves locking, putting the settings back.
-        if self.page != Page::Mixer && self.locking.is_some() {
+        if !matches!(self.page, Page::Mixer | Page::Fx) && self.locking.is_some() {
             effects.extend(self.cancel_locking());
         }
         if holds {
@@ -1027,6 +1031,11 @@ impl Editor {
         {
             return effects;
         }
+        if self.page == Page::Fx
+            && let Some(effects) = self.fx_act(action, n)
+        {
+            return effects;
+        }
         if self.page == Page::Song
             && let Some(effects) = self.song_act(action, n)
         {
@@ -1262,7 +1271,7 @@ impl Editor {
                 self.mode = Mode::Normal;
             }
             Action::GotoInstrument => self.goto_chain(true),
-            Action::GotoEffects => self.goto_chain(false),
+            Action::GotoEffects => self.goto_fx(),
             Action::GotoPattern => self.page = Page::Pattern,
             Action::GotoSong => {
                 // Onto the entry playing, or the first playing the pattern being edited.

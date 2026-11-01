@@ -512,8 +512,7 @@ const LESSONS: &[Lesson] = &[
     Lesson {
         title: "The mixer",
         text: "{goto_mixer} opens the mixer on the cursor's track, and {goto_pattern} comes \
-               back; {goto_instrument} and {goto_effects} go straight to the track's instrument \
-               and effects. There, {left} {right} move between strips, {down} goes into the \
+               back; {goto_instrument} goes straight to the track's instrument. There, {left} {right} move between strips, {down} goes into the \
                detail, and {note_up} {note_down} turn what's under the cursor. `:level -6`, \
                `:pan 20` and `:send -12` set them by number, and `:set` the setting under the cursor.\n\n\
                Turn the BASS track's level down, then come back to the pattern.",
@@ -521,7 +520,6 @@ const LESSONS: &[Lesson] = &[
             Action::GotoMixer,
             Action::GotoPattern,
             Action::GotoInstrument,
-            Action::GotoEffects,
         ],
         commands: &["level", "pan", "send", "set"],
         setup: nothing,
@@ -543,6 +541,28 @@ const LESSONS: &[Lesson] = &[
         watch: never,
         done: |e, _| (track(e, "LEAD").effects.iter()).any(|fx| fx.kind == FxKind::Reverb),
         solution: "gl:fx-add reverb<ret>",
+    },
+    Lesson {
+        title: "Effects in lanes",
+        text: "{goto_effects} opens the fx page: the track's effects drawn like the pattern, \
+               the sound going down through them, and {goto_pattern} comes back. They can \
+               branch: `:fx-send B` adds a row after the cursor that sends the sound into lane \
+               B, beside the first, starting it if it's new. A send into its own lane or one to \
+               its left is feedback, heard again a moment later, and kept below 0 dB so it dies \
+               away. Each lane ends in an `out`, its level into the track; {note_up} \
+               {note_down} turn a send or an out, and {delete} on an out removes its lane.\n\n\
+               On the LEAD track, branch into a new lane B and put a delay on it.",
+        teaches: &[Action::GotoEffects],
+        commands: &["fx-send"],
+        setup: nothing,
+        watch: never,
+        done: |e, _| {
+            let lead = &track(e, "LEAD").effects;
+            (lead.rows()).any(|(at, _, effect)| {
+                at.lane > 0 && effect.is_some_and(|i| lead[i].kind == FxKind::Delay)
+            })
+        },
+        solution: "gpglgf:fx-send B<ret>l:fx-add delay<ret>gp",
     },
     Lesson {
         title: "Locks",

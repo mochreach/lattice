@@ -5,6 +5,7 @@ mod demo;
 mod devices;
 mod export;
 mod file;
+mod fx_page;
 mod help_page;
 mod key_log;
 mod keys;

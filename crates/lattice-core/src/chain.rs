@@ -227,6 +227,90 @@ impl FxChain {
         self.effects.remove(index)
     }
 
+    /// The row at `at`.
+    pub fn row(&self, at: RowAt) -> Option<FxRow> {
+        self.lanes.get(at.lane)?.rows.get(at.row).copied()
+    }
+
+    /// Adds an empty lane on the right, returning its index, or `None` if there are already
+    /// [`MAX_LANES`].
+    pub fn add_lane(&mut self) -> Option<usize> {
+        if self.lanes.len() >= MAX_LANES {
+            return None;
+        }
+        self.lanes.push(FxLane::default());
+        Some(self.lanes.len() - 1)
+    }
+
+    /// Removes lane `lane`, and the sends into it, returning the indices its effects had,
+    /// highest first, as they're removed in that order. The first lane stays.
+    pub fn remove_lane(&mut self, lane: usize) -> Vec<usize> {
+        if lane == 0 || lane >= self.lanes.len() {
+            return vec![];
+        }
+        let mut effects: Vec<usize> = (self.rows())
+            .filter(|(at, _, _)| at.lane == lane)
+            .filter_map(|(_, _, effect)| effect)
+            .collect();
+        effects.reverse();
+        for &i in &effects {
+            self.effects.remove(i);
+        }
+        self.lanes.remove(lane);
+        for l in &mut self.lanes {
+            l.rows
+                .retain(|r| !matches!(r, FxRow::Send { to, .. } if *to == lane));
+            for row in &mut l.rows {
+                if let FxRow::Send { to, .. } = row
+                    && *to > lane
+                {
+                    *to -= 1;
+                }
+            }
+        }
+        effects
+    }
+
+    /// Puts a send into lane `to` as the row at `at`.
+    pub fn insert_send(&mut self, at: RowAt, to: usize, level: f32) -> Result<(), String> {
+        if to >= self.lanes.len() || at.lane >= self.lanes.len() {
+            return Err("no such lane".into());
+        }
+        if self.sends() >= MAX_SENDS {
+            return Err(format!("at most {MAX_SENDS} sends in a chain"));
+        }
+        let level = level.min(max_send(at.lane, to));
+        let rows = &mut self.lanes[at.lane].rows;
+        rows.insert(at.row.min(rows.len()), FxRow::Send { to, level });
+        Ok(())
+    }
+
+    /// Sets the level of the send at `at`, kept to what that send can take.
+    pub fn set_send_level(&mut self, at: RowAt, level: f32) {
+        let from = at.lane;
+        if let Some(FxRow::Send { to, level: old }) =
+            (self.lanes.get_mut(from)).and_then(|l| l.rows.get_mut(at.row))
+        {
+            *old = level.min(max_send(from, *to));
+        }
+    }
+
+    /// Removes the send at `at`, if there is one.
+    pub fn remove_send(&mut self, at: RowAt) -> bool {
+        let is_send = matches!(self.row(at), Some(FxRow::Send { .. }));
+        if is_send {
+            self.lanes[at.lane].rows.remove(at.row);
+        }
+        is_send
+    }
+
+    /// Sets lane `lane`'s level into the output, in dB.
+    pub fn set_out(&mut self, lane: usize, level: f32) {
+        if let Some(lane) = self.lanes.get_mut(lane) {
+            lane.out = level.min(MAX_DB);
+        }
+    }
+
     /// Checks it's one a song can hold.
     pub fn check(&self) -> Result<(), String> {
         let lanes = self.lanes.len();
@@ -259,7 +343,7 @@ impl FxChain {
                 if to >= lanes {
                     return Err(format!("lane {name} sends to a lane that isn't there"));
                 }
-                let most = if to <= from { MAX_FEEDBACK_DB } else { MAX_DB };
+                let most = max_send(from, to);
                 if !(level.is_finite() && level <= most) {
                     return Err(format!("lane {name}'s send goes up to {most} dB"));
                 }
@@ -272,6 +356,15 @@ impl FxChain {
 /// Whether a send from lane `from` into lane `to` is feedback, heard a block later.
 pub fn is_feedback(from: usize, to: usize) -> bool {
     to <= from
+}
+
+/// The loudest a send from lane `from` into lane `to` can be, in dB.
+pub fn max_send(from: usize, to: usize) -> f32 {
+    if is_feedback(from, to) {
+        MAX_FEEDBACK_DB
+    } else {
+        MAX_DB
+    }
 }
 
 #[cfg(test)]
@@ -323,6 +416,36 @@ mod tests {
         let (effects, lanes) = branched.clone().into_parts();
         assert_eq!(lanes.len(), 1);
         assert_eq!(FxChain::from_parts(effects, lanes), Ok(branched));
+    }
+
+    #[test]
+    fn lanes_come_and_go_with_their_sends() {
+        let mut chain = FxChain::from(vec![fx(FxKind::Filter)]);
+        let b = chain.add_lane().unwrap();
+        let c = chain.add_lane().unwrap();
+        let at = |lane, row| RowAt { lane, row };
+        chain.insert_send(at(0, 1), b, -3.0).unwrap();
+        chain.insert_send(at(0, 2), c, 0.0).unwrap();
+        chain.insert_at(at(b, 0), fx(FxKind::Reverb));
+        chain.insert_at(at(c, 0), fx(FxKind::Delay));
+        // Feedback is kept below unity.
+        chain.insert_send(at(c, 1), 0, 6.0).unwrap();
+        assert_eq!(chain.row(at(c, 1)), Some(FxRow::Send { to: 0, level: 0.0 }));
+        assert_eq!(chain.check(), Ok(()));
+
+        assert_eq!(chain.remove_lane(b), [1]);
+        let kinds: Vec<_> = chain.iter().map(|f| f.kind).collect();
+        assert_eq!(kinds, [FxKind::Filter, FxKind::Delay]);
+        assert_eq!(
+            chain.lanes[0].rows,
+            [FxRow::Fx, FxRow::Send { to: 1, level: 0.0 }],
+            "the send into B went with it, and C is now B"
+        );
+        assert_eq!(chain.check(), Ok(()));
+        assert!(chain.remove_send(at(0, 1)));
+        assert!(!chain.remove_send(at(0, 0)), "an effect");
+        chain.set_out(1, -60.0);
+        assert_eq!(chain.lanes[1].out, -60.0);
     }
 
     #[test]
