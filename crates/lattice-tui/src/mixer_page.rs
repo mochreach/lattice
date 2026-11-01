@@ -399,7 +399,7 @@ fn detail(
 
 /// The settings of an instrument or effect, in a grid filled a row at a time, with the one at
 /// `row` under the cursor. While it plays, a setting a step has locked shows the lock's value;
-/// one a macro turns is marked `~`.
+/// one a macro turns is marked with its number.
 pub fn settings(
     shown: &Shown,
     macros: &[Macro],
@@ -409,14 +409,14 @@ pub fn settings(
     colour: Color,
     width: usize,
 ) -> Vec<Line<'static>> {
-    let label = |text: &str, here: bool, turned: bool| {
+    let label = |text: &str, here: bool, mark: Option<char>| {
         let style = if here {
             theme.text.add_modifier(Modifier::BOLD)
         } else {
             theme.dim
         };
         let mark = Span::styled(
-            if turned { "~" } else { " " },
+            mark.unwrap_or(' ').to_string(),
             Style::new().fg(theme.visual),
         );
         [mark, Span::styled(fit(text, PARAM_LABEL - 1), style)]
@@ -452,8 +452,8 @@ pub fn settings(
                     spans.extend(bars::param(info, lock.value, bar, mark, theme));
                 }
                 None => {
-                    let turned = macros::turned(macros, slot, info.id as u8);
-                    spans.extend(label(info.name, here, turned));
+                    let mark = macros::mark(macros, slot, info.id as u8);
+                    spans.extend(label(info.name, here, mark));
                     spans.extend(bars::param(
                         info,
                         shown.values[p],

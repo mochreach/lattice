@@ -105,9 +105,17 @@ pub fn offset(macros: &[Macro], value: impl Fn(usize) -> f32, fx: Option<u8>, pa
     offset
 }
 
-/// Whether any macro turns the setting `param` of `fx`.
-pub fn turned(macros: &[Macro], fx: Option<u8>, param: u8) -> bool {
-    (macros.iter()).any(|m| m.targets.iter().any(|t| t.is(fx, param)))
+/// What marks the setting `param` of `fx` as turned by a macro: the macro's number from 1, or
+/// `*` when more than one turns it. `None` when none does.
+pub fn mark(macros: &[Macro], fx: Option<u8>, param: u8) -> Option<char> {
+    let mut turning = (macros.iter().enumerate())
+        .filter(|(_, m)| m.targets.iter().any(|t| t.is(fx, param)))
+        .map(|(i, _)| i);
+    let first = turning.next()?;
+    Some(match turning.next() {
+        Some(_) => '*',
+        None => char::from_digit(first as u32 + 1, 10).unwrap_or('*'),
+    })
 }
 
 /// `base` moved by `offset`, a share of the range, along the setting's curve.
@@ -141,6 +149,16 @@ mod tests {
         assert_eq!(offset(&macros, |_| 0.5, Some(0), 1), 0.25);
         assert_eq!(offset(&macros, |_| 1.0, None, 1), -1.0);
         assert_eq!(offset(&macros, |_| 1.0, Some(1), 1), 0.0);
+
+        // Marked with the macro's number, or * for more than one.
+        assert_eq!(mark(&macros, Some(0), 1), Some('1'));
+        assert_eq!(mark(&macros, Some(1), 1), None);
+        let mut two = macros.to_vec();
+        two.push(Macro {
+            name: "air".into(),
+            ..macros[0].clone()
+        });
+        assert_eq!(mark(&two, None, 1), Some('*'));
 
         // A cutoff, on a log curve: a quarter of the range up from its bottom is a quarter of the
         // way by ratio, and moves stop at the ends.

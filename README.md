@@ -278,7 +278,7 @@ setting, on the mixer or fx page, has the macro `bloom` turn it, by half its ran
 is all the way up (`:map bloom -1` turns it down by all of it). The fx page shows a track's macros
 in a column left of lane A, each with the settings it turns under it: `h` from lane A goes there,
 `^a` `^x` turn a macro or how far it turns a setting, and `d` removes either. A setting a macro
-turns is marked `~`, on the fx page and the mixer, and lit while the cursor's on it among the
+turns is marked with the macro's number (`*` if more than one turns it), on the fx page and the mixer, and lit while the cursor's on it among the
 macros. Settings keep their
 own values and the macros move them from there, so turning a setting by hand still works. A macro
 locks like a setting, by its name (`:lock bloom 1`), with `L`, or by turning it with record armed.

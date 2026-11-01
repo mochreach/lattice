@@ -615,7 +615,7 @@ const LESSONS: &[Lesson] = &[
                other way, by half its range when `bloom` is all the way up, and `:unmap bloom` \
                lets it go. The macros are a column left of lane A: \
                {note_up} {note_down} turn a macro, or under it, how far it turns each setting, \
-               and {delete} removes either. A setting a macro turns is marked `~`. The settings keep their own values, and the macros \
+               and {delete} removes either. A setting a macro turns is marked with the macro's number. The settings keep their own values, and the macros \
                move them from there. A macro locks as a setting does, by its name: `:lock \
                bloom 1`.\n\n\
                On the LEAD track, add a filter, map its cutoff to `bloom`, and turn `bloom` up.",

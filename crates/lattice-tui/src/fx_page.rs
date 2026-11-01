@@ -2,7 +2,7 @@
 //! columns read top to bottom, like the pattern's tracks. Each effect's name is followed by its
 //! settings, a line each with a bar, sends have a line each, and along the bottom are the lanes'
 //! outs. On a track, its macros are a column left of the lanes, each followed by the settings it
-//! turns and how far; a setting a macro turns is marked `~` in its lane, and lit while the cursor
+//! turns and how far; a setting a macro turns is marked with the macro's number in its lane, and lit while the cursor
 //! is on it in the macros' column.
 
 use lattice_core::macros::{self, MACRO_INFO};
@@ -174,7 +174,8 @@ pub fn draw(
                 // While it plays, a setting a step has locked shows the lock's value.
                 let lock = (locks.iter())
                     .find(|l| l.fx == Some(effect as u8) && u32::from(l.param) == info.id);
-                // A macro turning it is marked `~`, lit while the cursor's on it among the macros.
+                // A macro turning it is marked with its number, and lit while the cursor's on it
+                // among the macros.
                 let id = (Some(effect as u8), info.id as u8);
                 let turned = Style::new().fg(theme.visual);
                 let (mark, value, label_style, style) = match lock {
@@ -182,8 +183,8 @@ pub fn draw(
                         let mark = Style::new().fg(theme.accent).add_modifier(Modifier::BOLD);
                         (Span::styled(" ◆", mark), lock.value, mark, mark)
                     }
-                    None if macros::turned(track_macros, id.0, id.1) => (
-                        Span::styled(" ~", turned),
+                    None if let Some(m) = macros::mark(track_macros, id.0, id.1) => (
+                        Span::styled(format!(" {m}"), turned),
                         fx.values[param],
                         name_style(here || pointed == Some(id)),
                         value_style(here),
@@ -242,10 +243,15 @@ pub fn draw(
                 let (label, value, label_style, style) = match lock {
                     Some(lock) => {
                         let mark = Style::new().fg(theme.accent).add_modifier(Modifier::BOLD);
-                        (format!(" ◆{}", m.name), lock.value, mark, mark)
+                        (
+                            format!(" ◆{} {}", index + 1, m.name),
+                            lock.value,
+                            mark,
+                            mark,
+                        )
                     }
                     None => (
-                        format!(" {}", m.name),
+                        format!(" {} {}", index + 1, m.name),
                         m.value,
                         Style::new().fg(colour).add_modifier(Modifier::BOLD),
                         value_style(here),
