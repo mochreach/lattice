@@ -1296,7 +1296,7 @@ impl Editor {
             Action::ToggleMute => return self.run_command("mute"),
             Action::TogglePatternMute => return self.run_command("pattern-mute"),
             Action::LockSetting => {
-                self.message = Some("L locks a setting from the mixer page (gm)".into());
+                self.message = Some("L locks a setting from the mixer (gm) or fx page (gf)".into());
             }
             Action::ToggleSolo => return self.run_command("solo"),
             Action::AddTrack => return self.run_command("track-add"),
