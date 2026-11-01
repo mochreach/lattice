@@ -3,6 +3,7 @@
 //! Everything here is plain data and pure functions: no UI types, no audio types and no
 //! playback state. Playheads and pass counters belong to the sequencer.
 
+pub mod arrangement;
 pub mod device;
 pub mod file;
 pub mod fx;
@@ -11,6 +12,10 @@ pub mod instrument;
 pub mod song;
 pub mod transform;
 
+pub use arrangement::{
+    Arrangement, BEATS_PER_BAR, DEFAULT_MAX_BARS, Entry, Lane, MAX_BARS, MAX_ENTRIES, MAX_PATTERNS,
+    MAX_REPEATS, Pattern, cycle, pattern_name,
+};
 pub use device::{Curve, Device, Kind, ParamInfo};
 pub use file::{FileError, from_ron, to_ron};
 pub use fx::{Bus, Buses, Fx, FxKind, MAX_EFFECTS};

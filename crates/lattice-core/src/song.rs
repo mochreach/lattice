@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::arrangement::Arrangement;
 use crate::fx::{Buses, Fx};
 use crate::group::Group;
 use crate::instrument::Instrument;
@@ -251,16 +252,11 @@ pub struct Grid {
 pub struct Song {
     pub name: String,
     pub bpm: f64,
-    pub grids: Vec<Grid>,
-    /// Arrangement: indices into `grids`, played in order.
-    pub order: Vec<usize>,
+    /// The tracks, with the lanes of the arrangement's current pattern.
+    pub grid: Grid,
+    /// The other patterns' lanes, and the order the patterns play in.
+    #[serde(default)]
+    pub arrangement: Arrangement,
     #[serde(default, skip_serializing_if = "Buses::is_default")]
     pub buses: Buses,
-}
-
-impl Song {
-    /// Where in `grids` the arrangement starts.
-    pub fn first_grid(&self) -> usize {
-        self.order.first().copied().unwrap_or(0)
-    }
 }

@@ -338,6 +338,42 @@ pub const COMMANDS: &[Spec] = &[
         describe: "open a song, discarding unsaved changes",
     },
     Spec {
+        name: "pattern",
+        alias: Some("pat"),
+        params: &[text("NAME", "pattern")],
+        describe: "go to a pattern, by name or number (also ]p [p); while playing, it's cued to follow the one playing",
+    },
+    Spec {
+        name: "pattern-new",
+        alias: Some("pn"),
+        params: &[optional_text("[NAME]", "name")],
+        describe: "add an empty pattern after this one, and go to it",
+    },
+    Spec {
+        name: "pattern-dup",
+        alias: Some("pd"),
+        params: &[optional_text("[NAME]", "name")],
+        describe: "copy this pattern, and go to the copy",
+    },
+    Spec {
+        name: "pattern-name",
+        alias: None,
+        params: &[text("NAME", "name")],
+        describe: "rename this pattern",
+    },
+    Spec {
+        name: "pattern-remove",
+        alias: None,
+        params: &[],
+        describe: "remove this pattern, and its places in the song",
+    },
+    Spec {
+        name: "bars",
+        alias: None,
+        params: &[optional_text("[BARS | auto]", "bars")],
+        describe: "how long this pattern plays, in bars; auto (the default) is once round its loop",
+    },
+    Spec {
         name: "export",
         alias: None,
         params: &[optional_text("[PATH] [BARS]", "path")],
@@ -872,6 +908,21 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         ]),
         "open" if editor.modified() => Err(UNSAVED_OPEN.into()),
         "open" | "open!" => Ok(vec![Effect::Open(command.text(0).into())]),
+        "pattern" => {
+            let index = editor.find_pattern(command.text(0))?;
+            Ok(editor.go_to_pattern(index))
+        }
+        "pattern-new" => editor.new_pattern(command.text(0), false),
+        "pattern-dup" => editor.new_pattern(command.text(0), true),
+        "pattern-name" => {
+            editor.rename_pattern(command.text(0))?;
+            Ok(vec![])
+        }
+        "pattern-remove" => editor.remove_pattern(),
+        "bars" => {
+            editor.set_bars(command.text(0))?;
+            Ok(vec![])
+        }
         "export" => editor.export_song(command.text(0)),
         "export-sel" => editor.export_selection(command.text(0)),
         "help" => {

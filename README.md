@@ -52,6 +52,7 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `gg` `ge` `gh` `gl` | first step, last step, first track, last track |
 | `]b` `[b`, `]m` `[m` | next / previous beat, bar |
 | `]n` `[n` | next / previous note, like `w` `b` |
+| `]p` `[p` | next / previous pattern; while playing, it takes over at the next bar |
 | `v` | select mode: motions extend the selection |
 | `x` | select whole rows across every track; again to extend a row |
 | `%` | select everything |
@@ -163,7 +164,11 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:choke N` | choke group (1–8, 0 for none) for every track the selections reach: within a track group, a hit cuts off the other tracks with the same number, as a closed hat stops an open one |
 | `:mute`, `:solo` | toggle mute or solo for every track the selections reach (also `tm`, `ts`) |
 | `:w [PATH]`, `:wq [PATH]` | save the song (to a `.lattice` file), save and quit |
-| `:export [PATH] [BARS]` | render the song to a 24-bit WAV, faster than real time, while you carry on; by default once round its loop (until every track's pattern and rules line up again, up to 64 bars), then the tail until it's quiet. With no path, it goes beside the song's file |
+| `:pattern NAME` (`:pat`) | go to a pattern, by name or number; while playing, it's cued and takes over at the next bar (the header shows `pat A → B`) |
+| `:pattern-new [NAME]` (`:pn`), `:pattern-dup [NAME]` (`:pd`) | add an empty pattern after this one, or a copy of this one, and go to it. Named A, B, C… unless named |
+| `:pattern-name NAME`, `:pattern-remove` | rename this pattern; remove it, and its places in the song |
+| `:bars [N \| auto]` | how long this pattern plays in the song: N bars, or `auto` (the default), once round its loop: until every track's steps and rules line up again, up to 64 bars |
+| `:export [PATH] [BARS]` | render the song to a 24-bit WAV, faster than real time, while you carry on: each pattern in the song's order, for its length, then the tail until it's quiet; or with BARS, this pattern for that many bars. With no path, it goes beside the song's file |
 | `:export-sel [PATH]` | render just the selection (its steps, on its tracks, heard even if muted) once, with its tail, for a sample |
 | `:o PATH`, `:o! PATH` | open a song, or start a new one at PATH; `!` discards unsaved changes |
 | `:q`, `:q!` | quit, refusing if there are unsaved changes; `!` quits anyway |

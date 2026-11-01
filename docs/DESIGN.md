@@ -579,7 +579,9 @@ device shown) is the editor's state, like the pattern's, and isn't saved.
 
 Songs are saved as RON in `.lattice` files, written by `lattice_core::to_ron` and read by
 `from_ron`, which also rejects songs the editor and engine can't handle (no tracks, lengths outside
-1–256, and so on). A file holds the `Song`: its tempo, grids and arrangement. Tracks are written
+1–256, and so on). A file holds the `Song`: its tempo, its grid of tracks, and its arrangement:
+the patterns and the order they play in. The tracks carry the steps of the pattern being edited,
+and each other pattern has a lane per track, written on one line each. Tracks are written
 sparsely, as a length and a map from step index to the steps that aren't empty, and fields at
 their defaults (velocity 100, length 1, a rule that always applies) are left out, so a file reads
 much like the pattern does:
@@ -589,8 +591,7 @@ much like the pattern does:
 (
     name: "demo",
     bpm: 120.0,
-    grids: [
-        (
+    grid: (
             name: "demo",
             steps_per_beat: 4,
             tracks: [
@@ -607,11 +608,24 @@ much like the pattern does:
                     ],
                 ),
             ],
-        ),
-    ],
-    order: [
-        0,
-    ],
+    ),
+    arrangement: (
+        patterns: [
+            (name: "A"),
+            (
+                name: "B",
+                bars: 2,
+                lanes: [
+                    (length: 6, steps: {2: (note: (pitch: 72))}),
+                ],
+            ),
+        ],
+        current: 0,
+        entries: [
+            (pattern: 0, repeats: 4),
+            (pattern: 1),
+        ],
+    ),
 )
 ```
 
@@ -622,17 +636,39 @@ modified whenever it differs, so undoing back to the saved state clears the `[+]
 gives every track a new id and returns `Effect::TracksChanged`, so the frontend rebuilds the
 engine's tracks, however many the song has (up to `MAX_TRACKS`).
 
-Exporting works the same way. `:export` and `:export-sel` return `Effect::Export` with the grid
-to render and for how many steps: the song's whole loop (the least common multiple of each
-track's length times the passes its `every` and `drift` rules take to come round, up to 64
-bars), or the selection cut out as a grid of its own, with the other tracks muted. The frontend
-renders it on a thread of its own, with a fresh engine and mixer, so playing carries on, then
-stops the sequencer and renders on until a second of silence (at most ten seconds), trims that
-and writes 24-bit PCM at the audio device's rate.
+Exporting works the same way. `:export` and `:export-sel` return `Effect::Export` with the
+tracks to render and the parts to play on them, each a lane per track and a number of steps: the
+song's entries in order, this pattern for some bars, or the selection cut out as a part of its
+own, with the other tracks muted. The frontend renders it on a thread of its own, with a fresh
+engine and mixer, so playing carries on, cueing each part while the one before plays and then a
+stop. It renders on until a second of silence (at most ten seconds), trims that and writes 24-bit
+PCM at the audio device's rate.
+
+## Patterns and the arrangement
+
+A song has one set of tracks (instruments, mixer, effects, groups, chokes) and any number of
+patterns, each with its own steps and rules for every track: a lane per track. Sharing the
+tracks keeps one mixer, and lets delays, reverbs and held notes ring on across a change of
+pattern; a different sound for a section is a track left empty in the other patterns.
+
+The pattern being edited keeps its lanes in the grid's tracks, so everything that works on tracks
+works on it unchanged; `Arrangement::select` swaps lanes in and out. Adding, removing and moving a
+track does the same to every other pattern's lanes. Undo snapshots the arrangement with the grid,
+so undoing a change in another pattern goes back to it.
+
+The pattern being edited is always the one playing. A pattern's length is `:bars`, or by default
+once round its loop: the least common multiple of each track's length times the passes its
+`every` and `drift` rules take to come round, up to 64 bars. The frontend's `Sequencer` sends the
+engine that length and a cue for when it ends: loop, change to a pattern (its lanes, built off the
+audio thread), or stop. The editor decides which, through `Editor::next`: the pattern picked by
+hand (which takes over at the next bar rather than waiting out a long loop), or the next entry in
+the song. At the change the engine swaps the lanes in, starts every track from its first step and
+pass, and counts it in `Status`; the frontend then tells the editor with `Editor::boundary`, which
+goes to the new pattern. A `SetTrack` carries the number of changes the editor had seen, so an
+edit made in the frame before the editor caught up is dropped by the engine rather than played in
+the wrong pattern (the editor keeps it, in the pattern it was made in).
 
 Not in files yet:
-- **More than one grid.** Files can hold several, but only the first in the arrangement is
-  edited and saved back.
 - **Changing steps per beat while running.** The engine's clock is set up with it, so `:o` refuses a
   song with a different value; opening it from the command line works.
 

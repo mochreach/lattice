@@ -18,18 +18,20 @@ mod keymap;
 mod mixer;
 mod pads;
 mod pattern;
+mod patterns;
 mod record;
 
 pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
-pub use export::{Export, MAX_BARS, cycle, file_name};
+pub use export::{Export, Part, file_name};
 pub use keymap::{Action, Binding, Key, Keymap, Menu, NoteLayout};
 pub use mixer::{Field, MixerCursor, PARAM_COLUMNS, Page, Row, Shown, Strip};
 pub use pads::{HARD, MEDIUM, PadMode, SCALES, SOFT, Scale};
+pub use patterns::Next;
 pub use record::Transport;
 
 use std::path::{Path, PathBuf};
 
-use lattice_core::{Buses, Grid, MAX_STEPS, MAX_TRACKS, Note, Song, Step, Track};
+use lattice_core::{Arrangement, Buses, Grid, MAX_STEPS, MAX_TRACKS, Note, Song, Step, Track};
 
 use crate::pattern::Pattern;
 use crate::record::Held;
@@ -279,6 +281,7 @@ pub struct Infobox {
 #[derive(Debug, Clone)]
 struct Snapshot {
     grid: Grid,
+    arrangement: Arrangement,
     buses: Buses,
     ids: Vec<TrackId>,
     selections: Vec<Selection>,
@@ -292,13 +295,21 @@ type Clip = Vec<Vec<Step>>;
 #[derive(Debug, Clone)]
 struct Saved {
     grid: Grid,
+    arrangement: Arrangement,
     buses: Buses,
     bpm: f64,
 }
 
 #[derive(Debug, Clone)]
 pub struct Editor {
+    /// The tracks, with the lanes of the pattern being edited.
     pub grid: Grid,
+    /// The patterns and the order they play in.
+    pub arrangement: Arrangement,
+    /// The pattern to change to when the playing one ends, if one's been picked while playing.
+    pub cue: Option<usize>,
+    /// While the song plays from the arrangement: which entry, and which repeat of it.
+    pub song_position: Option<(usize, u32)>,
     /// The send and master buses.
     pub buses: Buses,
     pub bpm: f64,
@@ -390,10 +401,14 @@ impl Editor {
             next_id: tracks,
             saved: Saved {
                 grid: grid.clone(),
+                arrangement: Arrangement::default(),
                 buses: Buses::default(),
                 bpm,
             },
             grid,
+            arrangement: Arrangement::default(),
+            cue: None,
+            song_position: None,
             buses: Buses::default(),
             bpm,
             path: None,
@@ -447,7 +462,10 @@ impl Editor {
     /// Whether the song differs from when it was last saved or opened, tracks added, removed
     /// and moved included. Undoing back to that point counts as unmodified.
     pub fn modified(&self) -> bool {
-        self.grid != self.saved.grid || self.buses != self.saved.buses || self.bpm != self.saved.bpm
+        self.grid != self.saved.grid
+            || self.arrangement != self.saved.arrangement
+            || self.buses != self.saved.buses
+            || self.bpm != self.saved.bpm
     }
 
     /// The song to save, named after its file.
@@ -460,8 +478,8 @@ impl Editor {
         Song {
             name,
             bpm: self.bpm,
-            grids: vec![self.grid.clone()],
-            order: vec![0],
+            grid: self.grid.clone(),
+            arrangement: self.arrangement.clone(),
             buses: self.buses.clone(),
         }
     }
@@ -472,36 +490,32 @@ impl Editor {
         self.path = Some(path);
         self.saved = Saved {
             grid: self.grid.clone(),
+            arrangement: self.arrangement.clone(),
             buses: self.buses.clone(),
             bpm: self.bpm,
         };
     }
 
     /// Replaces the song with one read from `path`, starting afresh: its tracks get new ids, there's
-    /// one selection at the top left, and the undo history is cleared. Only the first grid in the
-    /// song's order is edited so far. Returns the effects that send the new song to the engine.
+    /// one selection at the top left, and the undo history is cleared. Returns the effects that
+    /// send the new song to the engine.
     pub fn load(&mut self, song: Song, path: PathBuf) -> Vec<Effect> {
-        let first = song.first_grid();
-        let others = song.grids.len().saturating_sub(1);
-        let Some(grid) = song.grids.into_iter().nth(first) else {
-            self.message = Some("the song has no grids".into());
-            return vec![];
-        };
+        let grid = song.grid;
         assert!(!grid.tracks.is_empty(), "need at least one track");
-        self.message = Some(if others > 0 {
-            format!("opened {}; only its first grid so far", path.display())
-        } else {
-            format!("opened {}", path.display())
-        });
+        self.message = Some(format!("opened {}", path.display()));
         let tracks = grid.tracks.len() as u32;
         self.ids = (self.next_id..self.next_id + tracks).map(TrackId).collect();
         self.next_id += tracks;
         self.saved = Saved {
             grid: grid.clone(),
+            arrangement: song.arrangement.clone(),
             buses: song.buses.clone(),
             bpm: song.bpm,
         };
         self.grid = grid;
+        self.arrangement = song.arrangement;
+        self.cue = None;
+        self.song_position = None;
         self.buses = song.buses;
         self.bpm = song.bpm;
         self.path = Some(path);
@@ -1114,6 +1128,8 @@ impl Editor {
                 self.octave = self.octave.saturating_sub(1);
                 self.message = Some(format!("octave {}", self.octave));
             }
+            Action::NextPattern => return self.step_pattern(n as isize),
+            Action::PrevPattern => return self.step_pattern(-(n as isize)),
             Action::ToggleMute => return self.run_command("mute"),
             Action::ToggleSolo => return self.run_command("solo"),
             Action::AddTrack => return self.run_command("track-add"),
@@ -1567,6 +1583,7 @@ impl Editor {
 
     /// Adds a track at `index`, with a new id.
     pub(crate) fn insert_track(&mut self, index: usize, track: Track) {
+        self.arrangement.insert_track(index, track.steps.len());
         self.grid.insert_track(index, track);
         self.ids.insert(index, TrackId(self.next_id));
         self.next_id += 1;
@@ -1574,11 +1591,13 @@ impl Editor {
 
     pub(crate) fn remove_track(&mut self, index: usize) {
         self.grid.remove_track(index);
+        self.arrangement.remove_track(index);
         self.ids.remove(index);
     }
 
     pub(crate) fn move_track(&mut self, from: usize, to: usize) {
         self.grid.move_track(from, to);
+        self.arrangement.move_track(from, to);
         let id = self.ids.remove(from);
         self.ids.insert(to, id);
     }
@@ -1600,6 +1619,7 @@ impl Editor {
         self.take = None;
         self.undo.push(Snapshot {
             grid: self.grid.clone(),
+            arrangement: self.arrangement.clone(),
             buses: self.buses.clone(),
             ids: self.ids.clone(),
             selections: self.selections.clone(),
@@ -1633,6 +1653,7 @@ impl Editor {
         self.held.clear();
         to.push(Snapshot {
             grid: std::mem::replace(&mut self.grid, snapshot.grid),
+            arrangement: std::mem::replace(&mut self.arrangement, snapshot.arrangement),
             buses: std::mem::replace(&mut self.buses, snapshot.buses),
             ids: std::mem::replace(&mut self.ids, snapshot.ids),
             selections: std::mem::replace(&mut self.selections, snapshot.selections),
@@ -2191,7 +2212,7 @@ mod tests {
         let before = e.track_ids().to_vec();
         let mut song = editor().song();
         song.bpm = 140.0;
-        song.grids[0].tracks.truncate(1);
+        song.grid.tracks.truncate(1);
         let effects = e.load(song, "new.lattice".into());
         assert_eq!(
             effects,

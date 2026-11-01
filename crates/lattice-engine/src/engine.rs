@@ -13,7 +13,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
-use lattice_core::{Grid, MAX_STEPS, Mix, Step, Track, db_to_gain, realise_into};
+use lattice_core::{Grid, Lane, MAX_STEPS, Mix, Step, Track, db_to_gain, realise_into};
 pub use lattice_core::{MAX_EFFECTS, MAX_GROUPS, MAX_TRACKS};
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
 
@@ -51,11 +51,18 @@ pub enum Command {
     SetBpm(f64),
     SetClick(bool),
     /// Replace a track's pattern; heard from the current step on. The old pattern is sent back
-    /// to be freed off the audio thread. Tracks longer than `MAX_STEPS` are ignored.
+    /// to be freed off the audio thread. Tracks longer than `MAX_STEPS` are ignored, and so is a
+    /// track sent before a pattern change the sender hadn't seen yet: `swaps` is
+    /// [`Status::swaps`] as the sender last saw it.
     SetTrack {
         index: usize,
         track: Box<Track>,
+        swaps: u64,
     },
+    /// How many steps the playing pattern lasts before the next starts; 0 for for ever.
+    SetLength(u64),
+    /// What happens when the playing pattern ends. Kept while stopped, for the next play.
+    Cue(Cue),
     /// Insert a track and its instrument at `index` (or at the end, if past it), moving later
     /// tracks along. Joins in step with the others. Build the player off the audio thread with
     /// [`TrackPlayer::new`]; it's sent straight back if there are already `MAX_TRACKS` tracks.
@@ -291,6 +298,28 @@ impl Strip {
     }
 }
 
+/// What happens when the playing pattern ends. Whichever it is, every track then starts again
+/// from its first step and first pass.
+#[derive(Debug, Default)]
+pub enum Cue {
+    /// It plays again.
+    #[default]
+    Loop,
+    /// Another pattern takes over.
+    Pattern(Box<Section>),
+    /// Playback stops.
+    Stop,
+}
+
+/// A pattern to play: a lane for each track, and how many steps it lasts.
+#[derive(Debug)]
+pub struct Section {
+    pub lanes: Vec<Lane>,
+    pub steps: u64,
+    /// Whether it takes over at the next bar, rather than when the playing pattern ends.
+    pub at_bar: bool,
+}
+
 /// Playback state the audio thread publishes for the UI.
 pub struct Status {
     playing: AtomicBool,
@@ -305,11 +334,17 @@ pub struct Status {
     /// The same for the send and master buses, after their levels.
     bus_peaks: [AtomicU32; 2],
     group_peaks: [AtomicU32; MAX_GROUPS],
+    /// Patterns started since play began, after the first: looped or changed.
+    boundaries: AtomicU64,
+    /// How many of those changed pattern.
+    swaps: AtomicU64,
 }
 
 impl Status {
     fn new() -> Self {
         Self {
+            boundaries: AtomicU64::new(0),
+            swaps: AtomicU64::new(0),
             playing: AtomicBool::new(false),
             count_in: AtomicU32::new(0),
             positions: std::array::from_fn(|_| AtomicU64::new(u64::MAX)),
@@ -327,6 +362,17 @@ impl Status {
     /// there wasn't one.
     pub fn count_in(&self) -> u32 {
         self.count_in.load(Ordering::Relaxed)
+    }
+
+    /// How many times a pattern has ended and another (or the same again) started, since play
+    /// began; 0 when stopped.
+    pub fn boundaries(&self) -> u64 {
+        self.boundaries.load(Ordering::Relaxed)
+    }
+
+    /// How many of [`Status::boundaries`] changed to a cued pattern.
+    pub fn swaps(&self) -> u64 {
+        self.swaps.load(Ordering::Relaxed)
     }
 
     /// The step `track` is playing, and which pass through the track it's on.
@@ -367,6 +413,8 @@ impl Status {
     fn set_stopped(&self) {
         self.playing.store(false, Ordering::Relaxed);
         self.count_in.store(0, Ordering::Relaxed);
+        self.boundaries.store(0, Ordering::Relaxed);
+        self.swaps.store(0, Ordering::Relaxed);
         for p in &self.positions {
             p.store(u64::MAX, Ordering::Relaxed);
         }
@@ -381,6 +429,7 @@ enum Garbage {
     Player(Box<TrackPlayer>),
     Effect(Box<EffectSlot>),
     Instrument(Box<dyn Processor>),
+    Section(Box<Section>),
 }
 
 /// The UI thread's end of the engine.
@@ -483,6 +532,13 @@ pub struct Engine {
     step_index: u64,
     /// Count-in steps still to play before step 0.
     count_in: u64,
+    /// How long the playing pattern lasts, in steps (0 for for ever), how far into it playback
+    /// is, and what happens when it ends.
+    pattern_len: u64,
+    pattern_step: u64,
+    cue: Cue,
+    /// Pattern changes since play began, as [`Status::swaps`].
+    swaps: u64,
     /// Boxed, so players arrive and leave without being moved out of their boxes, which would
     /// free the boxes here. Room for `MAX_TRACKS`.
     #[allow(clippy::vec_box)]
@@ -548,6 +604,10 @@ impl Engine {
             steps_per_beat: u64::from(grid.steps_per_beat.max(1)),
             step_index: 0,
             count_in: 0,
+            pattern_len: 0,
+            pattern_step: 0,
+            cue: Cue::Loop,
+            swaps: 0,
             tracks,
             send_effects: effects(),
             master_effects: effects(),
@@ -601,6 +661,8 @@ impl Engine {
         }
         self.step_index = 0;
         self.count_in = 0;
+        self.pattern_step = 0;
+        self.swaps = 0;
         self.playing = false;
         self.status.set_stopped();
     }
@@ -624,9 +686,14 @@ impl Engine {
                 Command::Stop => self.stop(),
                 Command::SetBpm(bpm) => self.clock.set_bpm(bpm),
                 Command::SetClick(on) => self.click_enabled = on,
-                Command::SetTrack { index, mut track } => {
+                Command::SetTrack {
+                    index,
+                    mut track,
+                    swaps,
+                } => {
                     if let Some(t) = self.tracks.get_mut(index)
                         && track.steps.len() <= MAX_STEPS
+                        && swaps == self.swaps
                     {
                         std::mem::swap(&mut t.track, &mut track);
                         if t.playhead >= t.track.steps.len() {
@@ -636,6 +703,12 @@ impl Engine {
                         realise_into(&t.track, t.pass, &mut t.steps);
                     }
                     self.discard(Garbage::Track(track));
+                }
+                Command::SetLength(steps) => self.pattern_len = steps,
+                Command::Cue(cue) => {
+                    if let Cue::Pattern(old) = std::mem::replace(&mut self.cue, cue) {
+                        self.discard(Garbage::Section(old));
+                    }
                 }
                 Command::InsertTrack { index, player } => self.insert_track(index, player),
                 Command::RemoveTrack(index) => {
@@ -972,6 +1045,17 @@ impl Engine {
             return;
         }
         self.status.count_in.store(0, Ordering::Relaxed);
+        let bar = BEATS_PER_BAR * self.steps_per_beat;
+        let at_bar = matches!(&self.cue, Cue::Pattern(s) if s.at_bar)
+            && self.pattern_step > 0
+            && self.pattern_step.is_multiple_of(bar);
+        if at_bar || self.pattern_len > 0 && self.pattern_step >= self.pattern_len {
+            self.next_pattern();
+            if !self.playing {
+                return;
+            }
+        }
+        self.pattern_step += 1;
         if self.click_enabled && self.step_index.is_multiple_of(self.steps_per_beat) {
             let beat = self.step_index / self.steps_per_beat;
             let pitch = if beat.is_multiple_of(BEATS_PER_BAR) {
@@ -1030,6 +1114,43 @@ impl Engine {
                 self.choke_others(index, offset, &hits);
             }
         }
+    }
+
+    /// The playing pattern has ended: carry out the cue, and start every track from the top.
+    fn next_pattern(&mut self) {
+        match std::mem::take(&mut self.cue) {
+            Cue::Stop => {
+                self.stop();
+                return;
+            }
+            Cue::Loop => {}
+            Cue::Pattern(mut section) => {
+                let fits = section.lanes.len() == self.tracks.len()
+                    && section
+                        .lanes
+                        .iter()
+                        .all(|l| (1..=MAX_STEPS).contains(&l.steps.len()));
+                if fits {
+                    for (t, lane) in self.tracks.iter_mut().zip(&mut section.lanes) {
+                        std::mem::swap(&mut t.track.steps, &mut lane.steps);
+                        std::mem::swap(&mut t.track.rules, &mut lane.rules);
+                    }
+                    self.pattern_len = section.steps;
+                    self.swaps += 1;
+                    self.status.swaps.store(self.swaps, Ordering::Relaxed);
+                }
+                // Holding the old lanes now, to be freed off the audio thread.
+                self.discard(Garbage::Section(section));
+            }
+        }
+        for t in &mut self.tracks {
+            t.playhead = 0;
+            t.pass = 0;
+        }
+        self.pattern_step = 0;
+        // Bars count from the top of each pattern, for the click's accent.
+        self.step_index = 0;
+        self.status.boundaries.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Chokes every other track in `index`'s group with its choke number, except those that hit
@@ -1194,6 +1315,75 @@ mod tests {
     }
 
     #[test]
+    fn patterns_change_on_the_boundary_as_cued() {
+        let (mut engine, mut handle) = with_synth(48_000.0);
+        let step = 48_000.0 * 60.0 / (133.0 * 4.0);
+        let lane = Lane {
+            steps: vec![Step::note(50); 3],
+            rules: vec![],
+        };
+        handle.send(Command::SetLength(4));
+        handle.send(Command::Cue(Cue::Pattern(Box::new(Section {
+            lanes: vec![lane],
+            steps: 6,
+            at_bar: false,
+        }))));
+        render(&mut engine, 256, (step * 3.5) as usize);
+        assert_eq!(handle.status().position(0), Some((3, 0)));
+        assert_eq!(handle.status().boundaries(), 0);
+        // Into the fifth step: the new pattern, from its top.
+        render(&mut engine, 256, step as usize);
+        assert_eq!(handle.status().position(0), Some((0, 0)));
+        assert_eq!(
+            (handle.status().boundaries(), handle.status().swaps()),
+            (1, 1)
+        );
+        assert_eq!(engine.tracks[0].track.steps.len(), 3);
+        assert!(engine.tracks[0].track.rules.is_empty());
+
+        // A track sent before the change was seen is ignored; after, it's heard.
+        let stale = |swaps| Command::SetTrack {
+            index: 0,
+            track: Box::new(lead()),
+            swaps,
+        };
+        handle.send(stale(0));
+        render(&mut engine, 256, 64);
+        assert_eq!(engine.tracks[0].track.steps.len(), 3);
+        handle.send(stale(1));
+        render(&mut engine, 256, 64);
+        assert_eq!(engine.tracks[0].track.steps.len(), 7);
+
+        // Six steps on, it stops, as cued.
+        handle.send(Command::Cue(Cue::Stop));
+        render(&mut engine, 256, (step * 5.0) as usize);
+        assert!(handle.status().playing());
+        render(&mut engine, 256, step as usize);
+        assert!(!handle.status().playing());
+        assert_eq!(handle.status().boundaries(), 0);
+    }
+
+    #[test]
+    fn a_pattern_picked_by_hand_takes_over_at_the_next_bar() {
+        let (mut engine, mut handle) = with_synth(48_000.0);
+        let step = 48_000.0 * 60.0 / (133.0 * 4.0);
+        handle.send(Command::SetLength(64));
+        handle.send(Command::Cue(Cue::Pattern(Box::new(Section {
+            lanes: vec![Lane {
+                steps: vec![Step::note(50); 3],
+                rules: vec![],
+            }],
+            steps: 64,
+            at_bar: true,
+        }))));
+        render(&mut engine, 256, (step * 15.5) as usize);
+        assert_eq!(handle.status().swaps(), 0);
+        render(&mut engine, 256, step as usize);
+        assert_eq!(handle.status().swaps(), 1);
+        assert_eq!(handle.status().position(0), Some((0, 0)));
+    }
+
+    #[test]
     fn clicks_land_on_exact_samples() {
         // 137 bpm at 44.1 kHz: 19,313.868... samples per beat.
         let audio = render(&mut click_only(44_100.0, 137.0), 441, 100_000);
@@ -1263,6 +1453,7 @@ mod tests {
         handle.send(Command::SetTrack {
             index: 0,
             track: Box::new(silent),
+            swaps: 0,
         });
         let audio = render(&mut engine, 256, 48_000);
         assert!(audio.iter().all(|&x| x == 0.0));
@@ -1423,6 +1614,7 @@ mod tests {
         handle.send(Command::SetTrack {
             index,
             track: Box::new(Track { mix, ..lead() }),
+            swaps: 0,
         });
     }
 

@@ -2,10 +2,10 @@
 
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
 use lattice_core::instrument::{kick, string};
-use lattice_core::{Condition, Grid, InstKind, Instrument, Rule, Step, Track, Transform};
+use lattice_core::{Condition, Grid, InstKind, Instrument, Lane, Rule, Step, Track, Transform};
 use lattice_engine::{
-    AdsrParams, Chain, Command, Comp, Delay, Drive, EffectSlot, Engine, Patch, Processor, Synth,
-    Target, TrackPlayer, Wave, delay,
+    AdsrParams, Chain, Command, Comp, Cue, Delay, Drive, EffectSlot, Engine, Patch, Processor,
+    Section, Synth, Target, TrackPlayer, Wave, delay,
 };
 
 #[global_allocator]
@@ -100,7 +100,20 @@ fn rendering_never_allocates() {
     handle.send(Command::SetTrack {
         index: 0,
         track: replacement,
+        swaps: 0,
     });
+    // Another pattern to change to, with a rule to realise.
+    let mut section = Some(Box::new(Section {
+        lanes: vec![Lane {
+            steps: vec![Step::note(48); 5],
+            rules: vec![Rule {
+                transform: Transform::Reverse,
+                when: Condition::Always,
+            }],
+        }],
+        steps: 16,
+        at_bar: false,
+    }));
     let mut left = vec![0.0; 256];
     let mut right = vec![0.0; 256];
 
@@ -229,11 +242,20 @@ fn rendering_never_allocates() {
                         index: 0,
                     });
                 }
+                850 => {
+                    handle.send(Command::SetLength(16));
+                    handle.send(Command::Cue(Cue::Pattern(section.take().unwrap())));
+                }
                 1_000 => {
+                    // After the change to the other pattern.
                     handle.send(Command::SetTrack {
                         index: 0,
                         track: muted.take().unwrap(),
+                        swaps: 1,
                     });
+                }
+                1_100 => {
+                    handle.send(Command::Cue(Cue::Stop));
                 }
                 _ => {}
             }

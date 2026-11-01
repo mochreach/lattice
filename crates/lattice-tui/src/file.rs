@@ -39,8 +39,8 @@ fn new_song() -> Song {
     Song {
         name: "new".into(),
         bpm: demo::BPM,
-        grids: vec![demo::blank()],
-        order: vec![0],
+        grid: demo::blank(),
+        arrangement: Default::default(),
         buses: demo::buses(),
     }
 }
@@ -48,7 +48,7 @@ fn new_song() -> Song {
 /// Checks the running engine can play `song`: it can't change steps per beat yet. Track counts
 /// are checked as the song is read.
 fn check(song: &Song, steps_per_beat: Option<u32>) -> Result<()> {
-    let grid = &song.grids[song.first_grid()];
+    let grid = &song.grid;
     if let Some(spb) = steps_per_beat
         && spb != grid.steps_per_beat
     {

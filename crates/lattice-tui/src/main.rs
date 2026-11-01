@@ -7,6 +7,7 @@ mod key_log;
 mod keys;
 mod mixer;
 mod mixer_page;
+mod sequencer;
 mod splash;
 mod theme;
 mod tracks;
@@ -27,6 +28,7 @@ use ratatui::crossterm::{execute, terminal};
 
 use crate::export::Exports;
 use crate::mixer::Mixer;
+use crate::sequencer::Sequencer;
 use crate::splash::Splash;
 use crate::theme::Theme;
 use crate::tracks::Tracks;
@@ -125,9 +127,11 @@ fn run(
 ) -> Result<()> {
     let mut view = ui::ViewState::default();
     let mut playhead = Playhead::default();
+    let mut sequencer = Sequencer::default();
     loop {
         handle.collect_garbage();
         exports.poll(editor);
+        sequencer.sync(editor, handle);
         // Watched every frame, so it sees each step start within a frame of it.
         editor.set_transport(playhead.transport(handle.status(), editor, Instant::now()));
         let now = Instant::now();
@@ -169,7 +173,7 @@ fn run(
                     }
                 };
                 for effect in effects {
-                    match apply(effect, editor, tracks, mixer, exports, handle) {
+                    match apply(effect, editor, tracks, mixer, exports, &sequencer, handle) {
                         Flow::Next => {}
                         Flow::Stop => break,
                         Flow::Quit => return Ok(()),
@@ -228,6 +232,7 @@ fn apply(
     tracks: &mut Tracks,
     mixer: &mut Mixer,
     exports: &mut Exports,
+    sequencer: &Sequencer,
     handle: &mut Handle,
 ) -> Flow {
     let command = match effect {
@@ -241,6 +246,7 @@ fn apply(
         Effect::TrackChanged(index) => Command::SetTrack {
             index,
             track: Box::new(editor.grid.tracks[index].clone()),
+            swaps: sequencer.swaps(),
         },
         Effect::TogglePlay if handle.status().playing() => Command::Stop,
         // A count-in only when recording, to play along from the first beat.
@@ -286,7 +292,7 @@ fn apply(
                 }
             };
         }
-        Effect::Open(path) => return open(path, editor, tracks, mixer, exports, handle),
+        Effect::Open(path) => return open(path, editor, tracks, mixer, exports, sequencer, handle),
         Effect::Export(export) => {
             exports.start(*export, editor);
             return Flow::Next;
@@ -306,6 +312,7 @@ fn open(
     tracks: &mut Tracks,
     mixer: &mut Mixer,
     exports: &mut Exports,
+    sequencer: &Sequencer,
     handle: &mut Handle,
 ) -> Flow {
     let (song, new) = match file::open(&path, Some(editor.grid.steps_per_beat)) {
@@ -317,7 +324,7 @@ fn open(
     };
     let message = new.then(|| format!("{} (new file)", path.display()));
     for effect in editor.load(song, path) {
-        apply(effect, editor, tracks, mixer, exports, handle);
+        apply(effect, editor, tracks, mixer, exports, sequencer, handle);
     }
     if message.is_some() {
         editor.message = message;

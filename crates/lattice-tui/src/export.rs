@@ -8,14 +8,14 @@ use std::sync::mpsc::{self, Receiver};
 
 use anyhow::{Context, Result};
 use lattice_core::Buses;
-use lattice_editor::{Editor, Export, file_name};
-use lattice_engine::{Command, Engine, Handle};
+use lattice_editor::{Editor, Export, Part, file_name};
+use lattice_engine::{Command, Cue, Engine, Handle, Section};
 
 use crate::mixer::Mixer;
 use crate::tracks::Tracks;
 
-/// Samples rendered at a time.
-const BLOCK: usize = 1024;
+/// Samples rendered at a time: well under a step, so each part is cued in time.
+const BLOCK: usize = 256;
 /// Below this, the tail is silent: -80 dB.
 const SILENT: f32 = 1e-4;
 /// The tail ends once it's been silent this long, or at the most after `MAX_TAIL`, in seconds.
@@ -72,10 +72,17 @@ fn start(export: Export, buses: Buses, bpm: f64, sample_rate: f32) -> Receiver<S
     rx
 }
 
-/// Plays `export.grid` from the top for its steps through the song's mixer, then lets it ring
-/// out until it's quiet. Returns interleaved stereo.
+/// Plays `export.grid`'s tracks through each part in turn, from the top, through the song's
+/// mixer, then lets it ring out until it's quiet. Returns interleaved stereo.
 pub fn render(export: &Export, buses: Buses, bpm: f64, sample_rate: f32) -> Result<Vec<f32>> {
-    let editor = Editor::new(export.grid.clone(), bpm).with_buses(buses);
+    let mut grid = export.grid.clone();
+    let mut parts = export.parts.iter();
+    let first = parts.next().context("nothing to export")?;
+    for (track, lane) in grid.tracks.iter_mut().zip(&first.lanes) {
+        track.steps = lane.steps.clone();
+        track.rules = lane.rules.clone();
+    }
+    let editor = Editor::new(grid, bpm).with_buses(buses);
     let instruments = Tracks::instruments(&editor.grid, sample_rate);
     let (mut engine, mut handle) = Engine::new(sample_rate, bpm, &editor.grid, instruments);
     let mut left = vec![0.0; BLOCK];
@@ -93,32 +100,51 @@ pub fn render(export: &Export, buses: Buses, bpm: f64, sample_rate: f32) -> Resu
         tries += 1;
         anyhow::ensure!(tries < 1000, "the song's mixer wouldn't load");
     }
-    for command in [Command::SetClick(false), Command::Play { count_in: 0 }] {
+    // Each part is cued while the one before plays, and after the last, playback stops.
+    let cue = |parts: &mut std::slice::Iter<Part>| match parts.next() {
+        Some(part) => Cue::Pattern(Box::new(Section {
+            lanes: part.lanes.clone(),
+            steps: part.steps,
+            at_bar: false,
+        })),
+        None => Cue::Stop,
+    };
+    for command in [
+        Command::SetClick(false),
+        Command::SetLength(first.steps),
+        Command::Cue(cue(&mut parts)),
+        Command::Play { count_in: 0 },
+    ] {
         handle.send(command);
     }
     drain(&mut engine, &mut handle);
 
     let step = 60.0 / (bpm * f64::from(editor.grid.steps_per_beat.max(1)));
-    let length = (export.steps as f64 * step * f64::from(sample_rate)).round() as usize;
+    let length = (export.steps() as f64 * step * f64::from(sample_rate)).round() as usize;
     let mut audio = Vec::with_capacity(2 * length);
-    let mut render = |engine: &mut Engine, frames: usize, audio: &mut Vec<f32>| {
-        let (l, r) = (&mut left[..frames], &mut right[..frames]);
+    let mut render = |engine: &mut Engine, audio: &mut Vec<f32>| {
+        let (l, r) = (&mut left[..], &mut right[..]);
         engine.process(l, r);
         audio.extend(l.iter().zip(&*r).flat_map(|(&l, &r)| [l, r]));
     };
-    while audio.len() < 2 * length {
-        render(&mut engine, BLOCK.min(length - audio.len() / 2), &mut audio);
+    let mut boundaries = 0;
+    while handle.status().playing() {
+        render(&mut engine, &mut audio);
+        if handle.status().boundaries() > boundaries {
+            boundaries += 1;
+            handle.send(Command::Cue(cue(&mut parts)));
+            handle.collect_garbage();
+        }
+        anyhow::ensure!(audio.len() < 4 * length + 2 * BLOCK, "the song didn't end");
     }
 
-    // The next step would start the loop again, so stop there, releasing what's held, and
-    // keep going while delays and reverbs fade.
-    handle.send(Command::Stop);
+    // Then on while delays and reverbs fade.
     let quiet = (QUIET * sample_rate) as usize;
-    let max = 2 * length + 2 * (MAX_TAIL * sample_rate) as usize;
+    let max = audio.len() + 2 * (MAX_TAIL * sample_rate) as usize;
     let mut last_sound = audio.len();
     while audio.len() < max && audio.len() - last_sound < 2 * quiet {
         let from = audio.len();
-        render(&mut engine, BLOCK, &mut audio);
+        render(&mut engine, &mut audio);
         if let Some(i) = audio[from..].iter().rposition(|s| s.abs() > SILENT) {
             last_sound = from + i + 1;
         }
@@ -160,7 +186,7 @@ pub fn write_wav(path: &Path, audio: &[f32], sample_rate: u32) -> Result<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lattice_core::{Grid, Note, Step, Track};
+    use lattice_core::{Grid, Lane, Note, Step, Track};
 
     fn export(steps: u64) -> Export {
         let mut track = Track {
@@ -177,6 +203,13 @@ mod tests {
             velocity: 100,
             length: 1,
         });
+        let part = Part {
+            lanes: vec![Lane {
+                steps: track.steps.clone(),
+                rules: vec![],
+            }],
+            steps,
+        };
         Export {
             path: "x.wav".into(),
             grid: Grid {
@@ -185,7 +218,7 @@ mod tests {
                 tracks: vec![track],
                 groups: vec![],
             },
-            steps,
+            parts: vec![part],
         }
     }
 
@@ -201,6 +234,25 @@ mod tests {
         let after = audio[2 * 4000..].iter().fold(0.0f32, |m, s| m.max(s.abs()));
         let during = audio[..2000].iter().fold(0.0f32, |m, s| m.max(s.abs()));
         assert!(after < during);
+    }
+
+    #[test]
+    fn renders_each_part_in_turn() {
+        let rate = 8000.0;
+        // Silent for four steps, then the note in the second part.
+        let mut x = export(4);
+        let silent = Part {
+            lanes: vec![Lane {
+                steps: vec![Step::default(); 4],
+                rules: vec![],
+            }],
+            steps: 4,
+        };
+        x.parts.insert(0, silent);
+        let audio = render(&x, Buses::default(), 120.0, rate).unwrap();
+        let first = audio.iter().position(|s| s.abs() > 0.0).unwrap() / 2;
+        // The note starts on the step; its attack rises from zero.
+        assert_eq!(first, 4000 + 1);
     }
 
     #[test]

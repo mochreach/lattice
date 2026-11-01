@@ -80,6 +80,8 @@ pub enum Action {
     NextBeat,
     PrevBeat,
     NextBar,
+    NextPattern,
+    PrevPattern,
     PrevBar,
     NextNote,
     PrevNote,
@@ -181,6 +183,8 @@ impl Action {
             Action::NextBeat => "next beat",
             Action::PrevBeat => "previous beat",
             Action::NextBar => "next bar",
+            Action::NextPattern => "next pattern",
+            Action::PrevPattern => "previous pattern",
             Action::PrevBar => "previous bar",
             Action::NextNote => "next note",
             Action::PrevNote => "previous note",
@@ -412,6 +416,7 @@ impl Default for Keymap {
                 (Char('b'), NextBeat),
                 (Char('m'), NextBar),
                 (Char('n'), NextNote),
+                (Char('p'), NextPattern),
             ],
         };
         let previous = Menu {
@@ -420,6 +425,7 @@ impl Default for Keymap {
                 (Char('b'), PrevBeat),
                 (Char('m'), PrevBar),
                 (Char('n'), PrevNote),
+                (Char('p'), PrevPattern),
             ],
         };
 

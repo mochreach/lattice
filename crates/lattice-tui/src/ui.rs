@@ -226,6 +226,24 @@ fn draw_infobox(frame: &mut Frame, area: Rect, infobox: &Infobox, theme: &Theme)
     );
 }
 
+/// The pattern cued to follow, or where the song is in the arrangement while it plays.
+fn where_in_song(editor: &Editor) -> String {
+    let a = &editor.arrangement;
+    match (editor.song_position, editor.cue) {
+        (Some((entry, repeat)), _) => {
+            let repeats = a.entries[entry].repeats;
+            let times = if repeats > 1 {
+                format!(" {}/{repeats}", repeat + 1)
+            } else {
+                String::new()
+            };
+            format!("{times} · song {}/{}", entry + 1, a.entries.len())
+        }
+        (None, Some(cue)) => format!(" → {}", a.patterns[cue].name),
+        (None, None) => String::new(),
+    }
+}
+
 fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
     let label = |s: &'static str| Span::styled(s, theme.dim);
     let value = |s: String| Span::styled(s, theme.text.add_modifier(Modifier::BOLD));
@@ -282,6 +300,9 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         Span::raw("   "),
         value(file),
         Span::styled(modified, theme.text),
+        label("   pat "),
+        value(editor.pattern_name().into()),
+        Span::styled(where_in_song(editor), theme.text),
         label("   bpm "),
         value(bpm(editor.bpm)),
         label("   oct "),

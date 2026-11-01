@@ -13,8 +13,9 @@ use crate::fx::MAX_EFFECTS;
 use crate::group::MAX_GROUPS;
 use crate::song::{Grid, MAX_CHOKE, MAX_DB, MAX_TRACKS, Song, Track};
 
-/// Nesting below which values go on one line: each step, note and rule fits on its own line.
-const DEPTH_LIMIT: usize = 6;
+/// Nesting below which values go on one line: each step, note and rule of a track fits on its
+/// own line, and each lane of another pattern on one.
+const DEPTH_LIMIT: usize = 5;
 
 #[derive(Debug)]
 pub enum FileError {
@@ -59,15 +60,10 @@ fn check(song: &Song) -> Result<(), String> {
     if !(song.bpm.is_finite() && song.bpm > 0.0) {
         return Err(format!("bpm must be above 0, not {}", song.bpm));
     }
-    if song.grids.is_empty() {
-        return Err("the song has no grids".into());
-    }
-    if let Some(i) = song.order.iter().find(|&&i| i >= song.grids.len()) {
-        return Err(format!("order refers to grid {i}, which doesn't exist"));
-    }
     song.buses.send.check("send")?;
     song.buses.master.check("master")?;
-    song.grids.iter().try_for_each(check_grid)
+    check_grid(&song.grid)?;
+    song.arrangement.check(song.grid.tracks.len())
 }
 
 fn check_grid(grid: &Grid) -> Result<(), String> {
@@ -143,6 +139,7 @@ fn check_track(track: &Track) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::arrangement::{Arrangement, Entry, Lane, Pattern};
     use crate::fx::{self, Bus, Buses, Fx, FxKind};
     use crate::group::Group;
     use crate::instrument::{InstKind, Instrument, kick};
@@ -200,7 +197,7 @@ mod tests {
         Song {
             name: "test".into(),
             bpm: 117.5,
-            grids: vec![Grid {
+            grid: Grid {
                 name: "a".into(),
                 steps_per_beat: 4,
                 tracks: vec![bass, empty],
@@ -208,8 +205,41 @@ mod tests {
                     folded: true,
                     ..Group::new("pair", 0..2)
                 }],
-            }],
-            order: vec![0],
+            },
+            arrangement: Arrangement {
+                patterns: vec![
+                    Pattern {
+                        name: "A".into(),
+                        bars: None,
+                        lanes: vec![],
+                    },
+                    Pattern {
+                        name: "B".into(),
+                        bars: Some(2),
+                        lanes: vec![
+                            Lane {
+                                steps: vec![Step::note(40), Step::default()],
+                                rules: vec![],
+                            },
+                            Lane {
+                                steps: vec![Step::default(); 3],
+                                rules: vec![],
+                            },
+                        ],
+                    },
+                ],
+                current: 0,
+                entries: vec![
+                    Entry {
+                        pattern: 0,
+                        repeats: 2,
+                    },
+                    Entry {
+                        pattern: 1,
+                        repeats: 1,
+                    },
+                ],
+            },
             buses: Buses {
                 send: Bus {
                     level: -2.0,
@@ -241,11 +271,13 @@ mod tests {
         assert!(text.contains("level: -3.5,\n"), "{text}");
         assert!(text.contains("mute: true,\n"), "{text}");
         assert!(text.contains("(kind: Delay),"), "{text}");
-        assert!(text.contains("\"feedback\": 0.7,"), "{text}");
+        assert!(text.contains("params: {\"feedback\": 0.7}"), "{text}");
         assert!(text.contains("kind: Kick,"), "{text}");
         assert!(text.contains("\"punch\": 0.8"), "{text}");
         assert_eq!(text.matches("mix:").count(), 1, "{text}");
-        assert!(text.lines().count() < 80, "{text}");
+        assert!(text.contains("bars: 2,"), "{text}");
+        assert!(text.contains("pattern: 1,\n"), "{text}");
+        assert!(text.lines().count() < 110, "{text}");
     }
 
     #[test]
@@ -254,13 +286,12 @@ mod tests {
         let text = r#"(
             name: "hand",
             bpm: 90,
-            grids: [(name: "a", steps_per_beat: 4, tracks: [
+            grid: (name: "a", steps_per_beat: 4, tracks: [
                 (name: "t", length: 4, steps: {2: (note: (pitch: 60))}),
-            ])],
-            order: [0],
+            ]),
         )"#;
         let song = from_ron(text).unwrap();
-        let steps = &song.grids[0].tracks[0].steps;
+        let steps = &song.grid.tracks[0].steps;
         assert_eq!(steps.len(), 4);
         assert_eq!(steps[2], Step::note(60));
         assert!(steps[0].is_empty());
@@ -269,25 +300,25 @@ mod tests {
     #[test]
     fn rejects_songs_that_cannot_play() {
         let mut bad = song();
-        bad.grids[0].groups[0].len = 3;
+        bad.grid.groups[0].len = 3;
         let err = from_ron(&to_ron(&bad)).unwrap_err().to_string();
         assert!(err.contains("group \"pair\""), "{err}");
 
         let mut bad = song();
-        bad.grids[0].tracks[0].steps.clear();
+        bad.grid.tracks[0].steps.clear();
         let err = from_ron(&to_ron(&bad)).unwrap_err().to_string();
         assert!(err.contains("has 0 steps"), "{err}");
 
         let mut bad = song();
-        bad.grids.clear();
+        bad.arrangement.entries[0].pattern = 3;
         assert!(matches!(
             from_ron(&to_ron(&bad)),
             Err(FileError::Invalid(_))
         ));
 
         let mut bad = song();
-        let track = bad.grids[0].tracks[0].clone();
-        bad.grids[0].tracks.resize(MAX_TRACKS + 1, track);
+        let track = bad.grid.tracks[0].clone();
+        bad.grid.tracks.resize(MAX_TRACKS + 1, track);
         let err = from_ron(&to_ron(&bad)).unwrap_err().to_string();
         assert!(err.contains("17 tracks"), "{err}");
 
