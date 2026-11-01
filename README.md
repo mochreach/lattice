@@ -26,11 +26,16 @@ cargo test
 cargo run --release       # opens the tracker with a demo song; add `-- --no-click` to mute the metronome, `-- --show-keys` to show keys as they're pressed, `-- --no-splash` to skip the opening animation (any key skips it too)
 cargo run --release -- song.lattice   # opens a song, or starts a new one there
 cargo run --release -- --config my.toml   # reads that config in place of the usual one
+cargo run --release -- --tutor            # starts the tutor
 ```
 
 Debug builds abort if the audio callback ever allocates, which catches real-time mistakes early.
 
 ## Keys
+
+New to it? `:tutor` (or `lattice --tutor`) teaches the keys a lesson at a time, on a song of its
+own, as Helix's tutor does. Each lesson moves on once you've done what it asks; `:tutor next`,
+`back` and `end` move through it.
 
 Modelled on [Helix](https://helix-editor.com): select first, then act, so you see what will
 change before it does. There is always a selection, a rectangle of steps across one or more

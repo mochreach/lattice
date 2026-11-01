@@ -5,7 +5,7 @@ use std::time::Instant;
 use lattice_core::{Group, MAX_GROUPS, MAX_TRACKS, Step, Track, realise};
 use lattice_editor::{
     BEATS_PER_BAR, Completion, Cursor, Editor, Infobox, Mode, NoteLayout, PadMode, Page,
-    PromptKind, Selection, View,
+    PromptKind, Selection, TutorView, View,
 };
 use lattice_engine::{Chain, Status};
 use ratatui::Frame;
@@ -84,6 +84,31 @@ pub fn draw(
         Constraint::Length(1),
     ])
     .areas(frame.area());
+    // The tutor's lesson sits under the page.
+    let lesson = editor
+        .tutor_view()
+        .map(|view| tutor_lines(&view, grid.width, theme));
+    let (grid, panel) = match &lesson {
+        Some(lines) => {
+            let height = (lines.len() as u16 + 2).min(grid.height / 2);
+            let [grid, panel] =
+                Layout::vertical([Constraint::Fill(1), Constraint::Length(height)]).areas(grid);
+            (grid, Some(panel))
+        }
+        None => (grid, None),
+    };
+    if let (Some(lines), Some(panel)) = (lesson, panel) {
+        let title = editor.tutor_view().map_or_else(String::new, |v| {
+            format!(" TUTOR {}/{} · {} ", v.number, v.total, v.title)
+        });
+        let block = Block::bordered()
+            .border_style(Style::new().fg(theme.accent))
+            .title(Span::styled(
+                title,
+                Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
+            ));
+        frame.render_widget(Paragraph::new(lines).block(block), panel);
+    }
     frame.render_widget(Paragraph::new(header(editor, status, theme)), top);
     view.update_meters(status);
     match editor.page {
@@ -660,6 +685,32 @@ fn held(steps: &[Step]) -> Vec<bool> {
             held
         })
         .collect()
+}
+
+/// A tutor lesson's paragraphs, wrapped to fit inside its box, with keys and commands (in
+/// `backticks`) picked out.
+fn tutor_lines(view: &TutorView, width: u16, theme: &Theme) -> Vec<Line<'static>> {
+    let room = usize::from(width.saturating_sub(4)).max(20);
+    let code = Style::new().fg(theme.accent).add_modifier(Modifier::BOLD);
+    let mut lines = vec![];
+    for (i, paragraph) in view.text.iter().enumerate() {
+        if i > 0 {
+            lines.push(Line::default());
+        }
+        let mut in_code = false;
+        for row in crate::help_page::wrap(paragraph, room) {
+            let mut spans = vec![Span::raw(" ")];
+            for (k, part) in row.split('`').enumerate() {
+                if k > 0 {
+                    in_code = !in_code;
+                }
+                let style = if in_code { code } else { theme.text };
+                spans.push(Span::styled(part.to_string(), style));
+            }
+            lines.push(Line::from(spans));
+        }
+    }
+    lines
 }
 
 /// Spans followed by the gap between columns.

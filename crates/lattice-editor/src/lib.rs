@@ -23,6 +23,7 @@ mod pattern;
 mod patterns;
 mod record;
 mod song;
+mod tutor;
 
 pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
 pub use export::{Export, Part, file_name};
@@ -32,6 +33,7 @@ pub use mixer::{Field, MixerCursor, PARAM_COLUMNS, Page, Row, Shown, Strip};
 pub use pads::{HARD, MEDIUM, PadMode, SCALES, SOFT, Scale};
 pub use patterns::Next;
 pub use record::Transport;
+pub use tutor::TutorView;
 
 use std::path::{Path, PathBuf};
 
@@ -342,6 +344,8 @@ pub struct Editor {
     locking: Option<locks::Locking>,
     /// The lock last recorded from the mixer, and its track, to nudge on from.
     live_lock: Option<(usize, Lock)>,
+    /// The lesson, while the tutor's running.
+    tutor: Option<tutor::Tutor>,
     /// Octave of the lower piano row in insert mode.
     pub octave: u8,
     /// Steps to move after entering a note.
@@ -442,6 +446,7 @@ impl Editor {
             help: Help::default(),
             locking: None,
             live_lock: None,
+            tutor: None,
             octave: 4,
             auto_step: 1,
             velocity: DEFAULT_VELOCITY,
@@ -495,7 +500,8 @@ impl Editor {
     /// Whether the song differs from when it was last saved or opened, tracks added, removed
     /// and moved included. Undoing back to that point counts as unmodified.
     pub fn modified(&self) -> bool {
-        self.grid != self.saved.grid
+        // The tutor's song is only for practice.
+        !self.tutoring() && self.grid != self.saved.grid
             || self.arrangement != self.saved.arrangement
             || self.buses != self.saved.buses
             || self.bpm != self.saved.bpm
@@ -533,9 +539,26 @@ impl Editor {
     /// one selection at the top left, and the undo history is cleared. Returns the effects that
     /// send the new song to the engine.
     pub fn load(&mut self, song: Song, path: PathBuf) -> Vec<Effect> {
+        let effects = self.replace_song(song, Some(path.clone()));
+        self.message = Some(format!("opened {}", path.display()));
+        self.tutor = None;
+        effects
+    }
+
+    /// Counts the song as it is now as saved.
+    pub(crate) fn mark_saved(&mut self) {
+        self.saved = Saved {
+            grid: self.grid.clone(),
+            arrangement: self.arrangement.clone(),
+            buses: self.buses.clone(),
+            bpm: self.bpm,
+        };
+    }
+
+    /// Replaces the song, as [`Editor::load`] does, from `path` if it came from one.
+    pub(crate) fn replace_song(&mut self, song: Song, path: Option<PathBuf>) -> Vec<Effect> {
         let grid = song.grid;
         assert!(!grid.tracks.is_empty(), "need at least one track");
-        self.message = Some(format!("opened {}", path.display()));
         let tracks = grid.tracks.len() as u32;
         self.ids = (self.next_id..self.next_id + tracks).map(TrackId).collect();
         self.next_id += tracks;
@@ -551,7 +574,7 @@ impl Editor {
         self.song_position = None;
         self.buses = song.buses;
         self.bpm = song.bpm;
-        self.path = Some(path);
+        self.path = path;
         self.selections = vec![Selection::default()];
         self.primary = 0;
         self.mode = Mode::Normal;

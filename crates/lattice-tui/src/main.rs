@@ -75,6 +75,12 @@ fn main() -> Result<()> {
         }
     }
 
+    // `--tutor` starts the tutor, on a song of its own.
+    if args.iter().any(|a| a == "--tutor") {
+        // The engine starts from the editor's song, so nothing needs sending yet.
+        let _ = editor.start_tutor();
+    }
+
     let mut audio = audio::start(&editor.grid, editor.bpm)?;
     let mut tracks = Tracks::new(&editor, audio.sample_rate);
     if let Some(problem) = tracks.take_problem() {
@@ -150,6 +156,12 @@ fn run(
         sequencer.sync(editor, handle);
         // Watched every frame, so it sees each step start within a frame of it.
         editor.set_transport(playhead.transport(handle.status(), editor, Instant::now()));
+        // The tutor checks its lesson as playback starts and stops, and after each key.
+        for effect in editor.tutor_tick() {
+            if let Flow::Quit = apply(effect, editor, tracks, mixer, exports, &sequencer, handle) {
+                return Ok(());
+            }
+        }
         let now = Instant::now();
         if splash.as_ref().is_some_and(|s| s.done(now)) {
             splash = None;

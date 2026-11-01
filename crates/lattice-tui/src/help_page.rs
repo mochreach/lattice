@@ -88,7 +88,7 @@ fn help_rows(line: &HelpLine, width: usize, theme: &Theme) -> Vec<Line<'static>>
 }
 
 /// `text` in rows of at most `width` characters, broken between words where it can be.
-fn wrap(text: &str, width: usize) -> Vec<String> {
+pub fn wrap(text: &str, width: usize) -> Vec<String> {
     let mut rows = vec![];
     let mut row = String::new();
     for word in text.split(' ') {

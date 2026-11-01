@@ -666,6 +666,27 @@ in two columns when the terminal is wide enough. `esc` goes back to the page it 
 that would edit the pattern do nothing there, as it's out of sight, but playing, the command line
 and the `g` pages work.
 
+### The tutor
+
+`:tutor` (or `--tutor`) swaps in a small song of the tutor's own and works through `LESSONS` in
+`tutor.rs`, shown in a box under the page. Each lesson has a `setup` that gets the song and
+cursor ready (and makes sure it isn't already done), a `done` check on the editor's state, run by
+`Editor::tutor_tick` after every key and every frame (so playing and stopping count), and an
+optional `watch` for something that has to happen on the way. Checks look at the result, not the
+keys, so any way of doing it passes. The text names keys as `{action_name}`, filled in from the
+keymap, so rebound keys are taught as bound. While it runs, its song never counts as unsaved.
+
+**Keeping it up to date.** Tests make every change to the keys or commands touch the tutor:
+- every action in `Action::ALL` must be taught by a lesson or listed in `NOT_TAUGHT`, and every
+  command in `COMMANDS` taught or in `COMMANDS_NOT_TAUGHT`, so a new one fails until it's decided
+  where it goes;
+- every action a lesson teaches must appear in its text as `{name}`, and every command as `:name`;
+- every lesson's `solution` keys are played through, in order and on their own, and must pass its
+  check, so a changed key or behaviour that breaks a lesson fails too.
+
+When adding a feature, teach it in the lesson it belongs with (or add one), not `NOT_TAUGHT`,
+unless it's too specialised for a first tour.
+
 ### The config file
 
 `~/.config/lattice/config.toml`, or `--config PATH`, read by the TUI's `config` module with

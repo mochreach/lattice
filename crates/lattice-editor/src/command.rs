@@ -338,6 +338,18 @@ pub const COMMANDS: &[Spec] = &[
         describe: "every key and command (esc to go back)",
     },
     Spec {
+        name: "tutor",
+        alias: None,
+        params: &[optional_text("[next|back|end]", "what to do")],
+        describe: "start the tutor, or move through it",
+    },
+    Spec {
+        name: "tutor!",
+        alias: None,
+        params: &[],
+        describe: "start the tutor, discarding unsaved changes",
+    },
+    Spec {
         name: "write",
         alias: Some("w"),
         params: &[optional_text("[PATH]", "path")],
@@ -959,6 +971,11 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         "export" => editor.export_song(command.text(0)),
         "export-sel" => editor.export_selection(command.text(0)),
+        "tutor" if !command.text(0).is_empty() => editor.tutor_command(command.text(0)),
+        "tutor" if editor.modified() => {
+            Err("unsaved changes: :w to save them, or :tutor! to start anyway".into())
+        }
+        "tutor" | "tutor!" => Ok(editor.start_tutor()),
         "help" => {
             editor.open_help();
             Ok(vec![])
