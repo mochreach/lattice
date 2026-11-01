@@ -839,6 +839,24 @@ device under the cursor (first, after the instrument) and `d` removes the effect
 menu still works on the cursor's track. The mixer cursor (`MixerCursor`: a strip, a `Row` and the
 device shown) is the editor's state, like the pattern's, and isn't saved.
 
+### The command line's suggestions and history
+
+`Editor::completions` suggests for the word being typed (`lattice-editor/src/suggest.rs`): the
+commands while the first word is, then whatever fits the command's next word, from what the
+editor knows (effect and instrument kinds with their settings, the cursor's track's settings and
+values for `:lock`, a choice setting's choices, macros, lanes, patterns, scales, layouts, the
+devices and chains the frontend found) or, for commands that take a file first, the folder the
+path names, filtered by extension. They're matched with the same fuzzy scoring as commands, but
+if any start with what's typed only those are kept, so a first letter narrows the list as
+expected. `tab` replaces the word with each in turn, matching against what was typed before
+cycling began. The TUI draws them above the word.
+
+The history (`Editor::history`, at most `MAX_HISTORY`) is every line entered, moved to the end
+when it's run again. `↑` `↓` (`^p` `^n`) step through the entries that start with what was typed
+when browsing began, skipping the one shown; `↓` past the newest puts that back. The TUI loads it
+at start and writes it at quit, to `history` beside the log; commands sent through `lattice ctl
+cmd` don't go into it, but keys typed through `ctl keys` do, as they're typed.
+
 ### The help page
 
 `:help` swaps in a page of every key and command. It's built each time it's drawn, by

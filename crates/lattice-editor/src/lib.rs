@@ -29,9 +29,10 @@ mod patterns;
 mod rearrange;
 mod record;
 mod song;
+mod suggest;
 mod tutor;
 
-pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
+pub use command::{COMMANDS, Kind, Param, Problem, Spec, Value};
 pub use devices::{Device, Devices, Direction};
 pub use export::{Export, Part, SAMPLES, file_name, scratch};
 pub use fx_page::{FxCursor, FxLine};
@@ -42,6 +43,7 @@ pub use mixer::{Field, MixerCursor, PARAM_COLUMNS, Page, Row, Shown, Strip};
 pub use pads::{HARD, MEDIUM, PadMode, SCALES, SOFT, Scale};
 pub use patterns::Next;
 pub use record::Transport;
+pub use suggest::{Completion, word_start};
 pub use tutor::TutorView;
 
 use std::path::{Path, PathBuf};
@@ -73,6 +75,9 @@ pub enum Mode {
     /// Typing on the prompt: a `:` command, or notes to select.
     Command(Prompt),
 }
+
+/// Most commands the command line's history keeps.
+pub const MAX_HISTORY: usize = 500;
 
 /// What the prompt is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -109,6 +114,10 @@ pub struct Prompt {
     pub selected: Option<usize>,
     /// What was typed before cycling, which completions are matched against.
     typed: String,
+    /// The command from the history shown, while going through it with `↑` `↓`.
+    history: Option<usize>,
+    /// What was typed before going through the history: the start the commands shown share.
+    prefix: String,
     /// The selections when a note prompt opened: what it matches within, and what `esc` restores.
     saved: Vec<Selection>,
     saved_primary: usize,
@@ -351,6 +360,11 @@ pub struct Editor {
     armed: Option<looper::Armed>,
     /// Milliseconds added to the latency the looper allows for, or taken off.
     pub latency: i32,
+    /// The `:` commands run, oldest first, for `↑` `↓` on the command line. The frontend keeps
+    /// them from one run to the next.
+    pub history: Vec<String>,
+    /// The chains `:chain-load` can load, by name, as the frontend found them.
+    pub chains: Vec<String>,
     /// The audio devices, as the frontend found them.
     pub inputs: Devices,
     pub outputs: Devices,
@@ -465,6 +479,11 @@ impl Editor {
             last_export: None,
             armed: None,
             latency: 0,
+            history: vec![],
+            chains: lattice_core::PRESETS
+                .iter()
+                .map(|p| p.to_string())
+                .collect(),
             inputs: Devices::default(),
             outputs: Devices::default(),
             mode: Mode::Normal,
@@ -720,16 +739,24 @@ impl Editor {
         }
     }
 
-    /// Commands matching what's typed on the command line, best first. Empty once the command
-    /// name is finished.
+    /// Suggestions for the word being typed on the command line, best first: commands, then
+    /// the values that fit the command's next word. None once the word's typed out in full.
     pub fn completions(&self) -> Vec<Completion> {
-        match &self.mode {
-            Mode::Command(prompt)
-                if prompt.kind == PromptKind::Command && !prompt.line.contains(' ') =>
-            {
-                command::complete(&prompt.typed)
-            }
-            _ => vec![],
+        let Mode::Command(prompt) = &self.mode else {
+            return vec![];
+        };
+        if prompt.kind != PromptKind::Command {
+            return vec![];
+        }
+        // While cycling, the suggestions for what was typed before.
+        let line = match prompt.selected {
+            Some(_) => &prompt.typed,
+            None => &prompt.line,
+        };
+        let found = self.suggest(line);
+        match &found[..] {
+            [only] if only.text == line[word_start(line)..] => vec![],
+            _ => found,
         }
     }
 
@@ -975,30 +1002,29 @@ impl Editor {
                 if prompt.line.pop().is_none() {
                     self.cancel_prompt();
                 } else {
-                    prompt.typed = prompt.line.clone();
                     prompt.selected = None;
+                    prompt.history = None;
                     self.preview();
                 }
             }
             Key::Char(c) => {
                 prompt.line.push(c);
-                prompt.typed = prompt.line.clone();
                 prompt.selected = None;
+                prompt.history = None;
                 self.preview();
             }
-            // Cycle through the completions, filling each in.
-            Key::Tab if prompt.kind == PromptKind::Command && !prompt.line.contains(' ') => {
-                let completions = command::complete(&prompt.typed);
-                if !completions.is_empty() {
-                    let next = prompt.selected.map_or(0, |i| (i + 1) % completions.len());
-                    prompt.selected = Some(next);
-                    prompt.line = completions[next].spec.name.into();
-                }
+            Key::Tab if prompt.kind == PromptKind::Command => self.cycle_completions(),
+            Key::Up | Key::Ctrl('p') if prompt.kind == PromptKind::Command => {
+                self.browse_history(true);
+            }
+            Key::Down | Key::Ctrl('n') if prompt.kind == PromptKind::Command => {
+                self.browse_history(false);
             }
             Key::Enter => {
                 let prompt = std::mem::take(prompt);
                 self.mode = Mode::Normal;
                 if prompt.kind == PromptKind::Command {
+                    self.remember(&prompt.line);
                     match command::run(self, &prompt.line) {
                         Ok(effects) => return effects,
                         Err(message) => self.message = Some(message),
@@ -1016,6 +1042,72 @@ impl Editor {
             _ => {}
         }
         vec![]
+    }
+
+    /// Fills in the next suggestion for the word being typed, going round them.
+    fn cycle_completions(&mut self) {
+        let Mode::Command(prompt) = &self.mode else {
+            return;
+        };
+        let typed = match prompt.selected {
+            Some(_) => prompt.typed.clone(),
+            None => prompt.line.clone(),
+        };
+        let found = self.suggest(&typed);
+        let Mode::Command(prompt) = &mut self.mode else {
+            return;
+        };
+        if found.is_empty() {
+            return;
+        }
+        let next = prompt.selected.map_or(0, |i| (i + 1) % found.len());
+        prompt.line = format!("{}{}", &typed[..word_start(&typed)], found[next].text);
+        prompt.typed = typed;
+        prompt.selected = Some(next);
+    }
+
+    /// Shows the next older command run (or newer, back to what was typed) that starts with
+    /// what was typed.
+    fn browse_history(&mut self, older: bool) {
+        let Mode::Command(prompt) = &mut self.mode else {
+            return;
+        };
+        if prompt.history.is_none() {
+            prompt.prefix = prompt.line.clone();
+        }
+        let history = &self.history;
+        let fits =
+            |i: &usize| history[*i].starts_with(&prompt.prefix) && history[*i] != prompt.line;
+        let at = prompt.history.unwrap_or(history.len());
+        let next = if older {
+            (0..at).rev().find(fits)
+        } else {
+            (at + 1..history.len()).find(fits)
+        };
+        match next {
+            Some(i) => {
+                prompt.history = Some(i);
+                prompt.line = history[i].clone();
+            }
+            None if !older => {
+                prompt.history = None;
+                prompt.line = prompt.prefix.clone();
+            }
+            None => {}
+        }
+        prompt.selected = None;
+    }
+
+    /// Adds a command run to the history, moving it to the end if it's there already.
+    fn remember(&mut self, line: &str) {
+        let line = line.trim();
+        if line.is_empty() {
+            return;
+        }
+        self.history.retain(|h| h != line);
+        self.history.push(line.into());
+        let over = self.history.len().saturating_sub(MAX_HISTORY);
+        self.history.drain(..over);
     }
 
     /// Shows what a note prompt will select while it's typed, as Helix does, or the selections
@@ -2131,14 +2223,14 @@ mod tests {
     fn tab_completes_commands() {
         let mut e = editor();
         keys(&mut e, ":fo");
-        assert_eq!(e.completions()[0].spec.name, "follow");
+        assert_eq!(e.completions()[0].text, "follow");
         e.handle(Key::Tab);
         let Mode::Command(prompt) = &e.mode else {
             panic!("left command mode")
         };
         assert_eq!(prompt.line, "follow");
         assert_eq!(
-            e.completions()[0].spec.name,
+            e.completions()[0].text,
             "follow",
             "list stays while cycling"
         );
@@ -2147,6 +2239,95 @@ mod tests {
         assert_eq!(e.command_spec().unwrap().name, "follow");
         e.handle(Key::Enter);
         assert!(!e.follow);
+    }
+
+    /// Types `s`, with `\n` for enter.
+    fn typing(e: &mut Editor, s: &str) {
+        for c in s.chars() {
+            e.handle(if c == '\n' { Key::Enter } else { Key::Char(c) });
+        }
+    }
+
+    fn line(e: &Editor) -> String {
+        match &e.mode {
+            Mode::Command(prompt) => prompt.line.clone(),
+            _ => panic!("left command mode"),
+        }
+    }
+
+    #[test]
+    fn values_are_suggested_as_they_are_typed() {
+        let mut e = editor();
+        let texts = |e: &Editor| {
+            e.completions()
+                .into_iter()
+                .map(|c| c.text)
+                .collect::<Vec<_>>()
+        };
+        typing(&mut e, ":fx-add ");
+        assert_eq!(
+            texts(&e).len(),
+            lattice_core::FxKind::ALL.len(),
+            "every effect"
+        );
+        // Their first letters narrow them down, and letters in order find them otherwise.
+        typing(&mut e, "r");
+        assert_eq!(texts(&e), ["reverb"]);
+        e.handle(Key::Backspace);
+        typing(&mut e, "rvb");
+        assert_eq!(texts(&e), ["reverb"]);
+        e.handle(Key::Tab);
+        assert_eq!(line(&e), "fx-add reverb");
+        // Typed out in full, there's nothing left to suggest.
+        e.handle(Key::Enter);
+        typing(&mut e, ":fx-add reverb");
+        assert!(e.completions().is_empty());
+        e.handle(Key::Esc);
+
+        // A track's settings, then a setting's choices.
+        typing(&mut e, ":lock rev.mi");
+        assert_eq!(texts(&e), ["reverb.mix"]);
+        e.handle(Key::Esc);
+        typing(&mut e, ":fx-add filter\n:lock filter.type ");
+        assert!(texts(&e).contains(&"band".to_string()), "{:?}", texts(&e));
+        // Tab goes round them.
+        let first = texts(&e)[0].clone();
+        let n = texts(&e).len();
+        for _ in 0..n {
+            e.handle(Key::Tab);
+        }
+        e.handle(Key::Tab);
+        assert_eq!(line(&e), format!("lock filter.type {first}"));
+    }
+
+    #[test]
+    fn up_and_down_go_through_the_commands_run() {
+        let mut e = editor();
+        typing(&mut e, ":bpm 100\n:follow\n:bpm 120\n:follow\n");
+        assert_eq!(
+            e.history,
+            ["bpm 100", "bpm 120", "follow"],
+            "once each, latest last"
+        );
+        typing(&mut e, ":");
+        e.handle(Key::Up);
+        assert_eq!(line(&e), "follow");
+        e.handle(Key::Up);
+        assert_eq!(line(&e), "bpm 120");
+        e.handle(Key::Ctrl('n'));
+        assert_eq!(line(&e), "follow");
+        e.handle(Key::Down);
+        assert_eq!(line(&e), "", "back to what was typed");
+        // Only those starting with what's typed.
+        typing(&mut e, "b");
+        e.handle(Key::Up);
+        e.handle(Key::Up);
+        assert_eq!(line(&e), "bpm 100");
+        e.handle(Key::Up);
+        assert_eq!(line(&e), "bpm 100", "the oldest");
+        e.handle(Key::Enter);
+        assert_eq!(e.bpm, 100.0);
+        assert_eq!(e.history.last().unwrap(), "bpm 100");
     }
 
     #[test]

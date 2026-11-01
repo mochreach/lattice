@@ -6,7 +6,7 @@ use lattice_core::instrument::chop;
 use lattice_core::{Group, InstKind, MAX_GROUPS, MAX_TRACKS, Step, Track, realise};
 use lattice_editor::{
     BEATS_PER_BAR, Completion, Cursor, Editor, Infobox, Mode, NoteLayout, PadMode, Page,
-    PromptKind, Selection, TutorView, View,
+    PromptKind, Selection, TutorView, View, word_start,
 };
 use lattice_engine::{Chain, Status};
 use ratatui::Frame;
@@ -145,7 +145,11 @@ pub fn draw(
     if let Mode::Command(prompt) = &editor.mode {
         let completions = editor.completions();
         if !completions.is_empty() {
-            draw_completions(frame, grid, &completions, prompt.selected, theme);
+            // Above the word they're for, which starts after the prompt's label.
+            let line = &prompt.line;
+            let column =
+                prompt.kind.label().chars().count() + line[..word_start(line)].chars().count();
+            draw_completions(frame, grid, column, &completions, prompt.selected, theme);
         }
     }
 }
@@ -153,22 +157,22 @@ pub fn draw(
 /// Most completions shown at once.
 const COMPLETIONS: usize = 10;
 
-/// Commands matching what's typed, above the command line, with the matched letters picked out.
+/// Suggestions for the word being typed, above it on the command line (it starts `column` along),
+/// with the matched letters picked out.
 fn draw_completions(
     frame: &mut Frame,
     area: Rect,
+    column: usize,
     completions: &[Completion],
     selected: Option<usize>,
     theme: &Theme,
 ) {
-    let name_width = completions
-        .iter()
-        .map(|c| c.spec.name.len())
+    let name_width = (completions.iter())
+        .map(|c| c.text.chars().count())
         .max()
         .unwrap_or(0);
-    let signature_width = completions
-        .iter()
-        .map(|c| c.spec.signature().chars().count())
+    let signature_width = (completions.iter())
+        .map(|c| c.signature.chars().count())
         .max()
         .unwrap_or(0);
     // Keep the selected one in view while cycling.
@@ -180,8 +184,7 @@ fn draw_completions(
         .take(COMPLETIONS)
         .map(|(i, c)| {
             let mut spans: Vec<Span> = c
-                .spec
-                .name
+                .text
                 .char_indices()
                 .map(|(j, ch)| {
                     let style = if c.matched.contains(&j) {
@@ -192,12 +195,16 @@ fn draw_completions(
                     Span::styled(ch.to_string(), style)
                 })
                 .collect();
-            spans.push(Span::raw(" ".repeat(name_width - c.spec.name.len() + 2)));
-            spans.push(Span::styled(
-                format!("{:<signature_width$}  ", c.spec.signature()),
-                theme.faint,
+            spans.push(Span::raw(
+                " ".repeat(name_width - c.text.chars().count() + 2),
             ));
-            spans.push(Span::styled(c.spec.description(), theme.dim));
+            if signature_width > 0 {
+                spans.push(Span::styled(
+                    format!("{:<signature_width$}  ", c.signature),
+                    theme.faint,
+                ));
+            }
+            spans.push(Span::styled(c.describe.clone(), theme.dim));
             let line = Line::from(spans);
             if selected == Some(i) {
                 line.style(Style::new().bg(theme.selection))
@@ -208,8 +215,10 @@ fn draw_completions(
         .collect();
     let width = (lines.iter().map(Line::width).max().unwrap_or(0) as u16 + 4).min(area.width);
     let height = (lines.len() as u16 + 2).min(area.height);
+    // The suggestions' text lines up with the word, inside the border and padding.
+    let x = (area.x + column as u16).saturating_sub(2);
     let corner = Rect {
-        x: area.x,
+        x: x.min(area.right().saturating_sub(width)),
         y: area.bottom().saturating_sub(height),
         width,
         height,

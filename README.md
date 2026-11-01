@@ -184,7 +184,14 @@ held; elsewhere each is one step. Stopped, insert mode enters notes at the curso
 
 On the **command line**, commands that fuzzy-match what you've typed are listed above it, and
 `tab` cycles through them. Once the command is named, the parameters still to type are shown
-faintly after the cursor, and shrink as you type over them. Values are checked as you type: a
+faintly after the cursor, and shrink as you type over them, and the values that fit the word
+you're typing are listed above it in turn, for `tab` to fill in: the effects after `:fx-add`
+(with their settings), instruments after `:inst`, the track's settings with their values after
+`:lock`, then a setting's choices, macros after `:map`, saved chains, patterns, scales, layouts,
+devices, and files and folders for `:open`, `:w`, `:sample` and the rest. Typing a value's first
+letters narrows the list to the values starting so; letters further in find it when none do.
+`↑` and `↓` (or `^p` `^n`) go back through the commands you've run, those starting with what's
+typed, and they're kept from one run to the next in `~/.local/state/lattice/history`. Values are checked as you type: a
 word that can no longer be right is underlined, and what was expected is shown on the right.
 
 | Commands | |

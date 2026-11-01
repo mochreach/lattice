@@ -510,6 +510,33 @@ fn settings(track: &Track) -> Vec<Setting> {
     instrument.chain(effects).chain(macros).collect()
 }
 
+/// Every setting on `track` by the name `:lock` finds it by, with its value now, for the
+/// command line's suggestions.
+pub(crate) fn suggest_settings(track: &Track) -> Vec<(String, String)> {
+    (settings(track).iter())
+        .map(|setting| {
+            let param = usize::from(setting.param);
+            let value = match setting.fx {
+                Some(MACRO) => track.macros.get(param).map(|m| m.value),
+                Some(fx) => {
+                    (track.effects.get(usize::from(fx))).and_then(|e| e.values.get(param).copied())
+                }
+                None => track.instrument.values.get(param).copied(),
+            };
+            let value = value.unwrap_or(setting.info.default);
+            (setting.name(track), setting.info.format(value))
+        })
+        .collect()
+}
+
+/// The choices of the setting called `name` on `track`, a filter's types, say, if it has them.
+pub(crate) fn suggest_choices(track: &Track, name: &str) -> Vec<&'static str> {
+    match find(track, name).map(|setting| setting.info.curve) {
+        Some(Curve::Choice(choices)) => choices.to_vec(),
+        _ => vec![],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

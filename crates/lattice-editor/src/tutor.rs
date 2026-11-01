@@ -439,7 +439,8 @@ const LESSONS: &[Lesson] = &[
     Lesson {
         title: "The command line",
         text: "{command_line} opens the command line; it suggests commands as you type, and \
-               `tab` takes one. `:w` saves the song, `:q` quits ({quit} quits too), and `:bpm` \
+               `tab` takes one, then the values that fit each word, such as the effects after \
+               `:fx-add `. `↑` brings back the commands you've run. `:w` saves the song, `:q` quits ({quit} quits too), and `:bpm` \
                sets the tempo.\n\nSet the tempo to 128.",
         teaches: &[Action::CommandLine, Action::Quit],
         commands: &["write", "quit", "bpm"],

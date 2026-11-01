@@ -9,6 +9,7 @@ mod export;
 mod file;
 mod fx_page;
 mod help_page;
+mod history;
 mod key_log;
 mod keys;
 mod log;
@@ -111,6 +112,8 @@ fn main() -> Result<()> {
         handle.send(Command::SetClick(false));
     }
     editor.show_keys = args.iter().any(|a| a == "--show-keys");
+    editor.history = history::load();
+    editor.chains = chains::names();
 
     let mut theme = Theme::detect();
     if let Some(path) = named.clone().or_else(config::default_path)
@@ -153,6 +156,9 @@ fn main() -> Result<()> {
         let _ = execute!(std::io::stdout(), PopKeyboardEnhancementFlags);
     }
     ratatui::restore();
+    if let Err(e) = history::save(&editor.history) {
+        log!("couldn't keep the command history: {e:#}");
+    }
     match &result {
         Ok(()) => log!("quit"),
         Err(e) => log!("stopped by an error: {e:#}"),
@@ -551,6 +557,7 @@ fn apply(
                 Ok(saved) => saved,
                 Err(e) => format!("{e:#}"),
             });
+            editor.chains = chains::names();
             return Flow::Next;
         }
         Effect::LoadChain(name) => {

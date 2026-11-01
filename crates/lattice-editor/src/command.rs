@@ -688,14 +688,14 @@ impl Value {
 
 /// A command matching what's been typed, with the positions of the matched characters.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Completion {
+pub(crate) struct Match {
     pub spec: &'static Spec,
     pub matched: Vec<usize>,
 }
 
 /// Commands that fuzzy-match `query`, best first.
-pub fn complete(query: &str) -> Vec<Completion> {
-    let mut scored: Vec<(i32, usize, Completion)> = COMMANDS
+pub(crate) fn complete(query: &str) -> Vec<Match> {
+    let mut scored: Vec<(i32, usize, Match)> = COMMANDS
         .iter()
         .enumerate()
         .filter_map(|(order, spec)| {
@@ -703,7 +703,7 @@ pub fn complete(query: &str) -> Vec<Completion> {
             if spec.alias == Some(query) {
                 score += 100;
             }
-            Some((score, order, Completion { spec, matched }))
+            Some((score, order, Match { spec, matched }))
         })
         .collect();
     scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
@@ -712,7 +712,7 @@ pub fn complete(query: &str) -> Vec<Completion> {
 
 /// Whether `query`'s characters appear in order in `name`, and how well: matches at the start
 /// and runs of consecutive characters score higher, and shorter names win ties.
-fn fuzzy(query: &str, name: &str) -> Option<(i32, Vec<usize>)> {
+pub(crate) fn fuzzy(query: &str, name: &str) -> Option<(i32, Vec<usize>)> {
     if query.is_empty() {
         return Some((0, vec![]));
     }

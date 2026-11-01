@@ -48,7 +48,7 @@ fn from_toml(text: &str) -> anyhow::Result<FxChain> {
 }
 
 /// The chains there are: Lattice's, then those saved, by name.
-fn names() -> Vec<String> {
+pub fn names() -> Vec<String> {
     let mut saved: Vec<String> = dir()
         .and_then(|dir| std::fs::read_dir(dir).ok())
         .into_iter()
