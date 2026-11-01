@@ -10,8 +10,10 @@
 //! jump to the instrument and the effects, from the pattern page too. `C-a` `C-x` (and `+` `-`)
 //! nudge the value under the cursor, as Helix increments numbers, and `c` types one in.
 
+use lattice_core::instrument::chop;
 use lattice_core::{
     Bus, Fx, FxKind, InstKind, Instrument, Kind, MAX_CHOKE, MAX_DB, MAX_EFFECTS, MIN_DB, ParamInfo,
+    Step,
 };
 
 use crate::keymap::Action;
@@ -609,19 +611,7 @@ impl Editor {
     /// `:sample [PATH]`: the tracks play the WAV file at `path`, or the last selection exported,
     /// on a sampler, keeping its settings if they're already on one.
     pub(crate) fn set_sample(&mut self, path: &str) -> Result<Vec<Effect>, String> {
-        let path = match path {
-            "" => self
-                .last_export
-                .clone()
-                .ok_or("which file? nothing's been exported yet")?,
-            path => std::path::PathBuf::from(path),
-        };
-        // The file is read when the sampler's built, which says if it can't be; this just
-        // catches a mistyped name at once.
-        if !path.is_file() {
-            return Err(format!("no file {}", path.display()));
-        }
-        let path = std::path::absolute(&path).map_err(|e| e.to_string())?;
+        let path = self.sample_path(path)?;
         let tracks = self.mix_targets()?;
         self.checkpoint();
         for &t in &tracks {
@@ -643,6 +633,58 @@ impl Editor {
             self.mixer.instrument = true;
         }
         Ok(vec![Effect::MixerChanged])
+    }
+
+    /// `:chop [PATH]`: the tracks play the WAV file at `path`, or the last selection exported,
+    /// cut into as many pieces as each has steps, with each step playing its own piece, so it
+    /// sounds as recorded until it's rearranged.
+    pub(crate) fn set_chop(&mut self, path: &str) -> Result<Vec<Effect>, String> {
+        let path = self.sample_path(path)?;
+        let tracks = self.mix_targets()?;
+        self.checkpoint();
+        for &t in &tracks {
+            let track = &mut self.grid.tracks[t];
+            if track.instrument.kind != InstKind::Chop {
+                track.instrument = Instrument::new(InstKind::Chop);
+            }
+            track.instrument.file = Some(path.clone());
+            let pieces = track.steps.len().min(chop::MAX_PIECES);
+            track.instrument.values[chop::PIECES as usize] = pieces as f32;
+            for (i, step) in track.steps.iter_mut().enumerate() {
+                step.note = Step::note(chop::pitch(i % pieces)).note;
+            }
+        }
+        let name = path
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into());
+        self.message = Some(match tracks[..] {
+            [t] => format!(
+                "{} plays {name}, in {} pieces",
+                self.grid.tracks[t].name,
+                self.grid.tracks[t].steps.len().min(chop::MAX_PIECES)
+            ),
+            _ => format!("{} tracks play {name}, in pieces", tracks.len()),
+        });
+        let mut effects: Vec<Effect> = tracks.iter().map(|&t| Effect::TrackChanged(t)).collect();
+        effects.push(Effect::MixerChanged);
+        Ok(effects)
+    }
+
+    /// The file `:sample` or `:chop` names, made absolute, or the last selection exported.
+    fn sample_path(&self, path: &str) -> Result<std::path::PathBuf, String> {
+        let path = match path {
+            "" => self
+                .last_export
+                .clone()
+                .ok_or("which file? nothing's been exported yet")?,
+            path => std::path::PathBuf::from(path),
+        };
+        // The file is read when the instrument's built, which says if it can't be; this just
+        // catches a mistyped name at once.
+        if !path.is_file() {
+            return Err(format!("no file {}", path.display()));
+        }
+        std::path::absolute(&path).map_err(|e| e.to_string())
     }
 
     /// Removes the effect under the mixer cursor.
@@ -705,6 +747,35 @@ mod tests {
     use lattice_core::fx::delay::{FEEDBACK, TIME};
     use lattice_core::instrument::kick;
     use lattice_core::{Bus, Buses, Grid, Step, Track};
+
+    #[test]
+    fn chop_gives_each_step_its_own_piece() {
+        let mut e = editor();
+        e.grid.tracks[1].steps.truncate(12);
+        e.grid.tracks[1].steps[3].locks.set(lattice_core::Lock {
+            fx: None,
+            param: 0,
+            value: 1.0,
+        });
+        // Any file will do: it's read when the instrument's built.
+        let file = std::env::temp_dir().join(format!("lattice-chop-{}.wav", std::process::id()));
+        std::fs::write(&file, b"").unwrap();
+        keys(&mut e, "l");
+        let effects = e.set_chop(file.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&file).unwrap();
+        assert_eq!(effects, [Effect::TrackChanged(1), Effect::MixerChanged]);
+        let track = &e.grid.tracks[1];
+        assert_eq!(track.instrument.kind, InstKind::Chop);
+        assert_eq!(track.instrument.get(chop::PIECES), 12.0, "a piece a step");
+        let pieces: Vec<usize> = (track.steps.iter())
+            .map(|s| chop::piece(s.note.unwrap().pitch, 12))
+            .collect();
+        assert_eq!(pieces, (0..12).collect::<Vec<_>>());
+        assert!(!track.steps[3].locks.is_empty(), "locks are kept");
+        assert!(e.set_chop("/no/such/file.wav").is_err());
+        keys(&mut e, "u");
+        assert_eq!(e.grid.tracks[1].instrument.kind, InstKind::Synth);
+    }
 
     fn editor() -> Editor {
         let track = |name: &str| Track {

@@ -231,6 +231,12 @@ pub const COMMANDS: &[Spec] = &[
         describe: "play a WAV file on a sampler; with no path, the last selection exported",
     },
     Spec {
+        name: "chop",
+        alias: None,
+        params: &[optional_text("[PATH]", "path")],
+        describe: "cut a WAV file into a piece a step, each step playing its own; with no path, the last selection exported",
+    },
+    Spec {
         name: "fx-add",
         alias: None,
         params: &[text("EFFECT", "effect")],
@@ -1123,6 +1129,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         "fx-add" => editor.add_effect(command.text(0)),
         "inst" => editor.set_instrument(command.text(0)),
         "sample" => editor.set_sample(command.text(0)),
+        "chop" => editor.set_chop(command.text(0)),
         "group-name" => editor.rename_group(command.text(0)),
         "track-add" => {
             let tracks = &editor.grid.tracks;

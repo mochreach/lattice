@@ -751,10 +751,10 @@ mod tests {
         let read = lattice_core::from_ron(&lattice_core::to_ron(&song)).unwrap();
         assert_eq!(read.arrangement, song.arrangement);
         let tracks = &song.grid.tracks;
-        // All but the sampler, which needs a file.
+        // All but those that play a file, which the demo hasn't got.
         for kind in InstKind::ALL
             .into_iter()
-            .filter(|&k| k != InstKind::Sampler)
+            .filter(|&k| !matches!(k, InstKind::Sampler | InstKind::Chop))
         {
             assert!(tracks.iter().any(|t| t.instrument.kind == kind), "{kind:?}");
         }

@@ -2,7 +2,8 @@
 
 use std::time::Instant;
 
-use lattice_core::{Group, MAX_GROUPS, MAX_TRACKS, Step, Track, realise};
+use lattice_core::instrument::chop;
+use lattice_core::{Group, InstKind, MAX_GROUPS, MAX_TRACKS, Step, Track, realise};
 use lattice_editor::{
     BEATS_PER_BAR, Completion, Cursor, Editor, Infobox, Mode, NoteLayout, PadMode, Page,
     PromptKind, Selection, TutorView, View,
@@ -17,6 +18,7 @@ use ratatui::widgets::{Block, Clear, Padding, Paragraph};
 use crate::bars;
 use crate::key_log::KeyLog;
 use crate::theme::Theme;
+use crate::wave::{Peaks, Waves};
 use crate::{help_page, mixer_page, song_page};
 
 /// Width of the step-number column.
@@ -45,6 +47,8 @@ pub struct ViewState {
     pub(crate) strips_shown: usize,
     /// The keys just pressed, shown when the editor's `show_keys` is on.
     pub keys: KeyLog,
+    /// The waveforms of the files chop tracks play.
+    waves: Waves,
 }
 
 impl ViewState {
@@ -360,13 +364,20 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
 /// Width of a track's column in a folded group: a hit's glyph.
 const FOLDED: usize = 2;
 
+/// Width of a chop track's column: its piece, and a waveform.
+const CHOP: usize = 15;
+
 /// The width of track `index`'s column.
 fn column_width(editor: &Editor, index: usize) -> usize {
     let folded = editor
         .grid
         .group_of(index)
         .is_some_and(|g| editor.grid.groups[g].folded);
-    if folded { FOLDED } else { CELL }
+    match () {
+        _ if folded => FOLDED,
+        _ if editor.grid.tracks[index].instrument.kind == InstKind::Chop => CHOP,
+        _ => CELL,
+    }
 }
 
 /// How many of these columns fit in `room`, each with its gap; at least one.
@@ -400,9 +411,88 @@ struct Column<'a> {
     /// Not muted, and not silenced by another track's solo.
     audible: bool,
     meter: f32,
+    /// On a chop track, what each row plays.
+    pieces: Option<Vec<Option<Piece>>>,
+}
+
+/// What a row of a chop track plays.
+struct Piece {
+    /// Which piece its note plays, from 0.
+    piece: usize,
+    /// Whether the row has the note, rather than being further on in it.
+    first: bool,
+    reverse: bool,
+    /// The waveform of the audio it plays.
+    wave: String,
+}
+
+/// What each row of a chop track plays: a note's piece, carrying on through the pieces after it
+/// for as long as the note lasts, drawn `width` cells wide.
+fn pieces(
+    track: &Track,
+    shown: &[Step],
+    peaks: Option<&Peaks>,
+    width: usize,
+) -> Vec<Option<Piece>> {
+    let instrument = &track.instrument;
+    let (mut start, mut end) = (
+        f64::from(instrument.get(chop::START)),
+        f64::from(instrument.get(chop::END)),
+    );
+    if end < start {
+        std::mem::swap(&mut start, &mut end);
+    }
+    let count = instrument.get(chop::PIECES).round().max(1.0) as usize;
+    let size = (end - start) / count as f64;
+    let mut rows: Vec<Option<Piece>> = (0..shown.len()).map(|_| None).collect();
+    for (i, step) in shown.iter().enumerate() {
+        let Some(note) = step.note else {
+            continue;
+        };
+        let piece = chop::piece(note.pitch, count);
+        // A step's lock turns its piece round, or back.
+        let direction = (step.locks.iter())
+            .find(|l| l.fx.is_none() && u32::from(l.param) == chop::DIRECTION)
+            .map_or(instrument.get(chop::DIRECTION), |l| l.value);
+        let reverse = direction >= 0.5;
+        for j in 0..usize::from(note.length).min(shown.len() - i) {
+            let (from, to) = if reverse {
+                let to = start + size * (piece + 1) as f64 - size * j as f64;
+                (to - size, to)
+            } else {
+                let from = start + size * (piece + j) as f64;
+                (from, from + size)
+            };
+            // Nothing plays outside the region.
+            let inside = from >= start - 1e-9 && to <= end + 1e-9;
+            let wave = match peaks {
+                Some(peaks) if inside => peaks.row(from, to, reverse, width),
+                _ => " ".repeat(width),
+            };
+            rows[i + j] = Some(Piece {
+                piece,
+                first: j == 0,
+                reverse,
+                wave,
+            });
+        }
+    }
+    rows
 }
 
 impl<'a> Column<'a> {
+    /// On a chop track, works out what each row plays.
+    fn chop(&mut self, waves: &mut Waves) {
+        let instrument = &self.track.instrument;
+        if instrument.kind != InstKind::Chop || self.width != CHOP {
+            return;
+        }
+        let peaks = instrument.file.as_deref().and_then(|f| waves.get(f));
+        // Room for the piece's number and direction, and a lock's mark.
+        let width = self.width - 5;
+        self.pieces = Some(pieces(self.track, &self.shown, peaks.as_deref(), width));
+    }
+
     /// The track's colour, dimmed when it can't be heard.
     fn style(&self) -> Style {
         let style = Style::new().fg(self.colour);
@@ -444,6 +534,7 @@ impl<'a> Column<'a> {
             index,
             track,
             width,
+            pieces: None,
             held: held(&shown),
             shown,
             tails,
@@ -477,7 +568,11 @@ fn draw_grid(
         .enumerate()
         .skip(view.first_track)
         .take(fits)
-        .map(|(i, t)| Column::new(i, t, widths[i], editor, status, theme, view.meters[i]))
+        .map(|(i, t)| {
+            let mut column = Column::new(i, t, widths[i], editor, status, theme, view.meters[i]);
+            column.chop(&mut view.waves);
+            column
+        })
         .collect();
     let hidden = (view.first_track > 0, view.first_track + fits < tracks);
     let mut lines: Vec<_> = group_line(&columns, &editor.grid.groups, theme)
@@ -809,7 +904,20 @@ fn grid_row(
             continue;
         };
 
+        let piece = c.pieces.as_ref().map(|rows| match &rows[row] {
+            Some(p) => {
+                let text = if p.first {
+                    let direction = if p.reverse { '◂' } else { ' ' };
+                    format!(" {:02X}{direction}{}", p.piece, p.wave)
+                } else {
+                    format!("    {}", p.wave)
+                };
+                (text, c.style())
+            }
+            None => (" ···".into(), theme.faint),
+        });
         let (text, mut style) = match step.note {
+            _ if piece.is_some() => piece.expect("just checked"),
             // Folded: a hit, by how hard.
             Some(note) if c.width == FOLDED => {
                 let glyph = match note.velocity {

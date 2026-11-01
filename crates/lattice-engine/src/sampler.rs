@@ -99,77 +99,51 @@ impl Voice {
     };
 }
 
-pub struct Sampler {
+/// A note to play from a file.
+pub(crate) struct Play {
+    pub pitch: u8,
+    /// The region, in frames: played from `from`, or back from `to` if `rate` is negative.
+    pub from: f64,
+    pub to: f64,
+    /// Frames moved an output sample.
+    pub rate: f64,
+    pub looping: bool,
+    pub gain: f32,
+    /// Seconds.
+    pub attack: f32,
+    pub release: f32,
+}
+
+/// Voices playing a sound file: the sampler's and chop's.
+pub(crate) struct Player {
     sample_rate: f32,
-    sample: Option<Arc<Sample>>,
-    values: [f32; 9],
-    gain: Smoothed,
+    pub sample: Option<Arc<Sample>>,
     voices: [Voice; VOICES],
     notes: u64,
 }
 
-impl Sampler {
-    pub fn new(sample_rate: f32, values: &[f32], sample: Option<Arc<Sample>>) -> Self {
-        let mut all = [0.0; 9];
-        for (v, info) in all.iter_mut().zip(InstKind::Sampler.params()) {
-            *v = info.default;
-        }
-        for (v, &value) in all.iter_mut().zip(values) {
-            *v = value;
-        }
+impl Player {
+    pub fn new(sample_rate: f32, sample: Option<Arc<Sample>>) -> Self {
         Self {
             sample_rate,
             sample: sample.filter(|s| !s.is_empty()),
-            gain: Smoothed::new(all[GAIN as usize], sample_rate),
-            values: all,
             voices: [Voice::IDLE; VOICES],
             notes: 0,
         }
     }
 
-    fn value(&self, id: u32) -> f32 {
-        self.values[id as usize]
+    /// How far the file moves an output sample at its own pitch.
+    pub fn speed(&self) -> f64 {
+        self.sample
+            .as_ref()
+            .map_or(1.0, |s| f64::from(s.rate / self.sample_rate))
     }
 
-    fn note_on(&mut self, pitch: u8, velocity: u8) {
-        let Some(sample) = &self.sample else {
+    pub fn start(&mut self, play: Play) {
+        if play.to - play.from < 2.0 {
             return;
-        };
-        let len = sample.len() as f64;
-        let (mut from, mut to) = (
-            f64::from(self.value(START)) * len,
-            f64::from(self.value(END)) * len,
-        );
-        if to < from {
-            std::mem::swap(&mut from, &mut to);
-        }
-        let slices = self.value(SLICES).round() as i32 + 1;
-        let offset = i32::from(pitch) - i32::from(DRUM_ROOT);
-        let semitones = if slices > 1 {
-            // Each note a slice, wrapping round, at the sample's own pitch.
-            let width = (to - from) / f64::from(slices);
-            from += width * f64::from(offset.rem_euclid(slices));
-            to = from + width;
-            0.0
-        } else {
-            offset as f32
-        } + self.value(TUNE);
-        if to - from < 2.0 {
-            return;
-        }
-        let mut rate =
-            f64::from(2f32.powf(semitones / 12.0)) * f64::from(sample.rate / self.sample_rate);
-        let reverse = self.value(DIRECTION) >= 0.5;
-        if reverse {
-            rate = -rate;
         }
         let per_sample = |seconds: f32| 1.0 / (seconds * self.sample_rate).max(1.0);
-        let (attack, release) = (
-            per_sample(self.value(ATTACK)),
-            per_sample(self.value(RELEASE)),
-        );
-        let looping = self.value(MODE).round() as u32 == 2;
-
         // A free voice, else the oldest releasing, else the oldest.
         let oldest = |releasing: bool| {
             (0..VOICES)
@@ -184,25 +158,26 @@ impl Sampler {
         self.notes += 1;
         self.voices[i] = Voice {
             stage: Stage::Playing,
-            pitch,
+            pitch: play.pitch,
             started: self.notes,
-            pos: if reverse { to - 1.0 } else { from },
-            rate,
-            from,
-            to,
-            looping,
-            gain: f32::from(velocity) / 127.0,
+            pos: if play.rate < 0.0 {
+                play.to - 1.0
+            } else {
+                play.from
+            },
+            rate: play.rate,
+            from: play.from,
+            to: play.to,
+            looping: play.looping,
+            gain: play.gain,
             level: 0.0,
-            attack,
-            release,
+            attack: per_sample(play.attack),
+            release: per_sample(play.release),
         };
     }
 
-    fn note_off(&mut self, pitch: u8) {
-        // A one-shot plays on to the end of its region.
-        if self.value(MODE).round() as u32 == 0 {
-            return;
-        }
+    /// Lets go of the voices playing `pitch`.
+    pub fn release(&mut self, pitch: u8) {
         for v in &mut self.voices {
             if v.stage == Stage::Playing && v.pitch == pitch {
                 v.stage = Stage::Releasing;
@@ -210,7 +185,7 @@ impl Sampler {
         }
     }
 
-    fn choke(&mut self) {
+    pub fn choke(&mut self) {
         let fade = 1.0 / (FADE_SECONDS * self.sample_rate).max(1.0);
         for v in &mut self.voices {
             if v.stage != Stage::Idle {
@@ -220,13 +195,13 @@ impl Sampler {
         }
     }
 
-    fn render(&mut self, left: &mut [f32], right: &mut [f32]) {
+    pub fn render(&mut self, gain: &mut Smoothed, left: &mut [f32], right: &mut [f32]) {
         let Some(sample) = &self.sample else {
             return;
         };
         let fade = f64::from(FADE_SECONDS * self.sample_rate);
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
-            let gain = self.gain.tick();
+            let gain = gain.tick();
             let (mut sum_l, mut sum_r) = (0.0, 0.0);
             for v in &mut self.voices {
                 if v.stage == Stage::Idle {
@@ -275,16 +250,89 @@ impl Sampler {
     }
 }
 
+pub struct Sampler {
+    player: Player,
+    values: [f32; 9],
+    gain: Smoothed,
+}
+
+impl Sampler {
+    pub fn new(sample_rate: f32, values: &[f32], sample: Option<Arc<Sample>>) -> Self {
+        let mut all = [0.0; 9];
+        for (v, info) in all.iter_mut().zip(InstKind::Sampler.params()) {
+            *v = info.default;
+        }
+        for (v, &value) in all.iter_mut().zip(values) {
+            *v = value;
+        }
+        Self {
+            player: Player::new(sample_rate, sample),
+            gain: Smoothed::new(all[GAIN as usize], sample_rate),
+            values: all,
+        }
+    }
+
+    fn value(&self, id: u32) -> f32 {
+        self.values[id as usize]
+    }
+
+    fn note_on(&mut self, pitch: u8, velocity: u8) {
+        let Some(sample) = &self.player.sample else {
+            return;
+        };
+        let len = sample.len() as f64;
+        let (mut from, mut to) = (
+            f64::from(self.value(START)) * len,
+            f64::from(self.value(END)) * len,
+        );
+        if to < from {
+            std::mem::swap(&mut from, &mut to);
+        }
+        let slices = self.value(SLICES).round() as i32 + 1;
+        let offset = i32::from(pitch) - i32::from(DRUM_ROOT);
+        let semitones = if slices > 1 {
+            // Each note a slice, wrapping round, at the sample's own pitch.
+            let width = (to - from) / f64::from(slices);
+            from += width * f64::from(offset.rem_euclid(slices));
+            to = from + width;
+            0.0
+        } else {
+            offset as f32
+        } + self.value(TUNE);
+        let mut rate = f64::from(2f32.powf(semitones / 12.0)) * self.player.speed();
+        if self.value(DIRECTION) >= 0.5 {
+            rate = -rate;
+        }
+        self.player.start(Play {
+            pitch,
+            from,
+            to,
+            rate,
+            looping: self.value(MODE).round() as u32 == 2,
+            gain: f32::from(velocity) / 127.0,
+            attack: self.value(ATTACK),
+            release: self.value(RELEASE),
+        });
+    }
+
+    fn note_off(&mut self, pitch: u8) {
+        // A one-shot plays on to the end of its region.
+        if self.value(MODE).round() as u32 != 0 {
+            self.player.release(pitch);
+        }
+    }
+}
+
 impl Processor for Sampler {
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]) {
         segments(events, left.len(), |segment| match segment {
             Segment::Render(range) => {
-                self.render(&mut left[range.clone()], &mut right[range]);
+                (self.player).render(&mut self.gain, &mut left[range.clone()], &mut right[range]);
             }
             Segment::Event(event) => match event.kind {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
                 EventKind::NoteOff { pitch } => self.note_off(pitch),
-                EventKind::Choke => self.choke(),
+                EventKind::Choke => self.player.choke(),
                 EventKind::Param { id, value } => {
                     if let Some(info) = InstKind::Sampler.params().get(id as usize) {
                         self.values[id as usize] = info.clamp(value);

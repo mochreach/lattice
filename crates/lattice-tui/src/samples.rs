@@ -16,9 +16,15 @@ static CACHE: Mutex<Option<Cache>> = Mutex::new(None);
 /// What `instrument` plays, if it's a sampler with a file: `Err` if the file can't be read.
 pub fn for_instrument(instrument: &Instrument) -> Result<Option<Arc<Sample>>, String> {
     match (&instrument.kind, &instrument.file) {
-        (InstKind::Sampler, Some(path)) => load(path).map(Some),
+        (InstKind::Sampler | InstKind::Chop, Some(path)) => load(path).map(Some),
         _ => Ok(None),
     }
+}
+
+/// The file at `path` as last read, without checking whether it's changed since.
+pub fn cached(path: &Path) -> Option<Arc<Sample>> {
+    let cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    Some(cache.as_ref()?.get(path)?.1.clone())
 }
 
 /// The audio in the WAV file at `path`.

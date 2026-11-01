@@ -14,6 +14,8 @@ pub enum Curve {
     Linear,
     /// Evenly spread by ratio rather than difference, as for frequencies.
     Log,
+    /// A whole number, nudged by one, as for a count.
+    Whole,
     /// One of these, by index from 0, as for a waveform. The range is 0 to one less than the
     /// number of choices.
     Choice(&'static [&'static str]),
@@ -60,7 +62,7 @@ impl ParamInfo {
     pub fn clamp(&self, value: f32) -> f32 {
         let value = value.clamp(self.min, self.max);
         match self.curve {
-            Curve::Choice(_) => value.round(),
+            Curve::Choice(_) | Curve::Whole => value.round(),
             _ => value,
         }
     }
@@ -68,7 +70,9 @@ impl ParamInfo {
     /// Where `value` lies in the range, from 0 to 1.
     pub fn fraction(&self, value: f32) -> f32 {
         let f = match self.curve {
-            Curve::Linear | Curve::Choice(_) => (value - self.min) / (self.max - self.min),
+            Curve::Linear | Curve::Choice(_) | Curve::Whole => {
+                (value - self.min) / (self.max - self.min)
+            }
             Curve::Log => (value / self.min).ln() / (self.max / self.min).ln(),
         };
         f.clamp(0.0, 1.0)
@@ -80,14 +84,15 @@ impl ParamInfo {
         match self.curve {
             Curve::Linear => self.min + f * (self.max - self.min),
             Curve::Log => self.min * (self.max / self.min).powf(f),
-            Curve::Choice(_) => (self.min + f * (self.max - self.min)).round(),
+            Curve::Choice(_) | Curve::Whole => (self.min + f * (self.max - self.min)).round(),
         }
     }
 
-    /// `value` moved `by` nudges, each a hundredth of the range or one choice, within the range.
+    /// `value` moved `by` nudges, each a hundredth of the range or one choice or count, within
+    /// the range.
     pub fn nudge(&self, value: f32, by: i32) -> f32 {
         match self.curve {
-            Curve::Choice(_) => self.clamp(value + by as f32),
+            Curve::Choice(_) | Curve::Whole => self.clamp(value + by as f32),
             _ => self.at(self.fraction(value) + by as f32 / NUDGES),
         }
     }

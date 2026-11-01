@@ -16,6 +16,7 @@ mod splash;
 mod theme;
 mod tracks;
 mod ui;
+mod wave;
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};

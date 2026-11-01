@@ -7,6 +7,9 @@
 //! The sampler plays a sound file: whole and pitched by the note, or chopped into slices, one
 //! to a note.
 //!
+//! Chop cuts a sound file into equal pieces, one to a step, so a loop can be rearranged a step
+//! at a time: each note plays a piece, from where it starts, until the note ends.
+//!
 //! The string is Monochord, the second engine, named after Pythagoras' one-stringed instrument
 //! for studying pitch: a plucked or bowed string, modelled as a waveguide.
 
@@ -39,13 +42,15 @@ pub enum InstKind {
     Tom,
     String,
     Sampler,
+    Chop,
 }
 
 impl InstKind {
-    pub const ALL: [InstKind; 8] = [
+    pub const ALL: [InstKind; 9] = [
         InstKind::Synth,
         InstKind::String,
         InstKind::Sampler,
+        InstKind::Chop,
         InstKind::Kick,
         InstKind::Snare,
         InstKind::Hat,
@@ -67,6 +72,7 @@ impl InstKind {
             InstKind::Tom => &tom::PARAMS,
             InstKind::String => &string::PARAMS,
             InstKind::Sampler => &sampler::PARAMS,
+            InstKind::Chop => &chop::PARAMS,
         }
     }
 }
@@ -82,6 +88,7 @@ impl Kind for InstKind {
             InstKind::Tom => "tom",
             InstKind::String => "string",
             InstKind::Sampler => "sampler",
+            InstKind::Chop => "chop",
         }
     }
 
@@ -339,6 +346,61 @@ pub mod sampler {
         ),
         param(GAIN, "gain", (0.0, 1.0, 0.7), "", Curve::Linear),
     ];
+}
+
+/// Chop: a sound file cut into equal pieces, one to a step. A note plays a piece, C-4 the first
+/// and each note up the next, wrapping round, from where the piece starts, at the file's speed,
+/// until the note ends: so it follows the tempo with no stretching, playing on into the next
+/// piece if the song's slower than the recording.
+pub mod chop {
+    use super::*;
+
+    /// How many pieces the region is cut into: as many as the track has steps, when it's loaded.
+    pub const PIECES: u32 = 0;
+    /// Where the region cut up starts and ends, as fractions of the file.
+    pub const START: u32 = 1;
+    pub const END: u32 = 2;
+    /// Semitones up or down, faster or slower.
+    pub const TUNE: u32 = 3;
+    /// Forwards, or each piece backwards from its end: lock it on a step to turn one piece round.
+    pub const DIRECTION: u32 = 4;
+    pub const RELEASE: u32 = 5;
+    pub const GAIN: u32 = 6;
+
+    pub const DIRECTIONS: &[&str] = &["forward", "reverse"];
+    pub const MAX_PIECES: usize = 256;
+
+    pub(super) const PARAMS: [ParamInfo; 7] = [
+        param(
+            PIECES,
+            "pieces",
+            (1.0, MAX_PIECES as f32, 16.0),
+            "",
+            Curve::Whole,
+        ),
+        param(START, "start", (0.0, 1.0, 0.0), "", Curve::Linear),
+        param(END, "end", (0.0, 1.0, 1.0), "", Curve::Linear),
+        param(TUNE, "tune", (-24.0, 24.0, 0.0), "st", Curve::Linear),
+        param(
+            DIRECTION,
+            "direction",
+            (0.0, 1.0, 0.0),
+            "",
+            Curve::Choice(DIRECTIONS),
+        ),
+        param(RELEASE, "release", (0.002, 1.0, 0.005), "s", Curve::Log),
+        param(GAIN, "gain", (0.0, 1.0, 0.7), "", Curve::Linear),
+    ];
+
+    /// The piece `pitch` plays, of `pieces`.
+    pub fn piece(pitch: u8, pieces: usize) -> usize {
+        (i32::from(pitch) - i32::from(DRUM_ROOT)).rem_euclid(pieces.max(1) as i32) as usize
+    }
+
+    /// The note that plays piece `piece`.
+    pub fn pitch(piece: usize) -> u8 {
+        (usize::from(DRUM_ROOT) + piece).min(127) as u8
+    }
 }
 
 #[cfg(test)]

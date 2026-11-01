@@ -4,6 +4,7 @@
 //! allocation, no I/O. The host (cpal) layer lives outside this crate, so the engine can be
 //! driven by tests, offline rendering or a plugin wrapper just as well.
 
+pub mod chop;
 mod click;
 pub mod clock;
 pub mod comp;
@@ -23,6 +24,7 @@ pub mod rhythmicon;
 pub mod sampler;
 pub mod synth;
 
+pub use chop::Chop;
 pub use clock::Clock;
 pub use comp::Comp;
 pub use delay::Delay;

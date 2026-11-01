@@ -225,6 +225,31 @@ shares it. The engine only reads it; the processor is freed off the audio thread
 so the last `Arc` is never dropped there. A file that can't be read leaves the sampler silent and
 says why in the status line.
 
+### Chop
+
+The sample-based instruments split by use: a kit is a group of tracks with a sound each (see
+track groups), the sampler plays a file across the keys, and chop rearranges a loop a step at a
+time. They share the sampler's voices (`Player` in `sampler.rs`), each choosing what a note plays.
+
+Chop cuts a file's region into `pieces` equal pieces, which `:chop` sets to the track's length,
+filling each step with the note for its own piece (C-4 the first, wrapping round). The steps hold
+references to the audio, not the audio: the file's never changed, and editing, undo, rules and
+locks all work on pieces as they do on notes. A note plays its piece from the piece's start at
+the file's speed until the note ends, then releases, playing on into the next piece if it's held
+longer: so a loop follows the tempo without stretching, with small gaps if the song's faster than
+the recording (each piece cut short) and pieces running into the next if slower. Reversed, a
+piece plays back from its end. `direction` is a setting like any other, so a lock on a step turns
+just that piece round.
+
+The pattern page draws a chop track wider, with each row's piece number (in hex, like the rows,
+so an untouched loop reads straight down), `◂` if it's reversed, and the waveform of the audio the
+row plays, in braille: four dots down a row, each the loudest of a quarter of the step, spread
+out from the middle. The frontend keeps each file's peaks (`wave.rs`), worked out from the copy
+the instrument loaded, and draws the realised steps in the live view, so rules show as they play.
+
+Next: keys to reverse and repeat a selection directly, then saving samples with the song, then a
+looper recording into a chop track from the audio input.
+
 ## Track groups
 
 A group is a named run of adjacent tracks, such as a drum kit with one drum on each track. Each

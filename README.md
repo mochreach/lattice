@@ -197,7 +197,8 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:group-name NAME` | rename this track's group |
 | `:level DB`, `:pan P`, `:send DB` | mixer, for every track the selections reach: level (-60 to 6 dB), pan (-100 left to 100 right), send to the send bus (-60, off, to 6 dB); on the mixer page, `:level` sets a bus too |
 | `:set VALUE` | on the mixer page, set the value under the cursor (also `c`) |
-| `:inst INSTRUMENT` | the instrument for every track the selections reach (or the mixer cursor's): `synth`, `string`, `sampler`, `kick`, `snare`, `hat`, `clap` or `tom` |
+| `:inst INSTRUMENT` | the instrument for every track the selections reach (or the mixer cursor's): `synth`, `string`, `sampler`, `chop`, `kick`, `snare`, `hat`, `clap` or `tom` |
+| `:chop [PATH]` | cut a WAV file into a piece a step, on every track the selections reach (or the mixer cursor's), each step playing its own; with no path, the last selection exported |
 | `:sample [PATH]` | play a WAV file on a sampler, on every track the selections reach (or the mixer cursor's); with no path, the selection last exported with `:export-sel` |
 | `:fx-add EFFECT` | add an effect (`delay`, `reverb`, `filter`, `drive` or `comp`) after the mixer cursor, or at the end of this track's chain |
 | `:lock PARAM VALUE` | lock a setting of the track's instrument or effects on every step the selections reach: `:lock cutoff 800`, `:lock filter.mix 0.5` (or `2.mix`, the second effect's). `:lock cutoff 200..4000` sweeps it across each selection. Locked steps are marked `◆`, and the cursor's locks are shown in the status line |
@@ -278,6 +279,15 @@ chopped into equal slices, C-4 playing the first and each note up the next, at t
 `loop` (round the region until the note ends); `start` and `end` set the region, `direction`
 plays it backwards, and `tune`, `attack`, `release` and `gain` do what they say. So
 `:export-sel`, then `:sample` on another track, turns a bar into a sample to chop up.
+
+`chop` is for loops: `:chop break.wav` cuts the file into as many equal pieces as the track has
+steps and has each step play its own, so it sounds as recorded. The track shows each step's piece
+number and its waveform, drawn down the column in braille, and the pieces are notes like any
+other: `y` and `p` copy them, `d` silences one, `C-a` and `C-x` move a step to the next or last
+piece, and rules such as `:rot` and `:rev` rearrange the loop each pass. A note plays its piece at
+the file's speed until the note ends, playing on into the next if it's longer, so the loop follows
+the tempo without stretching. `:lock direction reverse` turns one step's piece round (marked `◂`);
+`pieces`, `start`, `end`, `tune`, `release` and `gain` are on the mixer.
 The demo song
 is techno at 130 BPM in F minor, in six sections (`gs` shows them; `^space` plays the lot). It
 opens on `peak`, which has everything: drums folded into a group with drive and a compressor on
