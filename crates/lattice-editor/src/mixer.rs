@@ -415,6 +415,7 @@ impl Editor {
             | Action::Quit
             | Action::ToggleMute
             | Action::TogglePatternMute
+            | Action::ToggleRecord
             | Action::ToggleSolo
             | Action::GotoMixer
             | Action::GotoPattern
@@ -444,7 +445,20 @@ impl Editor {
             Row::Param(p) => {
                 let shown = self.shown()?;
                 let info = shown.params[p];
-                Some((shown.values[p], info.min, info.max))
+                // Recording locks, nudges go on from the last one.
+                let value = match self.live_lock {
+                    Some((t, lock))
+                        if self.record
+                            && self.transport.is_some()
+                            && shown.strip == Strip::Track(t)
+                            && lock.fx == shown.slot.map(|s| s as u8)
+                            && u32::from(lock.param) == info.id =>
+                    {
+                        lock.value
+                    }
+                    _ => shown.values[p],
+                };
+                Some((value, info.min, info.max))
             }
         }
     }
@@ -462,6 +476,9 @@ impl Editor {
         }
         if value == old {
             return Ok(vec![]);
+        }
+        if let Some(effects) = self.record_lock(value) {
+            return Ok(effects);
         }
         self.checkpoint();
         let cursor = self.mixer_cursor();

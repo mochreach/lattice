@@ -130,6 +130,12 @@ pub enum Command {
         id: u32,
         value: f32,
     },
+    /// Lock a track's setting now, as though a step had: it holds until the track's next note
+    /// or lock. Ignored when stopped. For hearing a lock as it's recorded.
+    Lock {
+        track: usize,
+        lock: Lock,
+    },
     /// Set a bus's level, in dB. Ignored for a track's chain.
     SetBusLevel {
         bus: Chain,
@@ -957,6 +963,16 @@ impl Engine {
                     }
                 }
                 Command::SetParam { target, id, value } => self.set_param(target, id, value),
+                Command::Lock { track, lock } => {
+                    if self.playing
+                        && let Some(t) = self.tracks.get_mut(track)
+                    {
+                        let mut next = t.locked;
+                        if next.set(lock) {
+                            t.lock(next, 0);
+                        }
+                    }
+                }
             }
         }
     }
@@ -2205,6 +2221,49 @@ mod tests {
             }
             self.at += left.len();
         }
+    }
+
+    #[test]
+    fn a_lock_sent_while_playing_holds_until_the_next_note() {
+        let mut track = Track {
+            steps: vec![
+                Step::note(60),
+                Step::default(),
+                Step::default(),
+                Step::note(62),
+            ],
+            rules: vec![],
+            ..lead()
+        };
+        track.instrument.values = vec![0.0, 0.0, 2.0, 3.0];
+        let grid = Grid {
+            name: "lock".into(),
+            steps_per_beat: 4,
+            tracks: vec![track],
+            groups: vec![],
+        };
+        let settings = Settings::default();
+        let log = settings.log.clone();
+        let (mut engine, mut handle) = Engine::new(1_000.0, 120.0, &grid, vec![Box::new(settings)]);
+        engine.click_enabled = false;
+        let lock = Lock {
+            fx: None,
+            param: 2,
+            value: 8.0,
+        };
+        // Stopped, it's ignored.
+        handle.send(Command::Lock { track: 0, lock });
+        render_stereo(&mut engine, 10);
+        engine.play();
+        render_stereo(&mut engine, 150);
+        handle.send(Command::Lock { track: 0, lock });
+        render_stereo(&mut engine, 300);
+        let log = log.lock().unwrap();
+        let what: Vec<&str> = log.iter().map(|(_, w)| w.as_str()).collect();
+        assert_eq!(what, ["note", "2=8", "2=2", "note"]);
+        // Heard from when it was sent, until step 3's note, after the 10 samples stopped.
+        assert!((160..385).contains(&log[1].0), "{log:?}");
+        assert_eq!(log[2].0, 385);
     }
 
     #[test]

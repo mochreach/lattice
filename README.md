@@ -237,7 +237,9 @@ steps it holds over `╎`; while it plays, the mixer page shows a held lock's va
 colour and marked `◆`, in place of the track's own. Or select the steps, go to
 the mixer (`gm`), press `L`, and change the track's settings by ear; `L` again locks each setting
 that changed onto the selected steps and puts the track's own settings back (`esc`, or leaving the
-mixer, cancels). A lock on a step with no
+mixer, cancels). To perform them instead, arm record (`R`) on the mixer page and play: each
+setting you change is locked on the step that's playing, and heard at once, so a sweep played on
+`^a` goes in step by step. Each pass is one undo, as with recorded notes. A lock on a step with no
 note changes the setting on its own, so a few locks down an empty stretch move an effect along.
 In the demo, the second stab in each bar is brighter and rings, from its locked cutoff and
 resonance.

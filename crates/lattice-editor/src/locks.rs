@@ -3,7 +3,7 @@
 
 use lattice_core::{Curve, Fx, Instrument, Kind, Lock, MAX_LOCKS, ParamInfo, Track};
 
-use crate::{Editor, Effect, Strip, changed};
+use crate::{Editor, Effect, Row, Strip, changed};
 
 /// What the first `L` on the mixer page remembers: a track's settings as they were, and how far
 /// back undo went.
@@ -288,6 +288,61 @@ impl Editor {
         Ok(effects)
     }
 
+    /// With record armed and the song playing, a setting changed on the mixer is locked on the
+    /// step playing, rather than changed, and heard at once. Each pass through the track is one
+    /// undo, as with recorded notes. `None` when not recording a track's setting, so it's set
+    /// as usual.
+    pub(crate) fn record_lock(&mut self, value: f32) -> Option<Vec<Effect>> {
+        if !self.record || self.locking.is_some() {
+            return None;
+        }
+        let Row::Param(p) = self.mixer_cursor().row else {
+            return None;
+        };
+        let shown = self.shown()?;
+        let Strip::Track(t) = shown.strip else {
+            return None;
+        };
+        let (params, slot) = (shown.params, shown.slot);
+        let info = &params[p];
+        let len = self.track_len(t);
+        let at = (self.transport.as_ref()?).at(t, len)?;
+        // Counting in, there's no step yet to lock.
+        if at < 0.0 || len == 0 {
+            return Some(vec![]);
+        }
+        let at = at.floor() as u64;
+        let (step, pass) = ((at % len as u64) as usize, at / len as u64);
+        let lock = Lock {
+            fx: slot.map(|s| s as u8),
+            param: info.id as u8,
+            value: info.clamp(value),
+        };
+        let locks = &self.grid.tracks[t].steps[step].locks;
+        if locks.find(&lock).is_none() && locks.len() == MAX_LOCKS {
+            self.message = Some(format!("step {step} already holds {MAX_LOCKS} locks"));
+            return Some(vec![]);
+        }
+        if self.take != Some(pass) {
+            self.checkpoint();
+            self.take = Some(pass);
+        }
+        self.grid.tracks[t].steps[step].locks.set(lock);
+        self.live_lock = Some((t, lock));
+        let track = &self.grid.tracks[t];
+        let setting = Setting { fx: lock.fx, info };
+        self.message = Some(format!(
+            "◆ {} {} on {} step {step}",
+            setting.name(track),
+            info.format(lock.value),
+            track.name
+        ));
+        Some(vec![
+            Effect::TrackChanged(t),
+            Effect::Lock { track: t, lock },
+        ])
+    }
+
     /// `:unlock [PARAM]`: one setting's locks, or all of them, from every step the selections
     /// reach.
     pub(crate) fn unlock(&mut self, name: &str) -> Result<Vec<Effect>, String> {
@@ -529,6 +584,53 @@ mod tests {
         e.handle(Key::Char('L'));
         assert_eq!(e.handle(Key::Char('L')), []);
         assert!(e.message.as_ref().unwrap().contains("nothing locked"));
+    }
+
+    #[test]
+    fn changing_a_setting_while_recording_locks_it_on_the_step_playing() {
+        use crate::keymap::Key;
+        use crate::{Row, Transport};
+        let mut e = editor();
+        for c in "gm".chars() {
+            e.handle(Key::Char(c));
+        }
+        e.handle(Key::Char('R'));
+        assert_eq!(e.mode, crate::Mode::Normal, "record stays on the mixer");
+        e.mixer.instrument = false;
+        e.mixer.effect = 1;
+        e.mixer.row = Row::Param(0);
+        let before = e.grid.tracks[0].effects[1].values.clone();
+        let at = |e: &mut Editor, step| {
+            e.set_transport(Some(Transport {
+                positions: vec![Some((step, 0))],
+                into_step: 0.6,
+                count_in: 0,
+            }))
+        };
+        at(&mut e, 2);
+        let effects = e.handle(Key::Ctrl('a'));
+        assert!(matches!(
+            effects[..],
+            [Effect::TrackChanged(0), Effect::Lock { track: 0, .. }]
+        ));
+        assert_eq!(
+            e.grid.tracks[0].effects[1].values, before,
+            "the setting stays"
+        );
+        assert_eq!(locks(&e, 2).len(), 1);
+        let first = locks(&e, 2)[0].clone();
+        // On the next step, nudged on from the last lock.
+        at(&mut e, 3);
+        e.handle(Key::Ctrl('a'));
+        assert_eq!(locks(&e, 3).len(), 1);
+        assert_ne!(locks(&e, 3), [first]);
+        // The pass is one undo.
+        e.handle(Key::Char('u'));
+        assert!(locks(&e, 2).is_empty() && locks(&e, 3).is_empty());
+        // Stopped, it's set as usual.
+        e.set_transport(None);
+        e.handle(Key::Ctrl('a'));
+        assert_ne!(e.grid.tracks[0].effects[1].values, before);
     }
 
     #[test]

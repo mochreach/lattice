@@ -7,7 +7,7 @@
 
 use lattice_core::Note;
 
-use crate::{Editor, Effect, Key, Mode, changed};
+use crate::{Editor, Effect, Key, Mode, Page, changed};
 
 /// Where playback is, as the frontend last saw it.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -37,7 +37,7 @@ pub(crate) struct Held {
 impl Transport {
     /// Where `track` is, in steps since it started, to a fraction of a step; negative while
     /// counting in.
-    fn at(&self, track: usize, len: usize) -> Option<f64> {
+    pub(crate) fn at(&self, track: usize, len: usize) -> Option<f64> {
         if self.count_in > 0 {
             return Some(self.into_step - self.count_in as f64);
         }
@@ -52,6 +52,7 @@ impl Editor {
         if transport.is_none() {
             self.take = None;
             self.held.clear();
+            self.live_lock = None;
         }
         self.transport = transport;
     }
@@ -66,7 +67,11 @@ impl Editor {
         self.record = !self.record;
         self.held.clear();
         self.take = None;
-        if self.record {
+        self.live_lock = None;
+        if self.record && self.page == Page::Mixer {
+            self.message =
+                Some("record armed: settings changed while the song plays are locked".into());
+        } else if self.record {
             if self.mode != Mode::Insert {
                 self.insert_at(false);
             }

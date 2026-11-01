@@ -35,7 +35,9 @@ pub use record::Transport;
 
 use std::path::{Path, PathBuf};
 
-use lattice_core::{Arrangement, Buses, Grid, MAX_STEPS, MAX_TRACKS, Note, Song, Step, Track};
+use lattice_core::{
+    Arrangement, Buses, Grid, Lock, MAX_STEPS, MAX_TRACKS, Note, Song, Step, Track,
+};
 
 use crate::pattern::Pattern;
 use crate::record::Held;
@@ -145,6 +147,11 @@ pub enum Effect {
         pitch: u8,
         every: usize,
         now: bool,
+    },
+    /// Hold a setting on a track now, as its step's lock would: a lock recorded as it plays.
+    Lock {
+        track: usize,
+        lock: Lock,
     },
     /// The key holding this note has come up: end it.
     Release {
@@ -333,6 +340,8 @@ pub struct Editor {
     pub help: Help,
     /// After a first `L` on the mixer page, the settings to lock the changes to.
     locking: Option<locks::Locking>,
+    /// The lock last recorded from the mixer, and its track, to nudge on from.
+    live_lock: Option<(usize, Lock)>,
     /// Octave of the lower piano row in insert mode.
     pub octave: u8,
     /// Steps to move after entering a note.
@@ -432,6 +441,7 @@ impl Editor {
             song: Default::default(),
             help: Help::default(),
             locking: None,
+            live_lock: None,
             octave: 4,
             auto_step: 1,
             velocity: DEFAULT_VELOCITY,

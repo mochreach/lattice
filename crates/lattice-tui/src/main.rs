@@ -280,6 +280,7 @@ fn apply(
             velocity: editor.velocity,
             held: false,
         },
+        Effect::Lock { track, lock } => Command::Lock { track, lock },
         Effect::Hold { track, pitch } => Command::Preview {
             track,
             pitch,

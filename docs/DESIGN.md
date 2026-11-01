@@ -612,7 +612,15 @@ remembers the strip's track's instrument and effects (`Locking`); `L` again lock
 that differs onto the steps the selections cover (whichever tracks they were made on), puts the
 settings back, and drops the undo steps the changes made, so the whole thing is one undo. `esc`,
 or anything that leaves the mixer page, puts them back without locking. If the chain changed in
-between, the settings no longer line up, so nothing is locked or put back. The grid marks a locked step with `◆` at its
+between, the settings no longer line up, so nothing is locked or put back.
+
+With record armed and the song playing, `Editor::record_lock` turns a change on the mixer into a
+lock on the step playing (rounded down: it's the step being heard), in each pass's one undo, as
+recorded notes are. The setting itself is left alone. Nudges go on from the last lock recorded
+(`live_lock`), not the setting, so holding `^a` sweeps. The step has already played, so the
+editor also sends `Effect::Lock`, and the engine's `Command::Lock` holds it from now as the step
+would have, until the next note or lock. Arming record on the mixer page doesn't start insert
+mode, and a change during the count-in does nothing. The grid marks a locked step with `◆` at its
 end, and the steps it holds over (to the next note or lock) with `╎`; the status line lists the
 cursor's locks in place of the key hints. The engine publishes each track's locks in force every
 block (`Status::locks`, one atomic per lock: a present bit, the effect, the setting and the
