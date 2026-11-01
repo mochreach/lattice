@@ -99,7 +99,10 @@ pub fn draw(
     };
     if let (Some(lines), Some(panel)) = (lesson, panel) {
         let title = editor.tutor_view().map_or_else(String::new, |v| {
-            format!(" TUTOR {}/{} · {} ", v.number, v.total, v.title)
+            format!(
+                " TUTOR {}/{} · {} · {} ",
+                v.number, v.total, v.section, v.title
+            )
         });
         let block = Block::bordered()
             .border_style(Style::new().fg(theme.accent))

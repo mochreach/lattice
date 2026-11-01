@@ -501,10 +501,11 @@ impl Editor {
     /// and moved included. Undoing back to that point counts as unmodified.
     pub fn modified(&self) -> bool {
         // The tutor's song is only for practice.
-        !self.tutoring() && self.grid != self.saved.grid
-            || self.arrangement != self.saved.arrangement
-            || self.buses != self.saved.buses
-            || self.bpm != self.saved.bpm
+        !self.tutoring()
+            && (self.grid != self.saved.grid
+                || self.arrangement != self.saved.arrangement
+                || self.buses != self.saved.buses
+                || self.bpm != self.saved.bpm)
     }
 
     /// The song to save, named after its file.

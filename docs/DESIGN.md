@@ -677,7 +677,9 @@ moving the cursor there. It has a `done` check on the editor's state, run by
 optional `watch` for something that has to happen on the way. Checks look at the result, not the
 keys, so any way of doing it passes. Once one passes, a box says so, and `space` (or `ret`) goes
 on to the next lesson; other keys still work, to look at what was done. The text names keys as `{action_name}`, filled in from the
-keymap, so rebound keys are taught as bound. While it runs, its song never counts as unsaved.
+keymap, so rebound keys are taught as bound. While it runs, its song never counts as unsaved. The lessons
+are grouped into `SECTIONS` (the basics, the pattern, sound, the song), each named by its first
+lesson, and the box's title shows the section and lesson.
 
 **Keeping it up to date.** Tests make every change to the keys or commands touch the tutor:
 - every action in `Action::ALL` must be taught by a lesson or listed in `NOT_TAUGHT`, and every

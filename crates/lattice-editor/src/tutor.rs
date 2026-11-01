@@ -8,7 +8,7 @@
 //! and every lesson's solution is played through to check it still works.
 
 use lattice_core::{
-    Arrangement, Buses, Condition, FxKind, Grid, InstKind, Instrument, Song, Step, Track,
+    Arrangement, Buses, Condition, Entry, FxKind, Grid, InstKind, Instrument, Song, Step, Track,
 };
 
 use crate::keymap::{Action, Binding, Key, Keymap};
@@ -46,6 +46,7 @@ pub(crate) struct Tutor {
     lesson: usize,
     /// The song as the lesson started, to compare with.
     start: Grid,
+    entries: Vec<Entry>,
     /// Whether the lesson's `watch` has been true since it started.
     seen: bool,
     /// Done, and waiting for space to go on.
@@ -58,6 +59,7 @@ pub struct TutorView {
     /// From 1.
     pub number: usize,
     pub total: usize,
+    pub section: &'static str,
     pub title: &'static str,
     /// Paragraphs, with keys filled in, `backticks` marking keys and commands.
     pub text: Vec<String>,
@@ -73,10 +75,6 @@ pub const NOT_TAUGHT: &[Action] = &[
     Action::CopyDown,
     Action::CopyUp,
     Action::SplitRows,
-    // Song page keys.
-    Action::OpenBelow,
-    Action::OpenAbove,
-    Action::Open,
     // Groups.
     Action::ToggleGroup,
     Action::ToggleFold,
@@ -96,7 +94,6 @@ pub const COMMANDS_NOT_TAUGHT: &[&str] = &[
     "step",
     "oct",
     "click",
-    "follow",
     "rec",
     "count",
     "layout",
@@ -105,10 +102,6 @@ pub const COMMANDS_NOT_TAUGHT: &[&str] = &[
     "keys",
     "open",
     "open!",
-    "pattern-name",
-    "pattern-mute",
-    "pattern-remove",
-    "bars",
     "export",
     "export-sel",
     "write-quit",
@@ -150,6 +143,23 @@ fn fill_run(e: &mut Editor) {
             e.grid.tracks[t].steps[step] = Step::note(36 + 3 * i as u8);
         }
     }
+}
+
+/// The tutor's sections, each named with the title of its first lesson.
+const SECTIONS: &[(&str, &str)] = &[
+    ("Basics", "Moving around"),
+    ("The pattern", "Mute and solo"),
+    ("Sound", "The mixer"),
+    ("The song", "Patterns"),
+    ("Help", "Finding more"),
+];
+
+/// The section lesson `lesson` is in.
+fn section(lesson: usize) -> &'static str {
+    (SECTIONS.iter())
+        .rev()
+        .find(|(_, first)| LESSONS[..=lesson].iter().any(|l| l.title == *first))
+        .map_or("", |(name, _)| name)
 }
 
 const LESSONS: &[Lesson] = &[
@@ -425,23 +435,6 @@ const LESSONS: &[Lesson] = &[
         solution: ",;",
     },
     Lesson {
-        title: "Mute and solo",
-        text: "Some keys open a menu of what can follow, shown in the corner. {toggle_mute} \
-               mutes the tracks the selections reach, and {toggle_solo} solos them; \
-               {toggle_pattern_mute} mutes them in this pattern only.\n\nMute the BASS \
-               track, listen, and unmute it.",
-        teaches: &[
-            Action::ToggleMute,
-            Action::ToggleSolo,
-            Action::TogglePatternMute,
-        ],
-        commands: &[],
-        setup: nothing,
-        watch: |e| track(e, "BASS").mix.mute,
-        done: |e, t| t.seen && !track(e, "BASS").mix.mute,
-        solution: "ghlltmtm",
-    },
-    Lesson {
         title: "The command line",
         text: "{command_line} opens the command line; it suggests commands as you type, and \
                `tab` takes one. `:w` saves the song, `:q` quits ({quit} quits too), and `:bpm` \
@@ -452,6 +445,23 @@ const LESSONS: &[Lesson] = &[
         watch: never,
         done: |e, _| e.bpm == 128.0,
         solution: ":bpm 128<ret>",
+    },
+    Lesson {
+        title: "Mute and solo",
+        text: "Some keys open a menu of what can follow, shown in the corner. {toggle_mute} \
+               mutes the tracks the selections reach, and {toggle_solo} solos them; \
+               {toggle_pattern_mute} (or `:pattern-mute`) mutes them in this pattern only.\n\nMute the BASS \
+               track, listen, and unmute it.",
+        teaches: &[
+            Action::ToggleMute,
+            Action::ToggleSolo,
+            Action::TogglePatternMute,
+        ],
+        commands: &["pattern-mute"],
+        setup: nothing,
+        watch: |e| track(e, "BASS").mix.mute,
+        done: |e, t| t.seen && !track(e, "BASS").mix.mute,
+        solution: "ghlltmtm",
     },
     Lesson {
         title: "Rules",
@@ -476,6 +486,28 @@ const LESSONS: &[Lesson] = &[
             (track(e, "BASS").rules.iter().skip(was)).any(|r| r.when != Condition::Always)
         },
         solution: "ghll:tr 5 every 4<ret>",
+    },
+    Lesson {
+        title: "Tracks",
+        text: "{add_track} adds a track after the cursor's, and {remove_track} removes the \
+               selected tracks. {select_tracks} selects whole tracks; {yank_tracks} copies \
+               them, and {paste_tracks_after} {paste_tracks_before} paste them. \
+               {move_track_left} and {move_track_right} move them.\n\nAdd a track after BASS.",
+        teaches: &[
+            Action::AddTrack,
+            Action::RemoveTrack,
+            Action::SelectTracks,
+            Action::YankTracks,
+            Action::PasteTracksAfter,
+            Action::PasteTracksBefore,
+            Action::MoveTrackLeft,
+            Action::MoveTrackRight,
+        ],
+        commands: &[],
+        setup: nothing,
+        watch: never,
+        done: |e, t| e.grid.tracks.len() > t.start.tracks.len() && e.page == Page::Pattern,
+        solution: "ghllta",
     },
     Lesson {
         title: "The mixer",
@@ -533,43 +565,70 @@ const LESSONS: &[Lesson] = &[
         solution: "glgg:lock cutoff 2000<ret>",
     },
     Lesson {
-        title: "Patterns and the song",
-        text: "A song is a list of patterns. `:pattern-new verse` makes an empty pattern, \
-               `:pattern-dup` a copy of this one, and `:pattern` goes to one by name; \
-               {next_pattern} and {prev_pattern} step through them. {goto_song} shows the order \
-               they play in.\n\nMake a copy of this pattern called `chorus`, then look at the \
-               song page.",
-        teaches: &[Action::NextPattern, Action::PrevPattern, Action::GotoSong],
-        commands: &["pattern-new", "pattern-dup", "pattern"],
+        title: "Patterns",
+        text: "A song is a list of patterns, which all have the same tracks, each with its own \
+               notes. `:pattern-new verse` makes an empty pattern, `:pattern-dup` a copy of this \
+               one, and `:pattern` goes to one by name; {next_pattern} and {prev_pattern} step \
+               through them. `:pattern-name` renames this pattern and `:pattern-remove` removes \
+               it. A pattern plays for as long as its longest track, or `:bars 2` sets how many \
+               bars.\n\nMake a copy of this pattern called `chorus`.",
+        teaches: &[Action::NextPattern, Action::PrevPattern],
+        commands: &[
+            "pattern-new",
+            "pattern-dup",
+            "pattern",
+            "pattern-name",
+            "pattern-remove",
+            "bars",
+        ],
         setup: nothing,
         watch: never,
-        done: |e, _| {
-            (e.arrangement.patterns.iter()).any(|p| p.name == "chorus") && e.page == Page::Song
-        },
-        solution: ":pattern-dup chorus<ret>gs",
+        done: |e, _| e.arrangement.patterns[e.arrangement.current].name == "chorus",
+        solution: ":pattern-dup chorus<ret>",
     },
     Lesson {
-        title: "Tracks",
-        text: "{add_track} adds a track after the cursor's, and {remove_track} removes the \
-               selected tracks. {select_tracks} selects whole tracks; {yank_tracks} copies \
-               them, and {paste_tracks_after} {paste_tracks_before} paste them. \
-               {move_track_left} and {move_track_right} move them.\n\nGo back to the pattern \
-               page and add a track.",
-        teaches: &[
-            Action::AddTrack,
-            Action::RemoveTrack,
-            Action::SelectTracks,
-            Action::YankTracks,
-            Action::PasteTracksAfter,
-            Action::PasteTracksBefore,
-            Action::MoveTrackLeft,
-            Action::MoveTrackRight,
-        ],
+        title: "The song page",
+        text: "{goto_song} opens the song page: the order the patterns play in. Each entry plays \
+               a pattern some number of times. {up} {down} move between entries, {left} \
+               {right} change which pattern the entry plays, and {longer} {shorter} play it \
+               more or fewer times.\n\nOpen the song page and make an entry play twice.",
+        teaches: &[Action::GotoSong, Action::Longer, Action::Shorter],
         commands: &[],
         setup: nothing,
         watch: never,
-        done: |e, t| e.grid.tracks.len() > t.start.tracks.len() && e.page == Page::Pattern,
-        solution: "gpta",
+        done: |e, t| {
+            e.page == Page::Song
+                && (e.arrangement.entries.iter().zip(&t.entries))
+                    .any(|(now, was)| now.repeats > was.repeats)
+        },
+        solution: "gs+",
+    },
+    Lesson {
+        title: "Arranging",
+        text: "On the song page, {open_below} adds an entry after the cursor's, playing the same \
+               pattern, and {open_above} one before. {delete} removes an entry, {yank} copies it \
+               and {paste} pastes it after. {open} goes to the entry's pattern, to edit \
+               it.\n\nAdd an entry, then edit its pattern.",
+        teaches: &[Action::OpenBelow, Action::OpenAbove, Action::Open],
+        commands: &[],
+        setup: nothing,
+        watch: never,
+        done: |e, t| e.arrangement.entries.len() > t.entries.len() && e.page == Page::Pattern,
+        solution: "gso<ret>",
+    },
+    Lesson {
+        title: "Playing the song",
+        text: "On the song page, {toggle_play} plays the song from the cursor's entry. On the \
+               pattern page, {play_song} plays it from the pattern you're on, and the page \
+               follows along as the song moves from pattern to pattern; `:follow` turns that \
+               off, to stay on one pattern while the song plays.\n\nPlay the song from the song \
+               page, then stop it.",
+        teaches: &[],
+        commands: &["follow"],
+        setup: nothing,
+        watch: |e| e.transport.is_some() && e.page == Page::Song,
+        done: |e, t| t.seen && e.transport.is_none(),
+        solution: "gs<space><playing><space><stopped>",
     },
     Lesson {
         title: "Finding more",
@@ -696,6 +755,7 @@ impl Editor {
         self.tutor = Some(Tutor {
             lesson: 0,
             start: self.grid.clone(),
+            entries: self.arrangement.entries.clone(),
             seen: false,
             complete: false,
         });
@@ -732,6 +792,7 @@ impl Editor {
         Some(TutorView {
             number: tutor.lesson + 1,
             total: LESSONS.len(),
+            section: section(tutor.lesson),
             title: lesson.title,
             text: (lesson.text.split("\n\n"))
                 .map(|p| fill(p, &self.keymap))
@@ -791,6 +852,7 @@ impl Editor {
         self.tutor = Some(Tutor {
             lesson,
             start: self.grid.clone(),
+            entries: self.arrangement.entries.clone(),
             seen: false,
             complete: false,
         });
@@ -956,6 +1018,20 @@ mod tests {
                 rest = &rest[close + 1..];
             }
         }
+    }
+
+    #[test]
+    fn sections_start_at_lessons_in_order() {
+        let firsts: Vec<usize> = (SECTIONS.iter())
+            .map(|(name, first)| {
+                (LESSONS.iter().position(|l| l.title == *first))
+                    .unwrap_or_else(|| panic!("{name}: no lesson {first}"))
+            })
+            .collect();
+        assert_eq!(firsts[0], 0);
+        assert!(firsts.is_sorted(), "{firsts:?}");
+        assert_eq!(section(0), "Basics");
+        assert_eq!(section(LESSONS.len() - 1), "Help");
     }
 
     #[test]
