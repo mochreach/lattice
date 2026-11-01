@@ -13,7 +13,8 @@ one for each stage (`gs` shows them):
    on `direction`) in bar 3, and a stutter cutting off the crash in bar 4. A rule, `rot+8/2+1`,
    shifts the whole edit half a bar later every other time round.
 
-`amen.wav` is Lattice's own rendering, not the original record. It was made with `%` and
-`:export-sel` on the drums pattern, then cut to exactly four bars with the tail (the crash ringing
-on) mixed back into the start, so it loops cleanly. To chop it again from scratch, go to an
-empty track and `:chop examples/amen/amen.wav`.
+`amen.wav` is Lattice's own rendering, not the original record. To make it again, go to the
+drums pattern (`:pattern drums`), select it all with `%`, and `:export-loop amen.wav`: that renders
+exactly four bars, with the tail (the crash ringing on) mixed back into the start, so it loops
+cleanly. (The file here is that, mixed to mono and normalised, to keep it small.) Then `:chop`,
+with no file, on an empty track cuts up what was just exported.

@@ -150,7 +150,25 @@ pub fn render(export: &Export, buses: Buses, bpm: f64, sample_rate: f32) -> Resu
     }
     // Ending on a whole frame.
     audio.truncate(last_sound.next_multiple_of(2));
+    if export.looped {
+        fold(&mut audio, length);
+    }
     Ok(audio)
+}
+
+/// Cuts interleaved stereo to `frames`, mixing what's after back in from the start, as it would
+/// sound looping.
+fn fold(audio: &mut Vec<f32>, frames: usize) {
+    let len = 2 * frames;
+    if len == 0 {
+        return audio.clear();
+    }
+    audio.resize(audio.len().max(len), 0.0);
+    let (looped, tail) = audio.split_at_mut(len);
+    for (i, &sample) in tail.iter().enumerate() {
+        looped[i % len] += sample;
+    }
+    audio.truncate(len);
 }
 
 /// Writes interleaved stereo as 24-bit PCM, which samplers and DAWs all read. Returns its
@@ -220,7 +238,41 @@ mod tests {
                 groups: vec![],
             },
             parts: vec![part],
+            looped: false,
         }
+    }
+
+    #[test]
+    fn a_loop_is_exactly_its_steps_with_the_tail_from_the_start() {
+        let rate = 8000.0;
+        let plain = render(&export(4), Buses::default(), 120.0, rate).unwrap();
+        let looped = Export {
+            looped: true,
+            ..export(4)
+        };
+        let audio = render(&looped, Buses::default(), 120.0, rate).unwrap();
+        assert_eq!(audio.len(), 2 * 4000, "half a second, to the frame");
+        assert!(plain.len() > audio.len(), "there was a tail");
+        // The tail's mixed into the start, the rest is as it was.
+        assert_eq!(audio[0], plain[0] + plain[8000]);
+        assert_eq!(
+            audio[7999],
+            plain[7999] + plain.get(15_999).copied().unwrap_or(0.0)
+        );
+    }
+
+    #[test]
+    fn folding_wraps_round_as_often_as_it_takes() {
+        let mut audio = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0];
+        fold(&mut audio, 2);
+        assert_eq!(
+            audio,
+            [1.0 + 5.0 + 9.0, 2.0 + 6.0 + 10.0, 3.0 + 7.0, 4.0 + 8.0]
+        );
+        // A short render is padded with silence.
+        let mut audio = vec![1.0, 1.0];
+        fold(&mut audio, 2);
+        assert_eq!(audio, [1.0, 1.0, 0.0, 0.0]);
     }
 
     #[test]

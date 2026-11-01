@@ -535,12 +535,14 @@ const LESSONS: &[Lesson] = &[
         title: "Instruments and effects",
         text: "`:inst string` changes the cursor's track's instrument. `:sample kick.wav` plays a \
                sound file on it, and `:chop loop.wav` cuts one into a piece a step, each step \
-               playing its own, drawn as a waveform down the track, to rearrange like notes. \
+               playing its own, drawn as a waveform down the track, to rearrange like notes; \
+               `:export-loop` renders the selection to a file exactly as long, for `:chop` to \
+               cut up. \
                `:fx-add delay` adds an \
                effect to it: `delay`, `reverb`, `filter`, `drive` or `comp`. On the mixer, \
                {delete} removes the effect under the cursor.\n\nAdd a reverb to the LEAD track.",
         teaches: &[],
-        commands: &["inst", "sample", "chop", "fx-add"],
+        commands: &["inst", "sample", "chop", "export-loop", "fx-add"],
         setup: nothing,
         watch: never,
         done: |e, _| (track(e, "LEAD").effects.iter()).any(|fx| fx.kind == FxKind::Reverb),

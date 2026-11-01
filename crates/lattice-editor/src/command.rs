@@ -428,6 +428,12 @@ pub const COMMANDS: &[Spec] = &[
         describe: "render the selection to a WAV file, for a sample",
     },
     Spec {
+        name: "export-loop",
+        alias: None,
+        params: &[optional_text("[PATH]", "path")],
+        describe: "render the selection to a WAV file exactly its length, its tail mixed into the start, to loop",
+    },
+    Spec {
         name: "write-quit",
         alias: Some("wq"),
         params: &[optional_text("[PATH]", "path")],
@@ -995,7 +1001,8 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![])
         }
         "export" => editor.export_song(command.text(0)),
-        "export-sel" => editor.export_selection(command.text(0)),
+        "export-sel" => editor.export_selection(command.text(0), false),
+        "export-loop" => editor.export_selection(command.text(0), true),
         "tutor" if !command.text(0).is_empty() => editor.tutor_command(command.text(0)),
         "tutor" if editor.modified() => {
             Err("unsaved changes: :w to save them, or :tutor! to start anyway".into())

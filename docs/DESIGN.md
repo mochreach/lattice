@@ -231,6 +231,10 @@ The sample-based instruments split by use: a kit is a group of tracks with a sou
 track groups), the sampler plays a file across the keys, and chop rearranges a loop a step at a
 time. They share the sampler's voices (`Player` in `sampler.rs`), each choosing what a note plays.
 
+`:export-loop` makes the loops to chop: it renders the selection like `:export-sel`, then cuts
+the result to exactly the selection's length, mixing the tail back into the start, as the loop
+would sound going round.
+
 Chop cuts a file's region into `pieces` equal pieces, which `:chop` sets to the track's length,
 filling each step with the note for its own piece (C-4 the first, wrapping round). The steps hold
 references to the audio, not the audio: the file's never changed, and editing, undo, rules and

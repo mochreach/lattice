@@ -202,7 +202,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:set VALUE` | on the mixer page, set the value under the cursor (also `c`) |
 | `:inst INSTRUMENT` | the instrument for every track the selections reach (or the mixer cursor's): `synth`, `string`, `sampler`, `chop`, `kick`, `snare`, `hat`, `clap` or `tom` |
 | `:chop [PATH]` | cut a WAV file into a piece a step, on every track the selections reach (or the mixer cursor's), each step playing its own; with no path, the last selection exported |
-| `:sample [PATH]` | play a WAV file on a sampler, on every track the selections reach (or the mixer cursor's); with no path, the selection last exported with `:export-sel` |
+| `:sample [PATH]` | play a WAV file on a sampler, on every track the selections reach (or the mixer cursor's); with no path, the selection last exported with `:export-sel` or `:export-loop` |
 | `:fx-add EFFECT` | add an effect (`delay`, `reverb`, `filter`, `drive` or `comp`) after the mixer cursor, or at the end of this track's chain |
 | `:lock PARAM VALUE` | lock a setting of the track's instrument or effects on every step the selections reach: `:lock cutoff 800`, `:lock filter.mix 0.5` (or `2.mix`, the second effect's). `:lock cutoff 200..4000` sweeps it across each selection. Locked steps are marked `◆`, and the cursor's locks are shown in the status line |
 | `:unlock [PARAM]` | clear a setting's locks, or all of them, from the steps the selections reach |
@@ -215,6 +215,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:pattern-name NAME`, `:pattern-remove` | rename this pattern; remove it, and its places in the song |
 | `:bars [N \| auto]` | how long this pattern plays in the song: N bars, or `auto` (the default), as long as its longest track, rounded up to a whole bar. Looping on its own, a pattern never restarts its tracks, so tracks of different lengths keep drifting against each other |
 | `:export [PATH] [BARS]` | render the song to a 24-bit WAV, faster than real time, while you carry on: each pattern in the song's order, for its length, then the tail until it's quiet; or with BARS, this pattern for that many bars. With no path, it goes beside the song's file |
+| `:export-loop [PATH]` | render just the selection, exactly its length, with its tail mixed back into the start, so it loops cleanly; `:chop` or `:sample` with no path then plays it |
 | `:export-sel [PATH]` | render just the selection (its steps, on its tracks, heard even if muted) once, with its tail, for a sample |
 | `:o PATH`, `:o! PATH` | open a song, or start a new one at PATH; `!` discards unsaved changes |
 | `:q`, `:q!` | quit, refusing if there are unsaved changes; `!` quits anyway |
@@ -281,9 +282,9 @@ chopped into equal slices, C-4 playing the first and each note up the next, at t
 `mode` is `one-shot` (to the end, whatever the note's length), `gate` (until the note ends) or
 `loop` (round the region until the note ends); `start` and `end` set the region, `direction`
 plays it backwards, and `tune`, `attack`, `release` and `gain` do what they say. So
-`:export-sel`, then `:sample` on another track, turns a bar into a sample to chop up.
+`:export-sel`, then `:sample` on another track, turns a bar into a sample to play.
 
-`chop` is for loops: `:chop break.wav` cuts the file into as many equal pieces as the track has
+`chop` is for loops: `:export-loop` on a selection, then `:chop` on an empty track, or `:chop break.wav`, cuts the file into as many equal pieces as the track has
 steps and has each step play its own, so it sounds as recorded. The track shows each step's piece
 number and its waveform, drawn down the column in braille, and the pieces are notes like any
 other: `y` and `p` copy them, `d` silences one, `C-a` and `C-x` move a step to the next or last

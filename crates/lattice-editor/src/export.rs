@@ -1,5 +1,6 @@
 //! Bouncing to a WAV file. `:export` renders the song as arranged, or this pattern for a number
-//! of bars, and `:export-sel` renders only what's selected, once, for a sample. The editor works
+//! of bars, and `:export-sel` renders only what's selected, once, for a sample; `:export-loop`
+//! makes that exactly the selection's length, to loop. The editor works
 //! out what to render; the frontend renders it, offline and faster than real time, through the
 //! song's mixer.
 
@@ -16,6 +17,9 @@ pub struct Export {
     pub path: PathBuf,
     pub grid: Grid,
     pub parts: Vec<Part>,
+    /// Exactly as long as the parts, with the tail mixed back into the start, so it loops
+    /// without a gap or a click.
+    pub looped: bool,
 }
 
 /// A pattern to play: a lane for each track, for so many steps.
@@ -67,11 +71,17 @@ impl Editor {
             path: self.wav_path(&words.join(" "), "")?,
             grid: self.grid.clone(),
             parts,
+            looped: false,
         }))])
     }
 
-    /// `:export-sel [PATH]`: the primary selection's steps on its tracks, once, alone.
-    pub(crate) fn export_selection(&mut self, path: &str) -> Result<Vec<Effect>, String> {
+    /// `:export-sel [PATH]`: the primary selection's steps on its tracks, once, alone; or with
+    /// `:export-loop`, `looped`.
+    pub(crate) fn export_selection(
+        &mut self,
+        path: &str,
+        looped: bool,
+    ) -> Result<Vec<Effect>, String> {
         let region = self.selection();
         let mut grid = self.grid.clone();
         let mut lanes = vec![];
@@ -94,8 +104,8 @@ impl Editor {
                 mute: false,
             });
         }
-        let path = self.wav_path(path, "-selection")?;
-        // For `:sample` to pick up.
+        let path = self.wav_path(path, if looped { "-loop" } else { "-selection" })?;
+        // For `:sample` and `:chop` to pick up.
         self.last_export = Some(path.clone());
         Ok(vec![Effect::Export(Box::new(Export {
             path,
@@ -104,6 +114,7 @@ impl Editor {
                 lanes,
                 steps: region.rows() as u64,
             }],
+            looped,
         }))])
     }
 
@@ -248,5 +259,9 @@ mod tests {
         assert_eq!(lanes[1].steps[1].note.unwrap().pitch, 64);
         // Past the end of the short track, it's silent.
         assert_eq!(lanes[2].steps, vec![Step::default(); 4]);
+        assert!(!x.looped);
+        let x = export(run(&mut e, "export-loop loop"));
+        assert!(x.looped && x.steps() == 4);
+        assert_eq!(e.last_export, Some(x.path.clone()), "for :chop to pick up");
     }
 }
