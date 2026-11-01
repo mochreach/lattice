@@ -3,6 +3,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use anyhow::Result;
 use cpal::traits::{DeviceTrait, StreamTrait};
@@ -11,6 +12,7 @@ use lattice_editor::Direction;
 use lattice_engine::{Engine, Handle};
 
 use crate::devices;
+use crate::log::{HEALTH, log};
 use crate::tracks::Tracks;
 
 /// Largest buffer the engine renders in one go; bigger cpal buffers are split.
@@ -96,12 +98,15 @@ impl Output {
         let input = Arc::clone(&self.input_latency);
         let mut left = vec![0.0f32; MAX_BLOCK];
         let mut right = vec![0.0f32; MAX_BLOCK];
+        let buffer = config.buffer_size;
         let stream = device.build_output_stream(
             config,
             move |data: &mut [f32], info: &cpal::OutputCallbackInfo| {
                 assert_no_alloc::assert_no_alloc(|| {
+                    let start = Instant::now();
                     let Ok(mut engine) = engine.try_lock() else {
                         data.fill(0.0);
+                        HEALTH.missed.fetch_add(1, Ordering::Relaxed);
                         return;
                     };
                     // What's rendered now is heard this much later, and what's played along
@@ -125,13 +130,15 @@ impl Output {
                             }
                         }
                     }
+                    HEALTH.block(start, data.len() / channels, sample_rate);
                 });
             },
             // Can't print while the terminal UI owns the screen.
-            |_err| {},
+            |err| HEALTH.stream_error("output", &err),
             None,
         )?;
         stream.play()?;
+        log!("output: {device}, {sample_rate} Hz, {channels} channels, buffer {buffer:?}");
         Ok(stream)
     }
 }

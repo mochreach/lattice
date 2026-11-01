@@ -423,6 +423,8 @@ pub struct Status {
     locks: [[AtomicU64; MAX_LOCKS]; MAX_TRACKS],
     /// Whether a take is recording the input.
     recording: AtomicBool,
+    /// Things leaked on the audio thread because the garbage queue was full.
+    leaked: AtomicU64,
 }
 
 /// A lock in one atomic: a present bit, the effect (255 for the instrument), the setting and the
@@ -443,6 +445,11 @@ fn unpack_lock(packed: u64) -> Option<Lock> {
 }
 
 impl Status {
+    /// How many things the audio thread has leaked rather than free.
+    pub fn leaked(&self) -> u64 {
+        self.leaked.load(Ordering::Relaxed)
+    }
+
     fn new() -> Self {
         Self {
             boundaries: AtomicU64::new(0),
@@ -456,6 +463,7 @@ impl Status {
             group_peaks: std::array::from_fn(|_| AtomicU32::new(0)),
             locks: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU64::new(0))),
             recording: AtomicBool::new(false),
+            leaked: AtomicU64::new(0),
         }
     }
 
@@ -1318,6 +1326,7 @@ impl Engine {
         if let Err(PushError::Full(garbage)) = self.garbage.push(garbage) {
             // Never free on the audio thread; leaking is the lesser evil.
             std::mem::forget(garbage);
+            self.status.leaked.fetch_add(1, Ordering::Relaxed);
         }
     }
 

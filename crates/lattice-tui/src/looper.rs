@@ -17,6 +17,7 @@ use rtrb::{Consumer, RingBuffer};
 
 use crate::devices;
 use crate::export::write_wav;
+use crate::log::{HEALTH, log};
 use crate::samples;
 
 /// Takes waiting in the engine at once: the one recording and the one to follow it.
@@ -165,6 +166,7 @@ fn open_input(
     let device = devices::device(host, Direction::Input, id)?;
     let config = devices::config(&device, Direction::Input, Some(rate as u32))?;
     let channels = usize::from(config.channels).max(1);
+    let buffer = config.buffer_size;
     // A second, plenty for the engine to keep up.
     let (mut frames, input) = RingBuffer::new(rate as usize * 2);
     let stream = device.build_input_stream(
@@ -179,14 +181,17 @@ fn open_input(
                 if frames.slots() >= 2 {
                     let _ = frames.push(l);
                     let _ = frames.push(r);
+                } else {
+                    HEALTH.dropped.fetch_add(1, Ordering::Relaxed);
                 }
             }
         },
         // Can't print while the terminal UI owns the screen.
-        |_err| {},
+        |err| HEALTH.stream_error("input", &err),
         None,
     )?;
     stream.play()?;
+    log!("input: {device}, {rate} Hz, {channels} channels, buffer {buffer:?}");
     Ok((stream, input))
 }
 

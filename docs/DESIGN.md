@@ -481,6 +481,15 @@ designed in from the start.
 
 Lay the foundations now, and optimise only where benchmarks show a need.
 
+**Watching it run.** The audio threads can't log, as writing a file may wait, so they count
+their troubles in atomics: blocks played as silence because the engine was busy, blocks that took
+longer to render than they last (and the worst share of its time any block took), input frames
+dropped because the engine wasn't taking them, stream errors, and things leaked because the
+garbage queue was full. The UI thread looks once a second and writes what's new to the log
+(`~/.local/state/lattice/lattice.log`), alongside the devices opened, the commands run and what the
+status line said. Three late blocks in a second, or a stream error, also go on the status line. A
+panic hook writes the backtrace to the log, since the terminal UI owns the screen.
+
 ## DSP
 
 We write our own DSP rather than using fundsp. A tracker's signal flow is fixed:

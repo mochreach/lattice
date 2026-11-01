@@ -349,6 +349,11 @@ for each input, belong to the computer rather than the song, so they're remember
 `~/.config/lattice/audio.toml`. On Linux, Lattice goes through PulseAudio (which PipeWire serves),
 so the devices have the names the desktop gives them, falling back to ALSA without it.
 
+Lattice keeps a log in `~/.local/state/lattice/lattice.log` (or under `$XDG_STATE_HOME`), with the
+last run's as `lattice.log.1`: the devices it opened, the commands you ran, what the status line
+said, any trouble the audio had keeping up, and a crash's backtrace. If the audio keeps falling
+behind, or a device fails, the status line says so too.
+
 The demo song is techno at 130 BPM in F minor, in six sections (`gs` shows them; `^space` plays the
 lot). It opens on `peak`, which has everything: drums folded into a group with drive and a
 compressor on its bus (`tz` unfolds it), hats sharing a choke, a five-step tom and a seven-step

@@ -10,6 +10,7 @@ mod fx_page;
 mod help_page;
 mod key_log;
 mod keys;
+mod log;
 mod looper;
 mod mixer;
 mod mixer_page;
@@ -26,7 +27,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use lattice_editor::{Editor, Effect, Mode, Transport};
+use lattice_editor::{Editor, Effect, Key, Mode, PromptKind, Transport};
 use lattice_engine::{Command, Handle, Status};
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{
@@ -37,6 +38,7 @@ use ratatui::crossterm::{execute, terminal};
 
 use crate::devices::Machine;
 use crate::export::Exports;
+use crate::log::{Watch, log};
 use crate::mixer::Mixer;
 use crate::sequencer::Sequencer;
 use crate::splash::Splash;
@@ -61,6 +63,8 @@ enum Flow {
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    log::start();
+    log!("arguments: {args:?}");
     let demo = demo::song();
     let mut editor = Editor::new(demo.grid, demo.bpm)
         .with_buses(demo.buses)
@@ -74,6 +78,7 @@ fn main() -> Result<()> {
         .map(|(_, a)| PathBuf::from(a))
     {
         let (song, new) = file::open(&path, None)?;
+        log!("opened {}", path.display());
         // The engine starts from the editor's song, so nothing needs sending yet.
         editor.load(song, path.clone());
         if new {
@@ -141,6 +146,10 @@ fn main() -> Result<()> {
         let _ = execute!(std::io::stdout(), PopKeyboardEnhancementFlags);
     }
     ratatui::restore();
+    match &result {
+        Ok(()) => log!("quit"),
+        Err(e) => log!("stopped by an error: {e:#}"),
+    }
     result
 }
 
@@ -159,8 +168,20 @@ fn run(
     let mut view = ui::ViewState::default();
     let mut playhead = Playhead::default();
     let mut sequencer = Sequencer::default();
+    let mut watch = Watch::new();
+    let mut said = None;
     loop {
         handle.collect_garbage();
+        if let Some(problem) = watch.look(handle.status().leaked()) {
+            editor.message = Some(problem);
+        }
+        // What the status line says, as it changes, so the log shows what the player saw.
+        if editor.message != said {
+            if let Some(message) = &editor.message {
+                log!("says: {message}");
+            }
+            said.clone_from(&editor.message);
+        }
         let written = exports.poll(editor);
         if !written.is_empty() {
             written.iter().for_each(|path| tracks.reload(path));
@@ -223,6 +244,11 @@ fn run(
                     // A held note plays once, as on a keyboard; held motions still repeat.
                     KeyEventKind::Repeat if editor.plays(key) => vec![],
                     _ => {
+                        if let (Key::Enter, Mode::Command(prompt)) = (key, &editor.mode)
+                            && prompt.kind == PromptKind::Command
+                        {
+                            log!(":{}", prompt.line);
+                        }
                         let effects = editor.handle(key);
                         let typing = matches!(editor.mode, Mode::Command(_));
                         view.keys.record(key, typing, now);
