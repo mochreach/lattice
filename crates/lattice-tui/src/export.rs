@@ -190,6 +190,10 @@ pub fn write_wav(path: &Path, audio: &[f32], sample_rate: u32) -> Result<f32> {
     const CHANNELS: u16 = 2;
     const BYTES: u16 = 3;
     let data = u32::try_from(audio.len() * usize::from(BYTES)).context("too long for a WAV")?;
+    if let Some(folder) = path.parent().filter(|f| !f.as_os_str().is_empty()) {
+        std::fs::create_dir_all(folder)
+            .with_context(|| format!("can't make {}", folder.display()))?;
+    }
     let file = File::create(path).with_context(|| format!("can't write {}", path.display()))?;
     let mut w = BufWriter::new(file);
     w.write_all(b"RIFF")?;

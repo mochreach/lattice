@@ -59,6 +59,15 @@ impl Tracks {
         }
     }
 
+    /// The instruments playing `from` play `to` now, a copy of it, without being built again.
+    pub fn copied(&mut self, from: &std::path::Path, to: &std::path::Path) {
+        for (_, sent) in &mut self.engine {
+            if sent.file.as_deref() == Some(from) {
+                sent.file = Some(to.to_path_buf());
+            }
+        }
+    }
+
     /// Sends the engine the commands that bring its tracks in line with the editor's: removing
     /// those that have gone, moving those that have moved and adding new ones, then swapping or
     /// setting instruments, built here off the audio thread. Returns false if the command queue

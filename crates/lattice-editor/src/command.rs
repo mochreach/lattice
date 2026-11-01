@@ -425,13 +425,13 @@ pub const COMMANDS: &[Spec] = &[
         name: "export-sel",
         alias: None,
         params: &[optional_text("[PATH]", "path")],
-        describe: "render the selection to a WAV file, for a sample",
+        describe: "render the selection to a sample in the song's samples folder",
     },
     Spec {
         name: "export-loop",
         alias: None,
         params: &[optional_text("[PATH]", "path")],
-        describe: "render the selection to a WAV file exactly its length, its tail mixed into the start, to loop",
+        describe: "render the selection to a sample exactly its length, its tail mixed into the start, to loop",
     },
     Spec {
         name: "write-quit",

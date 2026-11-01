@@ -27,7 +27,7 @@ mod song;
 mod tutor;
 
 pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
-pub use export::{Export, Part, file_name};
+pub use export::{Export, Part, SAMPLES, file_name, scratch};
 pub use help::{Help, HelpLine};
 pub use keymap::{Action, Binding, Key, Keymap, Menu, NoteLayout};
 pub use mixer::{Field, MixerCursor, PARAM_COLUMNS, Page, Row, Shown, Strip};

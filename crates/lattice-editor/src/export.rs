@@ -3,6 +3,9 @@
 //! makes that exactly the selection's length, to loop. The editor works
 //! out what to render; the frontend renders it, offline and faster than real time, through the
 //! song's mixer.
+//!
+//! Samples go in the song's [`SAMPLES`] folder, or until it's saved the [`scratch`] folder, from
+//! which saving copies the ones its tracks play.
 
 use std::path::{Path, PathBuf};
 
@@ -68,7 +71,7 @@ impl Editor {
                 .collect(),
         };
         Ok(vec![Effect::Export(Box::new(Export {
-            path: self.wav_path(&words.join(" "), "")?,
+            path: self.wav_path(&words.join(" "))?,
             grid: self.grid.clone(),
             parts,
             looped: false,
@@ -104,7 +107,7 @@ impl Editor {
                 mute: false,
             });
         }
-        let path = self.wav_path(path, if looped { "-loop" } else { "-selection" })?;
+        let path = self.sample_file(path, if looped { "loop" } else { "selection" });
         // For `:sample` and `:chop` to pick up.
         self.last_export = Some(path.clone());
         Ok(vec![Effect::Export(Box::new(Export {
@@ -119,22 +122,63 @@ impl Editor {
     }
 
     /// The path typed, with `.wav` added if it has no extension, or else the song's file with
-    /// `suffix` and `.wav`.
-    fn wav_path(&self, typed: &str, suffix: &str) -> Result<PathBuf, String> {
-        let path = if typed.is_empty() {
+    /// `.wav` in place of `.lattice`.
+    fn wav_path(&self, typed: &str) -> Result<PathBuf, String> {
+        if typed.is_empty() {
             let song = self
                 .path
                 .as_deref()
                 .ok_or("no file name yet: give one, or :w the song first")?;
-            let stem = song.file_stem().unwrap_or_default().to_string_lossy();
-            song.with_file_name(format!("{stem}{suffix}"))
-        } else {
-            PathBuf::from(typed)
+            return Ok(song.with_extension("wav"));
+        }
+        Ok(with_wav(PathBuf::from(typed)))
+    }
+
+    /// Where a new sample goes: a name typed alone in the samples folder, a path as typed, or
+    /// with nothing typed, the song's name and `kind`, numbered so as not to replace a sample
+    /// already made.
+    fn sample_file(&self, typed: &str, kind: &str) -> PathBuf {
+        let folder = self.samples_folder();
+        if !typed.is_empty() {
+            let path = with_wav(PathBuf::from(typed));
+            return match path.parent() {
+                Some(parent) if parent.as_os_str().is_empty() => folder.join(path),
+                _ => path,
+            };
+        }
+        let name = match self.path.as_deref().and_then(Path::file_stem) {
+            Some(stem) => format!("{}-{kind}", stem.to_string_lossy()),
+            None => kind.to_string(),
         };
-        Ok(match path.extension() {
-            Some(_) => path,
-            None => path.with_extension("wav"),
-        })
+        (1..)
+            .map(|n| folder.join(format!("{name}-{n}.wav")))
+            // The last may still be rendering.
+            .find(|path| !path.exists() && self.last_export.as_ref() != Some(path))
+            .unwrap()
+    }
+
+    /// The song's [`SAMPLES`] folder, beside it, or the [`scratch`] folder until it's saved.
+    fn samples_folder(&self) -> PathBuf {
+        match &self.path {
+            Some(song) => song.with_file_name(SAMPLES),
+            None => scratch(),
+        }
+    }
+}
+
+/// The folder beside a song that its samples are made in.
+pub const SAMPLES: &str = "samples";
+
+/// Where samples go before the song's saved, to be copied into its [`SAMPLES`] folder when it is:
+/// one for each time Lattice runs.
+pub fn scratch() -> PathBuf {
+    std::env::temp_dir().join(format!("lattice-{}", std::process::id()))
+}
+
+fn with_wav(path: PathBuf) -> PathBuf {
+    match path.extension() {
+        Some(_) => path,
+        None => path.with_extension("wav"),
     }
 }
 
@@ -229,7 +273,25 @@ mod tests {
         );
         assert_eq!(
             export(run(&mut e, "export-sel")).path,
-            PathBuf::from("songs/tune-selection.wav")
+            PathBuf::from("songs/samples/tune-selection-1.wav")
+        );
+        // Numbered, so as not to replace the last, which may not be written yet.
+        assert_eq!(
+            export(run(&mut e, "export-loop")).path,
+            PathBuf::from("songs/samples/tune-loop-1.wav")
+        );
+        assert_eq!(
+            export(run(&mut e, "export-loop")).path,
+            PathBuf::from("songs/samples/tune-loop-2.wav")
+        );
+        // A name alone goes in the samples folder; a path, where it says.
+        assert_eq!(
+            export(run(&mut e, "export-loop hit")).path,
+            PathBuf::from("songs/samples/hit.wav")
+        );
+        assert_eq!(
+            export(run(&mut e, "export-loop ./hit")).path,
+            PathBuf::from("./hit.wav")
         );
     }
 
@@ -260,8 +322,10 @@ mod tests {
         // Past the end of the short track, it's silent.
         assert_eq!(lanes[2].steps, vec![Step::default(); 4]);
         assert!(!x.looped);
-        let x = export(run(&mut e, "export-loop loop"));
+        let x = export(run(&mut e, "export-loop"));
         assert!(x.looped && x.steps() == 4);
+        // Not saved yet, so in the scratch folder.
+        assert_eq!(x.path, scratch().join("loop-1.wav"));
         assert_eq!(e.last_export, Some(x.path.clone()), "for :chop to pick up");
     }
 }

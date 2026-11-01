@@ -220,6 +220,12 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:export [PATH] [BARS]` | render the song to a 24-bit WAV, faster than real time, while you carry on: each pattern in the song's order, for its length, then the tail until it's quiet; or with BARS, this pattern for that many bars. With no path, it goes beside the song's file |
 | `:export-loop [PATH]` | render just the selection, exactly its length, with its tail mixed back into the start, so it loops cleanly; `:chop` or `:sample` with no path then plays it |
 | `:export-sel [PATH]` | render just the selection (its steps, on its tracks, heard even if muted) once, with its tail, for a sample |
+
+`:export-sel` and `:export-loop` make samples, so they go in a `samples` folder beside the song,
+numbered (`song-loop-1.wav`, `song-loop-2.wav`, …) so a new one never replaces one a track plays; a
+name alone (`:export-loop break`) goes there too, and a path where it says. Before the song's been
+saved they go in a scratch folder, and `:w` copies the ones its tracks play into `samples`, so the
+song and its sounds stay together.
 | `:o PATH`, `:o! PATH` | open a song, or start a new one at PATH; `!` discards unsaved changes |
 | `:q`, `:q!` | quit, refusing if there are unsaved changes; `!` quits anyway |
 | `:track-add [NAME]` (`:ta`) | add a 16-step track after this one (up to 16 tracks; also `ta`) |

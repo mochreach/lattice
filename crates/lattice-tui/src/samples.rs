@@ -27,6 +27,17 @@ pub fn cached(path: &Path) -> Option<Arc<Sample>> {
     Some(cache.as_ref()?.get(path)?.1.clone())
 }
 
+/// Keeps what was read from `from` as what's in `to`, a copy of it.
+pub fn copied(from: &Path, to: &Path) {
+    let modified = std::fs::metadata(to).and_then(|m| m.modified()).ok();
+    let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    let cache = cache.get_or_insert_with(HashMap::new);
+    if let Some((_, sample)) = cache.get(from) {
+        let sample = sample.clone();
+        cache.insert(to.to_path_buf(), (modified, sample));
+    }
+}
+
 /// The audio in the WAV file at `path`.
 pub fn load(path: &Path) -> Result<Arc<Sample>, String> {
     let modified = std::fs::metadata(path).and_then(|m| m.modified()).ok();

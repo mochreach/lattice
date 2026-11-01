@@ -568,9 +568,10 @@ const LESSONS: &[Lesson] = &[
         title: "Chopping",
         text: "A chop track plays one sound file cut into pieces, a piece a step, drawn as a \
                waveform down the track, so you can rearrange the sound like notes. \
-               `:export-loop beat` renders the selection to `beat.wav`, exactly as long, to \
-               cut up; `:track-add BEAT` adds a track after the cursor's; and `:chop` cuts the \
-               file last exported, or one named, into a piece for each of the track's \
+               `:export-loop` renders the selection to a sound file exactly as long, to cut up, \
+               in a `samples` folder beside the song (until it's saved, a scratch one: saving \
+               copies it in). `:track-add BEAT` adds a track after the cursor's, and `:chop` \
+               cuts the file last exported, or one named, into a piece for each of the track's \
                steps.\n\nSelect the KICK and HAT tracks whole ({select_tracks}), export them as \
                a loop, add a track and chop the loop on it.",
         teaches: &[],
@@ -578,7 +579,7 @@ const LESSONS: &[Lesson] = &[
         setup: nothing,
         watch: never,
         done: |e, _| e.grid.tracks.iter().any(chopped),
-        solution: "ghvltt:export-loop beat<ret>:track-add BEAT<ret>:chop<ret>",
+        solution: "ghvltt:export-loop<ret>:track-add BEAT<ret>:chop<ret>",
     },
     Lesson {
         title: "Rearranging",

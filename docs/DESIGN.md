@@ -263,9 +263,18 @@ plays the same audio backwards. Twice round, it's as it was.
 `:chop` with no path takes the last export at once, though it may still be rendering; when an
 export finishes, the instruments playing that file are built again, reading it fresh.
 
-Next: saving recorded or exported samples
-into the song's folder (files already there are saved relative to it), then a looper recording
-into a chop track from the audio input.
+Samples Lattice makes belong to the song, so they're kept beside it, in its `samples` folder,
+where they're saved relative to it. A sample exported with no name is numbered after the song
+(`song-loop-3.wav`), never replacing one, as a track may be playing it: the steps reference the
+audio, so changing a file under them would change the song. Until the song has a file, samples go
+in a scratch folder, one per run of Lattice in the system's temporary folder; saving copies those
+its tracks play into `samples` (`file::collect`), reusing a copy with the same contents and
+numbering one that clashes, and the tracks play the copies from then on. The engine's instruments
+already hold the same audio, so they're told the new path rather than rebuilt, and nothing that's
+playing stops. Sound files from elsewhere, such as a sample library, are left where they are.
+
+Next: a looper recording into a chop track from the audio input, whose recordings will be saved
+the same way.
 
 ## Track groups
 

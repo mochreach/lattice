@@ -1,13 +1,15 @@
 //! Reading and writing `.lattice` song files.
 //!
 //! A sound file in the song's folder, or one inside it, is saved relative to the song, so the
-//! two can be moved together; the editor only sees absolute paths.
+//! two can be moved together; the editor only sees absolute paths. Samples made before the song
+//! was saved are copied into its samples folder as it is.
 
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use lattice_core::{Song, from_ron, to_ron};
+use lattice_editor::SAMPLES;
 
 use crate::demo;
 
@@ -47,6 +49,35 @@ pub fn write(path: &Path, song: &Song) -> Result<()> {
         }
     }
     std::fs::write(path, to_ron(&song)).with_context(|| format!("can't write {}", path.display()))
+}
+
+/// Copies the samples `song` plays from `scratch`, made before it was saved, into the samples
+/// folder beside `path`, and has the song play the copies. Returns each file moved, and where to.
+pub fn collect(path: &Path, song: &mut Song, scratch: &Path) -> Result<Vec<(PathBuf, PathBuf)>> {
+    let samples = folder(path).join(SAMPLES);
+    let mut moved: Vec<(PathBuf, PathBuf)> = vec![];
+    for file in files(song).filter(|f| f.starts_with(scratch)) {
+        if let Some((_, to)) = moved.iter().find(|(from, _)| from == file) {
+            *file = to.clone();
+            continue;
+        }
+        let bytes =
+            std::fs::read(&*file).with_context(|| format!("can't read {}", file.display()))?;
+        std::fs::create_dir_all(&samples)
+            .with_context(|| format!("can't make {}", samples.display()))?;
+        let stem = file.file_stem().unwrap_or_default().to_string_lossy();
+        // The same name if it's free, or already this sample; numbered if not.
+        let to = std::iter::once(samples.join(format!("{stem}.wav")))
+            .chain((2..).map(|n| samples.join(format!("{stem}-{n}.wav"))))
+            .find(|to| std::fs::read(to).map_or(true, |there| there == bytes))
+            .unwrap();
+        if !to.exists() {
+            std::fs::write(&to, &bytes).with_context(|| format!("can't write {}", to.display()))?;
+        }
+        moved.push((file.clone(), to.clone()));
+        *file = to;
+    }
+    Ok(moved)
 }
 
 /// The folder the song at `path` is in, as an absolute path.
@@ -126,5 +157,37 @@ mod tests {
         let (read, _) = open(&path, None).unwrap();
         std::fs::remove_dir_all(&folder).unwrap();
         assert_eq!(read.grid.tracks, song.grid.tracks);
+    }
+
+    #[test]
+    fn samples_made_before_saving_are_copied_beside_the_song() {
+        let root = std::env::temp_dir().join(format!("lattice-collect-{}", std::process::id()));
+        let (scratch, folder) = (root.join("scratch"), root.join("song"));
+        std::fs::create_dir_all(&scratch).unwrap();
+        std::fs::create_dir_all(folder.join(SAMPLES)).unwrap();
+        std::fs::write(scratch.join("loop-1.wav"), b"new").unwrap();
+        // Something else already has the name.
+        std::fs::write(folder.join(SAMPLES).join("loop-1.wav"), b"old").unwrap();
+        let path = folder.join("song.lattice");
+        let mut song = new_song();
+        for t in 0..2 {
+            song.grid.tracks[t].instrument = Instrument::new(InstKind::Chop);
+            song.grid.tracks[t].instrument.file = Some(scratch.join("loop-1.wav"));
+        }
+        song.grid.tracks[2].instrument = Instrument::new(InstKind::Sampler);
+        song.grid.tracks[2].instrument.file = Some("/elsewhere/kick.wav".into());
+
+        let moved = collect(&path, &mut song, &scratch).unwrap();
+        let to = folder.join(SAMPLES).join("loop-1-2.wav");
+        assert_eq!(moved, [(scratch.join("loop-1.wav"), to.clone())]);
+        assert_eq!(std::fs::read(&to).unwrap(), b"new");
+        let files: Vec<_> = (song.grid.tracks.iter())
+            .filter_map(|t| t.instrument.file.clone())
+            .collect();
+        assert_eq!(files, [to.clone(), to, "/elsewhere/kick.wav".into()]);
+
+        // Once collected, saving again copies nothing.
+        assert!(collect(&path, &mut song, &scratch).unwrap().is_empty());
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

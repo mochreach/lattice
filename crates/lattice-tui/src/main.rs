@@ -326,8 +326,20 @@ fn apply(
         },
         Effect::Release { track, pitch } => Command::Release { track, pitch },
         Effect::Save(path) => {
-            return match file::write(&path, &editor.song()) {
-                Ok(()) => {
+            let mut song = editor.song();
+            let saved = file::collect(&path, &mut song, &lattice_editor::scratch())
+                .and_then(|moved| file::write(&path, &song).map(|()| moved));
+            return match saved {
+                Ok(moved) => {
+                    // The tracks play the copies in the song's folder from now on, and the
+                    // engine's already playing the same audio.
+                    for (from, to) in &moved {
+                        samples::copied(from, to);
+                        tracks.copied(from, to);
+                    }
+                    for (track, collected) in editor.grid.tracks.iter_mut().zip(&song.grid.tracks) {
+                        track.instrument.file.clone_from(&collected.instrument.file);
+                    }
                     editor.saved(path);
                     Flow::Next
                 }
