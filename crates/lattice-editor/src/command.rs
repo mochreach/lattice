@@ -422,6 +422,18 @@ pub const COMMANDS: &[Spec] = &[
         describe: "open a song, or start a new one there",
     },
     Spec {
+        name: "new",
+        alias: None,
+        params: &[optional_text("[PATH]", "path")],
+        describe: "start an empty song, to save at PATH, or wherever :w says",
+    },
+    Spec {
+        name: "new!",
+        alias: None,
+        params: &[optional_text("[PATH]", "path")],
+        describe: "start an empty song, discarding unsaved changes",
+    },
+    Spec {
         name: "open!",
         alias: Some("o!"),
         params: &[text("PATH", "path")],
@@ -1029,6 +1041,10 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         ]),
         "open" if editor.modified() => Err(UNSAVED_OPEN.into()),
         "open" | "open!" => Ok(vec![Effect::Open(command.text(0).into())]),
+        "new" if editor.modified() => {
+            Err("unsaved changes: :w to save them, or :new! to start anyway".into())
+        }
+        "new" | "new!" => editor.new_song(command.text(0)),
         "pattern" => {
             let index = editor.find_pattern(command.text(0))?;
             Ok(editor.go_to_pattern(index))

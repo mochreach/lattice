@@ -101,6 +101,8 @@ pub const COMMANDS_NOT_TAUGHT: &[&str] = &[
     "scale",
     "keys",
     "open",
+    "new",
+    "new!",
     "open!",
     "export",
     "export-sel",

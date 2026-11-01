@@ -228,6 +228,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:export-loop [PATH]` | render just the selection, exactly its length, with its tail mixed back into the start, so it loops cleanly; `:chop` or `:sample` with no path then plays it |
 | `:export-sel [PATH]` | render just the selection (its steps, on its tracks, heard even if muted) once, with its tail, for a sample |
 | `:o PATH`, `:o! PATH` | open a song, or start a new one at PATH; `!` discards unsaved changes |
+| `:new [PATH]`, `:new! [PATH]` | start an empty song: one track of 16 steps, no effects, at the same tempo, to be saved at PATH (or wherever `:w PATH` says); `!` discards unsaved changes |
 | `:q`, `:q!` | quit, refusing if there are unsaved changes; `!` quits anyway |
 | `:track-add [NAME]` (`:ta`) | add a 16-step track after this one (up to 16 tracks; also `ta`) |
 | `:track-remove` (`:trm`), `:track-move ±N` (`:tmv`) | remove this track, move it left or right (also `th` `tl`) |

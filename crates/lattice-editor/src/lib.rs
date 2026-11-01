@@ -575,6 +575,47 @@ impl Editor {
         effects
     }
 
+    /// `:new [PATH]`: an empty song, of one track of sixteen steps, at the tempo and steps per
+    /// beat there are now, to be saved at `path` if it's given.
+    pub(crate) fn new_song(&mut self, path: &str) -> Result<Vec<Effect>, String> {
+        let path = (!path.is_empty()).then(|| PathBuf::from(path));
+        if let Some(path) = &path
+            && path.exists()
+        {
+            return Err(format!(
+                "{} is already there: :o to open it",
+                path.display()
+            ));
+        }
+        let track = Track {
+            name: "track 1".into(),
+            steps: vec![Step::default(); 16],
+            ..Track::default()
+        };
+        let song = Song {
+            name: "new".into(),
+            bpm: self.bpm,
+            grid: Grid {
+                name: "new".into(),
+                steps_per_beat: self.grid.steps_per_beat,
+                tracks: vec![track],
+                groups: vec![],
+            },
+            arrangement: Default::default(),
+            buses: Default::default(),
+        };
+        let effects = self.replace_song(song, path.clone());
+        self.page = Page::Pattern;
+        self.mode = Mode::Normal;
+        self.tutor = None;
+        self.armed = None;
+        self.message = Some(match path {
+            Some(path) => format!("new song: :w saves it as {}", path.display()),
+            None => "new song: :w PATH saves it".into(),
+        });
+        Ok(effects)
+    }
+
     /// Counts the song as it is now as saved.
     pub(crate) fn mark_saved(&mut self) {
         self.saved = Saved {
@@ -2386,6 +2427,29 @@ mod tests {
         assert_eq!(command(&mut e, "q!"), [Effect::Quit]);
         command(&mut e, "open!");
         assert_eq!(e.message.as_deref(), Some("expected a path"));
+    }
+
+    #[test]
+    fn new_starts_an_empty_song() {
+        let mut e = editor();
+        notes(&mut e, "z");
+        assert_eq!(command(&mut e, "new"), []);
+        assert!(e.message.as_ref().unwrap().starts_with("unsaved changes"));
+        let effects = command(&mut e, "new! fresh.lattice");
+        assert!(!effects.is_empty(), "{:?}", e.message);
+        assert_eq!(e.grid.tracks.len(), 1);
+        assert!(e.grid.tracks[0].steps.iter().all(|s| s.note.is_none()));
+        assert_eq!(
+            e.path.as_deref(),
+            Some(std::path::Path::new("fresh.lattice"))
+        );
+        assert!(!e.modified());
+        assert_eq!(
+            command(&mut e, "write"),
+            [Effect::Save("fresh.lattice".into())]
+        );
+        command(&mut e, "new Cargo.toml");
+        assert!(e.message.as_ref().unwrap().contains("already there"));
     }
 
     #[test]
