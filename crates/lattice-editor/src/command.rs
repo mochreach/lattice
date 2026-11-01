@@ -310,8 +310,8 @@ pub const COMMANDS: &[Spec] = &[
     Spec {
         name: "arm",
         alias: None,
-        params: &[],
-        describe: "arm this track to record the audio input a pass at a time",
+        params: &[optional_text("[PASSES]", "number of passes")],
+        describe: "arm this track to record the audio input a pass at a time, for PASSES passes or until stopped",
     },
     Spec {
         name: "disarm",
@@ -322,7 +322,7 @@ pub const COMMANDS: &[Spec] = &[
     Spec {
         name: "arm!",
         alias: None,
-        params: &[],
+        params: &[optional_text("[PASSES]", "number of passes")],
         describe: "arm this track to record a new loop over the one it plays",
     },
     Spec {
@@ -1077,7 +1077,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![])
         }
         "arm" | "arm!" => {
-            editor.arm(command.spec.name == "arm!");
+            editor.arm(command.spec.name == "arm!", command.text(0))?;
             Ok(vec![])
         }
         "disarm" => {

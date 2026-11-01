@@ -9,29 +9,52 @@ use lattice_core::InstKind;
 
 use crate::{Editor, Effect, TrackId};
 
-/// The track armed to record, and whether its next pass starts afresh rather than overdubbing.
+/// The track armed to record, whether its next pass starts afresh rather than overdubbing, and
+/// how many passes are left to record, if it's not to keep going.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Armed {
     pub track: TrackId,
     pub fresh: bool,
+    pub passes: Option<u32>,
 }
 
+/// The most passes `:arm` counts.
+const MAX_PASSES: u32 = 99;
+
 impl Editor {
-    /// `:arm`, or `:arm!` to record afresh: arms the cursor's track, in place of any other.
-    /// Arming it again only says so, rather than disarming it, which would be easy to miss.
-    pub(crate) fn arm(&mut self, fresh: bool) {
+    /// `:arm [PASSES]`, or `:arm!` to record afresh: arms the cursor's track, in place of any
+    /// other, to record `passes` passes and disarm, or to keep going if none are typed. Arming it
+    /// again only says so, rather than disarming it, which would be easy to miss.
+    pub(crate) fn arm(&mut self, fresh: bool, passes: &str) -> Result<(), String> {
+        let passes = match passes.trim() {
+            "" => None,
+            typed => match typed.parse() {
+                Ok(n @ 1..=MAX_PASSES) => Some(n),
+                _ => return Err(format!("passes go from 1 to {MAX_PASSES}, not {typed}")),
+            },
+        };
         let t = self.cursor().track;
         let track = self.ids[t];
-        let name = &self.grid.tracks[t].name;
-        self.armed = Some(Armed { track, fresh });
+        self.armed = Some(Armed {
+            track,
+            fresh,
+            passes,
+        });
         let how = if self.overdubbing(t).is_some() {
             "overdubbing its loop"
         } else {
             "a new loop"
         };
+        let name = &self.grid.tracks[t].name;
+        let until = match passes {
+            Some(1) => " for one pass".into(),
+            Some(n) => format!(" for {n} passes"),
+            None => String::new(),
+        };
         self.message = Some(format!(
-            "{name} armed, {how}: record on (R) and play to record a pass"
+            "{name} armed, {how}{until}: record on (R) and play to record"
         ));
+        Ok(())
     }
 
     /// `:disarm`.
@@ -41,6 +64,11 @@ impl Editor {
             None => "nothing's armed".into(),
         });
         self.armed = None;
+    }
+
+    /// How many more passes the armed track's to record, if it's not to keep going.
+    pub fn passes_left(&self) -> Option<u32> {
+        self.armed.and_then(|a| a.passes)
     }
 
     /// The armed track's index, if it's still there.
@@ -82,13 +110,25 @@ impl Editor {
         } else {
             self.chop_track(t, path);
         }
+        let mut done = false;
         if let Some(armed) = &mut self.armed {
             armed.fresh = false;
+            if let Some(passes) = &mut armed.passes {
+                *passes = passes.saturating_sub(1);
+                done = *passes == 0;
+            }
+        }
+        if done {
+            self.armed = None;
         }
         let name = &self.grid.tracks[t].name;
-        self.message = Some(match overdub {
-            true => format!("{name}: pass overdubbed"),
-            false => format!("{name}: pass recorded"),
+        let pass = match overdub {
+            true => "pass overdubbed",
+            false => "pass recorded",
+        };
+        self.message = Some(match done {
+            true => format!("{name}: {pass}, and disarmed"),
+            false => format!("{name}: {pass}"),
         });
         vec![Effect::TrackChanged(t), Effect::MixerChanged]
     }
@@ -150,6 +190,25 @@ mod tests {
         e.handle(Key::Char('u'));
         let file = e.grid.tracks[0].instrument.file.clone();
         assert_eq!(file.as_deref(), Some(Path::new("/s/take-1.wav")));
+    }
+
+    #[test]
+    fn a_count_of_passes_disarms_after_them() {
+        let mut e = editor();
+        run(&mut e, "arm 2");
+        assert_eq!(e.passes_left(), Some(2));
+        e.recorded(0, "/s/take-1.wav".into());
+        assert_eq!(e.passes_left(), Some(1));
+        e.recorded(0, "/s/take-2.wav".into());
+        assert_eq!(e.armed(), None);
+        assert_eq!(
+            e.message.as_deref(),
+            Some("a: pass overdubbed, and disarmed")
+        );
+        run(&mut e, "arm 0");
+        assert_eq!(e.armed(), None, "{:?}", e.message);
+        run(&mut e, "arm");
+        assert_eq!(e.passes_left(), None, "keeps going");
     }
 
     #[test]

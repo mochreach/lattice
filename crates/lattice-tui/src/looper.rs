@@ -76,7 +76,9 @@ impl Looper {
         let recording = editor.record && handle.status().playing() && self.input.is_some();
         match armed.filter(|_| recording) {
             Some(t) => {
-                while self.waiting < WAITING {
+                // No more than the passes left, if they're counted.
+                let left = editor.passes_left().map_or(WAITING, |n| n as usize);
+                while self.waiting < WAITING.min(left) {
                     let take = Take::new(t, self.room(editor, t));
                     if !handle.send(Command::Record(take)) {
                         break;

@@ -632,8 +632,9 @@ const LESSONS: &[Lesson] = &[
                track (`○` by its name); then with record on ({toggle_record}) and the song \
                playing, it records a pass, from step 00 round to 00 again (`●`), and plays it, \
                cut into a piece a step. Each pass after that overdubs the last, and {undo} takes \
-               one off; delete its notes and the next pass starts a new loop. `:arm!` records a \
-               new loop over the old one, and `:disarm` disarms. \
+               one off; delete its notes and the next pass starts a new loop. `:arm 1` records \
+               one pass and stops, `:arm 4` four. `:arm!` records a new loop over the old one, \
+               and `:disarm` disarms. \
                `:input` chooses what to record from: type `:input ` and the devices are \
                listed, then a number or part of a name picks one; `:output` chooses what you \
                hear. If what you play comes back late or early, `:latency 20` moves it by \

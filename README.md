@@ -204,7 +204,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:level DB`, `:pan P`, `:send DB` | mixer, for every track the selections reach: level (-60 to 6 dB), pan (-100 left to 100 right), send to the send bus (-60, off, to 6 dB); on the mixer page, `:level` sets a bus too |
 | `:set VALUE` | on the mixer page, set the value under the cursor (also `c`) |
 | `:inst INSTRUMENT` | the instrument for every track the selections reach (or the mixer cursor's): `synth`, `string`, `sampler`, `chop`, `kick`, `snare`, `hat`, `clap` or `tom` |
-| `:arm`, `:arm!`, `:disarm` | arm the track for the looper, or disarm it: with record on (`R`), playing records the audio input a pass of the track at a time into a chop track. `:arm` records over what a chop track plays (unless its notes have all been deleted); `:arm!` starts a new loop |
+| `:arm [PASSES]`, `:arm! [PASSES]`, `:disarm` | arm the track for the looper, or disarm it: with record on (`R`), playing records the audio input a pass of the track at a time into a chop track, until stopped, or for PASSES passes and then disarms (`:arm 1` for just one). `:arm` records over what a chop track plays (unless its notes have all been deleted); `:arm!` starts a new loop |
 | `:input [DEVICE]`, `:output [DEVICE]` | the device the looper records, or that you hear Lattice through: type `:input ` to list them, then a number, or part of a name; 0 is the system's default. Remembered between runs; with nothing typed, says which is in use |
 | `:latency MS` | move what the looper records earlier (negative) or later, if it's out of time with what you heard (-500 to 500); remembered for each input |
 | `:chop [PATH]` | cut a WAV file into a piece a step, on every track the selections reach (or the mixer cursor's), each step playing its own; with no path, the last selection exported |
@@ -312,7 +312,8 @@ The **looper** records the audio input into a chop track. `:arm` a track (the he
 the top bar `ARMED`), turn record on with `R` and play: from the track's first step, each pass of it
 is recorded (`●`, and `● LOOP`), saved in `samples` as a new take, and chopped onto the track, so
 the next pass plays it back. Each pass after the first is recorded over the last, so the loop
-builds up layer by layer until you stop or turn record off; `u` takes a layer back off. `:arm` on a
+builds up layer by layer until you stop or turn record off, or `:arm 1` records one pass and
+disarms (`:arm 4`, four); `u` takes a layer back off. `:arm` on a
 chop track records over its loop, `:arm!` starts a new one, and `:disarm` disarms it; delete all of
 the track's notes and the next pass starts a new loop too, filling the steps again. Lattice
 doesn't play the input back to you, so listen through your interface. If the recording sits late or
