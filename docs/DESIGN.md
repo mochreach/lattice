@@ -669,11 +669,14 @@ and the `g` pages work.
 ### The tutor
 
 `:tutor` (or `--tutor`) swaps in a small song of the tutor's own and works through `LESSONS` in
-`tutor.rs`, shown in a box under the page. Each lesson has a `setup` that gets the song and
-cursor ready (and makes sure it isn't already done), a `done` check on the editor's state, run by
+`tutor.rs`, shown in a box under the page. Each lesson has a `setup` that gets the song ready
+(and makes sure it isn't already done), changing as little as it can: each lesson carries on
+from where the last left the cursor, page and song, and its text says where to go rather than
+moving the cursor there. It has a `done` check on the editor's state, run by
 `Editor::tutor_tick` after every key and every frame (so playing and stopping count), and an
 optional `watch` for something that has to happen on the way. Checks look at the result, not the
-keys, so any way of doing it passes. The text names keys as `{action_name}`, filled in from the
+keys, so any way of doing it passes. Once one passes, a box says so, and `space` (or `ret`) goes
+on to the next lesson; other keys still work, to look at what was done. The text names keys as `{action_name}`, filled in from the
 keymap, so rebound keys are taught as bound. While it runs, its song never counts as unsaved.
 
 **Keeping it up to date.** Tests make every change to the keys or commands touch the tutor:
