@@ -91,6 +91,7 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | Everywhere | |
 | --- | --- |
 | `space` | play / stop |
+| `^space` | play the song from the entry playing this pattern (or stop) |
 | `R` | record on / off (starts insert mode): see below |
 | `tab` | show the pattern as written, or as it's playing this pass |
 | `:` | command line |
@@ -165,7 +166,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:mute`, `:solo` | toggle mute or solo for every track the selections reach (also `tm`, `ts`) |
 | `:w [PATH]`, `:wq [PATH]` | save the song (to a `.lattice` file), save and quit |
 | `:pattern NAME` (`:pat`) | go to a pattern, by name or number; while playing, it's cued and takes over at the next bar (the header shows `pat A → B`) |
-| `:pattern-new [NAME]` (`:pn`), `:pattern-dup [NAME]` (`:pd`) | add an empty pattern after this one, or a copy of this one, and go to it. Named A, B, C… unless named |
+| `:pattern-new [NAME]` (`:pn`), `:pattern-dup [NAME]` (`:pd`) | add an empty pattern after this one, or a copy of this one, and go to it; it's added to the end of the song, played once. Named A, B, C… unless named |
 | `:pattern-name NAME`, `:pattern-remove` | rename this pattern; remove it, and its places in the song |
 | `:bars [N \| auto]` | how long this pattern plays in the song: N bars, or `auto` (the default), as long as its longest track, rounded up to a whole bar. Looping on its own, a pattern never restarts its tracks, so tracks of different lengths keep drifting against each other |
 | `:export [PATH] [BARS]` | render the song to a 24-bit WAV, faster than real time, while you carry on: each pattern in the song's order, for its length, then the tail until it's quiet; or with BARS, this pattern for that many bars. With no path, it goes beside the song's file |
@@ -200,7 +201,9 @@ patterns there are. `j` `k` move between entries, `h` `l` change the entry's pat
 `^a` `^x`) how many times it repeats, `o` `O` add an entry after or before, `d` removes one (`y`
 copies, `p` `P` paste after and before, so `d` then `p` moves an entry), and `ret` goes to the
 entry's pattern to edit it. `space` plays the song from the cursor's entry to the end, following
-along in the header (`song 2/3`) and on the page; `:export` renders it.
+along in the header (`song 2/3`) and on the page, where the playhead moves along the strip;
+`:export` renders it. Anywhere else, `^space` plays the song from the entry playing the pattern
+you're on.
 
 **Instruments:** each track has one. `synth` is a plain test synth. `kick`, `snare`, `hat`, `clap` and `tom` are
 Rhythmicon, the drum engine: one drum per track, played at its tuning by C-4 and tuned up or down

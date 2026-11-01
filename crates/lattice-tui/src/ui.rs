@@ -89,7 +89,7 @@ pub fn draw(
     match editor.page {
         Page::Pattern => draw_grid(frame, grid, editor, status, theme, view),
         Page::Mixer => mixer_page::draw(frame, grid, editor, theme, view),
-        Page::Song => song_page::draw(frame, grid, editor, theme),
+        Page::Song => song_page::draw(frame, grid, editor, status, theme),
     }
     frame.render_widget(
         Paragraph::new(status_line(editor, theme, bottom.width)),

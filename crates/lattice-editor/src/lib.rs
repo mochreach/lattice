@@ -1177,6 +1177,7 @@ impl Editor {
             // Song page only.
             Action::OpenBelow | Action::OpenAbove | Action::Open => {}
             Action::TogglePlay => return vec![Effect::TogglePlay],
+            Action::PlaySong => return self.play_song(),
             Action::ToggleRecord => self.toggle_record(),
             Action::ToggleView => {
                 self.view = match self.view {

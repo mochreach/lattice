@@ -673,7 +673,9 @@ the wrong pattern (the editor keeps it, in the pattern it was made in).
 The song page edits `Arrangement::entries`, with its cursor in the editor like the mixer's.
 Playing from it calls `Editor::start_song`, which goes to the entry's pattern at once and sets
 `song_position` before the frontend's play, so the cue the `Sequencer` sends next follows the
-entries. Adding or removing an entry before the one playing shifts `song_position` with it.
+entries. Adding or removing an entry before the one playing shifts `song_position` with it. The
+engine publishes the step it's on from the top of the pattern (`Status::pattern_step`), which with
+`song_position` places the playhead on the page's strip.
 
 Not in files yet:
 - **Changing steps per beat while running.** The engine's clock is set up with it, so `:o` refuses a

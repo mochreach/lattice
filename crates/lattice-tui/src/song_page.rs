@@ -3,6 +3,7 @@
 
 use lattice_core::BEATS_PER_BAR;
 use lattice_editor::Editor;
+use lattice_engine::Status;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -15,7 +16,7 @@ use crate::ui::fit;
 /// Width of a pattern's name in the list of entries.
 const NAME: usize = 12;
 
-pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, theme: &Theme) {
+pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, theme: &Theme) {
     let arrangement = &editor.arrangement;
     let steps_per_beat = u64::from(editor.grid.steps_per_beat.max(1));
     let bar = u64::from(BEATS_PER_BAR) * steps_per_beat;
@@ -44,18 +45,27 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, theme: &Theme) {
     let playing = editor.song_position;
     let cursor = editor.song_cursor();
     let width = area.width as usize;
+    // How far into the song the playhead is, while it plays from the arrangement.
+    let playhead = playing
+        .filter(|_| status.playing() && status.count_in() == 0)
+        .and_then(|(entry, repeat)| {
+            let steps = pattern_steps[arrangement.entries.get(entry)?.pattern];
+            let start: u64 = lengths[..entry].iter().sum();
+            Some(start + u64::from(repeat) * steps + status.pattern_step().min(steps - 1))
+        });
+    let elapsed = playhead.map_or(String::new(), |at| format!("{} / ", time(at)));
 
     let mut lines = vec![
         Line::from(Span::styled(
             format!(
-                " {} entries · {} · {}",
+                " {} entries · {} · {elapsed}{}",
                 arrangement.entries.len(),
                 length(total),
                 time(total)
             ),
             theme.dim,
         )),
-        strip(editor, theme, &lengths, total, width.saturating_sub(2)),
+        strip(editor, theme, &lengths, playhead, width.saturating_sub(2)),
         Line::raw(""),
     ];
 
@@ -132,45 +142,49 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, theme: &Theme) {
 }
 
 /// The song in one line, each entry as wide as it plays for, coloured by its pattern and named
-/// where there's room, with the entry playing marked.
+/// where there's room, with the playhead marked.
 fn strip<'a>(
     editor: &'a Editor,
     theme: &Theme,
     lengths: &[u64],
-    total: u64,
+    playhead: Option<u64>,
     width: usize,
 ) -> Line<'a> {
+    let total: u64 = lengths.iter().sum();
+    let mut cells: Vec<(char, Style)> = vec![];
+    if total > 0 {
+        let mut start = 0;
+        for (i, entry) in editor.arrangement.entries.iter().enumerate() {
+            start += lengths[i];
+            // Rounded at the ends, so the strip fills the width exactly.
+            let end = (start * width as u64).div_ceil(total) as usize;
+            let room = end.saturating_sub(cells.len());
+            if room == 0 {
+                continue;
+            }
+            // A gap between entries, where there's room for one.
+            let block = if room > 1 { room - 1 } else { 1 };
+            let name = &editor.arrangement.patterns[entry.pattern].name;
+            let style = theme.block(theme.track(entry.pattern));
+            let text = format!(" {name}");
+            let text = text.chars().chain(std::iter::repeat(' ')).take(block);
+            cells.extend(text.map(|c| (c, style)));
+            if room > 1 {
+                cells.push((' ', Style::new()));
+            }
+        }
+    }
+    if let Some(at) = playhead {
+        let cell = (at * width as u64 / total.max(1)) as usize;
+        if let Some(c) = cells.get_mut(cell) {
+            *c = (' ', theme.block(theme.playing));
+        }
+    }
     let mut spans = vec![Span::raw(" ")];
-    if total == 0 || width == 0 {
-        return Line::from(spans);
-    }
-    let playing = editor.song_position.map(|(e, _)| e);
-    let mut start = 0;
-    let mut drawn = 0;
-    for (i, entry) in editor.arrangement.entries.iter().enumerate() {
-        start += lengths[i];
-        // Rounded at the ends, so the strip fills the width exactly.
-        let end = (start * width as u64).div_ceil(total) as usize;
-        let cells = end.saturating_sub(drawn);
-        if cells == 0 {
-            continue;
-        }
-        drawn = end;
-        // A gap between entries, where there's room for one.
-        let block = if cells > 1 { cells - 1 } else { 1 };
-        let name = &editor.arrangement.patterns[entry.pattern].name;
-        let mut text: String = format!(" {name}").chars().take(block).collect();
-        if playing == Some(i) {
-            text = format!("▶{}", text.chars().skip(1).collect::<String>());
-        }
-        let pad = block - text.chars().count();
-        spans.push(Span::styled(
-            format!("{text}{}", " ".repeat(pad)),
-            theme.block(theme.track(entry.pattern)),
-        ));
-        if cells > 1 {
-            spans.push(Span::raw(" "));
-        }
-    }
+    spans.extend(
+        cells
+            .into_iter()
+            .map(|(c, style)| Span::styled(c.to_string(), style)),
+    );
     Line::from(spans)
 }

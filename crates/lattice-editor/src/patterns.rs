@@ -3,7 +3,7 @@
 //! [`Arrangement`](lattice_core::Arrangement)). The pattern being edited is always the one
 //! playing, so picking another while the song plays cues it for when the playing one ends.
 
-use lattice_core::{BEATS_PER_BAR, Lane, MAX_BARS, MAX_PATTERNS, Step};
+use lattice_core::{BEATS_PER_BAR, Entry, Lane, MAX_BARS, MAX_ENTRIES, MAX_PATTERNS, Step};
 
 use crate::{Editor, Effect, changed};
 
@@ -83,7 +83,7 @@ impl Editor {
     }
 
     /// Adds a pattern after this one, a copy of it or empty with tracks as long as they are
-    /// now, and goes to it.
+    /// now, plays it once at the end of the song, and goes to it.
     pub(crate) fn new_pattern(&mut self, name: &str, copy: bool) -> Result<Vec<Effect>, String> {
         if self.arrangement.patterns.len() >= MAX_PATTERNS {
             return Err(format!("songs have up to {MAX_PATTERNS} patterns"));
@@ -108,6 +108,12 @@ impl Editor {
         };
         self.checkpoint();
         let index = self.arrangement.insert(name, lanes);
+        if self.arrangement.entries.len() < MAX_ENTRIES {
+            self.arrangement.entries.push(Entry {
+                pattern: index,
+                repeats: 1,
+            });
+        }
         Ok(self.go_to_pattern(index))
     }
 

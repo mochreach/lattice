@@ -338,6 +338,8 @@ pub struct Status {
     boundaries: AtomicU64,
     /// How many of those changed pattern.
     swaps: AtomicU64,
+    /// The step playing, counted from the top of the pattern.
+    pattern_step: AtomicU64,
 }
 
 impl Status {
@@ -345,6 +347,7 @@ impl Status {
         Self {
             boundaries: AtomicU64::new(0),
             swaps: AtomicU64::new(0),
+            pattern_step: AtomicU64::new(0),
             playing: AtomicBool::new(false),
             count_in: AtomicU32::new(0),
             positions: std::array::from_fn(|_| AtomicU64::new(u64::MAX)),
@@ -373,6 +376,12 @@ impl Status {
     /// How many of [`Status::boundaries`] changed to a cued pattern.
     pub fn swaps(&self) -> u64 {
         self.swaps.load(Ordering::Relaxed)
+    }
+
+    /// The step playing, counted from the top of the pattern (not wrapping round with a track,
+    /// as [`Status::position`] does); 0 when stopped.
+    pub fn pattern_step(&self) -> u64 {
+        self.pattern_step.load(Ordering::Relaxed)
     }
 
     /// The step `track` is playing, and which pass through the track it's on.
@@ -415,6 +424,7 @@ impl Status {
         self.count_in.store(0, Ordering::Relaxed);
         self.boundaries.store(0, Ordering::Relaxed);
         self.swaps.store(0, Ordering::Relaxed);
+        self.pattern_step.store(0, Ordering::Relaxed);
         for p in &self.positions {
             p.store(u64::MAX, Ordering::Relaxed);
         }
@@ -1055,6 +1065,9 @@ impl Engine {
                 return;
             }
         }
+        self.status
+            .pattern_step
+            .store(self.pattern_step, Ordering::Relaxed);
         self.pattern_step += 1;
         if self.click_enabled && self.step_index.is_multiple_of(self.steps_per_beat) {
             let beat = self.step_index / self.steps_per_beat;
@@ -1378,6 +1391,7 @@ mod tests {
         render(&mut engine, 256, (step * 5.5) as usize);
         // Round the pattern once, but the seven-step track's still on its first pass.
         assert_eq!(handle.status().boundaries(), 1);
+        assert_eq!(handle.status().pattern_step(), 1);
         assert_eq!(handle.status().position(0), Some((5, 0)));
     }
 

@@ -398,6 +398,7 @@ impl Editor {
             | Action::Redo
             | Action::CommandLine
             | Action::TogglePlay
+            | Action::PlaySong
             | Action::Escape
             | Action::Quit
             | Action::ToggleMute

@@ -54,15 +54,11 @@ impl Editor {
                 self.page = Page::Pattern;
                 return Some(self.go_to_pattern(pattern));
             }
-            Action::TogglePlay if self.transport.is_none() => {
-                let mut effects = self.start_song(self.song.cursor);
-                effects.push(Effect::TogglePlay);
-                return Some(effects);
-            }
+            Action::TogglePlay => return Some(self.play_song()),
             Action::Undo
             | Action::Redo
             | Action::CommandLine
-            | Action::TogglePlay
+            | Action::PlaySong
             | Action::ToggleRecord
             | Action::Escape
             | Action::Quit
@@ -78,6 +74,31 @@ impl Editor {
         }
         self.mode = Mode::Normal;
         Some(vec![])
+    }
+
+    /// Plays the song, or stops it: from the song page's cursor, or else from the entry there
+    /// if it plays the pattern being edited, the first that does if not, or the top.
+    pub(crate) fn play_song(&mut self) -> Vec<Effect> {
+        if self.transport.is_some() {
+            return vec![Effect::TogglePlay];
+        }
+        let entries = &self.arrangement.entries;
+        let current = self.arrangement.current;
+        let cursor = self.song_cursor();
+        let entry = if self.page == Page::Song
+            || entries.get(cursor).is_some_and(|e| e.pattern == current)
+        {
+            cursor
+        } else {
+            entries
+                .iter()
+                .position(|e| e.pattern == current)
+                .unwrap_or(0)
+        };
+        self.song.cursor = entry;
+        let mut effects = self.start_song(entry);
+        effects.push(Effect::TogglePlay);
+        effects
     }
 
     /// Plays another pattern in the cursor's entry: the next or previous, wrapping round.
@@ -194,6 +215,9 @@ mod tests {
             e.handle(Key::Char(c));
         }
         e.handle(Key::Enter);
+        // A new pattern plays once at the end of the song.
+        assert_eq!(song(&e), [(0, 1), (1, 1)]);
+        e.arrangement.entries.truncate(1);
         e.handle(Key::Char('g'));
         e.handle(Key::Char('s'));
         e
@@ -256,5 +280,13 @@ mod tests {
         keys(&mut e, "j");
         e.handle(Key::Enter);
         assert_eq!((e.page, e.arrangement.current), (Page::Pattern, 1));
+
+        // From the pattern page, ^space plays the song from the entry playing this pattern.
+        e.handle(Key::Char('['));
+        e.handle(Key::Char('p'));
+        assert_eq!(e.arrangement.current, 0);
+        let effects = e.handle(Key::Ctrl(' '));
+        assert_eq!(effects.last(), Some(&Effect::TogglePlay));
+        assert_eq!(e.song_position, Some((0, 0)));
     }
 }
