@@ -8,6 +8,7 @@ mod keys;
 mod mixer;
 mod mixer_page;
 mod sequencer;
+mod song_page;
 mod splash;
 mod theme;
 mod tracks;

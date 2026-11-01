@@ -16,8 +16,8 @@ use ratatui::widgets::{Block, Clear, Padding, Paragraph};
 
 use crate::bars;
 use crate::key_log::KeyLog;
-use crate::mixer_page;
 use crate::theme::Theme;
+use crate::{mixer_page, song_page};
 
 /// Width of the step-number column.
 pub(crate) const GUTTER: usize = 4;
@@ -89,6 +89,7 @@ pub fn draw(
     match editor.page {
         Page::Pattern => draw_grid(frame, grid, editor, status, theme, view),
         Page::Mixer => mixer_page::draw(frame, grid, editor, theme, view),
+        Page::Song => song_page::draw(frame, grid, editor, theme),
     }
     frame.render_widget(
         Paragraph::new(status_line(editor, theme, bottom.width)),
@@ -272,6 +273,7 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
     let page = match editor.page {
         Page::Pattern => " PATTERN ",
         Page::Mixer => " MIXER ",
+        Page::Song => " SONG ",
     };
     Line::from(vec![
         Span::styled(" LATTICE ", theme.block(theme.accent)),
@@ -811,6 +813,10 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
     let (hints, style) = match &editor.mode {
         Mode::Normal if editor.page == Page::Mixer => (
             "hl strips · jk detail · ( ) strip · tab chain · C-a C-x adjust · c set · :fx-add · d remove · gp pattern".into(),
+            theme.dim,
+        ),
+        Mode::Normal if editor.page == Page::Song => (
+            "hl pattern · + - repeats · o add · d delete · ret edit · space play from here · gp pattern".into(),
             theme.dim,
         ),
         Mode::Normal => (

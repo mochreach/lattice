@@ -20,6 +20,7 @@ mod pads;
 mod pattern;
 mod patterns;
 mod record;
+mod song;
 
 pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
 pub use export::{Export, Part, file_name};
@@ -321,6 +322,8 @@ pub struct Editor {
     pub page: Page,
     /// Where the cursor is on the mixer page; see [`Editor::mixer_cursor`].
     mixer: MixerCursor,
+    /// Where the cursor is on the song page; see [`Editor::song_cursor`].
+    song: song::SongCursor,
     /// Octave of the lower piano row in insert mode.
     pub octave: u8,
     /// Steps to move after entering a note.
@@ -416,6 +419,7 @@ impl Editor {
             view: View::Source,
             page: Page::Pattern,
             mixer: MixerCursor::default(),
+            song: Default::default(),
             octave: 4,
             auto_step: 1,
             velocity: DEFAULT_VELOCITY,
@@ -933,6 +937,11 @@ impl Editor {
         {
             return effects;
         }
+        if self.page == Page::Song
+            && let Some(effects) = self.song_act(action, n)
+        {
+            return effects;
+        }
         if matches!(
             action,
             Action::Delete
@@ -1152,6 +1161,21 @@ impl Editor {
             Action::GotoInstrument => self.goto_chain(true),
             Action::GotoEffects => self.goto_chain(false),
             Action::GotoPattern => self.page = Page::Pattern,
+            Action::GotoSong => {
+                // Onto the entry playing, or the first playing the pattern being edited.
+                let entries = &self.arrangement.entries;
+                if let Some(entry) = self.song_position.map(|(e, _)| e).or_else(|| {
+                    entries
+                        .iter()
+                        .position(|e| e.pattern == self.arrangement.current)
+                }) {
+                    self.song.cursor = entry;
+                }
+                self.page = Page::Song;
+                self.mode = Mode::Normal;
+            }
+            // Song page only.
+            Action::OpenBelow | Action::OpenAbove | Action::Open => {}
             Action::TogglePlay => return vec![Effect::TogglePlay],
             Action::ToggleRecord => self.toggle_record(),
             Action::ToggleView => {

@@ -668,6 +668,11 @@ goes to the new pattern. A `SetTrack` carries the number of changes the editor h
 edit made in the frame before the editor caught up is dropped by the engine rather than played in
 the wrong pattern (the editor keeps it, in the pattern it was made in).
 
+The song page edits `Arrangement::entries`, with its cursor in the editor like the mixer's.
+Playing from it calls `Editor::start_song`, which goes to the entry's pattern at once and sets
+`song_position` before the frontend's play, so the cue the `Sequencer` sends next follows the
+entries. Adding or removing an entry before the one playing shifts `song_position` with it.
+
 Not in files yet:
 - **Changing steps per beat while running.** The engine's clock is set up with it, so `:o` refuses a
   song with a different value; opening it from the command line works.

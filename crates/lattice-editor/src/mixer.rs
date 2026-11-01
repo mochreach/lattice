@@ -30,6 +30,7 @@ pub enum Page {
     #[default]
     Pattern,
     Mixer,
+    Song,
 }
 
 /// A column of the mixer.
@@ -403,6 +404,7 @@ impl Editor {
             | Action::ToggleSolo
             | Action::GotoMixer
             | Action::GotoPattern
+            | Action::GotoSong
             | Action::GotoInstrument
             | Action::GotoEffects => return None,
             // Pattern editing has nothing to act on here.
@@ -521,7 +523,7 @@ impl Editor {
                 };
                 (strip, index)
             }
-            Page::Pattern => {
+            Page::Pattern | Page::Song => {
                 let track = self.cursor().track;
                 (Strip::Track(track), self.grid.tracks[track].effects.len())
             }

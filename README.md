@@ -94,7 +94,7 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `R` | record on / off (starts insert mode): see below |
 | `tab` | show the pattern as written, or as it's playing this pass |
 | `:` | command line |
-| `gm` `gp` | the mixer page (on this track), back to the pattern |
+| `gm` `gs` `gp` | the mixer page (on this track), the song page, back to the pattern |
 | `gi` `gf` | the mixer, on this track's instrument, or its effects |
 
 One deliberate departure from Helix: `space` is play / stop, as in every DAW, rather than a menu.
@@ -192,6 +192,15 @@ overview and the chain. `^a` `^x` nudge the value under the cursor (with counts,
 types an exact one (or, on the instrument, another instrument), `:fx-add delay` (or `drive`,
 `comp`) adds an effect after the cursor and `d` removes it. `tm` `ts` still mute and solo, and
 `gp` goes back to the pattern. Instruments, effects and bus levels are saved in the song.
+
+The **song page** (`gs`) is the arrangement: the patterns in the order they play, each entry
+repeated some number of times. A strip across the top shows the whole song, each entry as wide as
+it plays for, coloured by its pattern; below it, the entries with when each starts, and the
+patterns there are. `j` `k` move between entries, `h` `l` change the entry's pattern, `+` `-` (or
+`^a` `^x`) how many times it repeats, `o` `O` add an entry after or before, `d` removes one (`y`
+copies, `p` `P` paste after and before, so `d` then `p` moves an entry), and `ret` goes to the
+entry's pattern to edit it. `space` plays the song from the cursor's entry to the end, following
+along in the header (`song 2/3`) and on the page; `:export` renders it.
 
 **Instruments:** each track has one. `synth` is a plain test synth. `kick`, `snare`, `hat`, `clap` and `tom` are
 Rhythmicon, the drum engine: one drum per track, played at its tuning by C-4 and tuned up or down
