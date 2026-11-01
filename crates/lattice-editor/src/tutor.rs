@@ -11,6 +11,8 @@ use lattice_core::{
     Arrangement, Buses, Condition, Entry, FxKind, Grid, InstKind, Instrument, Song, Step, Track,
 };
 
+use lattice_core::instrument::chop;
+
 use crate::keymap::{Action, Binding, Key, Keymap};
 use crate::{Cursor, Editor, Effect, Mode, Page, Selection};
 
@@ -86,7 +88,6 @@ pub const COMMANDS_NOT_TAUGHT: &[&str] = &[
     "choke",
     "mute",
     "solo",
-    "track-add",
     "track-remove",
     "track-move",
     "group-name",
@@ -533,16 +534,11 @@ const LESSONS: &[Lesson] = &[
     },
     Lesson {
         title: "Instruments and effects",
-        text: "`:inst string` changes the cursor's track's instrument. `:sample kick.wav` plays a \
-               sound file on it, and `:chop loop.wav` cuts one into a piece a step, each step \
-               playing its own, drawn as a waveform down the track, to rearrange like notes; \
-               `:export-loop` renders the selection to a file exactly as long, for `:chop` to \
-               cut up. \
-               `:fx-add delay` adds an \
-               effect to it: `delay`, `reverb`, `filter`, `drive` or `comp`. On the mixer, \
+        text: "`:inst string` changes the cursor's track's instrument, and `:sample kick.wav` \
+               plays a sound file on it. `:fx-add delay` adds an effect to it: `delay`, `reverb`, `filter`, `drive` or `comp`. On the mixer, \
                {delete} removes the effect under the cursor.\n\nAdd a reverb to the LEAD track.",
         teaches: &[],
-        commands: &["inst", "sample", "chop", "export-loop", "fx-add"],
+        commands: &["inst", "sample", "fx-add"],
         setup: nothing,
         watch: never,
         done: |e, _| (track(e, "LEAD").effects.iter()).any(|fx| fx.kind == FxKind::Reverb),
@@ -567,6 +563,67 @@ const LESSONS: &[Lesson] = &[
             })
         },
         solution: "glgg:lock cutoff 2000<ret>",
+    },
+    Lesson {
+        title: "Chopping",
+        text: "A chop track plays one sound file cut into pieces, a piece a step, drawn as a \
+               waveform down the track, so you can rearrange the sound like notes. \
+               `:export-loop beat` renders the selection to `beat.wav`, exactly as long, to \
+               cut up; `:track-add BEAT` adds a track after the cursor's; and `:chop` cuts the \
+               file last exported, or one named, into a piece for each of the track's \
+               steps.\n\nSelect the KICK and HAT tracks whole ({select_tracks}), export them as \
+               a loop, add a track and chop the loop on it.",
+        teaches: &[],
+        commands: &["export-loop", "track-add", "chop"],
+        setup: nothing,
+        watch: never,
+        done: |e, _| e.grid.tracks.iter().any(chopped),
+        solution: "ghvltt:export-loop beat<ret>:track-add BEAT<ret>:chop<ret>",
+    },
+    Lesson {
+        title: "Rearranging",
+        text: "Keys rearrange the selected steps, on any track. {reverse_steps} turns them back \
+               to front; on a chop track each piece plays backwards too, marked `◂`. \
+               {repeat_steps} repeats the first step through the rest, or with a count, as \
+               `2*`, the first two. {rotate_steps_forward} and {rotate_steps_backward} move them \
+               down or up one, round and round.\n\nOn the chop track, turn the last beat round, \
+               steps 0C to 0F, and repeat step 04 through the second beat, to 07.",
+        teaches: &[
+            Action::ReverseSteps,
+            Action::RepeatSteps,
+            Action::RotateStepsForward,
+            Action::RotateStepsBackward,
+        ],
+        commands: &[],
+        setup: |e| {
+            if !e.grid.tracks.iter().any(chopped) {
+                // Silent, without a file, but there to rearrange.
+                let mut instrument = Instrument::new(InstKind::Chop);
+                instrument.values[chop::PIECES as usize] = 16.0;
+                let steps = (0..16).map(|i| Step::note(chop::pitch(i))).collect();
+                let beat = Track {
+                    name: "BEAT".into(),
+                    steps,
+                    instrument,
+                    ..Track::default()
+                };
+                e.insert_track(index(e, "HAT") + 1, beat);
+            }
+        },
+        watch: never,
+        done: |e, t| {
+            let Some(c) = e.grid.tracks.iter().position(chopped) else {
+                return false;
+            };
+            let (now, was) = (&e.grid.tracks[c], &t.start.tracks[c]);
+            if now.steps.len() < 16 || was.steps.len() < 16 {
+                return false;
+            }
+            let mut turned = was.steps[12..16].to_vec();
+            crate::rearrange::reverse(&mut turned, &was.instrument);
+            now.steps[12..16] == turned[..] && now.steps[4..8].iter().all(|s| *s == was.steps[4])
+        },
+        solution: "ghllgg12jv3j~<esc>;11kv3j*",
     },
     Lesson {
         title: "Patterns",
@@ -646,6 +703,11 @@ const LESSONS: &[Lesson] = &[
         solution: ":help<ret>",
     },
 ];
+
+/// A chop track, made by the Chopping lesson, or by the next if it was skipped.
+fn chopped(track: &Track) -> bool {
+    track.instrument.kind == InstKind::Chop
+}
 
 /// The tutor's own song: drums, a bass line, and an empty track for the lead.
 fn song() -> Song {

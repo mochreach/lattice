@@ -3,7 +3,7 @@
 
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 
 use anyhow::{Context, Result};
@@ -25,7 +25,8 @@ const MAX_TAIL: f32 = 10.0;
 /// Exports still rendering.
 pub struct Exports {
     sample_rate: f32,
-    pending: Vec<Receiver<String>>,
+    /// The message to show when each is done, and the file written, if it was.
+    pending: Vec<Receiver<(String, Option<PathBuf>)>>,
 }
 
 impl Exports {
@@ -44,30 +45,42 @@ impl Exports {
             .push(start(export, buses, editor.bpm, self.sample_rate));
     }
 
-    /// Shows the message from each export that's finished.
-    pub fn poll(&mut self, editor: &mut Editor) {
+    /// Shows the message from each export that's finished, and returns the files written, for
+    /// the instruments playing them to read again.
+    pub fn poll(&mut self, editor: &mut Editor) -> Vec<PathBuf> {
+        let mut written = vec![];
         self.pending.retain(|rx| match rx.try_recv() {
-            Ok(message) => {
+            Ok((message, path)) => {
                 editor.message = Some(message);
+                written.extend(path);
                 false
             }
             Err(mpsc::TryRecvError::Empty) => true,
             Err(mpsc::TryRecvError::Disconnected) => false,
         });
+        written
     }
 }
 
 /// Starts rendering; the receiver gets the message to show when it's done.
-fn start(export: Export, buses: Buses, bpm: f64, sample_rate: f32) -> Receiver<String> {
+fn start(
+    export: Export,
+    buses: Buses,
+    bpm: f64,
+    sample_rate: f32,
+) -> Receiver<(String, Option<PathBuf>)> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let message = match render(&export, buses, bpm, sample_rate)
+        let done = match render(&export, buses, bpm, sample_rate)
             .and_then(|audio| write_wav(&export.path, &audio, sample_rate as u32))
         {
-            Ok(seconds) => format!("exported {} ({seconds:.1}s)", file_name(&export.path)),
-            Err(e) => format!("export failed: {e:#}"),
+            Ok(seconds) => (
+                format!("exported {} ({seconds:.1}s)", file_name(&export.path)),
+                std::path::absolute(&export.path).ok(),
+            ),
+            Err(e) => (format!("export failed: {e:#}"), None),
         };
-        let _ = tx.send(message);
+        let _ = tx.send(done);
     });
     rx
 }

@@ -251,7 +251,19 @@ row plays, in braille: four dots down a row, each the loudest of a quarter of th
 out from the middle. The frontend keeps each file's peaks (`wave.rs`), worked out from the copy
 the instrument loaded, and draws the realised steps in the live view, so rules show as they play.
 
-Next: keys to reverse and repeat a selection directly, then saving recorded or exported samples
+Rearranging works on the steps the selections reach, track by track (`rearrange.rs`): `~`
+reverses them, `*` repeats the first (or the first `count`) through the rest, and `A-(` `A-)`
+rotate them, Helix's keys for case, search and rotating contents, none of which a grid has a use
+for. They work on any track, but reversing is what a chop track needs most: a note that started
+`k` steps in now ends `k` from the end, cut at the selection's end if held past it, and on a chop
+track each note is turned round as well, locking `direction` the other way (or dropping the lock
+when that's the track's own) and moving the note to the last piece it covered, so a held note
+plays the same audio backwards. Twice round, it's as it was.
+
+`:chop` with no path takes the last export at once, though it may still be rendering; when an
+export finishes, the instruments playing that file are built again, reading it fresh.
+
+Next: saving recorded or exported samples
 into the song's folder (files already there are saved relative to it), then a looper recording
 into a chop track from the audio input.
 

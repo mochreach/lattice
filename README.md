@@ -103,6 +103,9 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `tg` | group the tracks the selections reach (from the first to the last), or ungroup the group they're in; a group's tracks mix into its bus, a strip on the mixer page with a level and effects |
 | `tz` | fold or unfold the groups the selections reach: each track narrows to a column of hits (`●` `•` `∙` by velocity), like a drum machine's steps |
 | `;` `A-;` | collapse the selection, flip which end the cursor is |
+| `~` | reverse the selected steps; on a chop track each piece plays backwards too |
+| `*` | repeat the selection's first step through the rest of it, or with a count (`2*`) the first that many |
+| `A-(` `A-)` | rotate the selected steps up / down one, wrapping round |
 
 | Multiple selections | |
 | --- | --- |
@@ -284,20 +287,23 @@ chopped into equal slices, C-4 playing the first and each note up the next, at t
 plays it backwards, and `tune`, `attack`, `release` and `gain` do what they say. So
 `:export-sel`, then `:sample` on another track, turns a bar into a sample to play.
 
-`chop` is for loops: `:export-loop` on a selection, then `:chop` on an empty track, or `:chop break.wav`, cuts the file into as many equal pieces as the track has
-steps and has each step play its own, so it sounds as recorded. The track shows each step's piece
-number and its waveform, drawn down the column in braille, and the pieces are notes like any
-other: `y` and `p` copy them, `d` silences one, `C-a` and `C-x` move a step to the next or last
-piece, and rules such as `:rot` and `:rev` rearrange the loop each pass. A note plays its piece at
-the file's speed until the note ends, playing on into the next if it's longer, so the loop follows
-the tempo without stretching. `:lock direction reverse` turns one step's piece round (marked `◂`);
+`chop` is for loops: `:export-loop` on a selection, then `:chop` on an empty track, or `:chop
+break.wav`, cuts the file into as many equal pieces as the track has steps and has each step play
+its own, so it sounds as recorded. The track shows each step's piece number and its waveform, drawn
+down the column in braille, and the pieces are notes like any other: `y` and `p` copy them, `d`
+silences one, `C-a` and `C-x` move a step to the next or last piece, and rules such as `:rot` and
+`:rev` rearrange the loop each pass. A note plays its piece at the file's speed until the note ends,
+playing on into the next if it's longer, so the loop follows the tempo without stretching. `~`
+reverses the selected steps, turning each piece round too (marked `◂`), so the slice plays
+backwards; `*` repeats the first step, or the first few, through the selection, for a stutter; `A-(`
+and `A-)` rotate the selection. `:lock direction reverse` turns a single step's piece round;
 `pieces`, `start`, `end`, `tune`, `release` and `gain` are on the mixer.
-The demo song
-is techno at 130 BPM in F minor, in six sections (`gs` shows them; `^space` plays the lot). It
-opens on `peak`, which has everything: drums folded into a group with drive and a compressor on
-its bus (`tz` unfolds it), hats sharing a choke, a five-step tom and a seven-step sitar drifting
-against the bar, a bowed steel pad, dub stabs into the send's dotted-eighth echo, and an acid line
-through a drive. The bass, stabs and pad follow a chord change every four passes with
+
+The demo song is techno at 130 BPM in F minor, in six sections (`gs` shows them; `^space` plays the
+lot). It opens on `peak`, which has everything: drums folded into a group with drive and a
+compressor on its bus (`tz` unfolds it), hats sharing a choke, a five-step tom and a seven-step
+sitar drifting against the bar, a bowed steel pad, dub stabs into the send's dotted-eighth echo, and
+an acid line through a drive. The bass, stabs and pad follow a chord change every four passes with
 `transpose` rules.
 
 Tracks can be added, removed and moved while playing, and undo brings a removed track back with

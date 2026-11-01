@@ -49,6 +49,16 @@ impl Tracks {
         self.problem.take()
     }
 
+    /// Has the instruments playing the file at `path` built again on the next sync, as it's
+    /// been written since they were.
+    pub fn reload(&mut self, path: &std::path::Path) {
+        for (_, sent) in &mut self.engine {
+            if sent.file.as_deref() == Some(path) {
+                sent.file = None;
+            }
+        }
+    }
+
     /// Sends the engine the commands that bring its tracks in line with the editor's: removing
     /// those that have gone, moving those that have moved and adding new ones, then swapping or
     /// setting instruments, built here off the audio thread. Returns false if the command queue

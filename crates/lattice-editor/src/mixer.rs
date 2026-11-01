@@ -680,8 +680,9 @@ impl Editor {
             path => std::path::PathBuf::from(path),
         };
         // The file is read when the instrument's built, which says if it can't be; this just
-        // catches a mistyped name at once.
-        if !path.is_file() {
+        // catches a mistyped name at once. The last export may still be rendering, and is read
+        // again once it's done.
+        if !path.is_file() && self.last_export.as_ref() != Some(&path) {
             return Err(format!("no file {}", path.display()));
         }
         std::path::absolute(&path).map_err(|e| e.to_string())

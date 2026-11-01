@@ -21,6 +21,7 @@ mod mixer;
 mod pads;
 mod pattern;
 mod patterns;
+mod rearrange;
 mod record;
 mod song;
 mod tutor;
@@ -1120,6 +1121,10 @@ impl Editor {
             }
             Action::CopyDown => self.copy_rows(by),
             Action::CopyUp => self.copy_rows(-by),
+            Action::ReverseSteps => return self.reverse_steps(),
+            Action::RepeatSteps => return self.repeat_steps(n),
+            Action::RotateStepsForward => return self.rotate_steps(by),
+            Action::RotateStepsBackward => return self.rotate_steps(-by),
             Action::SplitRows => self.split_rows(),
             Action::MergeAll => {
                 let merged = self
@@ -2127,6 +2132,24 @@ mod tests {
             .map(|r| r.to_string())
             .collect();
         assert_eq!(shown, ["rev/2+1", "tr+5/4", "rot+1@3"]);
+    }
+
+    #[test]
+    fn selected_steps_reverse_repeat_and_rotate() {
+        let mut e = editor();
+        notes(&mut e, "zxcv");
+        let (c, d, e_, f) = (Some(60), Some(62), Some(64), Some(65));
+        keys(&mut e, "ggv3j~");
+        assert_eq!(&pitches(&e, 0)[..4], [f, e_, d, c]);
+        assert_eq!(e.grid.tracks[1].steps, vec![Step::default(); 8]);
+        keys(&mut e, "2*");
+        assert_eq!(&pitches(&e, 0)[..5], [f, e_, f, e_, None]);
+        e.handle(Key::Alt(')'));
+        assert_eq!(&pitches(&e, 0)[..4], [e_, f, e_, f]);
+        e.handle(Key::Alt('('));
+        assert_eq!(&pitches(&e, 0)[..4], [f, e_, f, e_]);
+        keys(&mut e, "u");
+        assert_eq!(&pitches(&e, 0)[..4], [e_, f, e_, f]);
     }
 
     #[test]

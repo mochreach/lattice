@@ -153,7 +153,19 @@ fn run(
     let mut sequencer = Sequencer::default();
     loop {
         handle.collect_garbage();
-        exports.poll(editor);
+        let written = exports.poll(editor);
+        if !written.is_empty() {
+            written.iter().for_each(|path| tracks.reload(path));
+            apply(
+                Effect::TracksChanged,
+                editor,
+                tracks,
+                mixer,
+                exports,
+                &sequencer,
+                handle,
+            );
+        }
         sequencer.sync(editor, handle);
         // Watched every frame, so it sees each step start within a frame of it.
         editor.set_transport(playhead.transport(handle.status(), editor, Instant::now()));

@@ -145,6 +145,13 @@ pub enum Action {
     /// Add a copy of each selection just below it, or just above.
     CopyDown,
     CopyUp,
+    /// Turn the selected steps back to front; on a chop track, each piece plays backwards too.
+    ReverseSteps,
+    /// Repeat the first step, or with a count the first that many, through the selection.
+    RepeatSteps,
+    /// Move the selected steps down one, or up, the last coming round to the first.
+    RotateStepsForward,
+    RotateStepsBackward,
     /// Split each selection into one per row.
     SplitRows,
     /// Merge every selection into one covering them all.
@@ -257,6 +264,10 @@ impl Action {
         Action::SelectMode,
         Action::CopyDown,
         Action::CopyUp,
+        Action::ReverseSteps,
+        Action::RepeatSteps,
+        Action::RotateStepsForward,
+        Action::RotateStepsBackward,
         Action::SplitRows,
         Action::MergeAll,
         Action::KeepPrimary,
@@ -364,6 +375,10 @@ impl Action {
             Action::SelectMode => "select mode",
             Action::CopyDown => "copy selection onto next rows",
             Action::CopyUp => "copy selection onto previous rows",
+            Action::ReverseSteps => "reverse selected steps",
+            Action::RepeatSteps => "repeat first step (or count) through selection",
+            Action::RotateStepsForward => "rotate selected steps down",
+            Action::RotateStepsBackward => "rotate selected steps up",
             Action::SplitRows => "split selection into rows",
             Action::MergeAll => "merge selections",
             Action::KeepPrimary => "keep primary selection",
@@ -692,6 +707,10 @@ impl Default for Keymap {
                 (Alt(','), RemovePrimary),
                 (Char(')'), RotateForward),
                 (Char('('), RotateBackward),
+                (Alt(')'), RotateStepsForward),
+                (Alt('('), RotateStepsBackward),
+                (Char('~'), ReverseSteps),
+                (Char('*'), RepeatSteps),
                 (Char('s'), SelectNotes),
                 (Char('K'), KeepNotes),
                 (Char('L'), LockSetting),
