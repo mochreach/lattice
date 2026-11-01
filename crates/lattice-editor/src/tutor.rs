@@ -7,7 +7,9 @@
 //! command is either taught by a lesson or listed in [`NOT_TAUGHT`] or [`COMMANDS_NOT_TAUGHT`],
 //! and every lesson's solution is played through to check it still works.
 
-use lattice_core::{Arrangement, Buses, FxKind, Grid, InstKind, Instrument, Song, Step, Track};
+use lattice_core::{
+    Arrangement, Buses, Condition, FxKind, Grid, InstKind, Instrument, Song, Step, Track,
+};
 
 use crate::keymap::{Action, Binding, Key, Keymap};
 use crate::{Cursor, Editor, Effect, Mode, Page, Selection};
@@ -83,8 +85,6 @@ pub const NOT_TAUGHT: &[Action] = &[
 /// The same for commands.
 #[cfg_attr(not(test), allow(dead_code))]
 pub const COMMANDS_NOT_TAUGHT: &[&str] = &[
-    "rev",
-    "drift",
     "choke",
     "mute",
     "solo",
@@ -455,18 +455,27 @@ const LESSONS: &[Lesson] = &[
     },
     Lesson {
         title: "Rules",
-        text: "Rules change how a track plays each time round, leaving its notes as written: \
-               `:tr 12` transposes it, `:rot 1` turns it a step, and `/4` after a rule applies it \
-               every fourth time. `:pop` removes the last rule, and `:clear` them all. `:len 12` \
-               makes a track 12 steps long, so it lands differently against the others, and \
-               `:name` renames it. {toggle_view} shows the pattern as written or as it's \
-               playing.\n\nGive the BASS track a rule.",
+        text: "Rules change how a track plays each time round (each pass), leaving its notes \
+               as written. `:tr 5` transposes the track up 5 semitones, `:rot 1` turns it a \
+               step later, `:drift 1` a step further each pass, and `:rev` plays it \
+               backwards.\n\nAdd `every 4` and a rule applies only every fourth pass; `every \
+               4 2` picks which of the four (counting from 0), and `pass 2` applies it on one \
+               pass only. Rules are listed above their track, written short: `:tr 5 every 4` \
+               shows as `tr+5/4`. `:pop` removes the track's last rule, and `:clear` all of \
+               them. {toggle_view} switches the grid between the notes as written and as \
+               they're playing.\n\n`:len 12` makes a track 12 steps long, so it lands \
+               differently against the others each time, and `:name` renames it.\n\nGive the \
+               BASS track a rule that applies only some passes: transpose it up 5 every fourth \
+               pass. Play to hear it if you like.",
         teaches: &[Action::ToggleView],
-        commands: &["tr", "rot", "pop", "clear", "len", "name"],
+        commands: &["tr", "rot", "drift", "rev", "pop", "clear", "len", "name"],
         setup: nothing,
         watch: never,
-        done: |e, t| track(e, "BASS").rules.len() > t.start.tracks[index(e, "BASS")].rules.len(),
-        solution: "ghll:tr 12<ret>",
+        done: |e, t| {
+            let was = t.start.tracks[index(e, "BASS")].rules.len();
+            (track(e, "BASS").rules.iter().skip(was)).any(|r| r.when != Condition::Always)
+        },
+        solution: "ghll:tr 5 every 4<ret>",
     },
     Lesson {
         title: "The mixer",
