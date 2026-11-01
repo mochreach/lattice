@@ -3,6 +3,7 @@ mod bars;
 mod demo;
 mod export;
 mod file;
+mod help_page;
 mod key_log;
 mod keys;
 mod mixer;

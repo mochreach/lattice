@@ -36,6 +36,8 @@ change before it does. There is always a selection, a rectangle of steps across 
 tracks; with nothing selected it's just the cursor. Motions move the cursor and collapse the
 selection onto it. In select mode (`v`) the same motions extend it instead. Counts work as in
 Helix (`4j`, `3+`). Prefix keys such as `g` show what can follow them in a box in the corner.
+`:help` lists every key and command, made from the keymap and the command table, so it's always
+up to date; `j` `k` scroll it and `esc` goes back.
 
 As in Helix, there can be several selections at once. Every motion and action applies to each
 of them, and selections that come to overlap merge. The view follows the primary selection,
@@ -151,6 +153,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:pop`, `:clear` | remove the last rule, or all of them |
 | `:len N` | track length (1–256) |
 | `:bpm N`, `:step N`, `:oct N` | tempo, auto-step, keyboard octave |
+| `:help` (`:h`) | the help page: every key and command |
 | `:click`, `:follow` | toggle the metronome, following the playhead |
 | `:rec` | toggle recording, like `R` |
 | `:layout NAME` | how notes lie on the keyboard in insert mode: `piano`, `wicki`, `fourths` or `scale` |

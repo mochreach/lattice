@@ -637,6 +637,18 @@ device under the cursor (first, after the instrument) and `d` removes the effect
 menu still works on the cursor's track. The mixer cursor (`MixerCursor`: a strip, a `Row` and the
 device shown) is the editor's state, like the pattern's, and isn't saved.
 
+### The help page
+
+`:help` swaps in a page of every key and command. It's built each time it's drawn, by
+`Editor::help_lines`, from the keymap (each action once, with every key bound to it, in the order
+the actions are declared; then each prefix menu; then insert mode) and from `COMMANDS` (name,
+alias, signature, description), so it can't go out of date, and a keymap read from a config file
+will be described as it is. Only how the mixer and song pages reuse keys is written out by hand.
+`j` `k` and the page motions scroll it, by line; the TUI wraps long descriptions and lays it out
+in two columns when the terminal is wide enough. `esc` goes back to the page it came from. Keys
+that would edit the pattern do nothing there, as it's out of sight, but playing, the command line
+and the `g` pages work.
+
 ## Song files
 
 Songs are saved as RON in `.lattice` files, written by `lattice_core::to_ron` and read by

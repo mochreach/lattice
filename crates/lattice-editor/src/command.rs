@@ -335,7 +335,7 @@ pub const COMMANDS: &[Spec] = &[
         name: "help",
         alias: Some("h"),
         params: &[],
-        describe: "list the commands",
+        describe: "every key and command (esc to go back)",
     },
     Spec {
         name: "write",
@@ -960,8 +960,8 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         "export" => editor.export_song(command.text(0)),
         "export-sel" => editor.export_selection(command.text(0)),
         "help" => {
-            let names: Vec<&str> = COMMANDS.iter().map(|c| c.name).collect();
-            Err(names.join(" · "))
+            editor.open_help();
+            Ok(vec![])
         }
         "bpm" => {
             let bpm = command.decimal(0);

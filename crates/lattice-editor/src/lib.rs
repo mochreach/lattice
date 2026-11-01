@@ -14,6 +14,7 @@
 mod command;
 mod export;
 mod group;
+mod help;
 mod keymap;
 mod locks;
 mod mixer;
@@ -25,6 +26,7 @@ mod song;
 
 pub use command::{COMMANDS, Completion, Kind, Param, Problem, Spec, Value};
 pub use export::{Export, Part, file_name};
+pub use help::{Help, HelpLine};
 pub use keymap::{Action, Binding, Key, Keymap, Menu, NoteLayout};
 pub use mixer::{Field, MixerCursor, PARAM_COLUMNS, Page, Row, Shown, Strip};
 pub use pads::{HARD, MEDIUM, PadMode, SCALES, SOFT, Scale};
@@ -327,6 +329,8 @@ pub struct Editor {
     mixer: MixerCursor,
     /// Where the cursor is on the song page; see [`Editor::song_cursor`].
     song: song::SongCursor,
+    /// Where the help page is scrolled to.
+    pub help: Help,
     /// Octave of the lower piano row in insert mode.
     pub octave: u8,
     /// Steps to move after entering a note.
@@ -424,6 +428,7 @@ impl Editor {
             page: Page::Pattern,
             mixer: MixerCursor::default(),
             song: Default::default(),
+            help: Help::default(),
             octave: 4,
             auto_step: 1,
             velocity: DEFAULT_VELOCITY,
@@ -950,6 +955,11 @@ impl Editor {
         }
         if self.page == Page::Song
             && let Some(effects) = self.song_act(action, n)
+        {
+            return effects;
+        }
+        if self.page == Page::Help
+            && let Some(effects) = self.help_act(action, n)
         {
             return effects;
         }

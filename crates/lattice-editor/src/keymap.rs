@@ -36,6 +36,7 @@ impl fmt::Display for Key {
         match self {
             Key::Char(' ') => f.write_str("space"),
             Key::Char(c) => write!(f, "{c}"),
+            Key::Ctrl(' ') => f.write_str("C-space"),
             Key::Ctrl(c) => write!(f, "C-{c}"),
             Key::Alt(c) => write!(f, "A-{c}"),
             Key::Esc => f.write_str("esc"),
