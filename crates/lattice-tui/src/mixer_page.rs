@@ -334,14 +334,24 @@ fn detail(editor: &Editor, theme: &Theme, column: &Column, width: usize) -> Vec<
     // The chain, in the order the sound goes through it.
     let on_chain = cursor.row == Row::Chain;
     let mut spans = vec![label("chain", on_chain)];
-    let instrument = editor.instrument(strip).map(|i| (None, i.kind.name()));
-    let effects = (editor.chain(strip).iter().enumerate()).map(|(i, fx)| (Some(i), fx.kind.name()));
-    let devices: Vec<(Option<usize>, &str)> = instrument.into_iter().chain(effects).collect();
+    // A sampler with the file it plays.
+    let instrument = editor.instrument(strip).map(|i| {
+        let file = i.file.as_deref().and_then(|f| f.file_name());
+        let name = match file {
+            Some(file) => format!("{} {}", i.kind.name(), file.to_string_lossy()),
+            None => i.kind.name().to_string(),
+        };
+        (None, name)
+    });
+    let effects = (editor.chain(strip).iter().enumerate())
+        .map(|(i, fx)| (Some(i), fx.kind.name().to_string()));
+    let devices: Vec<(Option<usize>, String)> = instrument.into_iter().chain(effects).collect();
     if devices.is_empty() {
         spans.push(Span::styled("no effects: :fx-add adds one", theme.faint));
     }
     let shown = editor.shown();
-    for (k, &(slot, name)) in devices.iter().enumerate() {
+    for (k, (slot, name)) in devices.iter().enumerate() {
+        let slot = *slot;
         spans.push(Span::styled(if k > 0 { " → " } else { " " }, theme.faint));
         let is_shown = shown.is_some_and(|s| s.slot == slot);
         let style = if is_shown && on_chain {
@@ -353,7 +363,7 @@ fn detail(editor: &Editor, theme: &Theme, column: &Column, width: usize) -> Vec<
         } else {
             Style::new().fg(colour)
         };
-        spans.push(Span::styled(name.to_string(), style));
+        spans.push(Span::styled(name.clone(), style));
     }
     lines.push(Line::from(spans));
 

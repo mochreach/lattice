@@ -706,7 +706,11 @@ mod tests {
         let read = lattice_core::from_ron(&lattice_core::to_ron(&song)).unwrap();
         assert_eq!(read.arrangement, song.arrangement);
         let tracks = &song.grid.tracks;
-        for kind in InstKind::ALL {
+        // All but the sampler, which needs a file.
+        for kind in InstKind::ALL
+            .into_iter()
+            .filter(|&k| k != InstKind::Sampler)
+        {
             assert!(tracks.iter().any(|t| t.instrument.kind == kind), "{kind:?}");
         }
     }

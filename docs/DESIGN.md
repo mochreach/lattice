@@ -210,6 +210,21 @@ goes through a DC blocker, since the buzz can shift its centre. Each voice is sc
 work is two reads, a filter, the friction curve while bowed and two writes per sample, cheap
 enough not to need SIMD lanes.
 
+### Sampler
+
+Plays a WAV file: a region of it (`start`, `end`), pitched from C-4, or cut into up to 16
+slices, one to a note. Modes `one-shot`, `gate` and `loop`; forwards or reversed. Sixteen voices,
+each reading the file by cubic Hermite interpolation at a rate from the note, `tune` and the ratio
+of the file's rate to the engine's, with a linear attack and release and 2 ms fades at the region's
+ends so a cut never clicks.
+
+The song stores the file's path in the instrument (`file`, an absolute path when set with
+`:sample`). The frontend reads it, off the audio thread, into a `Sample` (two `Vec<f32>` and a
+rate) behind an `Arc`, cached by path and modification time so every sampler playing a file
+shares it. The engine only reads it; the processor is freed off the audio thread like any other,
+so the last `Arc` is never dropped there. A file that can't be read leaves the sampler silent and
+says why in the status line.
+
 ## Track groups
 
 A group is a named run of adjacent tracks, such as a drum kit with one drum on each track. Each

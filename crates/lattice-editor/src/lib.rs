@@ -316,6 +316,8 @@ pub struct Editor {
     pub bpm: f64,
     /// Where the song is saved; `None` until it's given a file name.
     pub path: Option<PathBuf>,
+    /// The last selection exported, which `:sample` plays by default.
+    last_export: Option<PathBuf>,
     saved: Saved,
     pub mode: Mode,
     pub view: View,
@@ -415,6 +417,7 @@ impl Editor {
             buses: Buses::default(),
             bpm,
             path: None,
+            last_export: None,
             mode: Mode::Normal,
             view: View::Source,
             page: Page::Pattern,

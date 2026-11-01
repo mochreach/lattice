@@ -571,6 +571,45 @@ impl Editor {
         Ok(vec![Effect::MixerChanged])
     }
 
+    /// `:sample [PATH]`: the tracks play the WAV file at `path`, or the last selection exported,
+    /// on a sampler, keeping its settings if they're already on one.
+    pub(crate) fn set_sample(&mut self, path: &str) -> Result<Vec<Effect>, String> {
+        let path = match path {
+            "" => self
+                .last_export
+                .clone()
+                .ok_or("which file? nothing's been exported yet")?,
+            path => std::path::PathBuf::from(path),
+        };
+        // The file is read when the sampler's built, which says if it can't be; this just
+        // catches a mistyped name at once.
+        if !path.is_file() {
+            return Err(format!("no file {}", path.display()));
+        }
+        let path = std::path::absolute(&path).map_err(|e| e.to_string())?;
+        let tracks = self.mix_targets()?;
+        self.checkpoint();
+        for &t in &tracks {
+            let instrument = &mut self.grid.tracks[t].instrument;
+            if instrument.kind != InstKind::Sampler {
+                *instrument = Instrument::new(InstKind::Sampler);
+            }
+            instrument.file = Some(path.clone());
+        }
+        let name = path
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into());
+        self.message = Some(match tracks[..] {
+            [t] => format!("{} plays {name}", self.grid.tracks[t].name),
+            _ => format!("{} tracks play {name}", tracks.len()),
+        });
+        if self.page == Page::Mixer {
+            self.mixer.row = Row::Chain;
+            self.mixer.instrument = true;
+        }
+        Ok(vec![Effect::MixerChanged])
+    }
+
     /// Removes the effect under the mixer cursor.
     fn remove_effect(&mut self) -> Vec<Effect> {
         let cursor = self.mixer_cursor();

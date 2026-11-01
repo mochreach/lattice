@@ -5,7 +5,7 @@ use lattice_core::instrument::{kick, string};
 use lattice_core::{Condition, Grid, InstKind, Instrument, Lane, Rule, Step, Track, Transform};
 use lattice_engine::{
     AdsrParams, Chain, Command, Comp, Cue, Delay, Drive, EffectSlot, Engine, Patch, Processor,
-    Section, Synth, Target, TrackPlayer, Wave, delay,
+    Sample, Section, Synth, Target, TrackPlayer, Wave, delay,
 };
 
 #[global_allocator]
@@ -81,11 +81,22 @@ fn rendering_never_allocates() {
     let mut group_comp = Some(EffectSlot::new(Box::new(Comp::new(48_000.0))));
     let mut drums: Vec<_> = [InstKind::Hat, InstKind::Snare, InstKind::Kick]
         .into_iter()
-        .map(|kind| lattice_engine::instrument::build(&Instrument::new(kind), 48_000.0))
+        .map(|kind| lattice_engine::instrument::build(&Instrument::new(kind), 48_000.0, None))
         .collect();
     let mut strings = Some(lattice_engine::instrument::build(
         &Instrument::new(InstKind::String),
         48_000.0,
+        None,
+    ));
+    let sample = std::sync::Arc::new(Sample {
+        rate: 44_100.0,
+        left: (0..4_410).map(|i| (i as f32 * 0.05).sin()).collect(),
+        right: vec![0.1; 4_410],
+    });
+    let mut sampler = Some(lattice_engine::instrument::build(
+        &Instrument::new(InstKind::Sampler),
+        48_000.0,
+        Some(sample),
     ));
     let (mut engine, mut handle) = Engine::new(48_000.0, 174.0, &grid, vec![synth]);
     // Commands are handled inside the no-allocation zone too.
@@ -240,6 +251,18 @@ fn rendering_never_allocates() {
                     handle.send(Command::RemoveEffect {
                         chain: Chain::Send,
                         index: 0,
+                    });
+                }
+                810 => {
+                    handle.send(Command::SetInstrument {
+                        index: 0,
+                        instrument: sampler.take().unwrap(),
+                    });
+                    handle.send(Command::Preview {
+                        track: 0,
+                        pitch: 67,
+                        velocity: 100,
+                        held: true,
                     });
                 }
                 850 => {

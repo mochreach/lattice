@@ -71,7 +71,7 @@ impl Editor {
     }
 
     /// `:export-sel [PATH]`: the primary selection's steps on its tracks, once, alone.
-    pub(crate) fn export_selection(&self, path: &str) -> Result<Vec<Effect>, String> {
+    pub(crate) fn export_selection(&mut self, path: &str) -> Result<Vec<Effect>, String> {
         let region = self.selection();
         let mut grid = self.grid.clone();
         let mut lanes = vec![];
@@ -93,8 +93,11 @@ impl Editor {
                 rules: track.rules.clone(),
             });
         }
+        let path = self.wav_path(path, "-selection")?;
+        // For `:sample` to pick up.
+        self.last_export = Some(path.clone());
         Ok(vec![Effect::Export(Box::new(Export {
-            path: self.wav_path(path, "-selection")?,
+            path,
             grid,
             parts: vec![Part {
                 lanes,

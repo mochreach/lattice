@@ -18,6 +18,7 @@ pub mod monochord;
 pub mod param;
 pub mod processor;
 pub mod rhythmicon;
+pub mod sampler;
 pub mod synth;
 
 pub use clock::Clock;
@@ -31,4 +32,5 @@ pub use engine::{
 };
 pub use param::{ParamInfo, Smoothed};
 pub use processor::{Event, EventKind, Processor};
+pub use sampler::{Sample, Sampler};
 pub use synth::{Patch, Synth};

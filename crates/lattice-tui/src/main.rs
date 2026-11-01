@@ -7,6 +7,7 @@ mod key_log;
 mod keys;
 mod mixer;
 mod mixer_page;
+mod samples;
 mod sequencer;
 mod song_page;
 mod splash;
@@ -72,6 +73,9 @@ fn main() -> Result<()> {
 
     let mut audio = audio::start(&editor.grid, editor.bpm)?;
     let mut tracks = Tracks::new(&editor, audio.sample_rate);
+    if let Some(problem) = tracks.take_problem() {
+        editor.message = Some(problem);
+    }
     let mut mixer = Mixer::new(audio.sample_rate);
     let mut exports = Exports::new(audio.sample_rate);
     mixer.sync(&editor, &mut audio.handle);
@@ -243,6 +247,9 @@ fn apply(
         Effect::TracksChanged | Effect::MixerChanged => {
             if !(tracks.sync(editor, handle) && mixer.sync(editor, handle)) {
                 editor.message = Some("audio engine is busy; tracks out of step".into());
+            }
+            if let Some(problem) = tracks.take_problem() {
+                editor.message = Some(problem);
             }
             return Flow::Next;
         }

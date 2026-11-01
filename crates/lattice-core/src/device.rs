@@ -3,6 +3,7 @@
 //! agree on them.
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -135,6 +136,8 @@ pub struct Device<K: Kind> {
     pub kind: K,
     /// One per parameter, indexed by [`ParamInfo::id`].
     pub values: Vec<f32>,
+    /// The file it plays, for a sampler.
+    pub file: Option<PathBuf>,
 }
 
 impl<K: Kind> Device<K> {
@@ -143,6 +146,7 @@ impl<K: Kind> Device<K> {
         Self {
             kind,
             values: kind.params().iter().map(|p| p.default).collect(),
+            file: None,
         }
     }
 
@@ -162,6 +166,8 @@ struct Sparse<K: Kind> {
     kind: K,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     params: BTreeMap<String, f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    file: Option<PathBuf>,
 }
 
 impl<K: Kind> From<Device<K>> for Sparse<K> {
@@ -175,6 +181,7 @@ impl<K: Kind> From<Device<K>> for Sparse<K> {
                 .filter(|(p, v)| p.default != **v)
                 .map(|(p, &v)| (p.name.to_string(), v))
                 .collect(),
+            file: device.file,
         }
     }
 }
@@ -184,6 +191,7 @@ impl<K: Kind> TryFrom<Sparse<K>> for Device<K> {
 
     fn try_from(sparse: Sparse<K>) -> Result<Self, String> {
         let mut device = Device::new(sparse.kind);
+        device.file = sparse.file;
         let kind = sparse.kind.name();
         for (name, value) in sparse.params {
             let param = device

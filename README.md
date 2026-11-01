@@ -160,7 +160,8 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:group-name NAME` | rename this track's group |
 | `:level DB`, `:pan P`, `:send DB` | mixer, for every track the selections reach: level (-60 to 6 dB), pan (-100 left to 100 right), send to the send bus (-60, off, to 6 dB); on the mixer page, `:level` sets a bus too |
 | `:set VALUE` | on the mixer page, set the value under the cursor (also `c`) |
-| `:inst INSTRUMENT` | the instrument for every track the selections reach (or the mixer cursor's): `synth`, `string`, `kick`, `snare`, `hat`, `clap` or `tom` |
+| `:inst INSTRUMENT` | the instrument for every track the selections reach (or the mixer cursor's): `synth`, `string`, `sampler`, `kick`, `snare`, `hat`, `clap` or `tom` |
+| `:sample [PATH]` | play a WAV file on a sampler, on every track the selections reach (or the mixer cursor's); with no path, the selection last exported with `:export-sel` |
 | `:fx-add EFFECT` | add an effect (`delay`, `drive` or `comp`) after the mixer cursor, or at the end of this track's chain |
 | `:choke N` | choke group (1–8, 0 for none) for every track the selections reach: within a track group, a hit cuts off the other tracks with the same number, as a closed hat stops an open one |
 | `:mute`, `:solo` | toggle mute or solo for every track the selections reach (also `tm`, `ts`) |
@@ -215,7 +216,14 @@ as a waveguide: models `nylon`, `steel` (pairs of strings a few cents apart, spr
 and `sitar` (buzzing against its bridge), with pluck (soft thumb to hard, clicking pick), position (along
 the string), decay, tone and bow (a real bowed string while the note is held, light to heavy;
 it takes over from the pluck as it's turned up, and long notes suit it). Strings ring on after a
-note ends, as a harp's do; a note-off only lifts the bow. The demo song
+note ends, as a harp's do; a note-off only lifts the bow. `sampler` plays a WAV file (`:sample kick.wav`; 8 to 32-bit, or float, mono or
+stereo, any rate). C-4 plays it as recorded and other notes pitch it, or with `slices` above 1 it's
+chopped into equal slices, C-4 playing the first and each note up the next, at the file's pitch. Its
+`mode` is `one-shot` (to the end, whatever the note's length), `gate` (until the note ends) or
+`loop` (round the region until the note ends); `start` and `end` set the region, `direction`
+plays it backwards, and `tune`, `attack`, `release` and `gain` do what they say. So
+`:export-sel`, then `:sample` on another track, turns a bar into a sample to chop up.
+The demo song
 is techno at 130 BPM in F minor, in six sections (`gs` shows them; `^space` plays the lot). It
 opens on `peak`, which has everything: drums folded into a group with drive and a compressor on
 its bus (`tz` unfolds it), hats sharing a choke, a five-step tom and a seven-step sitar drifting

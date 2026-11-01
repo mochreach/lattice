@@ -5,8 +5,12 @@ use lattice_core::{Grid, Instrument};
 use lattice_editor::{Editor, TrackId};
 use lattice_engine::{Command, Handle, Processor, Target, TrackPlayer, instrument};
 
+use crate::samples;
+
 pub struct Tracks {
     sample_rate: f32,
+    /// A sampler's file that couldn't be read, to tell the user.
+    problem: Option<String>,
     /// The engine's tracks, in order, and the instrument each has, as far as the commands sent
     /// so far go.
     engine: Vec<(TrackId, Instrument)>,
@@ -15,8 +19,14 @@ pub struct Tracks {
 impl Tracks {
     /// The editor's tracks are playing, with the instruments from [`Tracks::instruments`].
     pub fn new(editor: &Editor, sample_rate: f32) -> Self {
+        let problem = editor
+            .grid
+            .tracks
+            .iter()
+            .find_map(|t| samples::for_instrument(&t.instrument).err());
         Self {
             sample_rate,
+            problem,
             engine: editor
                 .track_ids()
                 .iter()
@@ -30,8 +40,13 @@ impl Tracks {
     pub fn instruments(grid: &Grid, sample_rate: f32) -> Vec<Box<dyn Processor>> {
         grid.tracks
             .iter()
-            .map(|track| instrument::build(&track.instrument, sample_rate))
+            .map(|track| build(&track.instrument, sample_rate).0)
             .collect()
+    }
+
+    /// A sampler's file that couldn't be read since the last call.
+    pub fn take_problem(&mut self) -> Option<String> {
+        self.problem.take()
     }
 
     /// Sends the engine the commands that bring its tracks in line with the editor's: removing
@@ -67,11 +82,9 @@ impl Tracks {
                     self.engine.insert(index, moved);
                 }
                 None => {
-                    let player = TrackPlayer::new(
-                        track.clone(),
-                        instrument::build(&track.instrument, self.sample_rate),
-                        self.sample_rate,
-                    );
+                    let (instrument, problem) = build(&track.instrument, self.sample_rate);
+                    self.problem = problem.or(self.problem.take());
+                    let player = TrackPlayer::new(track.clone(), instrument, self.sample_rate);
                     if !send(Command::InsertTrack { index, player }) {
                         return false;
                     }
@@ -82,8 +95,9 @@ impl Tracks {
         for (index, track) in editor.grid.tracks.iter().enumerate() {
             let sent = &mut self.engine[index].1;
             let wanted = &track.instrument;
-            if sent.kind != wanted.kind {
-                let instrument = instrument::build(wanted, self.sample_rate);
+            if sent.kind != wanted.kind || sent.file != wanted.file {
+                let (instrument, problem) = build(wanted, self.sample_rate);
+                self.problem = problem.or(self.problem.take());
                 if !send(Command::SetInstrument { index, instrument }) {
                     return false;
                 }
@@ -106,6 +120,16 @@ impl Tracks {
         }
         true
     }
+}
+
+/// The processor for `instrument`, and why its file couldn't be read if it plays one that
+/// can't (it's silent until it can).
+fn build(instrument: &Instrument, sample_rate: f32) -> (Box<dyn Processor>, Option<String>) {
+    let (sample, problem) = match samples::for_instrument(instrument) {
+        Ok(sample) => (sample, None),
+        Err(problem) => (None, Some(problem)),
+    };
+    (instrument::build(instrument, sample_rate, sample), problem)
 }
 
 #[cfg(test)]

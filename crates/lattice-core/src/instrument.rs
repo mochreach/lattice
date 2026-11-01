@@ -4,6 +4,9 @@
 //! first drum machine, which Leon Theremin built for Henry Cowell in 1931. Each plays one drum on
 //! one track: C-4 plays it at its tuning, and other notes tune it up or down from there.
 //!
+//! The sampler plays a sound file: whole and pitched by the note, or chopped into slices, one
+//! to a note.
+//!
 //! The string is Monochord, the second engine, named after Pythagoras' one-stringed instrument
 //! for studying pitch: a plucked or bowed string, modelled as a waveguide.
 
@@ -35,12 +38,14 @@ pub enum InstKind {
     Clap,
     Tom,
     String,
+    Sampler,
 }
 
 impl InstKind {
-    pub const ALL: [InstKind; 7] = [
+    pub const ALL: [InstKind; 8] = [
         InstKind::Synth,
         InstKind::String,
+        InstKind::Sampler,
         InstKind::Kick,
         InstKind::Snare,
         InstKind::Hat,
@@ -61,6 +66,7 @@ impl InstKind {
             InstKind::Clap => &clap::PARAMS,
             InstKind::Tom => &tom::PARAMS,
             InstKind::String => &string::PARAMS,
+            InstKind::Sampler => &sampler::PARAMS,
         }
     }
 }
@@ -75,6 +81,7 @@ impl Kind for InstKind {
             InstKind::Clap => "clap",
             InstKind::Tom => "tom",
             InstKind::String => "string",
+            InstKind::Sampler => "sampler",
         }
     }
 
@@ -280,6 +287,57 @@ pub mod string {
         param(DECAY, "decay", (0.2, 20.0, 3.0), "s", Curve::Log),
         param(TONE, "tone", (0.0, 1.0, 0.6), "", Curve::Linear),
         param(BOW, "bow", (0.0, 1.0, 0.0), "", Curve::Linear),
+    ];
+}
+
+/// Plays a sound file. C-4 plays it as recorded, and other notes pitch it up or down, unless
+/// it's sliced: then each note from C-4 up plays the next slice, at its own pitch.
+pub mod sampler {
+    use super::*;
+
+    /// How notes play it: through to the end of the region whatever their length, until the note
+    /// ends, or round the region until it ends.
+    pub const MODE: u32 = 0;
+    /// Where the region played starts and ends, as fractions of the file.
+    pub const START: u32 = 1;
+    pub const END: u32 = 2;
+    /// How many equal slices the region is cut into.
+    pub const SLICES: u32 = 3;
+    /// Semitones up or down.
+    pub const TUNE: u32 = 4;
+    pub const ATTACK: u32 = 5;
+    pub const RELEASE: u32 = 6;
+    pub const DIRECTION: u32 = 7;
+    pub const GAIN: u32 = 8;
+
+    pub const MODES: &[&str] = &["one-shot", "gate", "loop"];
+    pub const DIRECTIONS: &[&str] = &["forward", "reverse"];
+    pub const SLICE_COUNTS: &[&str] = &[
+        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16",
+    ];
+
+    pub(super) const PARAMS: [ParamInfo; 9] = [
+        param(MODE, "mode", (0.0, 2.0, 0.0), "", Curve::Choice(MODES)),
+        param(START, "start", (0.0, 1.0, 0.0), "", Curve::Linear),
+        param(END, "end", (0.0, 1.0, 1.0), "", Curve::Linear),
+        param(
+            SLICES,
+            "slices",
+            (0.0, 15.0, 0.0),
+            "",
+            Curve::Choice(SLICE_COUNTS),
+        ),
+        param(TUNE, "tune", (-24.0, 24.0, 0.0), "st", Curve::Linear),
+        param(ATTACK, "attack", (0.000_5, 2.0, 0.000_5), "s", Curve::Log),
+        param(RELEASE, "release", (0.005, 4.0, 0.03), "s", Curve::Log),
+        param(
+            DIRECTION,
+            "direction",
+            (0.0, 1.0, 0.0),
+            "",
+            Curve::Choice(DIRECTIONS),
+        ),
+        param(GAIN, "gain", (0.0, 1.0, 0.7), "", Curve::Linear),
     ];
 }
 
