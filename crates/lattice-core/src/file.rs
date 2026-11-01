@@ -9,7 +9,6 @@ use std::fmt;
 use ron::extensions::Extensions;
 use ron::ser::PrettyConfig;
 
-use crate::fx::MAX_EFFECTS;
 use crate::group::MAX_GROUPS;
 use crate::song::{Grid, MAX_CHOKE, MAX_DB, MAX_TRACKS, Song, Track};
 
@@ -117,11 +116,8 @@ fn check_track(track: &Track) -> Result<(), String> {
             track.name
         ));
     }
-    if track.effects.len() > MAX_EFFECTS {
-        return Err(format!(
-            "track {:?} has more than {MAX_EFFECTS} effects",
-            track.name
-        ));
+    if let Err(e) = track.effects.check() {
+        return Err(format!("track {:?}'s effects: {e}", track.name));
     }
     for (i, step) in track.steps.iter().enumerate() {
         if let Some(note) = step.note
@@ -152,7 +148,7 @@ mod tests {
             steps: vec![Step::default(); 16],
             mix: Default::default(),
             instrument: Default::default(),
-            effects: vec![],
+            effects: Default::default(),
             choke: 0,
             rules: vec![
                 Rule {
@@ -192,7 +188,7 @@ mod tests {
             steps: vec![Step::default(); 6],
             mix: Default::default(),
             instrument: Default::default(),
-            effects: vec![],
+            effects: Default::default(),
             choke: 0,
             rules: vec![],
         };
@@ -247,7 +243,7 @@ mod tests {
             buses: Buses {
                 send: Bus {
                     level: -2.0,
-                    effects: vec![delay],
+                    effects: vec![delay].into(),
                 },
                 master: Bus::default(),
             },

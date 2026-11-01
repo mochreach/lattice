@@ -22,6 +22,7 @@ pub mod param;
 pub mod processor;
 pub mod reverb;
 pub mod rhythmicon;
+pub mod routing;
 pub mod sampler;
 pub mod synth;
 
@@ -38,5 +39,6 @@ pub use engine::{
 pub use looper::Take;
 pub use param::{ParamInfo, Smoothed};
 pub use processor::{Event, EventKind, Processor};
+pub use routing::Routing;
 pub use sampler::{Sample, Sampler};
 pub use synth::{Patch, Synth};

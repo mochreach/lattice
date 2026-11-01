@@ -171,7 +171,7 @@ impl Editor {
         self.locking = Some(Locking {
             track: t,
             instrument: track.instrument.clone(),
-            effects: track.effects.clone(),
+            effects: track.effects.to_vec(),
             undo: self.undo_len(),
         });
         Ok(vec![])
@@ -465,7 +465,7 @@ mod tests {
             steps: vec![Step::note(60); 5],
             ..Track::default()
         };
-        track.effects = vec![Fx::new(FxKind::Delay), Fx::new(FxKind::Filter)];
+        track.effects = vec![Fx::new(FxKind::Delay), Fx::new(FxKind::Filter)].into();
         Editor::new(
             Grid {
                 name: "locks".into(),

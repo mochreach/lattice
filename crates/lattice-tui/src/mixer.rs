@@ -3,21 +3,21 @@
 
 use std::collections::HashMap;
 
-use lattice_core::{Fx, MAX_GROUPS};
+use lattice_core::{Fx, FxChain, FxLane, MAX_GROUPS};
 use lattice_editor::{Editor, TrackId};
-use lattice_engine::{Chain, Command, EffectSlot, Handle, Target, fx};
+use lattice_engine::{Chain, Command, EffectSlot, Handle, Routing, Target, fx};
 
 pub struct Mixer {
     sample_rate: f32,
     /// The engine's chains, as far as the commands sent so far go: each track's by id, so they
     /// follow tracks as they move.
-    tracks: HashMap<TrackId, Vec<Fx>>,
-    send: Vec<Fx>,
-    master: Vec<Fx>,
+    tracks: HashMap<TrackId, Sent>,
+    send: Sent,
+    master: Sent,
     /// The bus levels sent, in dB. The engine starts at unity.
     levels: [f32; 2],
     /// Each group bus's chain and level, by its index in the grid's groups.
-    groups: [(Vec<Fx>, f32); MAX_GROUPS],
+    groups: [(Sent, f32); MAX_GROUPS],
     /// The group bus each track was routed to, by id; a track not here goes to the master, as
     /// new tracks do.
     routes: HashMap<TrackId, usize>,
@@ -29,8 +29,8 @@ impl Mixer {
         Self {
             sample_rate,
             tracks: HashMap::new(),
-            send: Vec::new(),
-            master: Vec::new(),
+            send: Sent::default(),
+            master: Sent::default(),
             levels: [0.0; 2],
             groups: Default::default(),
             routes: HashMap::new(),
@@ -116,10 +116,40 @@ impl Mixer {
     }
 }
 
+/// A chain as far as the commands sent so far go.
+#[derive(Default)]
+struct Sent {
+    effects: Vec<Fx>,
+    /// The lanes its routing was built from, or none if it has no routing, as a new chain
+    /// hasn't.
+    lanes: Option<Vec<FxLane>>,
+}
+
 /// Brings one chain in line: effects of a different kind are replaced, keeping those before and
 /// after them so one insert or removal doesn't cut the others' tails, then changed settings are
-/// sent.
+/// sent, then the routing if its lanes or sends have changed.
 fn sync_chain(
+    chain: Chain,
+    sent: &mut Sent,
+    wanted: &FxChain,
+    sample_rate: f32,
+    send: &mut impl FnMut(Command) -> bool,
+) -> bool {
+    if !sync_effects(chain, &mut sent.effects, wanted, sample_rate, send) {
+        return false;
+    }
+    let lanes = (!wanted.is_plain()).then(|| wanted.lanes().to_vec());
+    if sent.lanes != lanes {
+        let routing = Routing::new(wanted);
+        if !send(Command::SetRouting { chain, routing }) {
+            return false;
+        }
+        sent.lanes = lanes;
+    }
+    true
+}
+
+fn sync_effects(
     chain: Chain,
     sent: &mut Vec<Fx>,
     wanted: &[Fx],
@@ -202,7 +232,7 @@ mod tests {
         let mut grid = crate::demo::song().grid;
         grid.groups.clear();
         for track in &mut grid.tracks {
-            track.effects.clear();
+            track.effects = Default::default();
         }
         let buses = lattice_core::Buses {
             master: Default::default(),
@@ -213,7 +243,7 @@ mod tests {
         sync(&mut mixer, &editor);
         editor.grid.groups = vec![lattice_core::Group::new("kit", 1..3)];
         editor.grid.groups[0].bus.level = -4.0;
-        editor.grid.groups[0].bus.effects = vec![Fx::new(FxKind::Comp)];
+        editor.grid.groups[0].bus.effects = vec![Fx::new(FxKind::Comp)].into();
         assert_eq!(
             sync(&mut mixer, &editor),
             [
@@ -243,7 +273,7 @@ mod tests {
         let mut grid = crate::demo::song().grid;
         grid.groups.clear();
         for track in &mut grid.tracks {
-            track.effects.clear();
+            track.effects = Default::default();
         }
         let buses = lattice_core::Buses {
             master: Default::default(),
@@ -258,7 +288,7 @@ mod tests {
         assert!(sync(&mut mixer, &editor).is_empty(), "already in line");
 
         let delay = || Fx::new(FxKind::Delay);
-        editor.grid.tracks[1].effects = vec![delay(), delay()];
+        editor.grid.tracks[1].effects = vec![delay(), delay()].into();
         editor.buses.master.level = -3.0;
         assert_eq!(
             sync(&mut mixer, &editor),
@@ -277,6 +307,24 @@ mod tests {
                 "RemoveEffect { chain: Track(1), index: 1 }",
                 "SetParam { target: Effect { chain: Track(1), slot: 0 }, id: 1, value: 0.5 }"
             ]
+        );
+
+        // Branched, it gets a routing; plain again, it loses it.
+        let effects = editor.grid.tracks[1].effects.to_vec();
+        let lane = |rows| FxLane {
+            rows,
+            ..FxLane::default()
+        };
+        let send = lattice_core::FxRow::Send { to: 1, level: -3.0 };
+        let lanes = vec![lane(vec![lattice_core::FxRow::Fx, send]), lane(vec![])];
+        editor.grid.tracks[1].effects = FxChain::from_parts(effects.clone(), lanes).unwrap();
+        let routed = sync(&mut mixer, &editor);
+        assert_eq!(routed.len(), 1);
+        assert!(routed[0].starts_with("SetRouting { chain: Track(1), routing: Some("));
+        editor.grid.tracks[1].effects = effects.into();
+        assert_eq!(
+            sync(&mut mixer, &editor),
+            ["SetRouting { chain: Track(1), routing: None }"]
         );
     }
 }

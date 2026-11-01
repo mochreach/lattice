@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::chain::{FxChain, FxLane};
 use crate::device::{Curve, Device, Kind, ParamInfo, param};
 use crate::song::MAX_DB;
 
@@ -229,13 +230,44 @@ pub type Fx = Device<FxKind>;
 
 /// The send or master bus: a level and a chain of effects.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(try_from = "SparseBus", into = "SparseBus")]
 pub struct Bus {
     /// In dB; at [`crate::MIN_DB`] or below, silent.
-    #[serde(skip_serializing_if = "is_zero")]
     pub level: f32,
+    pub effects: FxChain,
+}
+
+#[derive(Default, Serialize, Deserialize)]
+#[serde(default)]
+struct SparseBus {
+    #[serde(skip_serializing_if = "is_zero")]
+    level: f32,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub effects: Vec<Fx>,
+    effects: Vec<Fx>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    lanes: Vec<FxLane>,
+}
+
+impl From<Bus> for SparseBus {
+    fn from(bus: Bus) -> Self {
+        let (effects, lanes) = bus.effects.into_parts();
+        Self {
+            level: bus.level,
+            effects,
+            lanes,
+        }
+    }
+}
+
+impl TryFrom<SparseBus> for Bus {
+    type Error = String;
+
+    fn try_from(sparse: SparseBus) -> Result<Self, String> {
+        Ok(Self {
+            level: sparse.level,
+            effects: FxChain::from_parts(sparse.effects, sparse.lanes)?,
+        })
+    }
 }
 
 fn is_zero(x: &f32) -> bool {
@@ -251,12 +283,9 @@ impl Bus {
         if !(self.level.is_finite() && self.level <= MAX_DB) {
             return Err(format!("the {name} bus's level goes up to {MAX_DB} dB"));
         }
-        if self.effects.len() > MAX_EFFECTS {
-            return Err(format!(
-                "the {name} bus has more than {MAX_EFFECTS} effects"
-            ));
-        }
-        Ok(())
+        self.effects
+            .check()
+            .map_err(|e| format!("the {name} bus's effects: {e}"))
     }
 }
 

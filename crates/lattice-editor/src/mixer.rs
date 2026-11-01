@@ -12,8 +12,8 @@
 
 use lattice_core::instrument::chop;
 use lattice_core::{
-    Bus, Fx, FxKind, InstKind, Instrument, Kind, MAX_CHOKE, MAX_DB, MAX_EFFECTS, MIN_DB, ParamInfo,
-    Step,
+    Bus, Fx, FxChain, FxKind, InstKind, Instrument, Kind, MAX_CHOKE, MAX_DB, MAX_EFFECTS, MIN_DB,
+    ParamInfo, Step,
 };
 
 use crate::keymap::Action;
@@ -164,7 +164,7 @@ impl Editor {
         }
     }
 
-    fn chain_mut(&mut self, strip: Strip) -> &mut Vec<Fx> {
+    fn chain_mut(&mut self, strip: Strip) -> &mut FxChain {
         match strip {
             Strip::Track(i) => &mut self.grid.tracks[i].effects,
             _ => &mut self.bus_mut(strip).expect("a bus").effects,
@@ -798,7 +798,7 @@ mod tests {
         };
         let buses = Buses {
             send: Bus {
-                effects: vec![Fx::new(FxKind::Delay)],
+                effects: vec![Fx::new(FxKind::Delay)].into(),
                 ..Bus::default()
             },
             ..Buses::default()

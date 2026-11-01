@@ -159,7 +159,7 @@ mod tests {
             ],
             mix: Default::default(),
             instrument: Default::default(),
-            effects: vec![],
+            effects: Default::default(),
             choke: 0,
             rules,
         }

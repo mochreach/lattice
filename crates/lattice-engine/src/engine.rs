@@ -26,11 +26,12 @@ use crate::denormal;
 use crate::looper::{Looper, Take};
 use crate::param::Smoothed;
 use crate::processor::{Event, EventKind, Processor};
+use crate::routing::Routing;
 use crate::sampler::Sample;
 
 const BEATS_PER_BAR: u64 = 4;
 /// Largest block rendered in one go. Longer host buffers are split.
-const MAX_BLOCK: usize = 256;
+pub(crate) const MAX_BLOCK: usize = 256;
 /// Events per track per block; more are dropped rather than allocating.
 const MAX_EVENTS: usize = 128;
 /// Notes a track can hold at once before the oldest is cut.
@@ -127,6 +128,12 @@ pub enum Command {
     RemoveEffect {
         chain: Chain,
         index: usize,
+    },
+    /// Route a chain's effects through these lanes and sends, or none for one after another.
+    /// Build it off the audio thread with [`Routing::new`]; the old one goes back to be freed.
+    SetRouting {
+        chain: Chain,
+        routing: Option<Box<Routing>>,
     },
     /// Set an instrument's or effect's parameter, in its own units (see
     /// [`Processor::params`]).
@@ -243,18 +250,37 @@ fn effects() -> Effects {
     Vec::with_capacity(MAX_EFFECTS)
 }
 
-/// Runs a block through each effect in turn.
-fn run_chain(effects: &mut [Box<EffectSlot>], left: &mut [f32], right: &mut [f32]) {
-    for slot in effects {
+/// Runs a block through the effects: each in turn, or through the lanes and sends of their
+/// routing.
+fn run_chain(
+    effects: &mut [Box<EffectSlot>],
+    routing: &mut Option<Box<Routing>>,
+    left: &mut [f32],
+    right: &mut [f32],
+) {
+    let run = |slot: &mut EffectSlot, left: &mut [f32], right: &mut [f32]| {
         sort_by_offset(&mut slot.events);
         slot.processor.process(&slot.events, left, right);
         slot.events.clear();
+    };
+    match routing {
+        None => effects.iter_mut().for_each(|slot| run(slot, left, right)),
+        Some(routing) => {
+            routing.run(left, right, |i, l, r| {
+                if let Some(slot) = effects.get_mut(i) {
+                    run(slot, l, r);
+                }
+            });
+            // Any left over while the routing catches up with the effects.
+            effects.iter_mut().for_each(|slot| slot.events.clear());
+        }
     }
 }
 
 /// A group's bus: its tracks mix into it, then it runs its effects and level into the master.
 struct GroupBus {
     effects: Effects,
+    routing: Option<Box<Routing>>,
     /// Linear.
     gain: Smoothed,
     left: Vec<f32>,
@@ -265,6 +291,7 @@ impl GroupBus {
     fn new(sample_rate: f32) -> Self {
         Self {
             effects: effects(),
+            routing: None,
             gain: Smoothed::new(1.0, sample_rate),
             left: vec![0.0; MAX_BLOCK],
             right: vec![0.0; MAX_BLOCK],
@@ -540,6 +567,7 @@ enum Garbage {
     Track(Box<Track>),
     Player(Box<TrackPlayer>),
     Effect(Box<EffectSlot>),
+    Routing(Box<Routing>),
     Instrument(Box<dyn Processor>),
     Section(Box<Section>),
     Take(Box<Take>),
@@ -587,6 +615,7 @@ pub struct TrackPlayer {
     track: Track,
     instrument: Box<dyn Processor>,
     effects: Effects,
+    routing: Option<Box<Routing>>,
     strip: Strip,
     /// The group bus it mixes into, if any.
     group: Option<usize>,
@@ -622,6 +651,7 @@ impl TrackPlayer {
             track,
             instrument,
             effects: effects(),
+            routing: None,
             strip: Strip::new(sample_rate),
             group: None,
             steps: Vec::with_capacity(MAX_STEPS),
@@ -737,6 +767,8 @@ pub struct Engine {
     tracks: Vec<Box<TrackPlayer>>,
     send_effects: Effects,
     master_effects: Effects,
+    send_routing: Option<Box<Routing>>,
+    master_routing: Option<Box<Routing>>,
     groups: [GroupBus; MAX_GROUPS],
     send_left: Vec<f32>,
     send_right: Vec<f32>,
@@ -817,6 +849,8 @@ impl Engine {
             tracks,
             send_effects: effects(),
             master_effects: effects(),
+            send_routing: None,
+            master_routing: None,
             groups: std::array::from_fn(|_| GroupBus::new(sample_rate)),
             send_left: vec![0.0; MAX_BLOCK],
             send_right: vec![0.0; MAX_BLOCK],
@@ -1021,6 +1055,20 @@ impl Engine {
                     }
                     _ => self.discard(Garbage::Effect(effect)),
                 },
+                Command::SetRouting { chain, mut routing } => {
+                    let Some(slot) = self.routing_mut(chain) else {
+                        if let Some(routing) = routing {
+                            self.discard(Garbage::Routing(routing));
+                        }
+                        continue;
+                    };
+                    if let (Some(new), Some(old)) = (&mut routing, &*slot) {
+                        new.take_over(old);
+                    }
+                    if let Some(old) = std::mem::replace(slot, routing) {
+                        self.discard(Garbage::Routing(old));
+                    }
+                }
                 Command::RemoveEffect { chain, index } => {
                     if let Some(effects) = self.unlock_effects(chain).chain_mut(chain)
                         && index < effects.len()
@@ -1144,6 +1192,15 @@ impl Engine {
             t.unlock_effects();
         }
         self
+    }
+
+    fn routing_mut(&mut self, chain: Chain) -> Option<&mut Option<Box<Routing>>> {
+        match chain {
+            Chain::Track(index) => self.tracks.get_mut(index).map(|t| &mut t.routing),
+            Chain::Group(g) => self.groups.get_mut(g).map(|group| &mut group.routing),
+            Chain::Send => Some(&mut self.send_routing),
+            Chain::Master => Some(&mut self.master_routing),
+        }
     }
 
     fn chain_mut(&mut self, chain: Chain) -> Option<&mut Effects> {
@@ -1328,7 +1385,7 @@ impl Engine {
             tr.fill(0.0);
             t.instrument.process(&t.events, tl, tr);
             t.events.clear();
-            run_chain(&mut t.effects, tl, tr);
+            run_chain(&mut t.effects, &mut t.routing, tl, tr);
             t.strip.set(&t.track.mix, any_solo);
             let out = match t.group {
                 Some(g) => {
@@ -1343,7 +1400,7 @@ impl Engine {
         }
         for (g, group) in self.groups.iter_mut().enumerate() {
             // A bus with no tracks still runs its effects, so their tails ring out.
-            if !fed[g] && group.effects.is_empty() {
+            if !fed[g] && group.effects.is_empty() && group.routing.is_none() {
                 continue;
             }
             let (gl, gr) = (&mut group.left[..len], &mut group.right[..len]);
@@ -1351,18 +1408,23 @@ impl Engine {
                 gl.fill(0.0);
                 gr.fill(0.0);
             }
-            run_chain(&mut group.effects, gl, gr);
+            run_chain(&mut group.effects, &mut group.routing, gl, gr);
             let peak = apply_gain(&mut group.gain, gl, gr);
             self.status.group_peaks[g].fetch_max(peak.to_bits(), Ordering::Relaxed);
             mix_into(left, gl);
             mix_into(right, gr);
         }
-        run_chain(&mut self.send_effects, sl, sr);
+        run_chain(&mut self.send_effects, &mut self.send_routing, sl, sr);
         let peak = apply_gain(&mut self.send_gain, sl, sr);
         self.status.bus_peaks[0].fetch_max(peak.to_bits(), Ordering::Relaxed);
         mix_into(left, sl);
         mix_into(right, sr);
-        run_chain(&mut self.master_effects, left, right);
+        run_chain(
+            &mut self.master_effects,
+            &mut self.master_routing,
+            left,
+            right,
+        );
         let peak = apply_gain(&mut self.master_gain, left, right);
         self.status.bus_peaks[1].fetch_max(peak.to_bits(), Ordering::Relaxed);
         let (cl, cr) = (&mut self.click_left[..len], &mut self.click_right[..len]);
@@ -1640,7 +1702,7 @@ mod tests {
                 .to_vec(),
             mix: Default::default(),
             instrument: Default::default(),
-            effects: vec![],
+            effects: Default::default(),
             choke: 0,
             rules: vec![Rule {
                 transform: Transform::Drift(1),

@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::arrangement::Arrangement;
+use crate::chain::{FxChain, FxLane};
 use crate::fx::{Buses, Fx};
 use crate::group::Group;
 use crate::instrument::Instrument;
@@ -204,7 +205,7 @@ pub struct Track {
     /// What plays the notes.
     pub instrument: Instrument,
     /// Effects after the instrument, before the mixer strip.
-    pub effects: Vec<Fx>,
+    pub effects: FxChain,
     pub mix: Mix,
     /// Its choke group within its track group, 1 to [`MAX_CHOKE`], or 0 for none: a hit on any
     /// track in the same group with the same choke cuts this one off, as a closed hat stops an
@@ -298,6 +299,9 @@ struct SparseTrack {
     mix: Mix,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     effects: Vec<Fx>,
+    /// How the effects branch, if they do.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    lanes: Vec<FxLane>,
     #[serde(default, skip_serializing_if = "is_zero_u8")]
     choke: u8,
 }
@@ -308,6 +312,7 @@ fn is_zero_u8(n: &u8) -> bool {
 
 impl From<Track> for SparseTrack {
     fn from(track: Track) -> Self {
+        let (effects, lanes) = track.effects.into_parts();
         Self {
             name: track.name,
             length: track.steps.len(),
@@ -321,7 +326,8 @@ impl From<Track> for SparseTrack {
             pattern_mute: track.pattern_mute,
             instrument: track.instrument,
             mix: track.mix,
-            effects: track.effects,
+            effects,
+            lanes,
             choke: track.choke,
         }
     }
@@ -347,6 +353,8 @@ impl TryFrom<SparseTrack> for Track {
             })?;
             *slot = step;
         }
+        let effects = FxChain::from_parts(sparse.effects, sparse.lanes)
+            .map_err(|e| format!("track {:?}'s effects: {e}", sparse.name))?;
         Ok(Self {
             name: sparse.name,
             steps,
@@ -354,7 +362,7 @@ impl TryFrom<SparseTrack> for Track {
             pattern_mute: sparse.pattern_mute,
             instrument: sparse.instrument,
             mix: sparse.mix,
-            effects: sparse.effects,
+            effects,
             choke: sparse.choke,
         })
     }

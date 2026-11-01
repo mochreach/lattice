@@ -669,6 +669,30 @@ the TUI's `Mixer` brings the engine in line by diffing each chain: it keeps the 
 match at either end, removes and inserts the ones between, and sends `SetParam` for values that
 differ.
 
+### Branching chains
+
+A chain (`FxChain`, in `lattice-core/src/chain.rs`) can branch into up to `MAX_LANES` (4)
+lanes, side by side like tracks, each a column of rows read top to bottom. A row is an effect or a
+send (`FxRow::Send { to, level }`), which copies the sound at that point into another lane, and
+each lane ends in an `out` level into the chain's output. A send into a lane further right feeds
+it in the same block; one into its own lane or one to its left is feedback, heard `MAX_BLOCK`
+(256) frames later whatever the block size, and capped at 0 dB so the loop dies away. There are
+at most `MAX_SENDS` (8) sends to a chain.
+
+The effects stay one list, in lane order (lane A top to bottom, then B, and so on), so locks,
+`SetParam` and the mixer's diffing number them as before; the lanes only say where each one goes.
+A chain of one lane with no sends and its out at unity is plain: it's saved as a list of effects,
+as it always was, with `lanes` written only for one that branches, and the engine runs it one
+effect after another with no routing.
+
+A chain that branches gets a `Routing` (`lattice-engine/src/routing.rs`), built off the audio
+thread with every buffer it needs and sent over with `SetRouting`; the old one comes back over the
+garbage queue. Each block it runs the lanes left to right, calling back into the chain's slots for
+each effect, and mixes their outs. When only the levels change, the new routing takes over the
+old one's feedback and glides from its gains, so turning a send down doesn't cut the tail. The
+TUI's `Mixer` keeps the lanes it last sent beside the effects, and sends a new routing when they
+differ.
+
 ### Locks
 
 Settings change over time by step, with parameter locks as on Elektron machines. A `Step` holds up

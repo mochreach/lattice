@@ -283,7 +283,8 @@ fn tracks() -> Vec<Track> {
                 (drive::MIX, 0.8),
             ],
         ),
-    ];
+    ]
+    .into();
     acid.mix.level = -7.0;
     acid.mix.pan = 0.15;
     acid.mix.send = -14.0;
@@ -326,7 +327,8 @@ fn tracks() -> Vec<Track> {
             (delay::TONE, 2_500.0),
             (delay::MIX, 0.25),
         ],
-    )];
+    )]
+    .into();
     pad.mix.level = -12.0;
     pad.mix.pan = -0.4;
     pad.mix.send = -20.0;
@@ -609,11 +611,11 @@ pub fn buses() -> Buses {
     );
     Buses {
         send: Bus {
-            effects: vec![echo, plate],
+            effects: vec![echo, plate].into(),
             ..Bus::default()
         },
         master: Bus {
-            effects: vec![glue],
+            effects: vec![glue].into(),
             ..Bus::default()
         },
     }
@@ -644,7 +646,8 @@ fn groups() -> Vec<Group> {
                 (comp::MIX, 0.6),
             ],
         ),
-    ];
+    ]
+    .into();
     let mut low = Group::new("low", BASS..ACID + 1);
     low.bus.effects = vec![fx(
         FxKind::Comp,
@@ -653,7 +656,8 @@ fn groups() -> Vec<Group> {
             (comp::RATIO, 3.0),
             (comp::MAKEUP, 2.0),
         ],
-    )];
+    )]
+    .into();
     vec![drums, low]
 }
 

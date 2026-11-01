@@ -203,7 +203,7 @@ mod tests {
             steps: vec![Step::default(); len],
             mix: Default::default(),
             instrument: Default::default(),
-            effects: vec![],
+            effects: Default::default(),
             choke: 0,
             rules,
         }
