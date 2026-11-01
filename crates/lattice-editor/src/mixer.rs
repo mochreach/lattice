@@ -396,8 +396,12 @@ impl Editor {
                 }
             }
             Action::Delete | Action::Clear => return Some(self.remove_effect()),
+            Action::Escape if self.locking().is_some() => {
+                self.message = Some("locking cancelled; settings put back".into());
+                return Some(self.cancel_locking());
+            }
             Action::LockSetting => {
-                return Some(self.lock_shown().unwrap_or_else(|message| {
+                return Some(self.toggle_locking().unwrap_or_else(|message| {
                     self.message = Some(message);
                     vec![]
                 }));

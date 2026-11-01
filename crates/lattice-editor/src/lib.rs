@@ -331,6 +331,8 @@ pub struct Editor {
     song: song::SongCursor,
     /// Where the help page is scrolled to.
     pub help: Help,
+    /// After a first `L` on the mixer page, the settings to lock the changes to.
+    locking: Option<locks::Locking>,
     /// Octave of the lower piano row in insert mode.
     pub octave: u8,
     /// Steps to move after entering a note.
@@ -429,6 +431,7 @@ impl Editor {
             mixer: MixerCursor::default(),
             song: Default::default(),
             help: Help::default(),
+            locking: None,
             octave: 4,
             auto_step: 1,
             velocity: DEFAULT_VELOCITY,
@@ -657,7 +660,11 @@ impl Editor {
         // Only note keys hold: they're plain keys, so their releases match. An edit's preview,
         // `C-a` say, stays brief, as Ctrl might come up first.
         let holds = self.releases && self.plays(key);
-        let effects = self.handle_key(key);
+        let mut effects = self.handle_key(key);
+        // Leaving the mixer leaves locking, putting the settings back.
+        if self.page != Page::Mixer && self.locking.is_some() {
+            effects.extend(self.cancel_locking());
+        }
         if holds {
             self.hold_previews(key, effects)
         } else {
@@ -1670,6 +1677,15 @@ impl Editor {
         tracks.sort_unstable();
         tracks.dedup();
         tracks
+    }
+
+    pub(crate) fn undo_len(&self) -> usize {
+        self.undo.len()
+    }
+
+    /// Forgets the undo steps after the first `len`.
+    pub(crate) fn truncate_undo(&mut self, len: usize) {
+        self.undo.truncate(len);
     }
 
     pub(crate) fn checkpoint(&mut self) {

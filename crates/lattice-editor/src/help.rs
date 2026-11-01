@@ -32,7 +32,7 @@ const PAGES: &[(&str, &str)] = &[
     ),
     (
         "",
-        "C-a C-x adjust · c set · L lock on the selected steps · :fx-add · d remove effect",
+        "C-a C-x adjust · c set · L … L lock changes on the selected steps · :fx-add · d remove",
     ),
     (
         "song (gs)",

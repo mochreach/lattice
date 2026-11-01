@@ -608,8 +608,11 @@ then each effect's in order. `EFFECT.PARAM` picks an effect, by its kind's name 
 1, and `inst.PARAM` picks the instrument. The value is a number in the setting's range, or a
 choice by name. `FROM..TO` sweeps across each selection, evenly along the setting's curve, so a
 cutoff sweep rises by the same interval each step. `L` on the mixer page
-(`Editor::lock_shown`) locks the setting under the mixer cursor at its value now, onto the steps
-the selections cover (whichever tracks they were made on) in the strip's track. The grid marks a locked step with `◆` at its
+remembers the strip's track's instrument and effects (`Locking`); `L` again locks every setting
+that differs onto the steps the selections cover (whichever tracks they were made on), puts the
+settings back, and drops the undo steps the changes made, so the whole thing is one undo. `esc`,
+or anything that leaves the mixer page, puts them back without locking. If the chain changed in
+between, the settings no longer line up, so nothing is locked or put back. The grid marks a locked step with `◆` at its
 end, and the status line lists the cursor's locks in place of the key hints.
 
 ### The mixer page

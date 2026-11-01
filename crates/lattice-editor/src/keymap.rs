@@ -196,8 +196,8 @@ pub enum Action {
     ToggleMute,
     /// The same, in this pattern only.
     TogglePatternMute,
-    /// On the mixer page, lock the setting under the cursor, at its value, onto the selected
-    /// steps.
+    /// On the mixer page, start locking; again, lock the settings changed since onto the
+    /// selected steps, and put them back.
     LockSetting,
     ToggleSolo,
     AddTrack,
@@ -400,7 +400,7 @@ impl Action {
             Action::KeyboardOctaveDown => "keyboard octave down",
             Action::ToggleMute => "mute / unmute",
             Action::TogglePatternMute => "mute / unmute in this pattern",
-            Action::LockSetting => "lock this setting on the selected steps (mixer)",
+            Action::LockSetting => "mixer: L, change settings, L locks them on the selected steps",
             Action::ToggleSolo => "solo / unsolo",
             Action::AddTrack => "add a track after this one",
             Action::RemoveTrack => "remove tracks (and copy)",

@@ -820,6 +820,13 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
         layout => format!("{} notes", layout.name()),
     };
     let (hints, style) = match &editor.mode {
+        Mode::Normal if editor.page == Page::Mixer && editor.locking().is_some() => (
+            format!(
+                "◆ locking {}: change settings · L lock them on the selected steps · esc cancel",
+                editor.grid.tracks[editor.locking().unwrap_or(0)].name
+            ),
+            Style::new().fg(theme.accent),
+        ),
         Mode::Normal if editor.page == Page::Mixer => (
             "hl strips · jk detail · ( ) strip · tab chain · C-a C-x adjust · c set · L lock · :fx-add · d remove · gp pattern".into(),
             theme.dim,

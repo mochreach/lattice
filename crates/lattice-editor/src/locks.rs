@@ -1,9 +1,30 @@
 //! Locks: settings of a track's instrument or effects that change on a step, set with `:lock`
 //! and cleared with `:unlock` on every step the selections reach.
 
-use lattice_core::{Curve, Kind, Lock, MAX_LOCKS, ParamInfo, Track};
+use lattice_core::{Curve, Fx, Instrument, Kind, Lock, MAX_LOCKS, ParamInfo, Track};
 
-use crate::{Editor, Effect, Row, Strip, changed};
+use crate::{Editor, Effect, Strip, changed};
+
+/// What the first `L` on the mixer page remembers: a track's settings as they were, and how far
+/// back undo went.
+#[derive(Debug, Clone)]
+pub(crate) struct Locking {
+    track: usize,
+    instrument: Instrument,
+    effects: Vec<Fx>,
+    undo: usize,
+}
+
+impl Locking {
+    /// Whether the track still has the same instrument and effects, so its settings line up.
+    fn matches(&self, editor: &Editor) -> bool {
+        editor.grid.tracks.get(self.track).is_some_and(|track| {
+            track.instrument.kind == self.instrument.kind
+                && track.effects.len() == self.effects.len()
+                && (track.effects.iter().zip(&self.effects)).all(|(a, b)| a.kind == b.kind)
+        })
+    }
+}
 
 /// A setting a lock can hold on one track, found by name.
 struct Setting {
@@ -134,26 +155,87 @@ impl Editor {
         Ok(changed(edits.into_iter().map(|(t, ..)| t)))
     }
 
-    /// `L` on the mixer page: locks the setting under the cursor, at the value it has now, onto
-    /// the steps the selections cover, in the mixer's track. So a sound found on the mixer can be
-    /// put on a few steps without typing its name.
-    pub(crate) fn lock_shown(&mut self) -> Result<Vec<Effect>, String> {
-        let cursor = self.mixer_cursor();
-        let Row::Param(p) = cursor.row else {
-            return Err("move onto an instrument or effect setting to lock it".into());
-        };
-        let shown = self.shown().ok_or("nothing here to lock")?;
-        let Strip::Track(t) = shown.strip else {
+    /// `L` on the mixer page. The first press remembers the track's settings; change them, and
+    /// the second locks each one that changed, at its new value, onto the steps the selections
+    /// cover (whichever tracks they were made on), then puts the track's settings back.
+    pub(crate) fn toggle_locking(&mut self) -> Result<Vec<Effect>, String> {
+        if self.locking.is_some() {
+            return self.finish_locking();
+        }
+        let strip = self.strip(self.mixer_cursor().strip);
+        let Strip::Track(t) = strip else {
             return Err("locks are on tracks' steps; buses have none".into());
         };
-        let (params, value) = (shown.params, shown.values[p]);
-        let info = &params[p];
-        let lock = Lock {
-            fx: shown.slot.map(|fx| fx as u8),
-            param: info.id as u8,
-            value,
+        // The hints say what to do next.
+        let track = &self.grid.tracks[t];
+        self.locking = Some(Locking {
+            track: t,
+            instrument: track.instrument.clone(),
+            effects: track.effects.clone(),
+            undo: self.undo_len(),
+        });
+        Ok(vec![])
+    }
+
+    /// Whether the mixer is waiting for a second `L`, and on which track.
+    pub fn locking(&self) -> Option<usize> {
+        self.locking.as_ref().map(|l| l.track)
+    }
+
+    /// Puts back the settings `L` remembered, and forgets the changes' undo steps, as though
+    /// they'd never been made. If the track or its chain changed meanwhile, leaves it be.
+    pub(crate) fn cancel_locking(&mut self) -> Vec<Effect> {
+        let Some(locking) = self.locking.take() else {
+            return vec![];
         };
-        // The selections' steps, whichever tracks they're on.
+        if !locking.matches(self) {
+            return vec![];
+        }
+        let track = &mut self.grid.tracks[locking.track];
+        track.instrument.values = locking.instrument.values.clone();
+        for (fx, was) in track.effects.iter_mut().zip(&locking.effects) {
+            fx.values = was.values.clone();
+        }
+        self.truncate_undo(locking.undo);
+        vec![Effect::MixerChanged]
+    }
+
+    fn finish_locking(&mut self) -> Result<Vec<Effect>, String> {
+        let locking = self.locking.clone().expect("locking");
+        if !locking.matches(self) {
+            self.locking = None;
+            return Err("the track's chain changed; nothing locked".into());
+        }
+        let t = locking.track;
+        let track = &self.grid.tracks[t];
+        // Each setting that changed, as a lock.
+        let mut new = vec![];
+        let devices = std::iter::once((None, &locking.instrument.values, &track.instrument))
+            .map(|(fx, was, now)| (fx, was, now.params(), &now.values))
+            .chain(
+                (locking.effects.iter().zip(&track.effects).enumerate())
+                    .map(|(i, (was, now))| (Some(i as u8), &was.values, now.params(), &now.values)),
+            );
+        for (fx, was, params, now) in devices {
+            for (p, info) in params.iter().enumerate() {
+                if was.get(p) != now.get(p) {
+                    new.push((
+                        Setting { fx, info },
+                        Lock {
+                            fx,
+                            param: info.id as u8,
+                            value: now[p],
+                        },
+                    ));
+                }
+            }
+        }
+        if new.is_empty() {
+            self.locking = None;
+            self.message = Some("nothing changed, so nothing locked".into());
+            return Ok(vec![]);
+        }
+        // The selections' steps.
         let len = self.track_len(t);
         let mut steps: Vec<usize> = (self.selections.iter())
             .flat_map(|s| {
@@ -163,31 +245,47 @@ impl Editor {
             .collect();
         steps.sort_unstable();
         steps.dedup();
-        let locks = |step: usize| &self.grid.tracks[t].steps[step].locks;
-        if (steps.iter()).any(|&s| locks(s).find(&lock).is_none() && locks(s).len() == MAX_LOCKS) {
-            return Err(format!("a step holds at most {MAX_LOCKS} locks"));
-        }
         let (Some(&first), Some(&last)) = (steps.first(), steps.last()) else {
             return Err("no steps selected in this track".into());
         };
-        self.checkpoint();
         for &step in &steps {
-            self.grid.tracks[t].steps[step].locks.set(lock);
+            let locks = &track.steps[step].locks;
+            let adding = new.iter().filter(|(_, l)| locks.find(l).is_none()).count();
+            if locks.len() + adding > MAX_LOCKS {
+                return Err(format!(
+                    "a step holds at most {MAX_LOCKS} locks: {} has {}, and this adds {adding}",
+                    step,
+                    locks.len()
+                ));
+            }
         }
-        let setting = Setting { fx: lock.fx, info };
-        let track = &self.grid.tracks[t];
+        let names: Vec<String> = (new.iter())
+            .map(|(setting, lock)| {
+                format!(
+                    "{} {}",
+                    setting.name(track),
+                    setting.info.format(lock.value)
+                )
+            })
+            .collect();
         let at = match (steps.len(), first == last) {
             (_, true) => format!("step {first}"),
             (n, _) if n == last - first + 1 => format!("steps {first}–{last}"),
             (n, _) => format!("{n} steps"),
         };
-        self.message = Some(format!(
-            "◆ {} {} on {} {at}",
-            setting.name(track),
-            info.format(value),
-            track.name
-        ));
-        Ok(changed([t]))
+        let message = format!("◆ {} on {} {at}", names.join(" · "), track.name);
+
+        // Back as they were, then locked, as one undo.
+        let mut effects = self.cancel_locking();
+        self.checkpoint();
+        for &step in &steps {
+            for (_, lock) in &new {
+                self.grid.tracks[t].steps[step].locks.set(*lock);
+            }
+        }
+        self.message = Some(message);
+        effects.extend(changed([t]));
+        Ok(effects)
     }
 
     /// `:unlock [PARAM]`: one setting's locks, or all of them, from every step the selections
@@ -360,10 +458,11 @@ mod tests {
     }
 
     #[test]
-    fn l_on_the_mixer_locks_the_setting_under_the_cursor() {
+    fn l_twice_on_the_mixer_locks_what_changed_and_puts_it_back() {
+        use crate::Row;
         use crate::keymap::Key;
         let mut e = editor();
-        // Steps 1 to 3, then the filter's first setting on the mixer.
+        // Steps 1 to 3, then the filter's settings on the mixer.
         for c in "jvjjgm".chars() {
             e.handle(Key::Char(c));
         }
@@ -371,18 +470,65 @@ mod tests {
         e.mixer.instrument = false;
         e.mixer.effect = 1;
         e.mixer.row = Row::Param(0);
-        let name = e.shown().unwrap().params[0].name;
-        assert_eq!(e.handle(Key::Char('L')), [Effect::TrackChanged(0)]);
+        let before = e.grid.tracks[0].effects[1].values.clone();
+        let undo = e.undo_len();
+
+        assert_eq!(e.handle(Key::Char('L')), []);
+        assert_eq!(e.locking(), Some(0));
+        // Change two of the filter's settings.
+        e.handle(Key::Ctrl('a'));
+        e.mixer.row = Row::Param(1);
+        e.handle(Key::Ctrl('a'));
+        e.handle(Key::Ctrl('a'));
+        let after = e.grid.tracks[0].effects[1].values.clone();
+        assert_ne!(after, before);
+
+        let effects = e.handle(Key::Char('L'));
+        assert_eq!(effects, [Effect::MixerChanged, Effect::TrackChanged(0)]);
+        assert_eq!(e.locking(), None);
+        assert_eq!(e.grid.tracks[0].effects[1].values, before, "put back");
         assert_eq!(locks(&e, 0), Vec::<String>::new());
         for step in 1..=3 {
-            assert_eq!(locks(&e, step).len(), 1);
-            assert!(locks(&e, step)[0].starts_with(&format!("filter.{name} ")));
+            assert_eq!(locks(&e, step).len(), 2, "{:?}", locks(&e, step));
         }
         assert!(e.message.as_ref().unwrap().contains("steps 1–3"));
-        // Not on the strip's level.
-        e.mixer.row = Row::Strips;
+        // All one undo.
+        assert_eq!(e.undo_len(), undo + 1);
+        e.handle(Key::Char('u'));
+        assert_eq!(locks(&e, 1), Vec::<String>::new());
+        assert_eq!(e.grid.tracks[0].effects[1].values, before);
+    }
+
+    #[test]
+    fn locking_is_cancelled_by_esc_or_leaving_the_mixer() {
+        use crate::Row;
+        use crate::keymap::Key;
+        let mut e = editor();
+        for c in "gm".chars() {
+            e.handle(Key::Char(c));
+        }
+        e.mixer.instrument = false;
+        e.mixer.row = Row::Param(0);
+        let before = e.grid.tracks[0].effects[0].values.clone();
+        for keys in [vec![Key::Esc], vec![Key::Char('g'), Key::Char('p')]] {
+            e.handle(Key::Char('g'));
+            e.handle(Key::Char('m'));
+            e.handle(Key::Char('L'));
+            e.handle(Key::Ctrl('a'));
+            assert_ne!(e.grid.tracks[0].effects[0].values, before);
+            for key in keys {
+                e.handle(key);
+            }
+            assert_eq!(e.locking(), None);
+            assert_eq!(e.grid.tracks[0].effects[0].values, before);
+            assert_eq!(locks(&e, 0), Vec::<String>::new());
+        }
+        // Nothing changed, nothing locked.
+        e.handle(Key::Char('g'));
+        e.handle(Key::Char('m'));
+        e.handle(Key::Char('L'));
         assert_eq!(e.handle(Key::Char('L')), []);
-        assert!(e.message.as_ref().unwrap().contains("move onto"));
+        assert!(e.message.as_ref().unwrap().contains("nothing locked"));
     }
 
     #[test]
