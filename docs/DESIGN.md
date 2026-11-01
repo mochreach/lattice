@@ -247,8 +247,9 @@ row plays, in braille: four dots down a row, each the loudest of a quarter of th
 out from the middle. The frontend keeps each file's peaks (`wave.rs`), worked out from the copy
 the instrument loaded, and draws the realised steps in the live view, so rules show as they play.
 
-Next: keys to reverse and repeat a selection directly, then saving samples with the song, then a
-looper recording into a chop track from the audio input.
+Next: keys to reverse and repeat a selection directly, then saving recorded or exported samples
+into the song's folder (files already there are saved relative to it), then a looper recording
+into a chop track from the audio input.
 
 ## Track groups
 
@@ -737,6 +738,11 @@ fields after `Theme::detect`, so what isn't set still follows the terminal.
   named it.
 
 ## Song files
+
+A sound file an instrument plays is saved relative to the song if it's in the song's folder or
+one inside it, and made absolute again on reading (`lattice-tui`'s `file.rs`), so a song and its
+samples can be moved, or checked in, together; the editor only ever sees absolute paths.
+`examples/amen` is one: a song and the loop it chops.
 
 Songs are saved as RON in `.lattice` files, written by `lattice_core::to_ron` and read by
 `from_ron`, which also rejects songs the editor and engine can't handle (no tracks, lengths outside

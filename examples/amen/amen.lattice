@@ -1,0 +1,207 @@
+#![enable(implicit_some)]
+(
+    name: "amen",
+    bpm: 136.0,
+    grid: (
+        name: "amen",
+        steps_per_beat: 4,
+        tracks: [
+            (
+                name: "kick",
+                length: 64,
+                instrument: (
+                    kind: Kick,
+                    params: {"decay": 0.3, "drive": 0.2, "model": 0.0, "punch": 0.6, "tune": 55.0},
+                ),
+                mix: (
+                    level: -2.0,
+                ),
+            ),
+            (
+                name: "snare",
+                length: 64,
+                instrument: (
+                    kind: Snare,
+                    params: {"decay": 0.2, "model": 2.0, "snap": 0.75, "tone": 6000.0, "tune": 200.0},
+                ),
+                mix: (
+                    level: -3.0,
+                    send: -18.0,
+                ),
+            ),
+            (
+                name: "ride",
+                length: 64,
+                instrument: (
+                    kind: Hat,
+                    params: {"decay": 0.5, "noise": 0.15, "tone": 9000.0, "tune": 320.0},
+                ),
+                mix: (
+                    level: -13.0,
+                    pan: 0.25,
+                ),
+            ),
+            (
+                name: "crash",
+                length: 64,
+                instrument: (
+                    kind: Hat,
+                    params: {"decay": 1.5, "model": 2.0, "noise": 0.6},
+                ),
+                mix: (
+                    level: -11.0,
+                    pan: -0.2,
+                ),
+            ),
+            (
+                name: "amen",
+                length: 64,
+                steps: {
+                    0: (note: (pitch: 60)),
+                    1: (note: (pitch: 61)),
+                    2: (note: (pitch: 62)),
+                    3: (note: (pitch: 63)),
+                    4: (note: (pitch: 64)),
+                    5: (note: (pitch: 65)),
+                    6: (note: (pitch: 66)),
+                    7: (note: (pitch: 67)),
+                    8: (note: (pitch: 68)),
+                    9: (note: (pitch: 69)),
+                    10: (note: (pitch: 70)),
+                    11: (note: (pitch: 71)),
+                    12: (note: (pitch: 72)),
+                    13: (note: (pitch: 73)),
+                    14: (note: (pitch: 74)),
+                    15: (note: (pitch: 75)),
+                    16: (note: (pitch: 76)),
+                    17: (note: (pitch: 77)),
+                    18: (note: (pitch: 78)),
+                    19: (note: (pitch: 79)),
+                    20: (note: (pitch: 80)),
+                    21: (note: (pitch: 81)),
+                    22: (note: (pitch: 82)),
+                    23: (note: (pitch: 83)),
+                    24: (note: (pitch: 84)),
+                    25: (note: (pitch: 85)),
+                    26: (note: (pitch: 86)),
+                    27: (note: (pitch: 87)),
+                    28: (note: (pitch: 88, velocity: 80)),
+                    29: (note: (pitch: 72, velocity: 90)),
+                    30: (note: (pitch: 88, velocity: 105)),
+                    31: (note: (pitch: 72, velocity: 120)),
+                    32: (note: (pitch: 92)),
+                    33: (note: (pitch: 93)),
+                    34: (note: (pitch: 94)),
+                    35: (note: (pitch: 95)),
+                    36: (note: (pitch: 96)),
+                    37: (note: (pitch: 97)),
+                    38: (note: (pitch: 98)),
+                    39: (note: (pitch: 99)),
+                    40: (note: (pitch: 60)),
+                    41: (note: (pitch: 61)),
+                    42: (note: (pitch: 62)),
+                    43: (note: (pitch: 63)),
+                    44: (note: (pitch: 96), locks: [(param: 4, value: 1.0)]),
+                    45: (note: (pitch: 97)),
+                    46: (note: (pitch: 60)),
+                    47: (note: (pitch: 60)),
+                    48: (note: (pitch: 108)),
+                    49: (note: (pitch: 109)),
+                    50: (note: (pitch: 110)),
+                    51: (note: (pitch: 111)),
+                    52: (note: (pitch: 112)),
+                    53: (note: (pitch: 113)),
+                    54: (note: (pitch: 114)),
+                    55: (note: (pitch: 115)),
+                    56: (note: (pitch: 116)),
+                    57: (note: (pitch: 117)),
+                    58: (note: (pitch: 118)),
+                    59: (note: (pitch: 119)),
+                    60: (note: (pitch: 120)),
+                    61: (note: (pitch: 120)),
+                    62: (note: (pitch: 122)),
+                    63: (note: (pitch: 122)),
+                },
+                rules: [
+                    (transform: Rotate(8), when: Every(n: 2, offset: 1)),
+                ],
+                instrument: (
+                    kind: Chop,
+                    params: {"gain": 1.0, "pieces": 64.0},
+                    file: "amen.wav",
+                ),
+                mix: (
+                    level: -1.0,
+                ),
+            ),
+        ],
+        groups: [
+            (
+                name: "kit",
+                first: 0,
+                len: 4,
+                bus: (
+                    effects: [(kind: Drive, params: {"mix": 0.3, "tone": 9000.0}), (kind: Comp, params: {"makeup": 3.0, "mix": 0.7, "release": 0.1, "threshold": -16.0})],
+                ),
+            ),
+        ],
+    ),
+    arrangement: (
+        patterns: [
+            (
+                name: "drums",
+                lanes: [
+                    (length: 64, steps: {0: (note: (pitch: 60, velocity: 120)), 2: (note: (pitch: 60)), 10: (note: (pitch: 60, velocity: 110)), 11: (note: (pitch: 60, velocity: 90)), 16: (note: (pitch: 60, velocity: 120)), 18: (note: (pitch: 60)), 26: (note: (pitch: 60, velocity: 110)), 27: (note: (pitch: 60, velocity: 90)), 32: (note: (pitch: 60, velocity: 120)), 34: (note: (pitch: 60)), 42: (note: (pitch: 60, velocity: 110)), 50: (note: (pitch: 60)), 51: (note: (pitch: 60, velocity: 90)), 58: (note: (pitch: 60, velocity: 110))}),
+                    (length: 64, steps: {4: (note: (pitch: 60, velocity: 120)), 7: (note: (pitch: 60, velocity: 70)), 9: (note: (pitch: 60, velocity: 95)), 12: (note: (pitch: 60, velocity: 120)), 15: (note: (pitch: 60, velocity: 75)), 20: (note: (pitch: 60, velocity: 120)), 23: (note: (pitch: 60, velocity: 70)), 25: (note: (pitch: 60, velocity: 95)), 28: (note: (pitch: 60, velocity: 120)), 31: (note: (pitch: 60, velocity: 75)), 36: (note: (pitch: 60, velocity: 120)), 39: (note: (pitch: 60, velocity: 70)), 41: (note: (pitch: 60, velocity: 95)), 46: (note: (pitch: 60, velocity: 110)), 49: (note: (pitch: 60, velocity: 90)), 52: (note: (pitch: 60, velocity: 120)), 55: (note: (pitch: 60, velocity: 70)), 57: (note: (pitch: 60, velocity: 95)), 62: (note: (pitch: 60, velocity: 110))}),
+                    (length: 64, steps: {0: (note: (pitch: 60, velocity: 95)), 2: (note: (pitch: 60, velocity: 75)), 4: (note: (pitch: 60, velocity: 95)), 6: (note: (pitch: 60, velocity: 75)), 8: (note: (pitch: 60, velocity: 95)), 10: (note: (pitch: 60, velocity: 75)), 12: (note: (pitch: 60, velocity: 95)), 14: (note: (pitch: 60, velocity: 75)), 16: (note: (pitch: 60, velocity: 95)), 18: (note: (pitch: 60, velocity: 75)), 20: (note: (pitch: 60, velocity: 95)), 22: (note: (pitch: 60, velocity: 75)), 24: (note: (pitch: 60, velocity: 95)), 26: (note: (pitch: 60, velocity: 75)), 28: (note: (pitch: 60, velocity: 95)), 30: (note: (pitch: 60, velocity: 75)), 32: (note: (pitch: 60, velocity: 95)), 34: (note: (pitch: 60, velocity: 75)), 36: (note: (pitch: 60, velocity: 95)), 38: (note: (pitch: 60, velocity: 75)), 40: (note: (pitch: 60, velocity: 95)), 42: (note: (pitch: 60, velocity: 75)), 44: (note: (pitch: 60, velocity: 95)), 46: (note: (pitch: 60, velocity: 75)), 48: (note: (pitch: 60, velocity: 95)), 50: (note: (pitch: 60, velocity: 75)), 52: (note: (pitch: 60, velocity: 95)), 54: (note: (pitch: 60, velocity: 75)), 56: (note: (pitch: 60, velocity: 95)), 60: (note: (pitch: 60, velocity: 95)), 62: (note: (pitch: 60, velocity: 75))}),
+                    (length: 64, steps: {58: (note: (pitch: 60, velocity: 120))}),
+                    (length: 64),
+                ],
+            ),
+            (
+                name: "sample",
+                lanes: [
+                    (length: 64),
+                    (length: 64),
+                    (length: 64),
+                    (length: 64),
+                    (length: 64, steps: {0: (note: (pitch: 60)), 1: (note: (pitch: 61)), 2: (note: (pitch: 62)), 3: (note: (pitch: 63)), 4: (note: (pitch: 64)), 5: (note: (pitch: 65)), 6: (note: (pitch: 66)), 7: (note: (pitch: 67)), 8: (note: (pitch: 68)), 9: (note: (pitch: 69)), 10: (note: (pitch: 70)), 11: (note: (pitch: 71)), 12: (note: (pitch: 72)), 13: (note: (pitch: 73)), 14: (note: (pitch: 74)), 15: (note: (pitch: 75)), 16: (note: (pitch: 76)), 17: (note: (pitch: 77)), 18: (note: (pitch: 78)), 19: (note: (pitch: 79)), 20: (note: (pitch: 80)), 21: (note: (pitch: 81)), 22: (note: (pitch: 82)), 23: (note: (pitch: 83)), 24: (note: (pitch: 84)), 25: (note: (pitch: 85)), 26: (note: (pitch: 86)), 27: (note: (pitch: 87)), 28: (note: (pitch: 88)), 29: (note: (pitch: 89)), 30: (note: (pitch: 90)), 31: (note: (pitch: 91)), 32: (note: (pitch: 92)), 33: (note: (pitch: 93)), 34: (note: (pitch: 94)), 35: (note: (pitch: 95)), 36: (note: (pitch: 96)), 37: (note: (pitch: 97)), 38: (note: (pitch: 98)), 39: (note: (pitch: 99)), 40: (note: (pitch: 100)), 41: (note: (pitch: 101)), 42: (note: (pitch: 102)), 43: (note: (pitch: 103)), 44: (note: (pitch: 104)), 45: (note: (pitch: 105)), 46: (note: (pitch: 106)), 47: (note: (pitch: 107)), 48: (note: (pitch: 108)), 49: (note: (pitch: 109)), 50: (note: (pitch: 110)), 51: (note: (pitch: 111)), 52: (note: (pitch: 112)), 53: (note: (pitch: 113)), 54: (note: (pitch: 114)), 55: (note: (pitch: 115)), 56: (note: (pitch: 116)), 57: (note: (pitch: 117)), 58: (note: (pitch: 118)), 59: (note: (pitch: 119)), 60: (note: (pitch: 120)), 61: (note: (pitch: 121)), 62: (note: (pitch: 122)), 63: (note: (pitch: 123))}),
+                ],
+            ),
+            (
+                name: "chopped",
+            ),
+        ],
+        current: 2,
+        entries: [
+            (
+                pattern: 0,
+            ),
+            (
+                pattern: 1,
+            ),
+            (
+                pattern: 2,
+                repeats: 2,
+            ),
+        ],
+    ),
+    buses: (
+        send: (
+            effects: [
+                (
+                    kind: Reverb,
+                    params: {"decay": 0.35, "mix": 1.0, "size": 0.3},
+                ),
+            ],
+        ),
+        master: (
+            effects: [
+                (
+                    kind: Comp,
+                    params: {"attack": 0.01, "makeup": 1.5, "ratio": 2.0, "threshold": -10.0},
+                ),
+            ],
+        ),
+    ),
+)

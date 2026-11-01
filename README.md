@@ -33,6 +33,9 @@ Debug builds abort if the audio callback ever allocates, which catches real-time
 
 ## Keys
 
+There's an example of chopping a loop in [`examples/amen`](examples/amen): the Amen break
+programmed on the drums, sampled, and cut up a step at a time.
+
 New to it? `:tutor` (or `lattice --tutor`) teaches the keys a lesson at a time, on a song of its
 own, as Helix's tutor does. Once you've done what a lesson asks, a box says so and `space` goes
 on to the next, from where you left off; `:tutor next`,
