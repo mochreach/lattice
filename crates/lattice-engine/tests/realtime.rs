@@ -2,7 +2,9 @@
 
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
 use lattice_core::instrument::{kick, string};
-use lattice_core::{Condition, Grid, InstKind, Instrument, Lane, Rule, Step, Track, Transform};
+use lattice_core::{
+    Condition, Fx, FxKind, Grid, InstKind, Instrument, Lane, Rule, Step, Track, Transform,
+};
 use lattice_engine::{
     AdsrParams, Chain, Command, Comp, Cue, Delay, Drive, EffectSlot, Engine, Patch, Processor,
     Sample, Section, Synth, Target, TrackPlayer, Wave, delay,
@@ -79,6 +81,10 @@ fn rendering_never_allocates() {
     let mut track_drive = Some(EffectSlot::new(Box::new(Drive::new(48_000.0))));
     let mut track_comp = Some(EffectSlot::new(Box::new(Comp::new(48_000.0))));
     let mut group_comp = Some(EffectSlot::new(Box::new(Comp::new(48_000.0))));
+    let mut more_effects: Vec<_> = [FxKind::Reverb, FxKind::Filter]
+        .into_iter()
+        .map(|kind| EffectSlot::new(lattice_engine::fx::build(&Fx::new(kind), 48_000.0)))
+        .collect();
     let mut drums: Vec<_> = [InstKind::Hat, InstKind::Snare, InstKind::Kick]
         .into_iter()
         .map(|kind| lattice_engine::instrument::build(&Instrument::new(kind), 48_000.0, None))
@@ -195,6 +201,13 @@ fn rendering_never_allocates() {
                         level: -3.0,
                     });
                 }
+                730 | 740 => {
+                    handle.send(Command::InsertEffect {
+                        chain: Chain::Master,
+                        index: 0,
+                        effect: more_effects.pop().unwrap(),
+                    });
+                }
                 750 | 760 | 770 => {
                     handle.send(Command::SetInstrument {
                         index: 0,
@@ -275,6 +288,13 @@ fn rendering_never_allocates() {
                         index: 0,
                         track: muted.take().unwrap(),
                         swaps: 1,
+                    });
+                }
+                1_050 | 1_060 => {
+                    // A reverb's tail never quite reaches silence, so take them out again.
+                    handle.send(Command::RemoveEffect {
+                        chain: Chain::Master,
+                        index: 0,
                     });
                 }
                 1_100 => {

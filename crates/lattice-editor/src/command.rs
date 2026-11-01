@@ -222,7 +222,7 @@ pub const COMMANDS: &[Spec] = &[
         name: "fx-add",
         alias: None,
         params: &[text("EFFECT", "effect")],
-        describe: "add an effect (delay, drive, comp) after the one under the cursor",
+        describe: "add an effect (delay, reverb, filter, drive, comp) after the one under the cursor",
     },
     Spec {
         name: "track-add",

@@ -16,10 +16,18 @@ pub enum FxKind {
     Delay,
     Drive,
     Comp,
+    Reverb,
+    Filter,
 }
 
 impl FxKind {
-    pub const ALL: [FxKind; 3] = [FxKind::Delay, FxKind::Drive, FxKind::Comp];
+    pub const ALL: [FxKind; 5] = [
+        FxKind::Delay,
+        FxKind::Reverb,
+        FxKind::Filter,
+        FxKind::Drive,
+        FxKind::Comp,
+    ];
 
     pub fn named(name: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|k| k.name() == name)
@@ -30,6 +38,8 @@ impl FxKind {
             FxKind::Delay => &delay::PARAMS,
             FxKind::Drive => &drive::PARAMS,
             FxKind::Comp => &comp::PARAMS,
+            FxKind::Reverb => &reverb::PARAMS,
+            FxKind::Filter => &filter::PARAMS,
         }
     }
 }
@@ -40,6 +50,8 @@ impl Kind for FxKind {
             FxKind::Delay => "delay",
             FxKind::Drive => "drive",
             FxKind::Comp => "comp",
+            FxKind::Reverb => "reverb",
+            FxKind::Filter => "filter",
         }
     }
 
@@ -144,6 +156,70 @@ pub mod comp {
         param(ATTACK, "attack", (0.000_1, 0.1, 0.005), "s", Curve::Log),
         param(RELEASE, "release", (0.01, 1.0, 0.15), "s", Curve::Log),
         param(MAKEUP, "makeup", (0.0, 24.0, 0.0), "dB", Curve::Linear),
+        param(MIX, "mix", (0.0, 1.0, 1.0), "", Curve::Linear),
+    ];
+}
+
+/// A plate reverb, after Jon Dattorro's: a diffused input feeding a figure-of-eight tank.
+pub mod reverb {
+    use super::*;
+
+    /// How big the plate is, which sets how far apart its echoes are.
+    pub const SIZE: u32 = 0;
+    /// How long it rings: how much survives each trip round the tank.
+    pub const DECAY: u32 = 1;
+    /// How much of the high end survives each trip.
+    pub const TONE: u32 = 2;
+    /// A gap before the reverb, keeping the sound's front clear of it.
+    pub const PREDELAY: u32 = 3;
+    pub const MIX: u32 = 4;
+
+    /// The longest pre-delay, in seconds.
+    pub const MAX_PREDELAY: f32 = 0.25;
+
+    pub(super) const PARAMS: [ParamInfo; 5] = [
+        param(SIZE, "size", (0.0, 1.0, 0.5), "", Curve::Linear),
+        param(DECAY, "decay", (0.0, 0.98, 0.6), "", Curve::Linear),
+        param(TONE, "tone", (500.0, 16_000.0, 6_000.0), "Hz", Curve::Log),
+        param(
+            PREDELAY,
+            "predelay",
+            (0.0, MAX_PREDELAY, 0.02),
+            "s",
+            Curve::Linear,
+        ),
+        param(MIX, "mix", (0.0, 1.0, 0.3), "", Curve::Linear),
+    ];
+}
+
+/// A resonant filter, swept by its own LFO.
+pub mod filter {
+    use super::*;
+
+    /// Low-pass, band-pass or high-pass.
+    pub const TYPE: u32 = 0;
+    pub const CUTOFF: u32 = 1;
+    pub const RESONANCE: u32 = 2;
+    /// How fast the LFO sweeps the cutoff.
+    pub const RATE: u32 = 3;
+    /// How far, in octaves either side of the cutoff.
+    pub const SWEEP: u32 = 4;
+    pub const MIX: u32 = 5;
+
+    pub const TYPES: &[&str] = &["low", "band", "high"];
+
+    pub(super) const PARAMS: [ParamInfo; 6] = [
+        param(TYPE, "type", (0.0, 2.0, 0.0), "", Curve::Choice(TYPES)),
+        param(
+            CUTOFF,
+            "cutoff",
+            (20.0, 20_000.0, 2_000.0),
+            "Hz",
+            Curve::Log,
+        ),
+        param(RESONANCE, "resonance", (0.0, 0.95, 0.2), "", Curve::Linear),
+        param(RATE, "rate", (0.02, 20.0, 0.25), "Hz", Curve::Log),
+        param(SWEEP, "sweep", (0.0, 4.0, 0.0), "oct", Curve::Linear),
         param(MIX, "mix", (0.0, 1.0, 1.0), "", Curve::Linear),
     ];
 }

@@ -2,7 +2,7 @@
 //! everything: every instrument, every effect, groups, a choke, sends, tracks of different
 //! lengths drifting against each other, and rules that change the parts as they repeat.
 
-use lattice_core::fx::{comp, delay, drive};
+use lattice_core::fx::{comp, delay, drive, filter, reverb};
 use lattice_core::instrument::{clap, hat, kick, snare, string, synth, tom};
 use lattice_core::{
     Arrangement, Bus, Buses, Condition, DRUM_ROOT, Entry, Fx, FxKind, Grid, Group, InstKind,
@@ -262,19 +262,31 @@ fn tracks() -> Vec<Track> {
     );
     bass.mix.level = -3.0;
 
-    // A squelchy acid line through a drive, echoing off the send.
+    // A squelchy acid line, its filter opening and closing over four bars, through a drive and
+    // echoing off the send.
     let mut acid = track(
         "acid",
         synth(SAW, (0.002, 0.18, 0.0, 0.06), 350.0, 3_800.0, 0.86, 0.32),
     );
-    acid.effects = vec![fx(
-        FxKind::Drive,
-        &[
-            (drive::DRIVE, 0.55),
-            (drive::TONE, 5_000.0),
-            (drive::MIX, 0.8),
-        ],
-    )];
+    acid.effects = vec![
+        fx(
+            FxKind::Filter,
+            &[
+                (filter::CUTOFF, 1_400.0),
+                (filter::RESONANCE, 0.5),
+                (filter::RATE, BPM as f32 / 60.0 / 16.0),
+                (filter::SWEEP, 1.5),
+            ],
+        ),
+        fx(
+            FxKind::Drive,
+            &[
+                (drive::DRIVE, 0.55),
+                (drive::TONE, 5_000.0),
+                (drive::MIX, 0.8),
+            ],
+        ),
+    ];
     acid.mix.level = -7.0;
     acid.mix.pan = 0.15;
     acid.mix.send = -14.0;
@@ -541,7 +553,7 @@ fn sections() -> Vec<(&'static str, u32, Vec<Lane>)> {
 /// Which section is open to begin with: the one with everything in it.
 const OPENS_ON: usize = 4;
 
-/// The send bus's echo, and the master's glue.
+/// The send bus's echo into a plate, and the master's glue.
 pub fn buses() -> Buses {
     // A send bus carries only what's sent to it, so its delay is all echo.
     let echo = fx(
@@ -551,6 +563,16 @@ pub fn buses() -> Buses {
             (delay::FEEDBACK, 0.55),
             (delay::TONE, 2_200.0),
             (delay::MIX, 1.0),
+        ],
+    );
+    let plate = fx(
+        FxKind::Reverb,
+        &[
+            (reverb::SIZE, 0.7),
+            (reverb::DECAY, 0.7),
+            (reverb::TONE, 4_500.0),
+            (reverb::PREDELAY, 0.03),
+            (reverb::MIX, 0.35),
         ],
     );
     let glue = fx(
@@ -565,7 +587,7 @@ pub fn buses() -> Buses {
     );
     Buses {
         send: Bus {
-            effects: vec![echo],
+            effects: vec![echo, plate],
             ..Bus::default()
         },
         master: Bus {

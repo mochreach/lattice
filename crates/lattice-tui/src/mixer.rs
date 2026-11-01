@@ -251,7 +251,10 @@ mod tests {
         };
         let mut editor = Editor::new(grid, 120.0).with_buses(buses);
         let mut mixer = Mixer::new(48_000.0);
-        assert_eq!(sync(&mut mixer, &editor), ["insert Send 0"]);
+        assert_eq!(
+            sync(&mut mixer, &editor),
+            ["insert Send 0", "insert Send 1"]
+        );
         assert!(sync(&mut mixer, &editor).is_empty(), "already in line");
 
         let delay = || Fx::new(FxKind::Delay);

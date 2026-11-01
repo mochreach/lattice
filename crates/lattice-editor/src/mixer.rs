@@ -840,7 +840,7 @@ mod tests {
         assert_eq!(e.grid.tracks[0].effects[1].kind, FxKind::Drive);
         assert_eq!(at(&e), (Strip::Track(0), Row::Chain));
         assert_eq!(e.shown().unwrap().slot, Some(1));
-        command(&mut e, "fx-add reverb");
+        command(&mut e, "fx-add plate");
         assert!(e.message.as_deref().unwrap().contains("there's delay"));
         // After the instrument means first.
         keys(&mut e, "hh");

@@ -403,8 +403,7 @@ to check. Things to get right:
 - **Oscillators:** band-limited (PolyBLEP/PolyBLAMP), wavetables later.
 - **Envelopes:** triggered by events, never by watching a level.
 - **Filters:** a TPT/ZDF state-variable filter, later a ladder filter.
-- **Effects:** drive (to be oversampled), a compressor, delay, and a reverb (a Freeverb or FDN to
-  start).
+- **Effects:** drive (to be oversampled), a compressor, delay, a plate reverb, and a filter.
 - **Housekeeping:** parameter smoothing, polyphony with voice stealing.
 
 fundsp and similar libraries are still useful as references, and as reference output in tests.
@@ -538,7 +537,7 @@ master bus → master effects → + click → tanh
 - **Meters:** each track's peak after its strip is published as `f32` bits in an `AtomicU32`
   with `fetch_max`; the UI swaps it for 0 each frame and lets its meter fall at 30 dB/s.
 
-There are three effects so far, each usable on any track or bus:
+There are five effects so far, each usable on any track or bus:
 
 - **`delay`:** a plain stereo delay (time, feedback, a lowpass in the feedback path, and mix).
   New songs get one on the send bus, set fully wet; anywhere else it starts at 30% mix.
@@ -546,12 +545,27 @@ There are three effects so far, each usable on any track or bus:
   feels even), a little off centre for even harmonics with a 5 Hz DC blocker after, then a
   one-pole low-pass (tone), mix and an output level. It's scaled so a full-scale input still
   peaks at 1. It isn't oversampled yet, so it aliases when pushed hard on bright material.
+- **`reverb`:** a plate after Dattorro ("Effect Design, Part 1", 1997). The input is
+  pre-delayed (up to 250 ms), low-passed at 10 kHz and smeared by four all-passes, then fed into
+  a tank of two halves that feed each other, each a wandering all-pass, a delay, a damping
+  low-pass (tone), an all-pass and another delay. The output is tapped from seven points in the
+  tank, differently for each side, which is what makes it stereo. Size scales the tank's lengths
+  from 0.4 to 1.6 times the paper's (the input diffusers keep theirs, as in a real plate), and
+  every line is allocated at the largest size when the effect is built, so changing the size
+  never allocates. Decay is capped at 0.98, below where the tank would ring for ever.
+- **`filter`:** a resonant state-variable filter (the same TPT one the synth uses), low-, band-
+  or high-pass, with a sine LFO that sweeps its cutoff up and down by up to four octaves. The
+  cutoff is smoothed in octaves, so it glides evenly, and the band-pass is scaled to unity at its
+  centre whatever the resonance. Set an LFO period of four bars for a slow acid sweep.
 - **`comp`:** a compressor: threshold, ratio, attack, release, makeup and mix (below 1 for
   parallel compression). Both channels share one gain from the louder of the two, so the image
   stays put. The gain reduction in dB follows a 6 dB soft knee with the attack going down and the
   release coming back.
 
-Together they're a drum bus. The demo's drums are a folded group, `drums`, whose bus has a
+In the demo, the acid line's filter opens and closes over four bars, and the send bus's echoes
+go on into a plate mixed at 35%.
+
+Drive and comp together are a drum bus. The demo's drums are a folded group, `drums`, whose bus has a
 little drive (mixed at 50%) and then a compressor with a 10 ms attack, so the hits' fronts get
 through, mixed in at 60%.
 

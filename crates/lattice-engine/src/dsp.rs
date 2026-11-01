@@ -151,8 +151,18 @@ impl Svf {
 
     /// The band-pass and low-pass outputs.
     fn tick(&mut self, input: f32, cutoff: f32, resonance: f32, sample_rate: f32) -> (f32, f32) {
-        let g = (PI * cutoff.clamp(20.0, 0.45 * sample_rate) / sample_rate).tan();
-        let k = damping(resonance);
+        let (low, band, _) = self.outputs(input, Self::g(cutoff, sample_rate), damping(resonance));
+        (band, low)
+    }
+
+    /// The coefficient for `cutoff`, worth working out once for several filters.
+    pub fn g(cutoff: f32, sample_rate: f32) -> f32 {
+        (PI * cutoff.clamp(20.0, 0.45 * sample_rate) / sample_rate).tan()
+    }
+
+    /// The low-, band- and high-pass outputs, for a coefficient from [`Svf::g`] and a damping
+    /// from [`damping`]. The band-pass's gain at its centre is `1 / k`.
+    pub fn outputs(&mut self, input: f32, g: f32, k: f32) -> (f32, f32, f32) {
         let a1 = 1.0 / (1.0 + g * (g + k));
         let a2 = g * a1;
         let a3 = g * a2;
@@ -161,12 +171,12 @@ impl Svf {
         let v2 = self.ic2 + a2 * self.ic1 + a3 * v3;
         self.ic1 = 2.0 * v1 - self.ic1;
         self.ic2 = 2.0 * v2 - self.ic2;
-        (v1, v2)
+        (v2, v1, input - k * v1 - v2)
     }
 }
 
 /// The filter's damping, 2 (none) down to 0.04, for a resonance from 0 to just under 1.
-fn damping(resonance: f32) -> f32 {
+pub fn damping(resonance: f32) -> f32 {
     2.0 - 2.0 * resonance.clamp(0.0, 0.98)
 }
 
