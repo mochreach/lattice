@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use lattice_core::{FxKind, InstKind, Kind, MAX_LANES, PRESETS};
+use lattice_core::{FxKind, InstKind, Kind, MAX_LANES, MAX_STEPS, PRESETS};
 
 use crate::Editor;
 use crate::command::{self, fuzzy};
@@ -27,6 +27,8 @@ pub struct Completion {
     pub signature: String,
     /// What it is or does.
     pub describe: String,
+    /// Not a value but a reminder that any will do, `[N]`, shown last; `tab` passes it by.
+    pub any: bool,
 }
 
 /// Where the word being typed at the end of `line` starts.
@@ -45,6 +47,7 @@ impl Editor {
                     text: c.spec.name.into(),
                     matched: c.matched,
                     signature: c.spec.signature(),
+                    any: false,
                     describe: c.spec.description(),
                 })
                 .collect();
@@ -56,7 +59,19 @@ impl Editor {
         let before: Vec<&str> = words.collect();
         match files(spec.name) {
             Some(extension) if before.is_empty() => paths(typed, extension),
-            _ => ranked(typed, self.choices(spec.name, &before)),
+            _ => {
+                let mut found = ranked(typed, self.choices(spec.name, &before));
+                if let Some((text, describe)) = any_number(spec.name, &before) {
+                    found.push(Completion {
+                        text: text.into(),
+                        matched: vec![],
+                        signature: String::new(),
+                        describe,
+                        any: true,
+                    });
+                }
+                found
+            }
         }
     }
 
@@ -226,6 +241,41 @@ impl Editor {
     }
 }
 
+/// For a word that takes any number in a range, what to say so under the suggestions: rules'
+/// amounts, how often they apply and on which pass.
+fn any_number(name: &str, before: &[&str]) -> Option<(&'static str, String)> {
+    let steps = MAX_STEPS;
+    let values = usize::from(name != "rev");
+    if !matches!(name, "tr" | "rot" | "drift" | "rev") {
+        return None;
+    }
+    if before.len() < values {
+        return Some(match name {
+            "tr" => ("[N]", "N semitones up, or down if negative, to 127".into()),
+            "rot" => (
+                "[N]",
+                format!("N steps later, or earlier if negative, to {steps}"),
+            ),
+            _ => (
+                "[N]",
+                format!("N steps later each time, or earlier if negative, to {steps}"),
+            ),
+        });
+    }
+    match before[values..] {
+        ["every"] => Some(("[N]", "every Nth pass".into())),
+        ["every", n] => {
+            let n: u32 = n.parse().ok()?;
+            Some((
+                "[OFFSET]",
+                format!("from pass OFFSET, 0 to {}", n.saturating_sub(1)),
+            ))
+        }
+        ["pass"] => Some(("[K]", "pass K only, counting from 0".into())),
+        _ => None,
+    }
+}
+
 /// `1st`, `2nd`, `3rd`, `4th`, `11th`, `21st`.
 pub(crate) fn ordinal(n: u32) -> String {
     let suffix = match (n % 10, n % 100) {
@@ -264,6 +314,7 @@ fn ranked(typed: &str, choices: Vec<(String, String)>) -> Vec<Completion> {
                     text,
                     matched,
                     signature: String::new(),
+                    any: false,
                     describe,
                 },
             ))
@@ -309,6 +360,7 @@ fn paths(typed: &str, extension: Option<&str>) -> Vec<Completion> {
                     text: format!("{folder}{file}{slash}"),
                     matched: matched.iter().map(|m| m + folder.len()).collect(),
                     signature: String::new(),
+                    any: false,
                     describe: String::new(),
                 },
             ))

@@ -187,7 +187,9 @@ fn draw_completions(
                 .text
                 .char_indices()
                 .map(|(j, ch)| {
-                    let style = if c.matched.contains(&j) {
+                    let style = if c.any {
+                        theme.faint
+                    } else if c.matched.contains(&j) {
                         Style::new().fg(theme.accent).add_modifier(Modifier::BOLD)
                     } else {
                         theme.text

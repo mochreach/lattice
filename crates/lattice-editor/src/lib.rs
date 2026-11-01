@@ -754,7 +754,8 @@ impl Editor {
             None => &prompt.line,
         };
         let found = self.suggest(line);
-        match &found[..] {
+        let values: Vec<&Completion> = found.iter().filter(|c| !c.any).collect();
+        match &values[..] {
             [only] if only.text == line[word_start(line)..] => vec![],
             _ => found,
         }
@@ -1053,7 +1054,9 @@ impl Editor {
             Some(_) => prompt.typed.clone(),
             None => prompt.line.clone(),
         };
-        let found = self.suggest(&typed);
+        let found: Vec<Completion> = (self.suggest(&typed).into_iter())
+            .filter(|c| !c.any)
+            .collect();
         let Mode::Command(prompt) = &mut self.mode else {
             return;
         };
@@ -2310,6 +2313,15 @@ mod tests {
         };
         typing(&mut e, ":tr ");
         assert_eq!(suggested(&e)[0], "12 an octave up");
+        // Last, a reminder that any number will do, which tab passes by.
+        let all = e.completions();
+        assert!(all.last().unwrap().any);
+        typing(&mut e, "13");
+        assert_eq!(e.completions().len(), 1, "still there when nothing matches");
+        e.handle(Key::Tab);
+        assert_eq!(line(&e), "tr 13");
+        e.handle(Key::Backspace);
+        e.handle(Key::Backspace);
         typing(&mut e, "7 ");
         assert_eq!(suggested(&e).len(), 2, "every or pass");
         typing(&mut e, "e");
