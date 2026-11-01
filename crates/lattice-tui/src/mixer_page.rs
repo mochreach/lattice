@@ -1,7 +1,7 @@
 //! Drawing the mixer page: the overview of every strip above (a strip per track, then the groups'
 //! buses and the send and master buses), and the detail of the strip under the cursor below.
 
-use lattice_core::{Kind, Locks, MIN_DB};
+use lattice_core::{Kind, Locks, MIN_DB, Macro, macros};
 use lattice_editor::{Editor, Field, PARAM_COLUMNS, Row, Shown, Strip};
 use lattice_engine::Status;
 use ratatui::Frame;
@@ -387,27 +387,39 @@ fn detail(
         return lines;
     };
     lines.push(Line::raw(""));
-    lines.extend(settings(&shown, cursor.row, status, theme, colour, width));
+    let macros = match shown.strip {
+        Strip::Track(t) => &editor.grid.tracks[t].macros[..],
+        _ => &[],
+    };
+    lines.extend(settings(
+        &shown, macros, cursor.row, status, theme, colour, width,
+    ));
     lines
 }
 
 /// The settings of an instrument or effect, in a grid filled a row at a time, with the one at
-/// `row` under the cursor. While it plays, a setting a step has locked shows the lock's value.
+/// `row` under the cursor. While it plays, a setting a step has locked shows the lock's value;
+/// one a macro turns is marked `~`.
 pub fn settings(
     shown: &Shown,
+    macros: &[Macro],
     row: Row,
     status: &Status,
     theme: &Theme,
     colour: Color,
     width: usize,
 ) -> Vec<Line<'static>> {
-    let label = |text: &str, here: bool| {
+    let label = |text: &str, here: bool, turned: bool| {
         let style = if here {
             theme.text.add_modifier(Modifier::BOLD)
         } else {
             theme.dim
         };
-        Span::styled(fit(&format!(" {text}"), PARAM_LABEL), style)
+        let mark = Span::styled(
+            if turned { "~" } else { " " },
+            Style::new().fg(theme.visual),
+        );
+        [mark, Span::styled(fit(text, PARAM_LABEL - 1), style)]
     };
     let value_style = |here: bool| {
         if here {
@@ -440,7 +452,8 @@ pub fn settings(
                     spans.extend(bars::param(info, lock.value, bar, mark, theme));
                 }
                 None => {
-                    spans.push(label(info.name, here));
+                    let turned = macros::turned(macros, slot, info.id as u8);
+                    spans.extend(label(info.name, here, turned));
                     spans.extend(bars::param(
                         info,
                         shown.values[p],

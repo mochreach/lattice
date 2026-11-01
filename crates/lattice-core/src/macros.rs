@@ -105,6 +105,11 @@ pub fn offset(macros: &[Macro], value: impl Fn(usize) -> f32, fx: Option<u8>, pa
     offset
 }
 
+/// Whether any macro turns the setting `param` of `fx`.
+pub fn turned(macros: &[Macro], fx: Option<u8>, param: u8) -> bool {
+    (macros.iter()).any(|m| m.targets.iter().any(|t| t.is(fx, param)))
+}
+
 /// `base` moved by `offset`, a share of the range, along the setting's curve.
 pub fn moved(info: &ParamInfo, base: f32, offset: f32) -> f32 {
     if offset == 0.0 {

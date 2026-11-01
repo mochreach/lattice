@@ -2,9 +2,10 @@
 //! columns read top to bottom, like the pattern's tracks. Each effect's name is followed by its
 //! settings, a line each with a bar, sends have a line each, and along the bottom are the lanes'
 //! outs. On a track, its macros are a column left of the lanes, each followed by the settings it
-//! turns and how far.
+//! turns and how far; a setting a macro turns is marked `~` in its lane, and lit while the cursor
+//! is on it in the macros' column.
 
-use lattice_core::macros::MACRO_INFO;
+use lattice_core::macros::{self, MACRO_INFO};
 use lattice_core::{FxLane, Kind, Locks, MIN_DB, is_feedback};
 use lattice_editor::{Editor, FxLine, Strip, target_name};
 use lattice_engine::Status;
@@ -57,6 +58,18 @@ pub fn draw(
     let locks = match strip {
         Strip::Track(t) => status.locks(t),
         _ => Locks::default(),
+    };
+    let track_macros = match strip {
+        Strip::Track(t) => &editor.grid.tracks[t].macros[..],
+        _ => &[],
+    };
+    // The setting the cursor's on in the macros' column, to light in its lane.
+    let pointed = match editor.fx_line() {
+        FxLine::Target { index, target } if cursor.macros => {
+            let target = &track_macros[index].targets[target];
+            Some((target.fx, target.param))
+        }
+        _ => None,
     };
 
     // A rule with the strip's name and where its sound goes, as on the mixer.
@@ -161,19 +174,31 @@ pub fn draw(
                 // While it plays, a setting a step has locked shows the lock's value.
                 let lock = (locks.iter())
                     .find(|l| l.fx == Some(effect as u8) && u32::from(l.param) == info.id);
-                let (label, value, label_style, style) = match lock {
+                // A macro turning it is marked `~`, lit while the cursor's on it among the macros.
+                let id = (Some(effect as u8), info.id as u8);
+                let turned = Style::new().fg(theme.visual);
+                let (mark, value, label_style, style) = match lock {
                     Some(lock) => {
                         let mark = Style::new().fg(theme.accent).add_modifier(Modifier::BOLD);
-                        (format!(" ◆{}", info.name), lock.value, mark, mark)
+                        (Span::styled(" ◆", mark), lock.value, mark, mark)
                     }
+                    None if macros::turned(track_macros, id.0, id.1) => (
+                        Span::styled(" ~", turned),
+                        fx.values[param],
+                        name_style(here || pointed == Some(id)),
+                        value_style(here),
+                    ),
                     None => (
-                        format!("  {}", info.name),
+                        Span::raw("  "),
                         fx.values[param],
                         name_style(here),
                         value_style(here),
                     ),
                 };
-                let mut spans = vec![Span::styled(fit(&label, PARAM_LABEL), label_style)];
+                let mut spans = vec![
+                    mark,
+                    Span::styled(fit(info.name, PARAM_LABEL - 2), label_style),
+                ];
                 spans.extend(bars::param(info, value, bar, style, theme));
                 spans
             }

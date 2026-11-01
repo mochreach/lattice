@@ -807,7 +807,8 @@ effect goes in before theirs, and go with their effect or, for the instrument's,
 instrument.
 
 On the fx page they're a column left of lane A: each macro, its value as a bar, then the
-settings it turns with their depths. `:map NAME [DEPTH]` on a setting adds the target (and the
+settings it turns with their depths. A setting a macro turns is marked `~` in its lane and on
+the mixer (`macros::turned`), and lit in its lane while the cursor's on its target. `:map NAME [DEPTH]` on a setting adds the target (and the
 macro if it's new), or changes its depth; `:macro NAME` adds one on its own, and `:unmap NAME`
 lets a setting go. `:lock` finds a macro by name after the settings, or as `macro.NAME`.
 
