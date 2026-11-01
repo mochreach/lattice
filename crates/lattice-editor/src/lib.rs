@@ -17,6 +17,7 @@ mod group;
 mod help;
 mod keymap;
 mod locks;
+mod looper;
 mod mixer;
 mod pads;
 mod pattern;
@@ -169,6 +170,8 @@ pub enum Effect {
     Open(PathBuf),
     /// Render this to a WAV file.
     Export(Box<Export>),
+    /// Allow this many more milliseconds of latency when recording the input, or fewer.
+    Latency(i32),
     Quit,
 }
 
@@ -331,6 +334,10 @@ pub struct Editor {
     pub path: Option<PathBuf>,
     /// The last selection exported, which `:sample` plays by default.
     last_export: Option<PathBuf>,
+    /// The track armed to record the audio input; see [`crate::looper`].
+    armed: Option<looper::Armed>,
+    /// Milliseconds added to the latency the looper allows for, or taken off.
+    pub latency: i32,
     saved: Saved,
     pub mode: Mode,
     pub view: View,
@@ -439,6 +446,8 @@ impl Editor {
             bpm,
             path: None,
             last_export: None,
+            armed: None,
+            latency: 0,
             mode: Mode::Normal,
             view: View::Source,
             page: Page::Pattern,
@@ -544,6 +553,7 @@ impl Editor {
         let effects = self.replace_song(song, Some(path.clone()));
         self.message = Some(format!("opened {}", path.display()));
         self.tutor = None;
+        self.armed = None;
         effects
     }
 

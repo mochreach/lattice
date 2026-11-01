@@ -132,6 +132,12 @@ impl Player {
         }
     }
 
+    /// Plays `sample` in place of the one it was, which `sample` then holds. Notes sounding carry
+    /// on at the same place in the new one. Send `None` rather than an empty file.
+    pub fn swap(&mut self, sample: &mut Option<Arc<Sample>>) {
+        std::mem::swap(&mut self.sample, sample);
+    }
+
     /// How far the file moves an output sample at its own pitch.
     pub fn speed(&self) -> f64 {
         self.sample
@@ -324,6 +330,11 @@ impl Sampler {
 }
 
 impl Processor for Sampler {
+    fn swap_sample(&mut self, sample: &mut Option<Arc<Sample>>) -> bool {
+        self.player.swap(sample);
+        true
+    }
+
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]) {
         segments(events, left.len(), |segment| match segment {
             Segment::Render(range) => {

@@ -308,6 +308,24 @@ pub const COMMANDS: &[Spec] = &[
         describe: "record on or off: notes played while the song plays go in at the playhead",
     },
     Spec {
+        name: "arm",
+        alias: None,
+        params: &[],
+        describe: "arm this track to record the audio input a pass at a time, or disarm it",
+    },
+    Spec {
+        name: "arm!",
+        alias: None,
+        params: &[],
+        describe: "arm this track to record a new loop over the one it plays",
+    },
+    Spec {
+        name: "latency",
+        alias: None,
+        params: &[int("MS", "milliseconds", -500, 500)],
+        describe: "milliseconds to add to the latency recording allows for (or take off)",
+    },
+    Spec {
         name: "count",
         alias: None,
         params: &[int("BARS", "bars", 0, 4)],
@@ -1039,6 +1057,15 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                 if editor.follow { "on" } else { "off" }
             ));
             Ok(vec![])
+        }
+        "arm" | "arm!" => {
+            editor.arm(command.spec.name == "arm!");
+            Ok(vec![])
+        }
+        "latency" => {
+            editor.latency = command.int(0);
+            editor.message = Some(format!("latency adjusted by {} ms", editor.latency));
+            Ok(vec![Effect::Latency(editor.latency)])
         }
         "count" => {
             editor.count_in = command.int(0);

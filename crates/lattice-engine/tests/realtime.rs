@@ -7,8 +7,9 @@ use lattice_core::{
 };
 use lattice_engine::{
     AdsrParams, Chain, Command, Comp, Cue, Delay, Drive, EffectSlot, Engine, Patch, Processor,
-    Sample, Section, Synth, Target, TrackPlayer, Wave, delay,
+    Sample, Section, Synth, Take, Target, TrackPlayer, Wave, delay,
 };
+use std::sync::Arc;
 
 #[global_allocator]
 static ALLOCATOR: AllocDisabler = AllocDisabler;
@@ -144,6 +145,15 @@ fn rendering_never_allocates() {
         steps: 16,
         at_bar: false,
     }));
+    // The looper, recording an input fed alongside.
+    let (mut input, input_rx) = rtrb::RingBuffer::new(48_000);
+    let mut input_rx = Some(input_rx);
+    let mut takes: Vec<_> = (0..3).map(|_| Take::new(0, 48_000)).collect();
+    let mut new_sample = Some(Some(Arc::new(Sample {
+        rate: 44_100.0,
+        left: vec![0.1; 1000],
+        right: vec![0.1; 1000],
+    })));
     let mut left = vec![0.0; 256];
     let mut right = vec![0.0; 256];
 
@@ -152,7 +162,17 @@ fn rendering_never_allocates() {
         // Ten seconds: many passes through the track, so transforms are realised repeatedly.
         // Tracks come and go along the way; sending commands doesn't allocate either.
         for block in 0..(48_000 * 10 / 256) {
+            for i in 0..512 {
+                let _ = input.push((i as f32 * 0.01).sin());
+            }
             match block {
+                100 => {
+                    handle.send(Command::SetInput(input_rx.take().unwrap()));
+                    // The third is one too many, and sent straight back.
+                    for take in takes.drain(..) {
+                        handle.send(Command::Record(take));
+                    }
+                }
                 200 => {
                     handle.send(Command::InsertTrack {
                         index: 0,
@@ -291,6 +311,15 @@ fn rendering_never_allocates() {
                         held: true,
                     });
                 }
+                820 => {
+                    handle.send(Command::SetSample {
+                        index: 0,
+                        sample: new_sample.take().unwrap(),
+                    });
+                }
+                830 => {
+                    handle.send(Command::StopRecording);
+                }
                 850 => {
                     handle.send(Command::SetLength(16));
                     handle.send(Command::Cue(Cue::Pattern(section.take().unwrap())));
@@ -321,6 +350,12 @@ fn rendering_never_allocates() {
         }
     });
     handle.collect_garbage();
+    let mut recorded = vec![];
+    while let Some(take) = handle.recorded() {
+        recorded.push(take);
+    }
+    assert_eq!(recorded.len(), 3, "every take comes back");
+    assert!(recorded.iter().any(|t| t.complete && !t.is_empty()));
     assert!(left.iter().all(|&x| x == 0.0), "muted by the end");
     assert!(peak > 0.05, "the synth should be audible, peak {peak}");
     assert!(peak <= 1.0);

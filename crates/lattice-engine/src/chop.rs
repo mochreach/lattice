@@ -92,6 +92,11 @@ impl Chop {
 }
 
 impl Processor for Chop {
+    fn swap_sample(&mut self, sample: &mut Option<Arc<Sample>>) -> bool {
+        self.player.swap(sample);
+        true
+    }
+
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]) {
         segments(events, left.len(), |segment| match segment {
             Segment::Render(range) => {

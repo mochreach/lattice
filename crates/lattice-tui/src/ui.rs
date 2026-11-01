@@ -325,6 +325,17 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         } else {
             Span::raw("")
         },
+        match editor.armed() {
+            Some(t) if status.recording() => Span::styled(
+                format!(" ● LOOP {} ", editor.grid.tracks[t].name.to_uppercase()),
+                theme.block(theme.error),
+            ),
+            Some(t) => Span::styled(
+                format!(" ARMED {} ", editor.grid.tracks[t].name.to_uppercase()),
+                theme.block(theme.visual),
+            ),
+            None => Span::raw(""),
+        },
         if editor.repeating() {
             Span::styled(
                 format!(" REPEAT {} ", editor.repeat_name()),
@@ -578,7 +589,8 @@ fn draw_grid(
     let mut lines: Vec<_> = group_line(&columns, &editor.grid.groups, theme)
         .into_iter()
         .collect();
-    lines.extend(header_lines(&columns, hidden, theme));
+    let armed = editor.armed().map(|t| (t, status.recording()));
+    lines.extend(header_lines(&columns, hidden, armed, theme));
     let rows = (area.height as usize).saturating_sub(lines.len());
     let longest = columns.iter().map(|c| c.shown.len()).max().unwrap_or(0);
     scroll_to(view, editor, &columns, rows, longest, status.playing());
@@ -673,9 +685,11 @@ fn group_line(columns: &[Column], groups: &[Group], theme: &Theme) -> Option<Lin
 /// Track names with mute (`M`, or `m` in this pattern only) and solo flags, lengths and passes, level and pan, then the rules one
 /// per line, then a meter underlining it all. Arrows by the names show there are more tracks
 /// off to the (left, right).
+/// `armed` is the track armed to record the input, and whether it's recording.
 fn header_lines(
     columns: &[Column],
     (left, right): (bool, bool),
+    armed: Option<(usize, bool)>,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
     let cell = |c: &Column, text: String, style: Style| {
@@ -701,7 +715,12 @@ fn header_lines(
                     (true, ..) => ("M", Style::new().fg(theme.error)),
                     (_, true, _) => ("m", Style::new().fg(theme.error)),
                     (.., true) => ("S", Style::new().fg(theme.accent)),
-                    _ => (" ", Style::new()),
+                    // Armed to record the input: filled while it records.
+                    _ => match armed {
+                        Some((t, true)) if t == c.index => ("●", Style::new().fg(theme.error)),
+                        Some((t, false)) if t == c.index => ("○", Style::new().fg(theme.error)),
+                        _ => (" ", Style::new()),
+                    },
                 };
                 [
                     Span::styled(fit(&c.track.name.to_uppercase(), c.width - 1), style),

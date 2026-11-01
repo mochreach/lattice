@@ -23,8 +23,10 @@ use rtrb::{Consumer, Producer, PushError, RingBuffer};
 use crate::click::Click;
 use crate::clock::Clock;
 use crate::denormal;
+use crate::looper::{Looper, Take};
 use crate::param::Smoothed;
 use crate::processor::{Event, EventKind, Processor};
+use crate::sampler::Sample;
 
 const BEATS_PER_BAR: u64 = 4;
 /// Largest block rendered in one go. Longer host buffers are split.
@@ -34,6 +36,9 @@ const MAX_EVENTS: usize = 128;
 /// Notes a track can hold at once before the oldest is cut.
 const MAX_HELD: usize = 16;
 const COMMAND_QUEUE: usize = 256;
+/// Most input waiting to be read, in frames, before the oldest is dropped: it builds up if the
+/// input's clock runs faster than the output's, and adds to the latency.
+const MAX_BACKLOG: usize = 8192;
 
 const PREVIEW_SECONDS: f32 = 0.3;
 /// The longest a held preview lasts, in case its release never comes.
@@ -146,6 +151,22 @@ pub enum Command {
     SetGroup {
         index: usize,
         group: Option<usize>,
+    },
+    /// Read the audio input from here: interleaved stereo frames at the engine's rate. The old
+    /// input goes back to be freed.
+    SetInput(Consumer<f32>),
+    /// Record a pass of the input into a take: see [`crate::looper`]. Two can wait at once;
+    /// more are sent straight back, unfinished, through [`Handle::recorded`], as all takes are.
+    Record(Box<Take>),
+    /// Stop recording once the pass recording ends, sending back the takes waiting to start.
+    StopRecording,
+    /// Frames to add to the latency the host measures, or take off it.
+    SetLatencyOffset(i64),
+    /// Play this sound file on the instrument at `index`, if it plays one, without building it
+    /// again: what's playing carries on, from the new file.
+    SetSample {
+        index: usize,
+        sample: Option<Arc<Sample>>,
     },
 }
 
@@ -373,6 +394,8 @@ pub struct Status {
     pattern_step: AtomicU64,
     /// Per track index: the locks in force, each packed by [`pack_lock`], 0 for none.
     locks: [[AtomicU64; MAX_LOCKS]; MAX_TRACKS],
+    /// Whether a take is recording the input.
+    recording: AtomicBool,
 }
 
 /// A lock in one atomic: a present bit, the effect (255 for the instrument), the setting and the
@@ -405,7 +428,13 @@ impl Status {
             bus_peaks: std::array::from_fn(|_| AtomicU32::new(0)),
             group_peaks: std::array::from_fn(|_| AtomicU32::new(0)),
             locks: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU64::new(0))),
+            recording: AtomicBool::new(false),
         }
+    }
+
+    /// Whether a take is recording the input now, rather than waiting for its pass to start.
+    pub fn recording(&self) -> bool {
+        self.recording.load(Ordering::Relaxed)
     }
 
     pub fn playing(&self) -> bool {
@@ -500,6 +529,7 @@ impl Status {
         for slot in self.locks.iter().flatten() {
             slot.store(0, Ordering::Relaxed);
         }
+        self.recording.store(false, Ordering::Relaxed);
     }
 }
 
@@ -512,12 +542,16 @@ enum Garbage {
     Effect(Box<EffectSlot>),
     Instrument(Box<dyn Processor>),
     Section(Box<Section>),
+    Take(Box<Take>),
+    Input(Consumer<f32>),
+    Sample(Option<Arc<Sample>>),
 }
 
 /// The UI thread's end of the engine.
 pub struct Handle {
     commands: Producer<Command>,
     garbage: Consumer<Garbage>,
+    takes: Consumer<Box<Take>>,
     status: Arc<Status>,
 }
 
@@ -529,6 +563,11 @@ impl Handle {
 
     pub fn status(&self) -> &Status {
         &self.status
+    }
+
+    /// A take the looper's finished with, recorded or not: see [`Take::complete`].
+    pub fn recorded(&mut self) -> Option<Box<Take>> {
+        self.takes.pop().ok()
     }
 
     /// Frees patterns and tracks the audio thread has finished with. Call regularly.
@@ -658,6 +697,15 @@ impl std::fmt::Debug for TrackPlayer {
     }
 }
 
+/// Sends a take back to the UI thread, or if there's no room, to be freed.
+fn send_take(takes: &mut Producer<Box<Take>>, garbage: &mut Producer<Garbage>, take: Box<Take>) {
+    if let Err(PushError::Full(take)) = takes.push(take)
+        && let Err(PushError::Full(take)) = garbage.push(Garbage::Take(take))
+    {
+        std::mem::forget(take);
+    }
+}
+
 /// A previewed note on a track.
 #[derive(Debug, Clone, Copy)]
 struct Preview {
@@ -705,6 +753,19 @@ pub struct Engine {
     commands: Consumer<Command>,
     garbage: Producer<Garbage>,
     status: Arc<Status>,
+    /// The audio input, if there is one, and the block of it being played along with.
+    input: Option<Consumer<f32>>,
+    input_left: Vec<f32>,
+    input_right: Vec<f32>,
+    /// Frames from a step being played to the input played along with it reaching the engine:
+    /// as the host measures it, waiting to be read, and the user's adjustment.
+    latency: u64,
+    backlog: u64,
+    latency_offset: i64,
+    /// Frames rendered since the engine started.
+    frames: u64,
+    looper: Looper,
+    takes: Producer<Box<Take>>,
 }
 
 impl Engine {
@@ -740,6 +801,7 @@ impl Engine {
         }
         let (command_tx, command_rx) = RingBuffer::new(COMMAND_QUEUE);
         let (garbage_tx, garbage_rx) = RingBuffer::new(COMMAND_QUEUE);
+        let (takes_tx, takes_rx) = RingBuffer::new(COMMAND_QUEUE);
         let status = Arc::new(Status::new());
 
         let engine = Self {
@@ -770,10 +832,20 @@ impl Engine {
             commands: command_rx,
             garbage: garbage_tx,
             status: Arc::clone(&status),
+            input: None,
+            input_left: vec![0.0; MAX_BLOCK],
+            input_right: vec![0.0; MAX_BLOCK],
+            latency: 0,
+            backlog: 0,
+            latency_offset: 0,
+            frames: 0,
+            looper: Looper::default(),
+            takes: takes_tx,
         };
         let handle = Handle {
             commands: command_tx,
             garbage: garbage_rx,
+            takes: takes_rx,
             status,
         };
         (engine, handle)
@@ -793,8 +865,17 @@ impl Engine {
         self.clock.restart();
     }
 
+    /// The latency the host measures, in frames: from the engine rendering a frame to its being
+    /// heard, plus from the input hearing a frame to its reaching [`Command::SetInput`]'s queue.
+    /// Set it before each [`Engine::process`].
+    pub fn set_latency(&mut self, frames: u64) {
+        self.latency = frames;
+    }
+
     /// Stops playback, releasing every sequenced note.
     pub fn stop(&mut self) {
+        let (takes, garbage) = (&mut self.takes, &mut self.garbage);
+        self.looper.stop(true, |t| send_take(takes, garbage, t));
         for t in &mut self.tracks {
             for h in t.held.drain(..) {
                 push(&mut t.events, note_off(0, h.pitch));
@@ -861,6 +942,11 @@ impl Engine {
                         let player = self.tracks.remove(index);
                         self.discard(Garbage::Player(player));
                         self.publish_positions(index);
+                        self.retarget_takes(|t| match t.cmp(&index) {
+                            std::cmp::Ordering::Less => Some(t),
+                            std::cmp::Ordering::Equal => None,
+                            std::cmp::Ordering::Greater => Some(t - 1),
+                        });
                     }
                 }
                 Command::MoveTrack { from, to } => {
@@ -869,6 +955,17 @@ impl Engine {
                         let player = self.tracks.remove(from);
                         self.tracks.insert(to, player);
                         self.publish_positions(from.min(to));
+                        self.retarget_takes(|t| {
+                            Some(if t == from {
+                                to
+                            } else if from < t && t <= to {
+                                t - 1
+                            } else if to <= t && t < from {
+                                t + 1
+                            } else {
+                                t
+                            })
+                        });
                     }
                 }
                 Command::Preview {
@@ -972,6 +1069,28 @@ impl Engine {
                             t.lock(next, 0);
                         }
                     }
+                }
+                Command::SetInput(input) => {
+                    if let Some(old) = self.input.replace(input) {
+                        self.discard(Garbage::Input(old));
+                    }
+                }
+                Command::Record(take) => {
+                    if let Err(take) = self.looper.arm(take) {
+                        send_take(&mut self.takes, &mut self.garbage, take);
+                    }
+                }
+                Command::StopRecording => {
+                    let (takes, garbage) = (&mut self.takes, &mut self.garbage);
+                    self.looper.stop(false, |t| send_take(takes, garbage, t));
+                }
+                Command::SetLatencyOffset(frames) => self.latency_offset = frames,
+                Command::SetSample { index, mut sample } => {
+                    if let Some(t) = self.tracks.get_mut(index) {
+                        t.instrument.swap_sample(&mut sample);
+                    }
+                    // The old one, or the new if nothing took it.
+                    self.discard(Garbage::Sample(sample));
                 }
             }
         }
@@ -1100,6 +1219,43 @@ impl Engine {
         }
     }
 
+    fn retarget_takes(&mut self, to: impl Fn(usize) -> Option<usize>) {
+        let (takes, garbage) = (&mut self.takes, &mut self.garbage);
+        self.looper.retarget(to, |t| send_take(takes, garbage, t));
+    }
+
+    /// Frames from a step being heard to what's played along with it being read.
+    fn latency(&self) -> u64 {
+        (self.latency as i64 + self.backlog as i64 + self.latency_offset).max(0) as u64
+    }
+
+    /// Reads a block of the input, or silence where there's none yet.
+    fn read_input(&mut self, len: usize) {
+        let (left, right) = (&mut self.input_left[..len], &mut self.input_right[..len]);
+        left.fill(0.0);
+        right.fill(0.0);
+        let Some(input) = &mut self.input else {
+            return;
+        };
+        let mut waiting = input.slots() / 2;
+        let excess = waiting.saturating_sub(MAX_BACKLOG + len);
+        if excess > 0
+            && let Ok(chunk) = input.read_chunk(excess * 2)
+        {
+            chunk.commit_all();
+            waiting -= excess;
+        }
+        self.backlog = waiting as u64;
+        let frames = waiting.min(len);
+        if let Ok(chunk) = input.read_chunk(frames * 2) {
+            let mut samples = chunk.into_iter();
+            for (l, r) in left.iter_mut().zip(right.iter_mut()).take(frames) {
+                *l = samples.next().unwrap_or(0.0);
+                *r = samples.next().unwrap_or(0.0);
+            }
+        }
+    }
+
     /// Sends something back to the UI thread to be freed.
     fn discard(&mut self, garbage: Garbage) {
         if let Err(PushError::Full(garbage)) = self.garbage.push(garbage) {
@@ -1110,6 +1266,7 @@ impl Engine {
 
     fn process_block(&mut self, left: &mut [f32], right: &mut [f32]) {
         let len = left.len();
+        self.read_input(len);
 
         // Sequence: turn every step starting in this block into events. The clock runs while
         // stopped too, so repeated previews keep time.
@@ -1216,6 +1373,14 @@ impl Engine {
         for sample in left.iter_mut().chain(right.iter_mut()) {
             *sample = sample.tanh();
         }
+
+        let (takes, garbage) = (&mut self.takes, &mut self.garbage);
+        let (il, ir) = (&self.input_left[..len], &self.input_right[..len]);
+        self.looper
+            .write(self.frames, il, ir, |t| send_take(takes, garbage, t));
+        self.frames += len as u64;
+        let recording = self.looper.recording(self.frames);
+        self.status.recording.store(recording, Ordering::Relaxed);
     }
 
     fn sequence_step(&mut self, offset: u32) {
@@ -1262,6 +1427,9 @@ impl Engine {
 
         // Which tracks hit on this step, for choking.
         let mut hits = [false; MAX_TRACKS];
+        // When this step's played, and how long until what's played along with it reaches the
+        // engine.
+        let (at, latency) = (self.frames + u64::from(offset), self.latency());
         for (index, t) in self.tracks.iter_mut().enumerate() {
             // Note-offs first, so a voice can be reused by this step's note.
             t.held.retain_mut(|h| {
@@ -1277,6 +1445,7 @@ impl Engine {
 
             if t.playhead == 0 {
                 realise_into(&t.track, t.pass, &mut t.steps);
+                self.looper.pass_starts(index, at, latency);
             }
             t.position = u64::from(t.pass) << 32 | t.playhead as u64;
             self.status.set_position(index, t.position);
@@ -2350,5 +2519,96 @@ mod tests {
             events,
             [note_off(2, 61), note_on(5, 60, 1), note_off(5, 60)]
         );
+    }
+
+    /// Plays one track of `steps` steps at 600 frames a step, feeding the input a ramp, each
+    /// frame's value its index, a block at a time as an input stream would.
+    fn looping(steps: usize) -> (Engine, Handle, Producer<f32>) {
+        let grid = Grid {
+            name: "test".into(),
+            steps_per_beat: 4,
+            tracks: vec![Track {
+                steps: vec![Step::default(); steps],
+                ..lead()
+            }],
+            groups: vec![],
+        };
+        let (mut engine, mut handle) = Engine::new(4800.0, 120.0, &grid, vec![silent()]);
+        let (tx, rx) = RingBuffer::new(1 << 16);
+        handle.send(Command::SetInput(rx));
+        engine.set_latency(0);
+        (engine, handle, tx)
+    }
+
+    fn feed(engine: &mut Engine, input: &mut Producer<f32>, from: usize, frames: usize) {
+        for block in (from..from + frames).step_by(MAX_BLOCK) {
+            for i in block..block + MAX_BLOCK {
+                input.push(i as f32).unwrap();
+                input.push(-(i as f32)).unwrap();
+            }
+            render_stereo(engine, MAX_BLOCK);
+        }
+    }
+
+    #[test]
+    fn takes_record_the_input_a_pass_at_a_time() {
+        let (mut engine, mut handle, mut input) = looping(4);
+        // The block waiting to be read is latency too; take it off, to line up exactly.
+        handle.send(Command::SetLatencyOffset(-(MAX_BLOCK as i64)));
+        handle.send(Command::Record(Take::new(0, 3000)));
+        handle.send(Command::Record(Take::new(0, 3000)));
+        engine.play();
+        feed(&mut engine, &mut input, 0, 512);
+        assert!(handle.status().recording());
+        feed(&mut engine, &mut input, 512, 5120);
+        let pass = |from: usize| (from..from + 2400).map(|i| i as f32).collect::<Vec<_>>();
+        let first = handle.recorded().expect("a pass recorded");
+        assert!(first.complete);
+        assert_eq!(first.left, pass(0));
+        assert_eq!(first.right[10], -10.0);
+        let second = handle.recorded().expect("and the next straight after");
+        assert_eq!(second.left, pass(2400));
+        assert!(!handle.status().recording());
+    }
+
+    #[test]
+    fn latency_records_what_was_played_along_later() {
+        let (mut engine, mut handle, mut input) = looping(4);
+        handle.send(Command::SetLatencyOffset(100 - MAX_BLOCK as i64));
+        handle.send(Command::Record(Take::new(0, 3000)));
+        engine.play();
+        feed(&mut engine, &mut input, 0, 2816);
+        let take = handle.recorded().unwrap();
+        assert_eq!(take.left[..2], [100.0, 101.0]);
+        assert_eq!(take.len(), 2400);
+    }
+
+    #[test]
+    fn stopping_ends_recording_unfinished() {
+        let (mut engine, mut handle, mut input) = looping(4);
+        handle.send(Command::Record(Take::new(0, 3000)));
+        engine.play();
+        feed(&mut engine, &mut input, 0, 1024);
+        handle.send(Command::Stop);
+        feed(&mut engine, &mut input, 1024, 256);
+        let take = handle.recorded().unwrap();
+        assert!(!take.complete);
+    }
+
+    #[test]
+    fn a_new_sample_plays_on_without_rebuilding() {
+        let (mut engine, mut handle) = with_synth(48_000.0);
+        let sample = Arc::new(Sample {
+            rate: 48_000.0,
+            left: vec![0.5; 100],
+            right: vec![0.5; 100],
+        });
+        // A synth plays no file, so it's sent back.
+        handle.send(Command::SetSample {
+            index: 0,
+            sample: Some(sample),
+        });
+        render_stereo(&mut engine, 64);
+        assert!(matches!(handle.garbage.pop(), Ok(Garbage::Sample(Some(_)))));
     }
 }

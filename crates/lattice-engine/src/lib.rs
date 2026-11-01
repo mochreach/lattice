@@ -16,6 +16,7 @@ pub mod engine;
 pub mod filter;
 pub mod fx;
 pub mod instrument;
+pub mod looper;
 pub mod monochord;
 pub mod param;
 pub mod processor;
@@ -34,6 +35,7 @@ pub use engine::{
     Chain, Command, Cue, EffectSlot, Engine, Handle, MAX_EFFECTS, MAX_TRACKS, Section, Status,
     Target, TrackPlayer,
 };
+pub use looper::Take;
 pub use param::{ParamInfo, Smoothed};
 pub use processor::{Event, EventKind, Processor};
 pub use sampler::{Sample, Sampler};

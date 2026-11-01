@@ -1,4 +1,8 @@
-//! Audio output through cpal.
+//! Audio output through cpal. The input, for the looper, is opened when it's wanted: see
+//! [`crate::looper`].
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context, Result, bail};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -15,6 +19,8 @@ pub struct Audio {
     _stream: cpal::Stream,
     pub handle: Handle,
     pub sample_rate: f32,
+    /// The input's latency in frames, as it measures it, for the looper's input to set.
+    pub input_latency: Arc<AtomicU64>,
 }
 
 pub fn start(grid: &Grid, bpm: f64) -> Result<Audio> {
@@ -37,11 +43,19 @@ pub fn start(grid: &Grid, bpm: f64) -> Result<Audio> {
     let (mut engine, handle) = Engine::new(sample_rate, bpm, grid, instruments);
     let mut left = vec![0.0f32; MAX_BLOCK];
     let mut right = vec![0.0f32; MAX_BLOCK];
+    let input_latency = Arc::new(AtomicU64::new(0));
+    let input = Arc::clone(&input_latency);
 
     let stream = device.build_output_stream(
         config.into(),
-        move |data: &mut [f32], _| {
+        move |data: &mut [f32], info: &cpal::OutputCallbackInfo| {
             assert_no_alloc::assert_no_alloc(|| {
+                // What's rendered now is heard this much later, and what's played along with it
+                // takes the input's latency to come back.
+                let at = info.timestamp();
+                let output = at.playback.duration_since(at.callback).as_secs_f64();
+                let output = (output * f64::from(sample_rate)) as u64;
+                engine.set_latency(output + input.load(Ordering::Relaxed));
                 for chunk in data.chunks_mut(MAX_BLOCK * channels) {
                     let frames = chunk.len() / channels;
                     let (l, r) = (&mut left[..frames], &mut right[..frames]);
@@ -68,5 +82,6 @@ pub fn start(grid: &Grid, bpm: f64) -> Result<Audio> {
         _stream: stream,
         handle,
         sample_rate,
+        input_latency,
     })
 }

@@ -204,6 +204,8 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:level DB`, `:pan P`, `:send DB` | mixer, for every track the selections reach: level (-60 to 6 dB), pan (-100 left to 100 right), send to the send bus (-60, off, to 6 dB); on the mixer page, `:level` sets a bus too |
 | `:set VALUE` | on the mixer page, set the value under the cursor (also `c`) |
 | `:inst INSTRUMENT` | the instrument for every track the selections reach (or the mixer cursor's): `synth`, `string`, `sampler`, `chop`, `kick`, `snare`, `hat`, `clap` or `tom` |
+| `:arm`, `:arm!` | arm the track for the looper, or disarm it: with record on (`R`), playing records the audio input a pass of the track at a time into a chop track. `:arm` records over what a chop track plays; `:arm!` starts a new loop |
+| `:latency MS` | move what the looper records earlier (negative) or later, if it's out of time with what you heard (-500 to 500) |
 | `:chop [PATH]` | cut a WAV file into a piece a step, on every track the selections reach (or the mixer cursor's), each step playing its own; with no path, the last selection exported |
 | `:sample [PATH]` | play a WAV file on a sampler, on every track the selections reach (or the mixer cursor's); with no path, the selection last exported with `:export-sel` or `:export-loop` |
 | `:fx-add EFFECT` | add an effect (`delay`, `reverb`, `filter`, `drive` or `comp`) after the mixer cursor, or at the end of this track's chain |
@@ -220,16 +222,16 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:export [PATH] [BARS]` | render the song to a 24-bit WAV, faster than real time, while you carry on: each pattern in the song's order, for its length, then the tail until it's quiet; or with BARS, this pattern for that many bars. With no path, it goes beside the song's file |
 | `:export-loop [PATH]` | render just the selection, exactly its length, with its tail mixed back into the start, so it loops cleanly; `:chop` or `:sample` with no path then plays it |
 | `:export-sel [PATH]` | render just the selection (its steps, on its tracks, heard even if muted) once, with its tail, for a sample |
+| `:o PATH`, `:o! PATH` | open a song, or start a new one at PATH; `!` discards unsaved changes |
+| `:q`, `:q!` | quit, refusing if there are unsaved changes; `!` quits anyway |
+| `:track-add [NAME]` (`:ta`) | add a 16-step track after this one (up to 16 tracks; also `ta`) |
+| `:track-remove` (`:trm`), `:track-move ±N` (`:tmv`) | remove this track, move it left or right (also `th` `tl`) |
 
 `:export-sel` and `:export-loop` make samples, so they go in a `samples` folder beside the song,
 numbered (`song-loop-1.wav`, `song-loop-2.wav`, …) so a new one never replaces one a track plays; a
 name alone (`:export-loop break`) goes there too, and a path where it says. Before the song's been
 saved they go in a scratch folder, and `:w` copies the ones its tracks play into `samples`, so the
 song and its sounds stay together.
-| `:o PATH`, `:o! PATH` | open a song, or start a new one at PATH; `!` discards unsaved changes |
-| `:q`, `:q!` | quit, refusing if there are unsaved changes; `!` quits anyway |
-| `:track-add [NAME]` (`:ta`) | add a 16-step track after this one (up to 16 tracks; also `ta`) |
-| `:track-remove` (`:trm`), `:track-move ±N` (`:tmv`) | remove this track, move it left or right (also `th` `tl`) |
 
 The header shows the song's file name, and `[+]` when it has unsaved changes.
 
@@ -304,6 +306,16 @@ reverses the selected steps, turning each piece round too (marked `◂`), so the
 backwards; `*` repeats the first step, or the first few, through the selection, for a stutter; `A-(`
 and `A-)` rotate the selection. `:lock direction reverse` turns a single step's piece round;
 `pieces`, `start`, `end`, `tune`, `release` and `gain` are on the mixer.
+
+The **looper** records the audio input into a chop track. `:arm` a track (the header shows `○`, and
+the top bar `ARMED`), turn record on with `R` and play: from the track's first step, each pass of it
+is recorded (`●`, and `● LOOP`), saved in `samples` as a new take, and chopped onto the track, so
+the next pass plays it back. Each pass after the first is recorded over the last, so the loop
+builds up layer by layer until you stop or turn record off; `u` takes a layer back off. `:arm` on a
+chop track records over its loop, `:arm!` starts a new one, and `:arm` again disarms it. The input
+must run at the output's rate; Lattice doesn't play the input back to you, so listen through your
+interface. If the recording sits late or early against what you heard, `:latency -20` (in ms) moves
+it; it isn't saved with the song.
 
 The demo song is techno at 130 BPM in F minor, in six sections (`gs` shows them; `^space` plays the
 lot). It opens on `peak`, which has everything: drums folded into a group with drive and a

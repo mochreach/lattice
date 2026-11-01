@@ -643,16 +643,7 @@ impl Editor {
         let tracks = self.mix_targets()?;
         self.checkpoint();
         for &t in &tracks {
-            let track = &mut self.grid.tracks[t];
-            if track.instrument.kind != InstKind::Chop {
-                track.instrument = Instrument::new(InstKind::Chop);
-            }
-            track.instrument.file = Some(path.clone());
-            let pieces = track.steps.len().min(chop::MAX_PIECES);
-            track.instrument.values[chop::PIECES as usize] = pieces as f32;
-            for (i, step) in track.steps.iter_mut().enumerate() {
-                step.note = Step::note(chop::pitch(i % pieces)).note;
-            }
+            self.chop_track(t, path.clone());
         }
         let name = path
             .file_name()
@@ -668,6 +659,21 @@ impl Editor {
         let mut effects: Vec<Effect> = tracks.iter().map(|&t| Effect::TrackChanged(t)).collect();
         effects.push(Effect::MixerChanged);
         Ok(effects)
+    }
+
+    /// Track `t` plays `path` on a chop track, cut into a piece for each step, each step playing
+    /// its own; locks are kept.
+    pub(crate) fn chop_track(&mut self, t: usize, path: std::path::PathBuf) {
+        let track = &mut self.grid.tracks[t];
+        if track.instrument.kind != InstKind::Chop {
+            track.instrument = Instrument::new(InstKind::Chop);
+        }
+        track.instrument.file = Some(path);
+        let pieces = track.steps.len().clamp(1, chop::MAX_PIECES);
+        track.instrument.values[chop::PIECES as usize] = pieces as f32;
+        for (i, step) in track.steps.iter_mut().enumerate() {
+            step.note = Step::note(chop::pitch(i % pieces)).note;
+        }
     }
 
     /// The file `:sample` or `:chop` names, made absolute, or the last selection exported.

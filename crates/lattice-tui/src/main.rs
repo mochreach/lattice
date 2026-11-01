@@ -7,6 +7,7 @@ mod file;
 mod help_page;
 mod key_log;
 mod keys;
+mod looper;
 mod mixer;
 mod mixer_page;
 mod samples;
@@ -32,6 +33,7 @@ use ratatui::crossterm::event::{
 use ratatui::crossterm::{execute, terminal};
 
 use crate::export::Exports;
+use crate::looper::Looper;
 use crate::mixer::Mixer;
 use crate::sequencer::Sequencer;
 use crate::splash::Splash;
@@ -89,6 +91,7 @@ fn main() -> Result<()> {
     }
     let mut mixer = Mixer::new(audio.sample_rate);
     let mut exports = Exports::new(audio.sample_rate);
+    let mut looper = Looper::new(audio.sample_rate, audio.input_latency.clone());
     mixer.sync(&editor, &mut audio.handle);
     if args.iter().any(|a| a == "--no-click") {
         editor.click = false;
@@ -126,6 +129,7 @@ fn main() -> Result<()> {
         &mut tracks,
         &mut mixer,
         &mut exports,
+        &mut looper,
         &mut audio.handle,
         &theme,
         splash,
@@ -144,6 +148,7 @@ fn run(
     tracks: &mut Tracks,
     mixer: &mut Mixer,
     exports: &mut Exports,
+    looper: &mut Looper,
     handle: &mut Handle,
     theme: &Theme,
     mut splash: Option<Splash>,
@@ -165,6 +170,9 @@ fn run(
                 &sequencer,
                 handle,
             );
+        }
+        for effect in looper.tick(editor, handle) {
+            apply(effect, editor, tracks, mixer, exports, &sequencer, handle);
         }
         sequencer.sync(editor, handle);
         // Watched every frame, so it sees each step start within a frame of it.
@@ -353,6 +361,9 @@ fn apply(
         Effect::Export(export) => {
             exports.start(*export, editor);
             return Flow::Next;
+        }
+        Effect::Latency(ms) => {
+            Command::SetLatencyOffset(i64::from(ms) * i64::from(tracks.sample_rate() as u32) / 1000)
         }
         Effect::Quit => return Flow::Quit,
     };

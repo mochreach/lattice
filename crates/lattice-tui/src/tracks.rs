@@ -1,7 +1,7 @@
 //! Keeps the engine's tracks, and each one's instrument, in line with the editor's as tracks are
 //! added, removed and moved, and as instruments are chosen and set.
 
-use lattice_core::{Grid, Instrument};
+use lattice_core::{Grid, InstKind, Instrument};
 use lattice_editor::{Editor, TrackId};
 use lattice_engine::{Command, Handle, Processor, Target, TrackPlayer, instrument};
 
@@ -42,6 +42,10 @@ impl Tracks {
             .iter()
             .map(|track| build(&track.instrument, sample_rate).0)
             .collect()
+    }
+
+    pub fn sample_rate(&self) -> f32 {
+        self.sample_rate
     }
 
     /// A sampler's file that couldn't be read since the last call.
@@ -114,6 +118,21 @@ impl Tracks {
         for (index, track) in editor.grid.tracks.iter().enumerate() {
             let sent = &mut self.engine[index].1;
             let wanted = &track.instrument;
+            let plays_files = matches!(wanted.kind, InstKind::Sampler | InstKind::Chop);
+            if sent.kind == wanted.kind && sent.file != wanted.file && plays_files {
+                // The same instrument with another file: swapped in, so what's playing carries on.
+                let sample = match samples::for_instrument(wanted) {
+                    Ok(sample) => sample.filter(|s| !s.is_empty()),
+                    Err(problem) => {
+                        self.problem = Some(problem);
+                        None
+                    }
+                };
+                if !send(Command::SetSample { index, sample }) {
+                    return false;
+                }
+                sent.file = wanted.file.clone();
+            }
             if sent.kind != wanted.kind || sent.file != wanted.file {
                 let (instrument, problem) = build(wanted, self.sample_rate);
                 self.problem = problem.or(self.problem.take());

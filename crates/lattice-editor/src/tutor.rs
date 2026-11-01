@@ -627,6 +627,22 @@ const LESSONS: &[Lesson] = &[
         solution: "ghllgg12jv3j~<esc>;11kv3j*",
     },
     Lesson {
+        title: "Looping",
+        text: "A chop track can record its loop from the audio input. `:arm` arms the cursor's \
+               track (`○` by its name); then with record on ({toggle_record}) and the song \
+               playing, it records a pass, from step 00 round to 00 again (`●`), and plays it, \
+               cut into a piece a step. Each pass after that overdubs the last, and {undo} takes \
+               one off. `:arm!` records a new loop over the old one, and `:arm` again disarms. \
+               If what you play comes back late or early, `:latency 20` moves it by \
+               milliseconds, or `:latency -20`.\n\nArm the chop track.",
+        teaches: &[],
+        commands: &["arm", "arm!", "latency"],
+        setup: nothing,
+        watch: never,
+        done: |e, _| e.armed().is_some(),
+        solution: "ghll:arm<ret>",
+    },
+    Lesson {
         title: "Patterns",
         text: "A song is a list of patterns, which all have the same tracks, each with its own \
                notes. `:pattern-new verse` makes an empty pattern, `:pattern-dup` a copy of this \

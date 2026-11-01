@@ -6,8 +6,10 @@
 //! by [`ParamInfo`] and changed by [`EventKind::Param`] events, in their own units, as in CLAP.
 
 use std::ops::Range;
+use std::sync::Arc;
 
 pub use crate::param::ParamInfo;
+use crate::sampler::Sample;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Event {
@@ -45,6 +47,12 @@ pub trait Processor: Send {
     /// The parameters [`EventKind::Param`] events can set.
     fn params(&self) -> &[ParamInfo] {
         &[]
+    }
+
+    /// For an instrument that plays a sound file: swaps `sample` for the one it's playing,
+    /// carrying on from the new one. Returns false, leaving it alone, if it plays none.
+    fn swap_sample(&mut self, _sample: &mut Option<Arc<Sample>>) -> bool {
+        false
     }
 }
 

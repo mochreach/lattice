@@ -273,8 +273,29 @@ numbering one that clashes, and the tracks play the copies from then on. The eng
 already hold the same audio, so they're told the new path rather than rebuilt, and nothing that's
 playing stops. Sound files from elsewhere, such as a sample library, are left where they are.
 
-Next: a looper recording into a chop track from the audio input, whose recordings will be saved
-the same way.
+### The looper
+
+The looper records the audio input into a chop track, a pass of the track at a time. Arming is the
+editor's (`Editor::armed`); the frontend (`lattice-tui`'s `looper.rs`) opens the default input
+with cpal once a track is armed, at the output's rate and as f32, and feeds the engine stereo
+frames through a ring buffer (`Command::SetInput`). While record is on and the song plays, it
+keeps two `Take`s waiting in the engine, each allocated off the audio thread with room for a pass
+and a tenth: the engine's `Looper` starts the first when the track's playhead comes round to step
+00, ends it when it comes round again, and starts the second at that same frame, so passes record
+back to back with no gap. Ended takes go back through a queue of their own; the frontend sends
+another, mixes the take onto the file it overdubs, writes it into `samples` as `song-take-N.wav`,
+and the editor puts the track on it (a checkpoint each, so undo takes a layer off). The engine
+then swaps the new file into the playing instrument (`Command::SetSample`) rather than rebuilding
+it, so the loop plays on without a click. Turning record off lets the take recording finish its
+pass; stopping ends it unfinished, and an unfinished take is thrown away.
+
+What you hear comes out late, and what you play to it reaches the engine later still, so a pass
+starts when its first step is heard plus the input's delay: the latency is the output's and the
+input's, from cpal's timestamps, plus the input waiting in the ring buffer, plus `:latency`. It is
+read when the first take starts and held while takes follow on: measured afresh each pass it
+wavers, by up to a block, which would make the passes differ in length. Lattice doesn't monitor
+the input (play it out), as that would add the whole round trip to what you hear; listen to the
+input through the interface.
 
 ## Track groups
 

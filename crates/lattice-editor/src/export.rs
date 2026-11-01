@@ -137,7 +137,7 @@ impl Editor {
     /// Where a new sample goes: a name typed alone in the samples folder, a path as typed, or
     /// with nothing typed, the song's name and `kind`, numbered so as not to replace a sample
     /// already made.
-    fn sample_file(&self, typed: &str, kind: &str) -> PathBuf {
+    pub(crate) fn sample_file(&self, typed: &str, kind: &str) -> PathBuf {
         let folder = self.samples_folder();
         if !typed.is_empty() {
             let path = with_wav(PathBuf::from(typed));
