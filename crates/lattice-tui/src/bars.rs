@@ -33,6 +33,14 @@ pub fn pan(pan: f32, width: usize, style: Style, theme: &Theme) -> Vec<Span<'sta
     )
 }
 
+/// A macro's depth, from -1 to 1: filled from the centre, as pan is, and signed.
+pub fn depth(depth: f32, width: usize, style: Style, theme: &Theme) -> Vec<Span<'static>> {
+    let centre = width as f32 / 2.0;
+    let to = centre + depth * centre;
+    let label = format!("{depth:+.2}");
+    bar(width, centre.min(to)..centre.max(to), &label, style, theme)
+}
+
 /// An effect's setting, filled from the left along its range.
 pub fn param(
     info: &ParamInfo,

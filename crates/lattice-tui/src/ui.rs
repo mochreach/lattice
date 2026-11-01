@@ -1096,7 +1096,7 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
         )
         }
         Mode::Normal if editor.page == Page::Fx => (
-            "hl lanes · jk lines · w b effects · C-a C-x adjust · c set · :fx-add · :fx-send B · d remove · L lock · ( ) strip · gp pattern".into(),
+            "hl lanes · jk lines · w b effects · C-a C-x adjust · c set · :fx-add · :fx-send B · :map macro · d remove · L lock · ( ) strip · gp pattern".into(),
             theme.dim,
         ),
         Mode::Normal if editor.page == Page::Mixer => (

@@ -1,7 +1,8 @@
 //! Locks: settings of a track's instrument or effects that change on a step, set with `:lock`
 //! and cleared with `:unlock` on every step the selections reach.
 
-use lattice_core::{Curve, Fx, Instrument, Kind, Lock, MAX_LOCKS, ParamInfo, Track};
+use lattice_core::macros::MACRO_INFO;
+use lattice_core::{Curve, Fx, Instrument, Kind, Lock, MACRO, MAX_LOCKS, ParamInfo, Track};
 
 use crate::{Editor, Effect, Row, Strip, changed};
 
@@ -12,6 +13,7 @@ pub(crate) struct Locking {
     track: usize,
     instrument: Instrument,
     effects: Vec<Fx>,
+    macros: Vec<f32>,
     undo: usize,
 }
 
@@ -21,24 +23,56 @@ impl Locking {
         editor.grid.tracks.get(self.track).is_some_and(|track| {
             track.instrument.kind == self.instrument.kind
                 && track.effects.len() == self.effects.len()
+                && track.macros.len() == self.macros.len()
                 && (track.effects.iter().zip(&self.effects)).all(|(a, b)| a.kind == b.kind)
         })
     }
 }
 
-/// A setting a lock can hold on one track, found by name.
+/// A setting a lock can hold on one track, found by name: one of its instrument's or effects'
+/// parameters, or a macro.
 struct Setting {
     fx: Option<u8>,
+    /// The parameter's id, or the macro's index.
+    param: u8,
     info: &'static ParamInfo,
 }
 
 impl Setting {
+    fn new(fx: Option<u8>, info: &'static ParamInfo) -> Self {
+        Self {
+            fx,
+            param: info.id as u8,
+            info,
+        }
+    }
+
+    fn of_macro(index: usize) -> Self {
+        Self {
+            fx: Some(MACRO),
+            param: index as u8,
+            info: &MACRO_INFO,
+        }
+    }
+
     /// What the setting is called on `track`: `cutoff` on the instrument, `filter.cutoff` on an
-    /// effect.
+    /// effect, a macro by its name.
     fn name(&self, track: &Track) -> String {
+        if self.fx == Some(MACRO) {
+            return (track.macros.get(usize::from(self.param)))
+                .map_or_else(|| "macro?".into(), |m| m.name.clone());
+        }
         match self.fx.and_then(|fx| track.effects.get(usize::from(fx))) {
             Some(effect) => format!("{}.{}", effect.kind.name(), self.info.name),
             None => self.info.name.into(),
+        }
+    }
+
+    fn lock(&self, value: f32) -> Lock {
+        Lock {
+            fx: self.fx,
+            param: self.param,
+            value,
         }
     }
 }
@@ -53,25 +87,30 @@ fn find(track: &Track, name: &str) -> Option<Setting> {
             .params()
             .iter()
             .find(|p| p.name == name)?;
-        Some(Setting { fx: None, info })
+        Some(Setting::new(None, info))
     };
     let effect = |fx: usize, param: &str| {
         let effect = track.effects.get(fx)?;
         let info = effect.kind.params().iter().find(|p| p.name == param)?;
-        Some(Setting {
-            fx: Some(fx as u8),
-            info,
-        })
+        Some(Setting::new(Some(fx as u8), info))
+    };
+    let macro_named = |name: &str| {
+        (track.macros.iter())
+            .position(|m| m.name == name)
+            .map(Setting::of_macro)
     };
     match name.split_once('.') {
         Some(("inst", param)) => find(track, param).filter(|s| s.fx.is_none()),
+        Some(("macro", name)) => macro_named(name),
         Some((device, param)) => match device.parse::<usize>() {
             Ok(n) => effect(n.checked_sub(1)?, param),
             Err(_) => (0..track.effects.len())
                 .filter(|&fx| track.effects[fx].kind.name() == device)
                 .find_map(|fx| effect(fx, param)),
         },
-        None => instrument().or_else(|| (0..track.effects.len()).find_map(|fx| effect(fx, name))),
+        None => instrument()
+            .or_else(|| (0..track.effects.len()).find_map(|fx| effect(fx, name)))
+            .or_else(|| macro_named(name)),
     }
 }
 
@@ -136,11 +175,7 @@ impl Editor {
                 } else {
                     setting.info.at(a + (b - a) * along)
                 };
-                let lock = Lock {
-                    fx: setting.fx,
-                    param: setting.info.id as u8,
-                    value,
-                };
+                let lock = setting.lock(value);
                 let locks = &track.steps[step].locks;
                 if locks.find(&lock).is_none() && locks.len() == MAX_LOCKS {
                     return Err(format!("a step holds at most {MAX_LOCKS} locks"));
@@ -172,6 +207,7 @@ impl Editor {
             track: t,
             instrument: track.instrument.clone(),
             effects: track.effects.to_vec(),
+            macros: track.macros.iter().map(|m| m.value).collect(),
             undo: self.undo_len(),
         });
         Ok(vec![])
@@ -196,8 +232,11 @@ impl Editor {
         for (fx, was) in track.effects.iter_mut().zip(&locking.effects) {
             fx.values = was.values.clone();
         }
+        for (m, &was) in track.macros.iter_mut().zip(&locking.macros) {
+            m.value = was;
+        }
         self.truncate_undo(locking.undo);
-        vec![Effect::MixerChanged]
+        vec![Effect::MixerChanged, Effect::TrackChanged(locking.track)]
     }
 
     fn finish_locking(&mut self) -> Result<Vec<Effect>, String> {
@@ -219,15 +258,17 @@ impl Editor {
         for (fx, was, params, now) in devices {
             for (p, info) in params.iter().enumerate() {
                 if was.get(p) != now.get(p) {
-                    new.push((
-                        Setting { fx, info },
-                        Lock {
-                            fx,
-                            param: info.id as u8,
-                            value: now[p],
-                        },
-                    ));
+                    let setting = Setting::new(fx, info);
+                    let lock = setting.lock(now[p]);
+                    new.push((setting, lock));
                 }
+            }
+        }
+        for (m, (&was, now)) in locking.macros.iter().zip(&track.macros).enumerate() {
+            if was != now.value {
+                let setting = Setting::of_macro(m);
+                let lock = setting.lock(now.value);
+                new.push((setting, lock));
             }
         }
         if new.is_empty() {
@@ -284,7 +325,12 @@ impl Editor {
             }
         }
         self.message = Some(message);
-        effects.extend(changed([t]));
+        // Putting it back changed the track already.
+        for effect in changed([t]) {
+            if !effects.contains(&effect) {
+                effects.push(effect);
+            }
+        }
         Ok(effects)
     }
 
@@ -303,8 +349,20 @@ impl Editor {
         let Strip::Track(t) = shown.strip else {
             return None;
         };
-        let (params, slot) = (shown.params, shown.slot);
-        let info = &params[p];
+        let info = &shown.params[p];
+        let lock = Lock {
+            fx: shown.slot.map(|s| s as u8),
+            param: info.id as u8,
+            value: info.clamp(value),
+        };
+        self.record_lock_of(t, lock)
+    }
+
+    /// Locks `lock` on track `t`'s step playing, if recording: see [`Editor::record_lock`].
+    pub(crate) fn record_lock_of(&mut self, t: usize, lock: Lock) -> Option<Vec<Effect>> {
+        if !self.record || self.locking.is_some() {
+            return None;
+        }
         let len = self.track_len(t);
         let at = (self.transport.as_ref()?).at(t, len)?;
         // Counting in, there's no step yet to lock.
@@ -313,11 +371,6 @@ impl Editor {
         }
         let at = at.floor() as u64;
         let (step, pass) = ((at % len as u64) as usize, at / len as u64);
-        let lock = Lock {
-            fx: slot.map(|s| s as u8),
-            param: info.id as u8,
-            value: info.clamp(value),
-        };
         let locks = &self.grid.tracks[t].steps[step].locks;
         if locks.find(&lock).is_none() && locks.len() == MAX_LOCKS {
             self.message = Some(format!("step {step} already holds {MAX_LOCKS} locks"));
@@ -330,11 +383,9 @@ impl Editor {
         self.grid.tracks[t].steps[step].locks.set(lock);
         self.live_lock = Some((t, lock));
         let track = &self.grid.tracks[t];
-        let setting = Setting { fx: lock.fx, info };
         self.message = Some(format!(
-            "◆ {} {} on {} step {step}",
-            setting.name(track),
-            info.format(lock.value),
+            "◆ {} on {} step {step}",
+            describe(track, &lock),
             track.name
         ));
         Some(vec![
@@ -360,7 +411,7 @@ impl Editor {
                         .ok_or_else(|| format!("{} has no {name}", self.grid.tracks[*t].name))?,
                 ),
             };
-            wanted.push(setting.map(|s| (s.fx, s.info.id as u8)));
+            wanted.push(setting.map(|s| (s.fx, s.param)));
         }
         self.checkpoint();
         for ((t, steps), wanted) in columns.iter().zip(wanted) {
@@ -399,6 +450,7 @@ impl Editor {
     pub(crate) fn shift_locks(&mut self, t: usize, index: usize, inserted: bool) -> bool {
         let index = index as u8;
         self.retain_locks(t, |lock| match lock.fx {
+            _ if lock.is_macro() => true,
             Some(fx) if fx == index && !inserted => false,
             Some(fx) if fx >= index => {
                 lock.fx = Some(if inserted { fx + 1 } else { fx - 1 });
@@ -418,21 +470,28 @@ impl Editor {
         };
         step.locks
             .iter()
-            .map(|lock| {
-                let params = match lock.fx {
-                    None => Some(track.instrument.kind.params()),
-                    Some(fx) => track.effects.get(usize::from(fx)).map(|e| e.kind.params()),
-                };
-                match params.and_then(|p| p.get(usize::from(lock.param))) {
-                    Some(info) => {
-                        let setting = Setting { fx: lock.fx, info };
-                        format!("{} {}", setting.name(track), info.format(lock.value))
-                    }
-                    // Its effect has gone: it does nothing until one's back in its place.
-                    None => format!("fx{}.{}?", lock.fx.map_or(0, |f| f + 1), lock.param),
-                }
-            })
+            .map(|lock| describe(track, lock))
             .collect()
+    }
+}
+
+/// A lock, as `cutoff 800Hz`, for showing.
+fn describe(track: &Track, lock: &Lock) -> String {
+    if lock.is_macro() {
+        let setting = Setting::of_macro(usize::from(lock.param));
+        return format!("{} {}", setting.name(track), MACRO_INFO.format(lock.value));
+    }
+    let params = match lock.fx {
+        None => Some(track.instrument.kind.params()),
+        Some(fx) => track.effects.get(usize::from(fx)).map(|e| e.kind.params()),
+    };
+    match params.and_then(|p| p.get(usize::from(lock.param))) {
+        Some(info) => {
+            let setting = Setting::new(lock.fx, info);
+            format!("{} {}", setting.name(track), info.format(lock.value))
+        }
+        // Its effect has gone: it does nothing until one's back in its place.
+        None => format!("fx{}.{}?", lock.fx.map_or(0, |f| f + 1), lock.param),
     }
 }
 
@@ -443,14 +502,12 @@ fn settings(track: &Track) -> Vec<Setting> {
         .kind
         .params()
         .iter()
-        .map(|info| Setting { fx: None, info });
+        .map(|info| Setting::new(None, info));
     let effects = track.effects.iter().enumerate().flat_map(|(fx, e)| {
-        e.kind.params().iter().map(move |info| Setting {
-            fx: Some(fx as u8),
-            info,
-        })
+        (e.kind.params().iter()).map(move |info| Setting::new(Some(fx as u8), info))
     });
-    instrument.chain(effects).collect()
+    let macros = (0..track.macros.len()).map(Setting::of_macro);
+    instrument.chain(effects).chain(macros).collect()
 }
 
 #[cfg(test)]

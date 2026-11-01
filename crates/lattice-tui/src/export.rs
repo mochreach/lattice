@@ -231,6 +231,7 @@ mod tests {
             instrument: Default::default(),
             effects: Default::default(),
             choke: 0,
+            macros: vec![],
             rules: vec![],
         };
         track.steps[0].note = Some(Note {

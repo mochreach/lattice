@@ -613,7 +613,9 @@ impl Editor {
         for t in tracks {
             self.grid.tracks[t].instrument = Instrument::new(kind);
             // The old instrument's settings mean nothing to the new one.
-            if self.retain_locks(t, |lock| lock.fx.is_some()) {
+            if self.retain_locks(t, |lock| lock.fx.is_some())
+                | self.retain_targets(t, |target| target.fx.is_some())
+            {
                 effects.push(Effect::TrackChanged(t));
             }
         }
@@ -734,7 +736,7 @@ impl Editor {
     ) -> Vec<Effect> {
         let mut effects = vec![Effect::MixerChanged];
         if let Strip::Track(t) = strip
-            && self.shift_locks(t, index, inserted)
+            && (self.shift_locks(t, index, inserted) | self.shift_targets(t, index, inserted))
         {
             effects.push(Effect::TrackChanged(t));
         }

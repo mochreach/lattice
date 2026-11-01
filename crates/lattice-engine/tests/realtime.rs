@@ -3,7 +3,8 @@
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
 use lattice_core::instrument::{kick, string};
 use lattice_core::{
-    Condition, Fx, FxKind, Grid, InstKind, Instrument, Lane, Lock, Rule, Step, Track, Transform,
+    Condition, Fx, FxKind, Grid, InstKind, Instrument, Lane, Lock, Macro, MacroTarget, Rule, Step,
+    Track, Transform,
 };
 use lattice_engine::{
     AdsrParams, Chain, Command, Comp, Cue, Delay, Drive, EffectSlot, Engine, Patch, Processor,
@@ -36,6 +37,10 @@ fn rendering_never_allocates() {
                         });
                     }
                 }
+                // And on a macro.
+                if i % 3 == 1 {
+                    step.locks.set(Lock::of_macro(0, 0.9));
+                }
                 step
             })
             .collect(),
@@ -43,6 +48,19 @@ fn rendering_never_allocates() {
         instrument: Default::default(),
         effects: Default::default(),
         choke: 0,
+        // A macro turning the instrument and effects, some there and some not.
+        macros: vec![Macro {
+            name: "bloom".into(),
+            value: 0.4,
+            targets: [None, Some(0), Some(5)]
+                .into_iter()
+                .map(|fx| MacroTarget {
+                    fx,
+                    param: 1,
+                    depth: 0.5,
+                })
+                .collect(),
+        }],
         rules: vec![
             Rule {
                 transform: Transform::Drift(1),
@@ -121,6 +139,11 @@ fn rendering_never_allocates() {
     // Commands are handled inside the no-allocation zone too.
     handle.send(Command::Play { count_in: 0 });
     handle.send(Command::SetBpm(140.0));
+    handle.send(Command::SetMacro {
+        track: 0,
+        index: 0,
+        value: 0.7,
+    });
     handle.send(Command::Preview {
         track: 0,
         pitch: 72,

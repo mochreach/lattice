@@ -28,6 +28,7 @@ use crate::param::Smoothed;
 use crate::processor::{Event, EventKind, Processor};
 use crate::routing::Routing;
 use crate::sampler::Sample;
+use lattice_core::macros;
 
 const BEATS_PER_BAR: u64 = 4;
 /// Largest block rendered in one go. Longer host buffers are split.
@@ -147,6 +148,12 @@ pub enum Command {
     Lock {
         track: usize,
         lock: Lock,
+    },
+    /// Turn a track's macro, from 0 to 1. The settings it turns follow.
+    SetMacro {
+        track: usize,
+        index: usize,
+        value: f32,
     },
     /// Set a bus's level, in dB. Ignored for a track's chain.
     SetBusLevel {
@@ -679,28 +686,73 @@ impl TrackPlayer {
     /// Ends the locks in force that `next` doesn't set again, then sets `next`'s, at `offset`.
     fn lock(&mut self, next: Locks, offset: u32) {
         let ending = self.locked;
-        for lock in ending.iter().filter(|l| next.find(l).is_none()) {
-            let base = match lock.fx {
-                None => self.base.get(usize::from(lock.param)),
-                Some(fx) => (self.effects.get(usize::from(fx)))
-                    .and_then(|slot| slot.base.get(usize::from(lock.param))),
-            };
-            if let Some(&base) = base {
-                self.param_event(lock.fx, lock.param, base, offset);
+        self.locked = next;
+        let settings = |l: &&Lock| !l.is_macro();
+        for lock in ending.iter().filter(settings) {
+            if next.find(lock).is_none() {
+                self.settle(lock.fx, lock.param, offset);
             }
         }
-        for lock in next.iter() {
+        for lock in next.iter().filter(settings) {
             self.param_event(lock.fx, lock.param, lock.value, offset);
         }
-        self.locked = next;
+        if !macro_locks(&ending).eq(macro_locks(&next)) {
+            self.settle_macros(offset);
+        }
     }
 
-    /// Ends the effects' locks, leaving the instrument's: before the chain changes, so the
-    /// settings go back to the effects they were on.
+    /// Ends the effects' locks, leaving the instrument's and the macros': before the chain
+    /// changes, so the settings go back to the effects they were on.
     fn unlock_effects(&mut self) {
         let mut next = self.locked;
-        next.retain(|l| l.fx.is_none());
+        next.retain(|l| l.fx.is_none() || l.is_macro());
         self.lock(next, 0);
+    }
+
+    /// Macro `index`'s value: a step's lock's, or its own.
+    fn macro_value(&self, index: usize) -> f32 {
+        (self.locked.iter())
+            .find(|l| l.is_macro() && usize::from(l.param) == index)
+            .map_or_else(
+                || self.track.macros.get(index).map_or(0.0, |m| m.value),
+                |l| l.value,
+            )
+    }
+
+    /// What a setting is now: a step's lock's value, or its own moved by the macros.
+    fn settled(&self, fx: Option<u8>, id: u8) -> Option<f32> {
+        if let Some(lock) =
+            (self.locked.iter()).find(|l| !l.is_macro() && l.fx == fx && l.param == id)
+        {
+            return Some(lock.value);
+        }
+        let id = usize::from(id);
+        let (base, info) = match fx {
+            None => (*self.base.get(id)?, self.instrument.params().get(id)),
+            Some(fx) => {
+                let slot = self.effects.get(usize::from(fx))?;
+                (*slot.base.get(id)?, slot.processor.params().get(id))
+            }
+        };
+        let offset = macros::offset(&self.track.macros, |m| self.macro_value(m), fx, id as u8);
+        Some(info.map_or(base, |info| macros::moved(info, base, offset)))
+    }
+
+    /// Sends a setting what it is now.
+    fn settle(&mut self, fx: Option<u8>, id: u8, offset: u32) {
+        if let Some(value) = self.settled(fx, id) {
+            self.param_event(fx, id, value, offset);
+        }
+    }
+
+    /// Sends every setting the macros turn what it is now.
+    fn settle_macros(&mut self, offset: u32) {
+        for m in 0..self.track.macros.len() {
+            for t in 0..self.track.macros[m].targets.len() {
+                let target = self.track.macros[m].targets[t];
+                self.settle(target.fx, target.param, offset);
+            }
+        }
     }
 
     fn param_event(&mut self, fx: Option<u8>, id: u8, value: f32, offset: u32) {
@@ -723,8 +775,14 @@ impl TrackPlayer {
 
     /// Whether a step's lock holds this setting, so the mixer's change waits until it ends.
     fn is_locked(&self, fx: Option<usize>, id: u32) -> bool {
-        (self.locked.iter()).any(|l| l.fx.map(usize::from) == fx && u32::from(l.param) == id)
+        (self.locked.iter())
+            .any(|l| !l.is_macro() && l.fx.map(usize::from) == fx && u32::from(l.param) == id)
     }
+}
+
+/// The locks of macros among `locks`.
+fn macro_locks(locks: &Locks) -> impl Iterator<Item = Lock> + '_ {
+    locks.iter().filter(|l| l.is_macro()).copied()
 }
 
 impl std::fmt::Debug for TrackPlayer {
@@ -967,6 +1025,11 @@ impl Engine {
                         if t.playhead >= t.track.steps.len() {
                             t.playhead = 0;
                         }
+                        // Settings the macros turned before, and turn now, follow them.
+                        for target in track.macros.iter().flat_map(|m| &m.targets) {
+                            t.settle(target.fx, target.param, 0);
+                        }
+                        t.settle_macros(0);
                         // Re-realise so the edit is heard on this pass, not the next.
                         realise_into(&t.track, t.pass, &mut t.steps);
                     }
@@ -1060,6 +1123,7 @@ impl Engine {
                     Some(effects) if effects.len() < MAX_EFFECTS => {
                         // Within capacity, so it never reallocates.
                         effects.insert(index.min(effects.len()), effect);
+                        self.settle_macros(chain);
                     }
                     _ => self.discard(Garbage::Effect(effect)),
                 },
@@ -1083,6 +1147,7 @@ impl Engine {
                     {
                         let effect = effects.remove(index);
                         self.discard(Garbage::Effect(effect));
+                        self.settle_macros(chain);
                     }
                 }
                 Command::SetInstrument { index, instrument } => {
@@ -1094,7 +1159,9 @@ impl Engine {
                             // The new one starts at its own settings, which follow.
                             t.base = defaults(instrument.params());
                             t.locked.retain(|l| l.fx.is_some());
-                            std::mem::replace(&mut t.instrument, instrument)
+                            let old = std::mem::replace(&mut t.instrument, instrument);
+                            t.settle_macros(0);
+                            old
                         }
                         None => instrument,
                     };
@@ -1116,6 +1183,18 @@ impl Engine {
                     }
                 }
                 Command::SetParam { target, id, value } => self.set_param(target, id, value),
+                Command::SetMacro {
+                    track,
+                    index,
+                    value,
+                } => {
+                    if let Some(t) = self.tracks.get_mut(track)
+                        && let Some(m) = t.track.macros.get_mut(index)
+                    {
+                        m.value = value;
+                        t.settle_macros(0);
+                    }
+                }
                 Command::Lock { track, lock } => {
                     if self.playing
                         && let Some(t) = self.tracks.get_mut(track)
@@ -1181,7 +1260,10 @@ impl Engine {
         if let Some(base) = base.get_mut(id as usize) {
             *base = value;
         }
-        if !locked {
+        if locked {
+            return;
+        }
+        if track.is_none() {
             push(
                 events,
                 Event {
@@ -1189,6 +1271,18 @@ impl Engine {
                     kind: EventKind::Param { id, value },
                 },
             );
+        } else if let Some(t) = track.and_then(|t| self.tracks.get_mut(t)) {
+            // On a track, the macros move it from there.
+            t.settle(fx.map(|f| f as u8), id as u8, 0);
+        }
+    }
+
+    /// Settles the settings a track's macros turn, after its chain changes.
+    fn settle_macros(&mut self, chain: Chain) {
+        if let Chain::Track(track) = chain
+            && let Some(t) = self.tracks.get_mut(track)
+        {
+            t.settle_macros(0);
         }
     }
 
@@ -1234,6 +1328,7 @@ impl Engine {
             player.pass = (self.step_index / len) as u32;
         }
         realise_into(&player.track, player.pass, &mut player.steps);
+        player.settle_macros(0);
         let index = index.min(self.tracks.len());
         self.tracks.insert(index, player);
         self.publish_positions(index);
@@ -1713,6 +1808,7 @@ mod tests {
             instrument: Default::default(),
             effects: Default::default(),
             choke: 0,
+            macros: vec![],
             rules: vec![Rule {
                 transform: Transform::Drift(1),
                 when: Condition::Always,
@@ -2461,6 +2557,79 @@ mod tests {
             }
             self.at += left.len();
         }
+
+        fn params(&self) -> &[ParamInfo] {
+            &SETTINGS
+        }
+    }
+
+    /// Four settings, each 0 to 8.
+    const SETTINGS: [ParamInfo; 4] = [setting(0), setting(1), setting(2), setting(3)];
+
+    const fn setting(id: u32) -> ParamInfo {
+        ParamInfo {
+            id,
+            name: "setting",
+            min: 0.0,
+            max: 8.0,
+            default: 0.0,
+            unit: "",
+            curve: lattice_core::Curve::Linear,
+        }
+    }
+
+    #[test]
+    fn macros_move_settings_from_where_they_are() {
+        let mut locked = Step::note(60);
+        locked.locks.set(Lock::of_macro(0, 0.25));
+        let mut track = Track {
+            steps: vec![locked, Step::default(), Step::note(62), Step::default()],
+            rules: vec![],
+            ..lead()
+        };
+        track.instrument.values = vec![0.0; 4];
+        track.macros.push(lattice_core::Macro {
+            name: "m".into(),
+            value: 0.0,
+            targets: vec![lattice_core::MacroTarget {
+                fx: None,
+                param: 1,
+                depth: 0.5,
+            }],
+        });
+        let grid = Grid {
+            name: "macros".into(),
+            steps_per_beat: 4,
+            tracks: vec![track],
+            groups: vec![],
+        };
+        let settings = Settings::default();
+        let log = settings.log.clone();
+        let (mut engine, mut handle) = Engine::new(1_000.0, 120.0, &grid, vec![Box::new(settings)]);
+        engine.click_enabled = false;
+        // Turned all the way, it moves the setting half its range.
+        handle.send(Command::SetMacro {
+            track: 0,
+            index: 0,
+            value: 1.0,
+        });
+        render_stereo(&mut engine, 10);
+        // Turned by hand, the setting moves, and the macro moves it from there.
+        handle.send(Command::SetParam {
+            target: Target::Instrument(0),
+            id: 1,
+            value: 2.0,
+        });
+        render_stereo(&mut engine, 10);
+        // A step locks the macro at a quarter until the next note.
+        handle.send(Command::Play { count_in: 0 });
+        render_stereo(&mut engine, 400);
+        let log = log.lock().unwrap();
+        let log: Vec<&str> = (log.iter())
+            .map(|(_, what)| what.as_str())
+            .filter(|w| w.starts_with("1="))
+            .collect();
+        assert_eq!(log, ["1=4", "1=6", "1=3", "1=6"]);
     }
 
     #[test]

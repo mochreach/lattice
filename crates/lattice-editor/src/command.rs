@@ -213,6 +213,24 @@ pub const COMMANDS: &[Spec] = &[
         describe: "clear a setting's locks from the selected steps, or all of them",
     },
     Spec {
+        name: "macro",
+        alias: None,
+        params: &[text("NAME", "name")],
+        describe: "add a macro to the track, a knob that turns several of its settings",
+    },
+    Spec {
+        name: "map",
+        alias: None,
+        params: &[text("NAME [DEPTH]", "macro and depth")],
+        describe: "have a macro turn the setting under the cursor, by DEPTH (-1 to 1, 0.5 if left out)",
+    },
+    Spec {
+        name: "unmap",
+        alias: None,
+        params: &[text("NAME", "macro")],
+        describe: "stop a macro turning the setting under the cursor",
+    },
+    Spec {
         name: "set",
         alias: None,
         params: &[text("VALUE", "value")],
@@ -1247,6 +1265,9 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         "lock" => editor.lock(command.text(0)),
         "unlock" => editor.unlock(command.text(0)),
+        "macro" => editor.add_macro(command.text(0)),
+        "map" => editor.map_macro(command.text(0)),
+        "unmap" => editor.unmap_macro(command.text(0)),
         "fx-add" => editor.add_effect(command.text(0)),
         "fx-send" => editor.add_send(command.text(0)),
         "chain-save" => editor.save_chain(command.text(0)),

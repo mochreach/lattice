@@ -30,6 +30,8 @@ const FEEDBACK_DB: f32 = -6.0;
 pub struct FxCursor {
     pub lane: usize,
     pub line: usize,
+    /// On the track's macros, left of the lanes, rather than a lane.
+    pub macros: bool,
 }
 
 /// A line of the fx page, in one lane.
@@ -54,6 +56,15 @@ pub enum FxLine {
     /// Below the lane's last row.
     Empty,
     Out,
+    /// A macro, by its index on the track, in the macros' column.
+    Macro {
+        index: usize,
+    },
+    /// A setting the macro turns, by its place in the macro's targets.
+    Target {
+        index: usize,
+        target: usize,
+    },
 }
 
 impl FxLine {
@@ -63,13 +74,16 @@ impl FxLine {
             FxLine::Fx { row, .. } | FxLine::Param { row, .. } | FxLine::Send { row, .. } => {
                 Some(row)
             }
-            FxLine::Empty | FxLine::Out => None,
+            _ => None,
         }
     }
 
-    /// Whether `w` and `b` stop on it: an effect's name, a send, or the out.
+    /// Whether `w` and `b` stop on it: an effect's name, a send, a macro, or the out.
     fn is_stop(self) -> bool {
-        !matches!(self, FxLine::Param { .. } | FxLine::Empty)
+        !matches!(
+            self,
+            FxLine::Param { .. } | FxLine::Empty | FxLine::Target { .. }
+        )
     }
 }
 
@@ -108,11 +122,28 @@ impl Editor {
         self.strip(self.mixer_cursor().strip)
     }
 
-    /// The fx page's lines, lane by lane, and the line the outs are on.
+    /// The fx page's lines, lane by lane, and the line the outs are on, below the longest lane
+    /// and the macros.
     pub fn fx_page_lines(&self) -> (Vec<Vec<FxLine>>, usize) {
         let lanes = fx_lines(self.chain(self.fx_strip()));
-        let outs = lanes.iter().map(Vec::len).max().unwrap_or(0);
+        let outs = (lanes.iter().map(Vec::len))
+            .chain([self.macro_lines().len()])
+            .max()
+            .unwrap_or(0);
         (lanes, outs)
+    }
+
+    /// The macros' column: each of the fx page's track's macros, then the settings it turns.
+    pub fn macro_lines(&self) -> Vec<FxLine> {
+        let Strip::Track(t) = self.fx_strip() else {
+            return vec![];
+        };
+        let mut lines = vec![];
+        for (index, m) in self.grid.tracks[t].macros.iter().enumerate() {
+            lines.push(FxLine::Macro { index });
+            lines.extend((0..m.targets.len()).map(|target| FxLine::Target { index, target }));
+        }
+        lines
     }
 
     /// The fx page's cursor, kept within the lanes and lines there are now.
@@ -121,18 +152,34 @@ impl Editor {
         FxCursor {
             lane: self.fx.lane.min(lanes.len() - 1),
             line: self.fx.line.min(outs),
+            macros: self.fx.macros && matches!(self.fx_strip(), Strip::Track(_)),
         }
     }
 
     /// What's under the fx page's cursor.
     pub fn fx_line(&self) -> FxLine {
         let cursor = self.fx_cursor();
+        if cursor.macros {
+            return (self.macro_lines().get(cursor.line).copied()).unwrap_or(FxLine::Empty);
+        }
         let (lanes, outs) = self.fx_page_lines();
         match lanes[cursor.lane].get(cursor.line) {
             Some(&line) => line,
             None if cursor.line == outs => FxLine::Out,
             None => FxLine::Empty,
         }
+    }
+
+    /// Puts the fx page's cursor on macro `index`.
+    pub(crate) fn goto_macro(&mut self, index: usize) {
+        let line = (self.macro_lines().iter())
+            .position(|&l| l == FxLine::Macro { index })
+            .unwrap_or(0);
+        self.move_fx(FxCursor {
+            line,
+            macros: true,
+            ..self.fx_cursor()
+        });
     }
 
     /// Whether the fx page's cursor is on one of an effect's settings, which the mixer's
@@ -180,7 +227,12 @@ impl Editor {
     fn fx_stop(&self, n: usize, forward: bool) -> usize {
         let cursor = self.fx_cursor();
         let (lanes, outs) = self.fx_page_lines();
-        let lane = &lanes[cursor.lane];
+        let macros = self.macro_lines();
+        let lane = if cursor.macros {
+            &macros
+        } else {
+            &lanes[cursor.lane]
+        };
         let stop = |line: usize| line >= lane.len() || lane[line].is_stop();
         let mut line = cursor.line;
         for _ in 0..n {
@@ -204,9 +256,25 @@ impl Editor {
         let lanes = self.chain(self.fx_strip()).lanes().len();
         let by = n as i32;
         let line = |line| FxCursor { line, ..cursor };
+        let track = matches!(self.fx_strip(), Strip::Track(_));
         match action {
+            // The macros are left of lane A, on a track, onto the last of them if the cursor's
+            // below it.
+            Action::Left if !cursor.macros && track && cursor.lane < n => {
+                let last = self.macro_lines().len().saturating_sub(1);
+                self.move_fx(FxCursor {
+                    line: cursor.line.min(last),
+                    macros: true,
+                    ..cursor
+                })
+            }
             Action::Left => self.move_fx(FxCursor {
                 lane: cursor.lane.saturating_sub(n),
+                ..cursor
+            }),
+            Action::Right if cursor.macros => self.move_fx(FxCursor {
+                lane: n - 1,
+                macros: false,
                 ..cursor
             }),
             Action::Right => self.move_fx(FxCursor {
@@ -222,7 +290,7 @@ impl Editor {
             Action::ToggleView => {}
             Action::NoteUp | Action::Longer | Action::NoteDown | Action::Shorter => {
                 let up = matches!(action, Action::NoteUp | Action::Longer);
-                if self.on_fx_param() {
+                if self.on_fx_param() && !cursor.macros {
                     // The mixer nudges settings.
                     return self.mixer_act(action, n);
                 }
@@ -231,7 +299,11 @@ impl Editor {
             Action::Delete | Action::Clear => return Some(self.fx_delete()),
             Action::Change => {
                 let line = match self.fx_line() {
-                    FxLine::Param { .. } | FxLine::Send { .. } | FxLine::Out => "set ",
+                    FxLine::Param { .. }
+                    | FxLine::Send { .. }
+                    | FxLine::Out
+                    | FxLine::Macro { .. }
+                    | FxLine::Target { .. } => "set ",
                     _ => "fx-add ",
                 };
                 self.open_prompt(PromptKind::Command);
@@ -250,10 +322,20 @@ impl Editor {
         Some(vec![])
     }
 
-    /// The send's or out's level under the fx cursor, and the range it can take, in dB.
+    /// The send's or out's level under the fx cursor, and the range it can take, in dB; or the
+    /// macro's value, or the depth it turns a setting by.
     pub(crate) fn fx_value(&self) -> Option<(f32, f32, f32)> {
         let lane = self.fx_cursor().lane;
+        let macros = |t: usize| &self.grid.tracks[t].macros;
+        let track = match self.fx_strip() {
+            Strip::Track(t) => Some(t),
+            _ => None,
+        };
         match self.fx_line() {
+            FxLine::Macro { index } => Some((macros(track?)[index].value, 0.0, 1.0)),
+            FxLine::Target { index, target } => {
+                Some((macros(track?)[index].targets[target].depth, -1.0, 1.0))
+            }
             FxLine::Out => {
                 let out = self.chain(self.fx_strip()).lanes()[lane].out;
                 Some((out, MIN_DB, lattice_core::MAX_DB))
@@ -274,9 +356,18 @@ impl Editor {
         if value == old {
             return Ok(vec![]);
         }
+        let line = self.fx_line();
+        if let Strip::Track(t) = self.fx_strip() {
+            match line {
+                FxLine::Macro { index } => return Ok(self.set_macro(t, index, value)),
+                FxLine::Target { index, target } => {
+                    return Ok(self.set_depth(t, index, target, value));
+                }
+                _ => {}
+            }
+        }
         self.checkpoint();
         let lane = self.fx_cursor().lane;
-        let line = self.fx_line();
         let chain = self.chain_mut(self.fx_strip());
         match line {
             FxLine::Send { row, .. } => chain.set_send_level(RowAt { lane, row }, value),
@@ -289,7 +380,11 @@ impl Editor {
         let Some((old, min, max)) = self.fx_value() else {
             return vec![];
         };
-        let new = (old + by as f32 * LEVEL_STEP).clamp(min, max);
+        let step = match self.fx_line() {
+            FxLine::Macro { .. } | FxLine::Target { .. } => crate::macros::NUDGE,
+            _ => LEVEL_STEP,
+        };
+        let new = (old + by as f32 * step).clamp(min, max);
         self.set_fx_value(new).unwrap_or_default()
     }
 
@@ -330,6 +425,14 @@ impl Editor {
                 self.message = Some("d on the effect's name removes it".into());
                 return vec![];
             }
+            FxLine::Macro { index } => match strip {
+                Strip::Track(t) => self.remove_macro(t, index),
+                _ => vec![],
+            },
+            FxLine::Target { index, target } => match strip {
+                Strip::Track(t) => self.remove_target(t, index, target),
+                _ => vec![],
+            },
             FxLine::Empty => {
                 self.message = Some("nothing here to remove".into());
                 return vec![];
@@ -359,6 +462,7 @@ impl Editor {
         self.move_fx(FxCursor {
             lane: at.lane,
             line,
+            macros: false,
         });
     }
 

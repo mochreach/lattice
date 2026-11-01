@@ -215,6 +215,9 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:chain-load NAME` | put a saved chain on the strip, in place of its own (its effects' locks go with them); Lattice comes with `shimmer` |
 | `:fx-send LANE [DB]` | on the fx page, add a send after the cursor into lane `LANE` (`B`, say); the next letter after the last lane adds one. Into its own lane or one to its left it's feedback, at -6 dB unless given, and at most 0 dB |
 | `:lock PARAM VALUE` | lock a setting of the track's instrument or effects on every step the selections reach: `:lock cutoff 800`, `:lock filter.mix 0.5` (or `2.mix`, the second effect's). `:lock cutoff 200..4000` sweeps it across each selection. Locked steps are marked `◆`, and the cursor's locks are shown in the status line |
+| `:macro NAME` | add a macro to the track: one knob, from 0 to 1, that turns several of its settings |
+| `:map NAME [DEPTH]` | on the mixer or fx page, have macro `NAME` turn the setting under the cursor, by `DEPTH` of its range (-1 to 1, 0.5 if left out) at full turn, adding the macro if it's new |
+| `:unmap NAME` | stop macro `NAME` turning the setting under the cursor |
 | `:unlock [PARAM]` | clear a setting's locks, or all of them, from the steps the selections reach |
 | `:choke N` | choke group (1–8, 0 for none) for every track the selections reach: within a track group, a hit cuts off the other tracks with the same number, as a closed hat stops an open one |
 | `:mute`, `:solo` | toggle mute or solo for every track the selections reach (also `tm`, `ts`) |
@@ -269,6 +272,14 @@ settings, and `h` `l` move across the lanes on the same line. `:fx-add` adds an 
 cursor's, and `d` on an effect's name or a send removes it, or on an out, the whole lane. `L`
 locks settings as on the mixer. `(` `)` change strip, and `gm` and `gp` go to the mixer and the
 pattern.
+
+**Macros** are knobs that each turn several of a track's settings at once. `:map bloom` on a
+setting, on the mixer or fx page, has the macro `bloom` turn it, by half its range when `bloom`
+is all the way up (`:map bloom -1` turns it down by all of it). The fx page shows a track's macros
+in a column left of lane A, each with the settings it turns under it: `h` from lane A goes there,
+`^a` `^x` turn a macro or how far it turns a setting, and `d` removes either. Settings keep their
+own values and the macros move them from there, so turning a setting by hand still works. A macro
+locks like a setting, by its name (`:lock bloom 1`), with `L`, or by turning it with record armed.
 
 `:chain-save wash` saves a chain to load on any strip with `:chain-load wash`. Lattice comes with
 one, `shimmer`: a long reverb in lane A that sends into lane B, which high-passes it and shifts it

@@ -287,6 +287,7 @@ mod tests {
             instrument: Default::default(),
             effects: Default::default(),
             choke: 0,
+            macros: vec![],
             rules: vec![],
         };
         let grid = Grid {

@@ -48,7 +48,8 @@ impl Editor {
         *self.chain_mut(strip) = chain;
         let mut effects = vec![Effect::MixerChanged];
         if let Strip::Track(t) = strip
-            && self.retain_locks(t, |lock| lock.fx.is_none())
+            && (self.retain_locks(t, |lock| lock.fx.is_none() || lock.is_macro())
+                | self.retain_targets(t, |target| target.fx.is_none()))
         {
             effects.push(Effect::TrackChanged(t));
         }

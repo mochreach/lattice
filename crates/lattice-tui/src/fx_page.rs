@@ -1,10 +1,12 @@
 //! Drawing the fx page: the chain of the strip under the mixer cursor, its lanes side by side as
 //! columns read top to bottom, like the pattern's tracks. Each effect's name is followed by its
 //! settings, a line each with a bar, sends have a line each, and along the bottom are the lanes'
-//! outs.
+//! outs. On a track, its macros are a column left of the lanes, each followed by the settings it
+//! turns and how far.
 
+use lattice_core::macros::MACRO_INFO;
 use lattice_core::{FxLane, Kind, Locks, MIN_DB, is_feedback};
-use lattice_editor::{Editor, FxLine, Strip};
+use lattice_editor::{Editor, FxLine, Strip, target_name};
 use lattice_engine::Status;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -24,6 +26,9 @@ const MIN_LANE: usize = 22;
 const MAX_LANE: usize = 34;
 /// Width of a setting's name.
 const PARAM_LABEL: usize = 12;
+/// Width of the macros' column, and of a macro's name in it.
+const MACROS: usize = 34;
+const MACRO_LABEL: usize = 18;
 /// Lines above the lanes (the rule, a gap and the lanes' letters) and below (the outs).
 const ABOVE: usize = 3;
 const BELOW: usize = 1;
@@ -42,7 +47,13 @@ pub fn draw(
     let chain = editor.chain(strip);
     let (lanes, outs) = editor.fx_page_lines();
     let cursor = editor.fx_cursor();
-    let lane_width = (width.saturating_sub(LABEL) / lanes.len()).clamp(MIN_LANE, MAX_LANE);
+    let macro_lines = editor.macro_lines();
+    let macros_width = match strip {
+        Strip::Track(_) => MACROS,
+        _ => 0,
+    };
+    let lane_width =
+        (width.saturating_sub(LABEL + macros_width) / lanes.len()).clamp(MIN_LANE, MAX_LANE);
     let locks = match strip {
         Strip::Track(t) => status.locks(t),
         _ => Locks::default(),
@@ -68,6 +79,10 @@ pub fn draw(
 
     // Each lane's letter, and what feeds it.
     let mut spans = vec![Span::raw(" ".repeat(LABEL))];
+    if macros_width > 0 {
+        let style = Style::new().fg(colour).add_modifier(Modifier::BOLD);
+        spans.push(Span::styled(fit(" macros", macros_width), style));
+    }
     for k in 0..lanes.len() {
         let mut from: Vec<String> = (k == 0).then(|| "in".to_string()).into_iter().collect();
         for (l, lane) in lanes.iter().enumerate() {
@@ -179,10 +194,70 @@ pub fn draw(
             }
             // The lane flows on down to its out.
             FxLine::Empty => vec![Span::styled(" │", block(theme.faint))],
-            FxLine::Out => vec![],
+            // Lanes have neither: they're the macros' column's.
+            FxLine::Out | FxLine::Macro { .. } | FxLine::Target { .. } => vec![],
         };
         let used: usize = spans.iter().map(|s| s.content.chars().count()).sum();
         spans.push(Span::raw(" ".repeat(lane_width.saturating_sub(used))));
+        spans
+    };
+
+    // One line of the macros' column.
+    let macro_cell = |line: FxLine, here: bool| -> Vec<Span<'static>> {
+        let Strip::Track(t) = strip else {
+            return vec![];
+        };
+        let track = &editor.grid.tracks[t];
+        let w = macros_width - 2;
+        let mut spans = match line {
+            FxLine::Macro { index } => {
+                let m = &track.macros[index];
+                // While it plays, a macro a step has locked shows the lock's value.
+                let lock = (locks.iter()).find(|l| l.is_macro() && usize::from(l.param) == index);
+                let (label, value, label_style, style) = match lock {
+                    Some(lock) => {
+                        let mark = Style::new().fg(theme.accent).add_modifier(Modifier::BOLD);
+                        (format!(" ◆{}", m.name), lock.value, mark, mark)
+                    }
+                    None => (
+                        format!(" {}", m.name),
+                        m.value,
+                        Style::new().fg(colour).add_modifier(Modifier::BOLD),
+                        value_style(here),
+                    ),
+                };
+                let label_style = if here {
+                    theme.block(Color::Reset)
+                } else {
+                    label_style
+                };
+                let mut spans = vec![Span::styled(fit(&label, MACRO_LABEL), label_style)];
+                spans.extend(bars::param(
+                    &MACRO_INFO,
+                    value,
+                    w - MACRO_LABEL,
+                    style,
+                    theme,
+                ));
+                spans
+            }
+            FxLine::Target { index, target } => {
+                let target = &track.macros[index].targets[target];
+                let label = format!("  {}", target_name(track, target));
+                let mut spans = vec![Span::styled(fit(&label, MACRO_LABEL), name_style(here))];
+                spans.extend(bars::depth(
+                    target.depth,
+                    w - MACRO_LABEL,
+                    value_style(here),
+                    theme,
+                ));
+                spans
+            }
+            _ if here => vec![Span::styled(" ", theme.block(Color::Reset))],
+            _ => vec![],
+        };
+        let used: usize = spans.iter().map(|s| s.content.chars().count()).sum();
+        spans.push(Span::raw(" ".repeat(macros_width.saturating_sub(used))));
         spans
     };
 
@@ -193,9 +268,17 @@ pub fn draw(
             theme.faint
         };
         let mut spans = vec![Span::styled(fit(&format!(" {l:02}"), LABEL), number)];
+        if macros_width > 0 {
+            let line = macro_lines.get(l).copied().unwrap_or(FxLine::Empty);
+            spans.extend(macro_cell(line, cursor.macros && cursor.line == l));
+        }
         for (k, lane) in lanes.iter().enumerate() {
             let line = lane.get(l).copied().unwrap_or(FxLine::Empty);
-            spans.extend(cell(k, line, cursor.lane == k && cursor.line == l));
+            spans.extend(cell(
+                k,
+                line,
+                !cursor.macros && cursor.lane == k && cursor.line == l,
+            ));
         }
         lines.push(Line::from(spans));
     }
@@ -207,8 +290,9 @@ pub fn draw(
         " "
     };
     let mut spans = vec![Span::styled(fit(&format!("{more}out"), LABEL), theme.dim)];
+    spans.push(Span::raw(" ".repeat(macros_width)));
     for k in 0..lanes.len() {
-        let here = cursor.lane == k && cursor.line == outs;
+        let here = !cursor.macros && cursor.lane == k && cursor.line == outs;
         let out = chain.lanes()[k].out;
         spans.extend(bars::level(out, lane_width - 1, value_style(here), theme));
         spans.push(Span::raw(" "));
@@ -218,6 +302,13 @@ pub fn draw(
         lines.push(Line::raw(""));
         lines.push(Line::styled(
             " no effects yet: :fx-add adds one, and :fx-send B branches into a new lane",
+            theme.faint,
+        ));
+    }
+    if macros_width > 0 && macro_lines.is_empty() {
+        lines.push(Line::raw(""));
+        lines.push(Line::styled(
+            " no macros yet: :map NAME on a setting has macro NAME turn it",
             theme.faint,
         ));
     }

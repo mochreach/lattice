@@ -784,6 +784,33 @@ block (`Status::locks`, one atomic per lock: a present bit, the effect, the sett
 value's bits), and the mixer page shows those values while they hold, so its knobs move with the
 pattern.
 
+### Macros
+
+A macro (`lattice-core/src/macros.rs`) is a knob on a track, from 0 to 1, that turns up to
+`MAX_TARGETS` (8) of the track's settings, of its instrument or its effects; a track has up to
+`MAX_MACROS` (8). Each target has a depth from -1 to 1, the share of the setting's range it moves
+by with the macro all the way up, so one macro can open a filter while it closes another. A
+setting's value is its own (the base, the mixer's) moved by the sum of every macro's value times
+its depth, along the setting's curve and stopped at its ends: `info.at(info.fraction(base) +
+offset)`. The base stays the user's, so turning a setting by hand and turning a macro never fight,
+and taking the macro back to 0 puts the setting back exactly. They're the start of presets: a
+preset's face will show its macros as its controls.
+
+The engine applies them, not the editor, so a lock can hold a macro as it holds a setting: a
+`Lock` whose `fx` is `MACRO` (0xFE) and whose `param` is the macro's index. `TrackPlayer::settle`
+works out a setting's value from its base, any lock on it and the macros (with any locks on
+them), and every change that could move one (a macro's value, a lock starting or ending, a base,
+the chain or the instrument) settles the settings it touches, without allocating. Macro locks
+aren't effect locks: a chain changing keeps them, and `L` and recording lock a macro as they do
+a setting. The editor keeps targets with their effects as it does locks: they move along when an
+effect goes in before theirs, and go with their effect or, for the instrument's, with the
+instrument.
+
+On the fx page they're a column left of lane A: each macro, its value as a bar, then the
+settings it turns with their depths. `:map NAME [DEPTH]` on a setting adds the target (and the
+macro if it's new), or changes its depth; `:macro NAME` adds one on its own, and `:unmap NAME`
+lets a setting go. `:lock` finds a macro by name after the settings, or as `macro.NAME`.
+
 ### The mixer page
 
 `gm` swaps the grid for the mixer (`gp` goes back), opening on the pattern cursor's track. It's

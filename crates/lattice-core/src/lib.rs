@@ -10,6 +10,7 @@ pub mod file;
 pub mod fx;
 pub mod group;
 pub mod instrument;
+pub mod macros;
 pub mod song;
 pub mod transform;
 
@@ -26,6 +27,7 @@ pub use file::{FileError, from_ron, to_ron};
 pub use fx::{Bus, Buses, Fx, FxKind, MAX_EFFECTS};
 pub use group::{Group, MAX_GROUPS};
 pub use instrument::{DRUM_ROOT, InstKind, Instrument};
+pub use macros::{MACRO, MAX_MACROS, MAX_TARGETS, Macro, Target as MacroTarget};
 pub use song::{
     Grid, Lock, Locks, MAX_CHOKE, MAX_DB, MAX_LOCKS, MAX_PARAMS, MAX_STEPS, MAX_TRACKS, MIN_DB,
     Mix, Note, Song, Step, Track, db_to_gain,

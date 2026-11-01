@@ -608,6 +608,29 @@ const LESSONS: &[Lesson] = &[
         solution: "glgg:lock cutoff 2000<ret>",
     },
     Lesson {
+        title: "Macros",
+        text: "A macro is one knob that turns several settings at once. On the fx page, \
+               `:map bloom` on a setting has the macro `bloom` turn it, adding the macro if \
+               it's new (`:macro bloom` adds one on its own); `:map bloom -0.5` turns it the \
+               other way, by half its range when `bloom` is all the way up, and `:unmap bloom` \
+               lets it go. The macros are a column left of lane A: \
+               {note_up} {note_down} turn a macro, or under it, how far it turns each setting, \
+               and {delete} removes either. The settings keep their own values, and the macros \
+               move them from there. A macro locks as a setting does, by its name: `:lock \
+               bloom 1`.\n\n\
+               On the LEAD track, add a filter, map its cutoff to `bloom`, and turn `bloom` up.",
+        teaches: &[],
+        commands: &["macro", "map", "unmap"],
+        setup: nothing,
+        watch: never,
+        done: |e, _| {
+            let lead = track(e, "LEAD");
+            (lead.macros.iter())
+                .any(|m| m.name == "bloom" && m.value > 0.0 && !m.targets.is_empty())
+        },
+        solution: "gpglgf:fx-add filter<ret>jj:map bloom<ret>hk10<C-a>gp",
+    },
+    Lesson {
         title: "Chopping",
         text: "A chop track plays one sound file cut into pieces, a piece a step, drawn as a \
                waveform down the track, so you can rearrange the sound like notes. \

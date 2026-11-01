@@ -150,6 +150,15 @@ mod tests {
             instrument: Default::default(),
             effects: Default::default(),
             choke: 0,
+            macros: vec![crate::Macro {
+                name: "growl".into(),
+                value: 0.25,
+                targets: vec![crate::MacroTarget {
+                    fx: None,
+                    param: 1,
+                    depth: -0.5,
+                }],
+            }],
             rules: vec![
                 Rule {
                     transform: Transform::Transpose(5),
@@ -190,6 +199,7 @@ mod tests {
             instrument: Default::default(),
             effects: Default::default(),
             choke: 0,
+            macros: vec![],
             rules: vec![],
         };
         Song {
