@@ -92,6 +92,45 @@ impl Clock {
     }
 }
 
+/// How much a character of hand-drawn art weighs: its dots, if it's braille.
+fn weight(c: char) -> f32 {
+    match u32::from(c).checked_sub(0x2800) {
+        Some(dots) if dots < 0x100 => dots.count_ones() as f32,
+        _ if c.is_whitespace() => 0.0,
+        _ => 4.0,
+    }
+}
+
+/// Where `frames` are busiest, in characters across and rows down, all frames together.
+fn busiest(frames: &[&[String]]) -> (f32, f32) {
+    let (mut total, mut x, mut y) = (0.0, 0.0, 0.0);
+    for frame in frames {
+        for (row, line) in frame.iter().enumerate() {
+            for (column, c) in line.chars().enumerate() {
+                let w = weight(c);
+                total += w;
+                x += w * (column as f32 + 0.5);
+                y += w * (row as f32 + 0.5);
+            }
+        }
+    }
+    if total == 0.0 {
+        return (0.0, 0.0);
+    }
+    (x / total, y / total)
+}
+
+/// Where in `art` characters an area `room` wide starts: centred on the art where it's narrower,
+/// and else on `busiest`, but never past either end.
+fn offset(art: usize, room: u16, busiest: f32) -> i32 {
+    let (art, room) = (art as i32, i32::from(room));
+    if art <= room {
+        return (art - room) / 2;
+    }
+    let start = (busiest - room as f32 / 2.0).round() as i32;
+    start.clamp(0, art - room)
+}
+
 /// Draws `face`'s art into `area` of `buf`, as `feel` says, `time` seconds in.
 pub fn draw(buf: &mut Buffer, area: Rect, face: &Face, feel: &Feel, theme: &Theme, time: f32) {
     let look = Look::of(&face.title);
@@ -101,8 +140,8 @@ pub fn draw(buf: &mut Buffer, area: Rect, face: &Face, feel: &Feel, theme: &Them
     }
     let zoom = look.scale * (1.0 + ZOOM * feel.macros[0]);
     let flowed = time * (FLOW + HURRY * feel.macros[1]);
-    // Hand-drawn art's middle on the area's, cut down to it where it's bigger, every frame in
-    // the same place.
+    // Hand-drawn art's middle on the area's, every frame in the same place. Where it's bigger,
+    // it's cut down about where it's busiest, so a drawing's subject stays in.
     let frames: Vec<&[String]> = face.frames().collect();
     let art_width = (frames.iter().flat_map(|f| f.iter()))
         .map(|row| row.chars().count())
@@ -113,8 +152,9 @@ pub fn draw(buf: &mut Buffer, area: Rect, face: &Face, feel: &Feel, theme: &Them
     let rows: Vec<Vec<char>> = (frame.iter().flat_map(|f| f.iter()))
         .map(|row| row.chars().collect())
         .collect();
-    let left = (art_width as i32 - i32::from(area.width)) / 2;
-    let top = (art_height as i32 - i32::from(area.height)) / 2;
+    let (middle_x, middle_y) = busiest(&frames);
+    let left = offset(art_width, area.width, middle_x);
+    let top = offset(art_height, area.height, middle_y);
     let drawn = |cx: u16, cy: u16| {
         let row = usize::try_from(top + i32::from(cy)).ok()?;
         let column = usize::try_from(left + i32::from(cx)).ok()?;
@@ -264,9 +304,18 @@ mod tests {
         assert_eq!(row(&big, 1), " ab   cd ");
         assert_eq!(row(&big, 2), "   efg   ");
         assert_eq!(lit(&big), 11);
-        // Cut down to a smaller one about its middle.
+        // Cut down to a smaller one about its middle, where it's busiest.
         let small = draw_in(Rect::new(0, 0, 3, 1), Feel::default());
         assert_eq!(row(&small, 0), "efg");
+        // Or off to one side, where it's busier there.
+        let lopsided = Face {
+            art: vec!["⠁   ⣿⣿⣿⣿".into()],
+            ..Face::new("x")
+        };
+        let narrow = Rect::new(0, 0, 4, 1);
+        let mut buf = Buffer::empty(narrow);
+        draw(&mut buf, narrow, &lopsided, &Feel::default(), &theme, 0.0);
+        assert_eq!(row(&buf, 0), "⣿⣿⣿⣿");
         // Playing, it lights up from the middle, out to its edges.
         let loud = Feel {
             level: 1.0,
