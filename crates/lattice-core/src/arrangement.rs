@@ -60,12 +60,47 @@ pub struct Pattern {
     pub lanes: Vec<Lane>,
 }
 
-/// One entry in the arrangement: a pattern, played a number of times running.
+/// One entry in the arrangement: a pattern, played a number of times running, with some of its
+/// tracks muted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
     pub pattern: usize,
     #[serde(default = "one", skip_serializing_if = "is_one")]
     pub repeats: u32,
+    /// The tracks muted while it plays, a bit each, the first track the lowest.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub mutes: u32,
+}
+
+impl Entry {
+    /// Whether track `index` is muted while the entry plays.
+    pub fn muted(&self, index: usize) -> bool {
+        self.mutes >> index & 1 == 1
+    }
+
+    /// Mutes track `index` while the entry plays, or unmutes it.
+    pub fn set_muted(&mut self, index: usize, muted: bool) {
+        self.mutes = self.mutes & !(1 << index) | u32::from(muted) << index;
+    }
+
+    /// A track went in at `index`, unmuted: the tracks after it move up a bit.
+    fn insert_track(&mut self, index: usize) {
+        let below = self.mutes & ((1 << index) - 1);
+        self.mutes = below | (self.mutes >> index) << (index + 1);
+    }
+
+    /// The track at `index` went: the tracks after it move down a bit. Returns whether it was
+    /// muted.
+    fn remove_track(&mut self, index: usize) -> bool {
+        let muted = self.muted(index);
+        let below = self.mutes & ((1 << index) - 1);
+        self.mutes = below | (self.mutes >> (index + 1)) << index;
+        muted
+    }
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 fn one() -> u32 {
@@ -98,6 +133,7 @@ impl Default for Arrangement {
             entries: vec![Entry {
                 pattern: 0,
                 repeats: 1,
+                mutes: 0,
             }],
         }
     }
@@ -193,8 +229,11 @@ impl Arrangement {
     }
 
     /// A track was inserted at `index`, `len` steps long: the other patterns get an empty lane
-    /// for it.
+    /// for it, and it plays in every entry.
     pub fn insert_track(&mut self, index: usize, len: usize) {
+        for entry in &mut self.entries {
+            entry.insert_track(index);
+        }
         for pattern in self.others_mut() {
             let lane = Lane {
                 steps: vec![Step::default(); len],
@@ -204,15 +243,23 @@ impl Arrangement {
         }
     }
 
-    /// The track at `index` was removed: so are its lanes.
+    /// The track at `index` was removed: so are its lanes, and its mutes.
     pub fn remove_track(&mut self, index: usize) {
+        for entry in &mut self.entries {
+            entry.remove_track(index);
+        }
         for pattern in self.others_mut() {
             pattern.lanes.remove(index);
         }
     }
 
-    /// The track at `from` moved to `to`: so do its lanes.
+    /// The track at `from` moved to `to`: so do its lanes and its mutes.
     pub fn move_track(&mut self, from: usize, to: usize) {
+        for entry in &mut self.entries {
+            let muted = entry.remove_track(from);
+            entry.insert_track(to);
+            entry.set_muted(to, muted);
+        }
         for pattern in self.others_mut() {
             let lane = pattern.lanes.remove(from);
             pattern.lanes.insert(to, lane);
@@ -250,6 +297,9 @@ impl Arrangement {
             }
             if !(1..=MAX_REPEATS).contains(&entry.repeats) {
                 return Err(format!("entries repeat 1 to {MAX_REPEATS} times"));
+            }
+            if entry.mutes.checked_shr(tracks as u32).unwrap_or(0) != 0 {
+                return Err("an entry mutes a track that doesn't exist".into());
             }
         }
         for (i, pattern) in self.patterns.iter().enumerate() {
@@ -351,6 +401,28 @@ mod tests {
     }
 
     #[test]
+    fn entry_mutes_follow_their_tracks() {
+        let mut a = Arrangement::default();
+        a.entries[0].set_muted(1, true);
+        a.entries[0].set_muted(3, true);
+        assert_eq!(a.entries[0].mutes, 0b1010);
+        assert!(a.check(4).is_ok());
+        assert!(a.check(3).is_err(), "a mute past the last track");
+
+        // A track in at the front moves them up; taking it out moves them back.
+        a.insert_track(0, 16);
+        assert_eq!(a.entries[0].mutes, 0b10100);
+        a.remove_track(0);
+        assert_eq!(a.entries[0].mutes, 0b1010);
+
+        // Moving a muted track takes its mute along.
+        a.move_track(3, 0);
+        assert_eq!(a.entries[0].mutes, 0b0101);
+        a.entries[0].set_muted(0, false);
+        assert_eq!(a.entries[0].mutes, 0b0100);
+    }
+
+    #[test]
     fn selecting_a_pattern_swaps_its_lanes_into_the_tracks() {
         let mut g = grid(&[16, 8]);
         g.tracks[0].steps[0] = Step::note(60);
@@ -437,14 +509,17 @@ mod tests {
             Entry {
                 pattern: 1,
                 repeats: 2,
+                mutes: 0,
             },
             Entry {
                 pattern: 0,
                 repeats: 1,
+                mutes: 0,
             },
             Entry {
                 pattern: 1,
                 repeats: 1,
+                mutes: 0,
             },
         ];
         a.remove(1);
@@ -452,7 +527,8 @@ mod tests {
             a.entries,
             [Entry {
                 pattern: 0,
-                repeats: 1
+                repeats: 1,
+                mutes: 0
             }]
         );
         assert_eq!(pattern_name(27), "B2");

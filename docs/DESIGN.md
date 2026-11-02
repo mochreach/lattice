@@ -1007,7 +1007,7 @@ much like the pattern does:
         current: 0,
         entries: [
             (pattern: 0, repeats: 4),
-            (pattern: 1),
+            (pattern: 1, mutes: 1),
         ],
     ),
 )
@@ -1041,6 +1041,14 @@ their last step. It's apart from the mixer's mute, which is for the whole song a
 strip out. So a part can sit out a section, with its notes kept to bring back: `tM` or
 `:pattern-mute` toggles it on the selected tracks, and the header shows `m` where the mixer's mute
 shows `M`. It swaps in and out with the steps and rules, at a change of pattern as well.
+
+An entry can mute tracks too (`Entry::mutes`, a bit per track), for a part to sit out one entry
+of a pattern played in several. The engine keeps the song's mutes apart from the lanes', as two
+masks, `now` and `next` (`Command::SetMutes`), and moves `next` into `now` at each change of
+pattern, looping or not, so a mute starts on the entry's first step even when the pattern doesn't
+change. The `Sequencer` sends them from `Editor::song_mutes` whenever they change, and playing
+sends them just before `Play`, so the first entry's are in from the start. The masks follow the
+tracks when one's added, removed or moved. `:export` folds them into each part's lanes instead.
 
 The pattern being edited keeps its lanes in the grid's tracks, so everything that works on tracks
 works on it unchanged; `Arrangement::select` swaps lanes in and out. Adding, removing and moving a

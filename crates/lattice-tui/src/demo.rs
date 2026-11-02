@@ -683,7 +683,11 @@ pub fn song() -> Song {
             lanes,
         });
     }
-    let entry = |pattern, repeats| Entry { pattern, repeats };
+    let entry = |pattern, repeats| Entry {
+        pattern,
+        repeats,
+        mutes: 0,
+    };
     Song {
         name: "demo".into(),
         bpm: BPM,

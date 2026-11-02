@@ -365,7 +365,8 @@ for nothing, `─` where it's muted). Under it are the patterns there are. `j` `
 keep the cursor's in view), `^a` `^x` change the entry's pattern, `+` `-` how many times it
 repeats, `o` `O` add an entry after or before, `d` removes one (`y`
 copies, `p` `P` paste after and before, so `d` then `p` moves an entry), and `ret` goes to the
-entry's pattern to edit it. `space` plays the song from the cursor's entry to the end, following
+entry's pattern to edit it. On a track's column, `tM` mutes the track in the cursor's entry
+alone, so it can sit out a section without a pattern of its own; its bars there show `─`. `space` plays the song from the cursor's entry to the end, following
 along in the header (`song 2/3`) and on the page, where the playhead moves along the strip and
 down the bars;
 `:export` renders it. Anywhere else, `^space` plays the song from the entry playing the pattern

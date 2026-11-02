@@ -484,9 +484,14 @@ fn apply(
         },
         Effect::TogglePlay if handle.status().playing() => Command::Stop,
         // A count-in only when recording, to play along from the first beat.
-        Effect::TogglePlay => Command::Play {
-            count_in: if editor.record { editor.count_in } else { 0 },
-        },
+        Effect::TogglePlay => {
+            // The song's mutes from the first step.
+            let (now, next) = editor.song_mutes();
+            handle.send(Command::SetMutes { now, next });
+            Command::Play {
+                count_in: if editor.record { editor.count_in } else { 0 },
+            }
+        }
         Effect::Bpm(bpm) => Command::SetBpm(bpm),
         Effect::Click(on) => Command::SetClick(on),
         Effect::Preview { track, pitch } => Command::Preview {

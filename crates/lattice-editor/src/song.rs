@@ -120,6 +120,7 @@ impl Editor {
                 return Some(self.go_to_pattern(pattern));
             }
             Action::TogglePlay => return Some(self.play_song()),
+            Action::TogglePatternMute => self.mute_in_entry(entry),
             Action::Undo
             | Action::Redo
             | Action::CommandLine
@@ -168,6 +169,25 @@ impl Editor {
         effects
     }
 
+    /// Mutes the cursor's track in its entry, or unmutes it.
+    fn mute_in_entry(&mut self, at: usize) {
+        let Some(track) = self.song_column().checked_sub(1) else {
+            self.message = Some("on a track, this mutes it in the entry".into());
+            return;
+        };
+        let Some(entry) = self.arrangement.entries.get(at) else {
+            return;
+        };
+        let muted = !entry.muted(track);
+        self.checkpoint();
+        self.arrangement.entries[at].set_muted(track, muted);
+        let name = &self.grid.tracks[track].name;
+        self.message = Some(match muted {
+            true => format!("{name} muted in this entry"),
+            false => format!("{name} plays in this entry"),
+        });
+    }
+
     /// Plays another pattern in the cursor's entry: the next or previous, wrapping round.
     fn entry_pattern(&mut self, at: usize, by: isize) {
         let patterns = self.arrangement.patterns.len() as isize;
@@ -211,6 +231,7 @@ impl Editor {
                 .get(cursor)
                 .map_or(self.arrangement.current, |e| e.pattern),
             repeats: 1,
+            mutes: 0,
         });
         let at = match place {
             Place::After if !entries.is_empty() => cursor + 1,
@@ -372,6 +393,26 @@ mod tests {
         keys(&mut e, "ggjj--");
         assert_eq!(e.entry_bars(), [1, 1]);
         assert_eq!((e.song_bar(), e.song_cursor()), (0, 0));
+    }
+
+    #[test]
+    fn a_track_mutes_in_an_entry() {
+        let mut e = editor();
+        keys(&mut e, "o");
+        // On the entries' column there's no track to mute.
+        keys(&mut e, "tM");
+        assert_eq!(e.arrangement.entries[1].mutes, 0);
+        keys(&mut e, "ltM");
+        assert!(e.arrangement.entries[1].muted(0));
+        assert!(!e.arrangement.entries[0].muted(0));
+
+        // Playing the song, the engine's told the entry playing's mutes and the next's.
+        keys(&mut e, "k ");
+        assert_eq!(e.song_mutes(), (0, 1));
+        e.stopped();
+        assert_eq!(e.song_mutes(), (0, 0));
+        keys(&mut e, "u");
+        assert!(!e.arrangement.entries[1].muted(0));
     }
 
     #[test]

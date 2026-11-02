@@ -63,11 +63,15 @@ impl Editor {
             }
             // With nothing arranged, this pattern once round.
             _ if a.entries.is_empty() => vec![part(a.current)],
-            _ => a
-                .entries
-                .iter()
-                .flat_map(|e| std::iter::repeat_n(e.pattern, e.repeats as usize))
-                .map(part)
+            // Each entry's tracks muted as the song mutes them.
+            _ => (a.entries.iter())
+                .flat_map(|e| {
+                    let mut part = part(e.pattern);
+                    for (t, lane) in part.lanes.iter_mut().enumerate() {
+                        lane.mute |= e.muted(t);
+                    }
+                    std::iter::repeat_n(part, e.repeats as usize)
+                })
                 .collect(),
         };
         Ok(vec![Effect::Export(Box::new(Export {
@@ -255,10 +259,12 @@ mod tests {
             lattice_core::Entry {
                 pattern: 0,
                 repeats: 1,
+                mutes: 0,
             },
             lattice_core::Entry {
                 pattern: 1,
                 repeats: 2,
+                mutes: 0,
             },
         ];
         let x = export(run(&mut e, "export out"));

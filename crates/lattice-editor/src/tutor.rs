@@ -800,6 +800,21 @@ const LESSONS: &[Lesson] = &[
         solution: "gso<ret>",
     },
     Lesson {
+        title: "Sitting out an entry",
+        text: "A track can sit out one entry and play in the rest. On the song page, on a \
+               track's column, {toggle_pattern_mute} mutes it in the cursor's entry alone: its \
+               bars there show a line across, and the song plays them silent.\n\nMute a track \
+               in an entry.",
+        teaches: &[],
+        commands: &[],
+        setup: nothing,
+        watch: never,
+        done: |e, t| {
+            (e.arrangement.entries.iter().zip(&t.entries)).any(|(now, was)| now.mutes != was.mutes)
+        },
+        solution: "gsltM",
+    },
+    Lesson {
         title: "Playing the song",
         text: "On the song page, {toggle_play} plays the song from the cursor's entry. On the \
                pattern page, {play_song} plays it from the pattern you're on, and the page \

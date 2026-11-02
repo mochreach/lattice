@@ -169,9 +169,11 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
 
             // How busy each track is in this bar.
             for t in shown_tracks.clone() {
-                let busy = lanes.get(t).map_or(String::new(), |lane| {
-                    busy_bar(lane, in_pattern as u64 * bar, bar, cells)
-                });
+                let busy = match lanes.get(t) {
+                    _ if entry.muted(t) => "─".repeat(cells),
+                    Some(lane) => busy_bar(lane, in_pattern as u64 * bar, bar, cells),
+                    None => String::new(),
+                };
                 let selected = here && column == t + 1;
                 for c in busy.chars() {
                     let mut style = match c {

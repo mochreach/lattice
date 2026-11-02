@@ -250,10 +250,12 @@ mod tests {
                     Entry {
                         pattern: 0,
                         repeats: 2,
+                        mutes: 0,
                     },
                     Entry {
                         pattern: 1,
                         repeats: 1,
+                        mutes: 0,
                     },
                 ],
             },

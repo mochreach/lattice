@@ -71,6 +71,12 @@ pub enum Command {
     },
     /// How many steps the playing pattern lasts before the next starts; 0 for for ever.
     SetLength(u64),
+    /// The tracks the song mutes, a bit each: `now`, and `next`, from when the playing pattern
+    /// ends.
+    SetMutes {
+        now: u32,
+        next: u32,
+    },
     /// What happens when the playing pattern ends. Kept while stopped, for the next play.
     Cue(Cue),
     /// Insert a track and its instrument at `index` (or at the end, if past it), moving later
@@ -851,6 +857,9 @@ pub struct Engine {
     pattern_len: u64,
     pattern_step: u64,
     cue: Cue,
+    /// The tracks the song mutes now, and once the playing pattern ends, a bit each.
+    mutes: u32,
+    next_mutes: u32,
     /// Pattern changes since play began, as [`Status::swaps`].
     swaps: u64,
     /// Boxed, so players arrive and leave without being moved out of their boxes, which would
@@ -935,6 +944,8 @@ impl Engine {
             step_index: 0,
             count_in: 0,
             pattern_len: 0,
+            mutes: 0,
+            next_mutes: 0,
             pattern_step: 0,
             cue: Cue::Loop,
             swaps: 0,
@@ -1062,6 +1073,7 @@ impl Engine {
                     self.discard(Garbage::Track(track));
                 }
                 Command::SetLength(steps) => self.pattern_len = steps,
+                Command::SetMutes { now, next } => (self.mutes, self.next_mutes) = (now, next),
                 Command::Cue(cue) => {
                     if let Cue::Pattern(old) = std::mem::replace(&mut self.cue, cue) {
                         self.discard(Garbage::Section(old));
@@ -1624,6 +1636,7 @@ impl Engine {
         // When this step's played, and how long until what's played along with it reaches the
         // engine.
         let (at, latency) = (self.frames + u64::from(offset), self.latency());
+        let mutes = self.mutes;
         for (index, t) in self.tracks.iter_mut().enumerate() {
             // Note-offs first, so a voice can be reused by this step's note.
             t.held.retain_mut(|h| {
@@ -1643,8 +1656,8 @@ impl Engine {
             }
             t.position = u64::from(t.pass) << 32 | t.playhead as u64;
             self.status.set_position(index, t.position);
-            // Muted in this pattern, its steps go by unplayed.
-            let step = match t.track.pattern_mute {
+            // Muted in this pattern or by the song, its steps go by unplayed.
+            let step = match t.track.pattern_mute || mutes >> index & 1 == 1 {
                 true => Step::default(),
                 false => t.steps[t.playhead],
             };
@@ -1684,6 +1697,7 @@ impl Engine {
 
     /// The playing pattern has ended: carry out the cue, and start every track from the top.
     fn next_pattern(&mut self) {
+        self.mutes = self.next_mutes;
         match std::mem::take(&mut self.cue) {
             Cue::Stop => {
                 self.stop();
@@ -1968,6 +1982,29 @@ mod tests {
         let (left, _) = render_stereo(&mut engine, 750);
         assert_eq!(onsets(&left), [500, 625]);
         assert!(!engine.tracks[0].track.pattern_mute);
+    }
+
+    #[test]
+    fn a_track_the_song_mutes_plays_nothing_until_it_unmutes() {
+        let grid = Grid {
+            name: "mutes".into(),
+            steps_per_beat: 4,
+            tracks: vec![Track {
+                steps: vec![Step::note(60); 2],
+                rules: vec![],
+                ..lead()
+            }],
+            groups: vec![],
+        };
+        let (mut engine, mut handle) = Engine::new(1_000.0, 120.0, &grid, vec![Box::new(Ticks)]);
+        engine.click_enabled = false;
+        // Muted for the first time round four steps, and playing as it loops.
+        handle.send(Command::SetLength(4));
+        handle.send(Command::SetMutes { now: 1, next: 0 });
+        handle.send(Command::Cue(Cue::Loop));
+        engine.play();
+        let (left, _) = render_stereo(&mut engine, 750);
+        assert_eq!(onsets(&left), [500, 625]);
     }
 
     #[test]

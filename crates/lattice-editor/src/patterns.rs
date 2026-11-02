@@ -112,6 +112,7 @@ impl Editor {
             self.arrangement.entries.push(Entry {
                 pattern: index,
                 repeats: 1,
+                mutes: 0,
             });
         }
         Ok(self.go_to_pattern(index))
@@ -209,6 +210,19 @@ impl Editor {
         } else {
             Next::Pattern(pattern)
         }
+    }
+
+    /// The tracks the song mutes, a bit each: in the entry playing, and in the one after.
+    pub fn song_mutes(&self) -> (u32, u32) {
+        let Some(position) = self.song_position else {
+            return (0, 0);
+        };
+        let mutes =
+            |(entry, _): (usize, u32)| (self.arrangement.entries.get(entry)).map_or(0, |e| e.mutes);
+        (
+            mutes(position),
+            self.next_position(position).map_or(0, mutes),
+        )
     }
 
     /// The playing pattern has ended and the next begun: the engine changed to `changed_to`,
@@ -384,10 +398,12 @@ mod tests {
             Entry {
                 pattern: 1,
                 repeats: 2,
+                mutes: 0,
             },
             Entry {
                 pattern: 0,
                 repeats: 1,
+                mutes: 0,
             },
         ];
         assert_eq!(e.start_song(0), vec![]);

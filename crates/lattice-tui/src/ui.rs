@@ -1137,7 +1137,7 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             theme.dim,
         ),
         Mode::Normal if editor.page == Page::Song => (
-            "jk bars · w b entries · hl tracks · C-a C-x pattern · + - repeats · o add · d delete · ret edit · space play".into(),
+            "jk bars · w b entries · hl tracks · C-a C-x pattern · + - repeats · tM mute in entry · o add · d delete · ret edit · space play".into(),
             theme.dim,
         ),
         Mode::Normal => {

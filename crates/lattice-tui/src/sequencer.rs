@@ -14,6 +14,8 @@ pub struct Sequencer {
     cued: Option<(Next, Vec<Lane>, u64)>,
     /// The pattern length sent.
     length: Option<u64>,
+    /// The song's mutes sent, now and next.
+    mutes: Option<(u32, u32)>,
     playing: bool,
 }
 
@@ -33,6 +35,7 @@ impl Sequencer {
             self.boundaries = 0;
             self.swaps = 0;
             self.cued = None;
+            self.mutes = None;
         }
         self.playing = playing;
         let (boundaries, swaps) = (status.boundaries(), status.swaps());
@@ -50,6 +53,13 @@ impl Sequencer {
         let length = editor.pattern_steps();
         if self.length != Some(length) && handle.send(Command::SetLength(length)) {
             self.length = Some(length);
+        }
+        let mutes = editor.song_mutes();
+        if self.mutes != Some(mutes) {
+            let (now, next) = mutes;
+            if handle.send(Command::SetMutes { now, next }) {
+                self.mutes = Some(mutes);
+            }
         }
         let next = editor.next();
         let (lanes, steps) = match next {
