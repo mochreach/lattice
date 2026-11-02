@@ -36,9 +36,9 @@
             (
                 name: "arp",
                 length: 32,
-                instrument: (kind: Switched, params: {"stack": 1.0, "spread": 0.2, "width": 0.6, "grit": 0.3, "ladder": 900.0, "scream": 0.75, "contour": 0.55, "snap": 0.12, "gain": 0.35}),
+                instrument: (kind: Switched, params: {"stack": 1.0, "spread": 0.2, "width": 0.6, "grit": 0.3, "ladder": 1600.0, "scream": 0.6, "contour": 0.55, "snap": 0.3, "gain": 0.6}),
                 effects: [(kind: Delay, params: {"time": 0.45, "feedback": 0.45, "tone": 4000.0, "mix": 0.3})],
-                mix: (level: -9.0, pan: 0.6, send: -12.0),
+                mix: (level: -3.0, pan: 0.6, send: -12.0),
             ),
             (
                 name: "bass",
@@ -97,7 +97,7 @@
             ),
         ],
         groups: [
-            (name: "right hand", first: 0, len: 4, bus: (effects: [(kind: Comp, params: {"threshold": -18.0, "ratio": 2.5, "makeup": 2.0})])),
+            (name: "right hand", first: 0, len: 3, bus: (effects: [(kind: Comp, params: {"threshold": -18.0, "ratio": 2.5, "makeup": 2.0})])),
             (name: "left hand", first: 4, len: 4, bus: (effects: [(kind: Drive, params: {"drive": 0.25, "tone": 5000.0, "mix": 0.4}), (kind: Comp, params: {"threshold": -16.0, "ratio": 2.5, "makeup": 2.0})])),
             (name: "drum machine", first: 8, len: 4, bus: (effects: [(kind: Drive, params: {"drive": 0.3, "tone": 8000.0, "mix": 0.5}), (kind: Comp, params: {"threshold": -14.0, "ratio": 3.0, "attack": 0.005, "makeup": 2.0})])),
         ],

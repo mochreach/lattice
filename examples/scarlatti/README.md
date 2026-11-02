@@ -45,8 +45,10 @@ The effects, on `gf`:
 - **The inner voices** go through an `ensemble`, a string machine's chorus, so each sounds like a
   section, and then a `phaser`, slowly sweeping notches through them, the alto's eight stages
   against the tenor's four.
-- **Groups.** The right hand is compressed together on its bus; the left hand and the drum
-  machine are driven and compressed on theirs, so the bass, pedal and inner voices growl as one.
+- **Groups.** The right hand (Krell, the lead and the echo) is compressed together on its bus;
+  the left hand and the drum machine are driven and compressed on theirs, so the bass, pedal and
+  inner voices growl as one. The arp is in neither, going straight to the master, so Krell's
+  notes don't push it down.
 - **The hall.** Every track sends to a vast reverb. The master drives the whole a little, warmly,
   and compresses it.
 
