@@ -795,7 +795,7 @@ impl Editor {
                     title: "field".into(),
                     items: [("n".into(), "note".into()), ("v".into(), "velocity".into())]
                         .into_iter()
-                        .chain(columns.into_iter().map(|c| (c.key.to_string(), c.name)))
+                        .chain(columns.into_iter().map(|c| (c.key.to_string(), c.full)))
                         .collect(),
                 })
             }

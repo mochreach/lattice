@@ -1384,6 +1384,7 @@ mod tests {
         let label = ColumnLabel {
             column,
             name: "cutoff".into(),
+            full: "cutoff".into(),
             key: 'c',
         };
         let track = Track::default();

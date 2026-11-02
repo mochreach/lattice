@@ -127,8 +127,12 @@ pub(crate) fn column_info(track: &Track, column: LockColumn) -> Option<&'static 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColumnLabel {
     pub column: LockColumn,
-    /// The setting's own name, without its effect's: `cutoff`, `mix`, a macro's.
+    /// The setting's own name, without its effect's: `cutoff`, `mix`, a macro's. When another
+    /// column's setting has the same name, an effect's goes after its number, as `:lock 2.cutoff`
+    /// finds it: `2cutoff`.
     pub name: String,
+    /// What `:lock` calls it: `cutoff`, `filter.cutoff`.
+    pub full: String,
     /// The key that goes to it after `f`: a letter of its name no other field has.
     pub key: char,
 }
@@ -604,21 +608,39 @@ impl Editor {
         let Some(track) = self.grid.tracks.get(t) else {
             return vec![];
         };
+        let columns = track.lock_columns();
+        let settings: Vec<_> = (columns.iter())
+            .map(|c| setting(track, c.fx, c.param))
+            .collect();
+        let own = |s: &Option<Setting>| match s {
+            Some(s) if s.fx == Some(MACRO) => s.name(track),
+            Some(s) => s.info.name.to_string(),
+            None => "?".into(),
+        };
+        let names: Vec<String> = settings.iter().map(own).collect();
         let mut taken = vec!['n', 'v', 'g', 'G'];
-        (track.lock_columns().into_iter().enumerate())
-            .map(|(i, column)| {
-                let name = match setting(track, column.fx, column.param) {
-                    Some(s) if s.fx == Some(MACRO) => s.name(track),
-                    Some(s) => s.info.name.to_string(),
-                    None => "?".into(),
+        (columns.into_iter().zip(&settings).zip(&names).enumerate())
+            .map(|(i, ((column, setting), own))| {
+                let clashes = names.iter().filter(|n| *n == own).count() > 1;
+                let name = match column.fx {
+                    Some(fx) if clashes && fx != MACRO => format!("{}{own}", fx + 1),
+                    _ => own.clone(),
                 };
+                let full = setting
+                    .as_ref()
+                    .map_or_else(|| "?".into(), |s| s.name(track));
                 let key = (name.chars())
                     .filter(char::is_ascii_alphabetic)
                     .find(|c| !taken.contains(c))
                     .or_else(|| char::from_digit(i as u32 + 1, 10))
                     .unwrap_or('?');
                 taken.push(key);
-                ColumnLabel { column, name, key }
+                ColumnLabel {
+                    column,
+                    name,
+                    full,
+                    key,
+                }
             })
             .collect()
     }
@@ -915,6 +937,32 @@ mod tests {
             "acid has its 4 lock columns already: :unlock one along the whole track"
         );
         assert_eq!(locks(&e, 0).len(), 4, "and nothing changed");
+    }
+
+    #[test]
+    fn columns_of_settings_with_the_same_name_say_whose() {
+        let mut e = editor();
+        e.grid.tracks[0].effects.push(Fx::new(FxKind::Delay));
+        for line in [
+            "lock cutoff",
+            "lock filter.cutoff",
+            "lock 1.mix",
+            "lock 3.mix",
+        ] {
+            run(&mut e, line).unwrap();
+        }
+        let labels: Vec<(String, String, char)> = (e.lock_columns(0).into_iter())
+            .map(|l| (l.name, l.full, l.key))
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                ("cutoff".into(), "cutoff".into(), 'c'),
+                ("2cutoff".into(), "filter.cutoff".into(), 'u'),
+                ("1mix".into(), "delay.mix".into(), 'm'),
+                ("3mix".into(), "delay.mix".into(), 'i'),
+            ]
+        );
     }
 
     #[test]

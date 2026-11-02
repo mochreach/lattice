@@ -351,7 +351,8 @@ can lock up to four of its instrument's or effects' settings with `:lock`, each 
 own. A lock holds from its step until that setting's next lock; `--` puts the setting back to the
 mixer's, and `~` slides to a value, arriving on its step. The track under the cursor opens out to
 show its columns beside its notes and their velocity: each value from 00 to 99 across the
-setting's range, and `╵` where one carries on. Other tracks mark a step with locks `◆`, and `te`
+setting's range, and `╵` where one carries on. Where two columns' settings share a name, an
+effect's column starts with the effect's number, as `:lock 2.cutoff` would (`2cu`). Other tracks mark a step with locks `◆`, and `te`
 keeps tracks open. In a field, `i` and two digits set its value on each cursor's step and move
 on, `~` first slides, and `-` puts the setting back; `^a` `^x` nudge the values the selections
 reach, `d` `y` `p` work on the field alone, and `&` fills evenly between a selection's ends. While

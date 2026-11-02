@@ -806,7 +806,9 @@ The track under the cursor opens out on the grid, as do the tracks `te` keeps op
 value shows from 00 to 99 across the setting's range on its own curve (`lock_text`), `~` before
 it for a slide, `--` for a reset, and `╵` on the rows it carries on over, counting round from the
 track's last lock, as the loop plays it. A header row names the fields, underlining the letter
-`f` will go to each by (`Editor::lock_columns`). Closed tracks mark a step with locks `◆` at its
+`f` will go to each by (`Editor::lock_columns`). Where two columns' settings share a name, an
+instrument's cutoff and a filter's say, an effect's column puts its number first, as `:lock
+2.cutoff` does (`2cu`), and `f`'s infobox gives each its full name. Closed tracks mark a step with locks `◆` at its
 end. The status line lists the cursor's locks in place of the key hints.
 
 The cursor has a field as well as a step (`StepField`: the note, the velocity, or a lock column
