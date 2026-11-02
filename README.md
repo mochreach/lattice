@@ -7,7 +7,8 @@ the pattern each time it loops.
 This is a restart. The first attempt, an iced GUI, lives on at
 [mochreach/lattice-legacy](https://github.com/mochreach/lattice-legacy) (archived).
 What we learned from it, and the plan for this version, are in
-[docs/DESIGN.md](docs/DESIGN.md).
+[docs/DESIGN.md](docs/DESIGN.md), and how to work on the code, such as never panicking,
+in [AGENTS.md](AGENTS.md).
 
 ## Layout
 
