@@ -436,6 +436,10 @@ pages and playing, what the status line said, any trouble the audio had keeping 
 end, how close it came), and a crash's backtrace. If the audio keeps falling
 behind, or a device fails, the status line says so too.
 
+Lattice shouldn't crash, but if it does, it saves the song first if it had unsaved changes: beside
+its file as `song.rescue.lattice`, or as `rescue.lattice` beside the log if it was never saved, and
+says where once the terminal's back. The song's own file is left as it was.
+
 Scripts and agents can drive a running Lattice with `lattice ctl`, through a socket only you can
 open (`$XDG_RUNTIME_DIR/lattice/<pid>.sock`):
 

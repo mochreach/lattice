@@ -494,7 +494,9 @@ panic hook writes the backtrace to the log, since the terminal UI owns the scree
 `unwrap`, `expect`, `panic!`, `unreachable!`, `todo!` and `unimplemented!`. What can fail returns
 a `Result` or an `Option` and is handled: `?` to pass an error up to the status line, `let … else`
 to give up quietly, or a sensible default where one exists. Tests may unwrap, as that's how they
-fail.
+fail. Should something panic regardless (indexing still can), `main` catches it once the UI thread
+unwinds, puts the terminal back and saves the song, if it had changes, as `.rescue.lattice`
+beside it, leaving the original alone in case the song was half changed.
 
 **Driving it from outside.** Each Lattice listens on a Unix socket of its own,
 `$XDG_RUNTIME_DIR/lattice/<pid>.sock` (mode 600, in a 700 folder), so a script or an agent can

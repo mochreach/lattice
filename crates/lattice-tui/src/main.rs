@@ -38,10 +38,11 @@ mod tracks;
 mod ui;
 mod wave;
 
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use lattice_editor::{Editor, Effect, Key, Mode, PromptKind, Transport};
 use lattice_engine::{Command, Handle, Status};
 use ratatui::DefaultTerminal;
@@ -154,22 +155,26 @@ fn main() -> Result<()> {
     editor.releases = enhanced;
     let splash = (!args.iter().any(|a| a == "--no-splash")).then(|| Splash::new(Instant::now()));
     let server = ctl::Server::start(args.iter().any(|a| a == "--allow-agent-save"));
-    let result = run(
-        &mut terminal,
-        &mut editor,
-        &mut tracks,
-        &mut mixer,
-        &mut exports,
-        &mut machine,
-        &mut handle,
-        &theme,
-        splash,
-        server.as_ref(),
-    );
+    // Lattice shouldn't panic, but if it does, the song's rescued once the terminal's back.
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        run(
+            &mut terminal,
+            &mut editor,
+            &mut tracks,
+            &mut mixer,
+            &mut exports,
+            &mut machine,
+            &mut handle,
+            &theme,
+            splash,
+            server.as_ref(),
+        )
+    }));
     if enhanced {
         let _ = execute!(std::io::stdout(), PopKeyboardEnhancementFlags);
     }
     ratatui::restore();
+    let result = result.unwrap_or_else(|_| Err(rescue(&editor)));
     if let Err(e) = history::save(&editor.history) {
         log!("couldn't keep the command history: {e:#}");
     }
@@ -178,6 +183,41 @@ fn main() -> Result<()> {
         Err(e) => log!("stopped by an error: {e:#}"),
     }
     result
+}
+
+/// After a panic: saves the song, if it had changes, beside its file as `.rescue.lattice`, or in
+/// the log's folder if it's never been saved, and says where. The original's left alone, as the
+/// song may be half changed.
+fn rescue(editor: &Editor) -> anyhow::Error {
+    let log = log::path().map_or_else(|| "the log".into(), |p| p.display().to_string());
+    if !editor.modified() {
+        return anyhow!(
+            "Lattice crashed, sorry, with nothing unsaved. What went wrong is in {log}."
+        );
+    }
+    let path = match &editor.path {
+        Some(path) => Some(path.with_extension("rescue.lattice")),
+        None => log::path().map(|p| p.with_file_name("rescue.lattice")),
+    };
+    // The editor may be what panicked, so making the song might too.
+    let saved = path.and_then(|path| {
+        catch_unwind(AssertUnwindSafe(|| file::write(&path, &editor.song())))
+            .ok()?
+            .ok()
+            .map(|()| path)
+    });
+    match saved {
+        Some(path) => {
+            log!("rescued the song to {}", path.display());
+            anyhow!(
+                "Lattice crashed, sorry. Your song, as it was, is saved in {}; what went wrong is in {log}.",
+                path.display()
+            )
+        }
+        None => anyhow!(
+            "Lattice crashed, sorry, and couldn't save the song. What went wrong is in {log}."
+        ),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
