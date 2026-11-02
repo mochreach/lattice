@@ -334,11 +334,19 @@ impl Editor {
             return;
         };
         let selected = self.song_entries();
-        let muted = self.arrangement.entries[selected.clone()]
-            .iter()
-            .all(|e| tracks.clone().all(|t| e.muted(t)));
+        let Some(entries) = self.arrangement.entries.get(selected.clone()) else {
+            self.message = Some("the song's empty: o adds an entry".into());
+            return;
+        };
+        let muted = entries.iter().all(|e| tracks.clone().all(|t| e.muted(t)));
         self.checkpoint();
-        for entry in &mut self.arrangement.entries[selected] {
+        for entry in self
+            .arrangement
+            .entries
+            .get_mut(selected)
+            .into_iter()
+            .flatten()
+        {
             for t in tracks.clone() {
                 entry.set_muted(t, !muted);
             }
@@ -356,11 +364,19 @@ impl Editor {
         let every = (1u32 << self.grid.tracks.len()) - 1;
         let soloed = tracks.fold(every, |mutes, t| mutes & !(1 << t));
         let selected = self.song_entries();
-        let alone = self.arrangement.entries[selected.clone()]
-            .iter()
-            .all(|e| e.mutes == soloed);
+        let Some(entries) = self.arrangement.entries.get(selected.clone()) else {
+            self.message = Some("the song's empty: o adds an entry".into());
+            return;
+        };
+        let alone = entries.iter().all(|e| e.mutes == soloed);
         self.checkpoint();
-        for entry in &mut self.arrangement.entries[selected] {
+        for entry in self
+            .arrangement
+            .entries
+            .get_mut(selected)
+            .into_iter()
+            .flatten()
+        {
             entry.mutes = if alone { 0 } else { soloed };
         }
         match alone {
@@ -555,6 +571,21 @@ mod tests {
             .iter()
             .map(|e| (e.pattern, e.repeats))
             .collect()
+    }
+
+    #[test]
+    fn an_empty_song_has_nothing_to_mute() {
+        let mut e = editor();
+        e.arrangement.entries.clear();
+        keys(&mut e, "lm");
+        assert_eq!(
+            e.message.as_deref(),
+            Some("the song's empty: o adds an entry")
+        );
+        e.message = None;
+        keys(&mut e, "s");
+        assert!(e.message.is_some());
+        assert!(e.arrangement.entries.is_empty());
     }
 
     #[test]

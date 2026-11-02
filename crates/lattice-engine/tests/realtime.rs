@@ -1,5 +1,12 @@
 //! The engine must never allocate on the audio thread. `assert_no_alloc` aborts if it does.
 
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unreachable
+)]
+
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
 use lattice_core::instrument::{kick, string};
 use lattice_core::{

@@ -23,7 +23,8 @@ pub fn build(
         InstKind::Chop => Box::new(Chop::new(sample_rate, &instrument.values, sample)),
         InstKind::Synth => Box::new(Synth::with_values(sample_rate, &instrument.values)),
         InstKind::String => Box::new(Monochord::with_values(sample_rate, &instrument.values)),
+        // Every other instrument is a drum; were one not, it'd play as a synth.
         kind => rhythmicon::build(kind, sample_rate, &instrument.values)
-            .expect("every other instrument is a drum"),
+            .unwrap_or_else(|| Box::new(Synth::with_values(sample_rate, &instrument.values))),
     }
 }

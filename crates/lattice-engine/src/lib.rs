@@ -4,6 +4,17 @@
 //! allocation, no I/O. The host (cpal) layer lives outside this crate, so the engine can be
 //! driven by tests, offline rendering or a plugin wrapper just as well.
 
+// Tests may unwrap and panic: that's how they fail.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable
+    )
+)]
+
 pub mod chop;
 mod click;
 pub mod clock;

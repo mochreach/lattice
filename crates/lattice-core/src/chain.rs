@@ -220,11 +220,11 @@ impl FxChain {
         self.insert(self.effects.len(), fx);
     }
 
-    /// Removes effect `index`, and its row.
-    pub fn remove(&mut self, index: usize) -> Fx {
-        let at = self.effect_at(index).expect("each effect has a row");
+    /// Removes effect `index`, and its row, if there's such an effect.
+    pub fn remove(&mut self, index: usize) -> Option<Fx> {
+        let at = self.effect_at(index)?;
         self.lanes[at.lane].rows.remove(at.row);
-        self.effects.remove(index)
+        Some(self.effects.remove(index))
     }
 
     /// The row at `at`.
@@ -383,7 +383,7 @@ pub const CHAINS: &[&str] = &["shimmer"];
 /// A chain Lattice comes with, by name.
 pub fn built_in_chain(name: &str) -> Option<FxChain> {
     match name {
-        "shimmer" => Some(shimmer()),
+        "shimmer" => shimmer(),
         _ => None,
     }
 }
@@ -392,7 +392,7 @@ pub fn built_in_chain(name: &str) -> Option<FxChain> {
 /// an octave up, so each trip adds a higher octave, rising and fading like a choir. Lane A is the
 /// reverb; it sends into lane B, which takes off the low end and shifts the rest up an octave,
 /// then feeds it back into the reverb. A little of B is heard as it is.
-fn shimmer() -> FxChain {
+fn shimmer() -> Option<FxChain> {
     use crate::fx::{FxKind, filter, pitch, reverb};
 
     let with = |kind, values: &[(u32, f32)]| {
@@ -430,7 +430,7 @@ fn shimmer() -> FxChain {
             ..FxLane::default()
         },
     ];
-    FxChain::from_parts(effects, lanes).expect("the shimmer is a chain")
+    FxChain::from_parts(effects, lanes).ok()
 }
 
 /// Whether a send from lane `from` into lane `to` is feedback, heard a block later.
@@ -480,7 +480,7 @@ mod tests {
             [FxKind::Filter, FxKind::Drive, FxKind::Reverb, FxKind::Delay]
         );
         assert_eq!(chain.effect_at(1), Some(RowAt { lane: 0, row: 1 }));
-        assert_eq!(chain.remove(3).kind, FxKind::Delay);
+        assert_eq!(chain.remove(3).unwrap().kind, FxKind::Delay);
         assert_eq!(chain.lanes[1].rows, [FxRow::Send { to: 0, level: -6.0 }]);
     }
 

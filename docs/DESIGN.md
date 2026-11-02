@@ -490,6 +490,12 @@ garbage queue was full. The UI thread looks once a second and writes what's new 
 status line said. Three late blocks in a second, or a stream error, also go on the status line. A
 panic hook writes the backtrace to the log, since the terminal UI owns the screen.
 
+**Not panicking.** A panic would take the song with it, so outside tests the workspace's lints deny
+`unwrap`, `expect`, `panic!`, `unreachable!`, `todo!` and `unimplemented!`. What can fail returns
+a `Result` or an `Option` and is handled: `?` to pass an error up to the status line, `let … else`
+to give up quietly, or a sensible default where one exists. Tests may unwrap, as that's how they
+fail.
+
 **Driving it from outside.** Each Lattice listens on a Unix socket of its own,
 `$XDG_RUNTIME_DIR/lattice/<pid>.sock` (mode 600, in a 700 folder), so a script or an agent can
 see what's on screen and work it: `lattice ctl screen`, `state` (JSON), `keys`, `cmd` and `log`.

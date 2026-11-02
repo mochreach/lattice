@@ -158,7 +158,7 @@ impl Editor {
             .map(|n| folder.join(format!("{name}-{n}.wav")))
             // The last may still be rendering.
             .find(|path| !path.exists() && self.last_export.as_ref() != Some(path))
-            .unwrap()
+            .unwrap_or_else(|| folder.join(format!("{name}.wav")))
     }
 
     /// The song's [`SAMPLES`] folder, beside it, or the [`scratch`] folder until it's saved.

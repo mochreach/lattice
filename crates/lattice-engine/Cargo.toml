@@ -17,3 +17,6 @@ assert_no_alloc = "1.1"
 [[bench]]
 name = "voices"
 harness = false
+
+[lints]
+workspace = true

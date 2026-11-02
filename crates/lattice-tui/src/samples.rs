@@ -65,7 +65,8 @@ pub fn read_wav(bytes: &[u8]) -> Result<Sample, String> {
     let mut at = 12;
     while at + 8 <= bytes.len() {
         let id = &bytes[at..at + 4];
-        let len = u32::from_le_bytes(bytes[at + 4..at + 8].try_into().unwrap()) as usize;
+        let len = u32::from_le_bytes([bytes[at + 4], bytes[at + 5], bytes[at + 6], bytes[at + 7]])
+            as usize;
         let body = &bytes[at + 8..(at + 8 + len).min(bytes.len())];
         match id {
             b"fmt " if body.len() >= 16 => format = Some(body),
@@ -80,7 +81,7 @@ pub fn read_wav(bytes: &[u8]) -> Result<Sample, String> {
     let u16_at = |i: usize| u16::from_le_bytes([format[i], format[i + 1]]);
     let mut tag = u16_at(0);
     let channels = usize::from(u16_at(2));
-    let rate = u32::from_le_bytes(format[4..8].try_into().unwrap());
+    let rate = u32::from_le_bytes([format[4], format[5], format[6], format[7]]);
     let bits = u16_at(14);
     if tag == 0xFFFE && format.len() >= 26 {
         // WAVE_FORMAT_EXTENSIBLE: the real format is the first two bytes of the subformat.
@@ -96,7 +97,7 @@ pub fn read_wav(bytes: &[u8]) -> Result<Sample, String> {
         (1, 24) => |b| i32::from_le_bytes([0, b[0], b[1], b[2]]) as f32 / 2_147_483_648.0,
         (1, 32) => |b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f32 / 2_147_483_648.0,
         (3, 32) => |b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]),
-        (3, 64) => |b| f64::from_le_bytes(b[..8].try_into().unwrap()) as f32,
+        (3, 64) => |b| f64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]) as f32,
         _ => return Err(format!("can't read {bits}-bit audio of format {tag}")),
     };
     let frame = width * channels;

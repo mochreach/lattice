@@ -862,29 +862,33 @@ enum Arg {
 }
 
 impl Command {
+    // The values were parsed to their spec, so these only fail if the spec and the code that
+    // runs it disagree, which the tests would catch.
+
     /// Value `i` as a number, already checked against its range.
-    fn int<T: TryFrom<i64>>(&self, i: usize) -> T
-    where
-        T::Error: Debug,
-    {
-        match &self.args[i] {
-            Arg::Int(n) => T::try_from(*n).expect("checked against its range"),
-            _ => unreachable!("value {i} of {} isn't a whole number", self.spec.name),
+    fn int<T: TryFrom<i64>>(&self, i: usize) -> Result<T, String> {
+        match self.args.get(i) {
+            Some(Arg::Int(n)) => T::try_from(*n).map_err(|_| self.wrong(i, "out of range")),
+            _ => Err(self.wrong(i, "not a whole number")),
         }
     }
 
-    fn decimal(&self, i: usize) -> f64 {
-        match &self.args[i] {
-            Arg::Decimal(n) => *n,
-            _ => unreachable!("value {i} of {} isn't a decimal", self.spec.name),
+    fn decimal(&self, i: usize) -> Result<f64, String> {
+        match self.args.get(i) {
+            Some(Arg::Decimal(n)) => Ok(*n),
+            _ => Err(self.wrong(i, "not a decimal")),
         }
     }
 
-    fn text(&self, i: usize) -> &str {
-        match &self.args[i] {
-            Arg::Text(text) => text,
-            _ => unreachable!("value {i} of {} is a number", self.spec.name),
+    fn text(&self, i: usize) -> Result<&str, String> {
+        match self.args.get(i) {
+            Some(Arg::Text(text)) => Ok(text),
+            _ => Err(self.wrong(i, "not text")),
         }
+    }
+
+    fn wrong(&self, i: usize, what: &str) -> String {
+        format!("value {} of :{} is {what}", i + 1, self.spec.name)
     }
 }
 
@@ -1027,7 +1031,8 @@ impl<'a> Words<'a> {
 
     /// An optional `every N [OFFSET]` or `pass K`.
     fn condition(&mut self) -> Result<Option<Condition>, Problem> {
-        let whole = |n: i64| u32::try_from(n).expect("checked against its range");
+        // Checked against its range, so it fits.
+        let whole = |n: i64| u32::try_from(n).unwrap_or(u32::MAX);
         let Some((word, typing)) = self.next() else {
             return Ok(Some(Condition::Always));
         };
@@ -1111,25 +1116,25 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
     match command.spec.name {
         "quit" if editor.modified() => Err(UNSAVED_QUIT.into()),
         "quit" | "quit!" => Ok(vec![Effect::Quit]),
-        "write" => Ok(vec![Effect::Save(save_path(editor, command.text(0))?)]),
+        "write" => Ok(vec![Effect::Save(save_path(editor, command.text(0)?)?)]),
         "write-quit" => Ok(vec![
-            Effect::Save(save_path(editor, command.text(0))?),
+            Effect::Save(save_path(editor, command.text(0)?)?),
             Effect::Quit,
         ]),
         "open" if editor.modified() => Err(UNSAVED_OPEN.into()),
-        "open" | "open!" => Ok(vec![Effect::Open(command.text(0).into())]),
+        "open" | "open!" => Ok(vec![Effect::Open(command.text(0)?.into())]),
         "new" if editor.modified() => {
             Err("unsaved changes: :w to save them, or :new! to start anyway".into())
         }
-        "new" | "new!" => editor.new_song(command.text(0)),
+        "new" | "new!" => editor.new_song(command.text(0)?),
         "pattern" => {
-            let index = editor.find_pattern(command.text(0))?;
+            let index = editor.find_pattern(command.text(0)?)?;
             Ok(editor.go_to_pattern(index))
         }
-        "pattern-new" => editor.new_pattern(command.text(0), false),
-        "pattern-dup" => editor.new_pattern(command.text(0), true),
+        "pattern-new" => editor.new_pattern(command.text(0)?, false),
+        "pattern-dup" => editor.new_pattern(command.text(0)?, true),
         "pattern-name" => {
-            editor.rename_pattern(command.text(0))?;
+            editor.rename_pattern(command.text(0)?)?;
             Ok(vec![])
         }
         "pattern-remove" => editor.remove_pattern(),
@@ -1144,13 +1149,15 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(tracks.into_iter().map(Effect::TrackChanged).collect())
         }
         "bars" => {
-            editor.set_bars(command.text(0))?;
+            editor.set_bars(command.text(0)?)?;
             Ok(vec![])
         }
-        "export" => editor.export_song(command.text(0)),
-        "export-sel" => editor.export_selection(command.text(0), false),
-        "export-loop" => editor.export_selection(command.text(0), true),
-        "tutor" if !command.text(0).is_empty() => editor.tutor_command(command.text(0)),
+        "export" => editor.export_song(command.text(0)?),
+        "export-sel" => editor.export_selection(command.text(0)?, false),
+        "export-loop" => editor.export_selection(command.text(0)?, true),
+        "tutor" if command.text(0).is_ok_and(|t| !t.is_empty()) => {
+            editor.tutor_command(command.text(0)?)
+        }
         "tutor" if editor.modified() => {
             Err("unsaved changes: :w to save them, or :tutor! to start anyway".into())
         }
@@ -1160,23 +1167,23 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![])
         }
         "bpm" => {
-            let bpm = command.decimal(0);
+            let bpm = command.decimal(0)?;
             editor.bpm = bpm;
             Ok(vec![Effect::Bpm(bpm)])
         }
         "len" => {
-            let len: usize = command.int(0);
+            let len: usize = command.int(0)?;
             editor.checkpoint();
             editor.grid.tracks[track].steps.resize(len, Step::default());
             editor.clamp_selection();
             Ok(vec![Effect::TrackChanged(track)])
         }
         "step" => {
-            editor.auto_step = command.int(0);
+            editor.auto_step = command.int(0)?;
             Ok(vec![])
         }
         "oct" => {
-            editor.octave = command.int(0);
+            editor.octave = command.int(0)?;
             Ok(vec![])
         }
         "follow" => {
@@ -1188,26 +1195,26 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![])
         }
         "arm" | "arm!" => {
-            editor.arm(command.spec.name == "arm!", command.text(0))?;
+            editor.arm(command.spec.name == "arm!", command.text(0)?)?;
             Ok(vec![])
         }
         "disarm" => {
             editor.disarm();
             Ok(vec![])
         }
-        "input" => editor.choose_device(Direction::Input, command.text(0)),
-        "output" => editor.choose_device(Direction::Output, command.text(0)),
+        "input" => editor.choose_device(Direction::Input, command.text(0)?),
+        "output" => editor.choose_device(Direction::Output, command.text(0)?),
         "latency" => {
-            editor.latency = command.int(0);
+            editor.latency = command.int(0)?;
             editor.message = Some(format!("latency adjusted by {} ms", editor.latency));
             Ok(vec![Effect::Latency(editor.latency)])
         }
         "count" => {
-            editor.count_in = command.int(0);
+            editor.count_in = command.int(0)?;
             Ok(vec![])
         }
         "layout" => {
-            let name = command.text(0);
+            let name = command.text(0)?;
             let layout = NoteLayout::ALL
                 .into_iter()
                 .find(|l| l.name() == name)
@@ -1220,11 +1227,11 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![])
         }
         "vel" => {
-            editor.velocity = command.int(0);
+            editor.velocity = command.int(0)?;
             Ok(vec![])
         }
         "scale" => {
-            editor.set_scale(command.text(0))?;
+            editor.set_scale(command.text(0)?)?;
             Ok(vec![])
         }
         "rec" => {
@@ -1244,26 +1251,26 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![Effect::Click(editor.click)])
         }
         "name" => {
-            editor.grid.tracks[track].name = command.text(0).into();
+            editor.grid.tracks[track].name = command.text(0)?.into();
             Ok(vec![])
         }
         "level" => {
-            let level = command.decimal(0) as f32;
+            let level = command.decimal(0)? as f32;
             match editor.bus_under_cursor() {
                 Some(bus) => Ok(editor.set_bus_level(bus, level)),
                 None => mix(editor, |mix| mix.level = level),
             }
         }
         "pan" => {
-            let pan = command.int::<i32>(0) as f32 / 100.0;
+            let pan = command.int::<i32>(0)? as f32 / 100.0;
             mix(editor, |mix| mix.pan = pan)
         }
         "send" => {
-            let send = command.decimal(0) as f32;
+            let send = command.decimal(0)? as f32;
             mix(editor, |mix| mix.send = send)
         }
         "choke" => {
-            let choke = command.int(0);
+            let choke = command.int(0)?;
             let tracks = editor.mix_targets()?;
             editor.checkpoint();
             for &t in &tracks {
@@ -1285,7 +1292,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             })
         }
         "set" => {
-            let word = command.text(0);
+            let word = command.text(0)?;
             let value: f32 = word
                 .parse()
                 .ok()
@@ -1293,36 +1300,37 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                 .ok_or_else(|| format!("{word:?} isn't a number"))?;
             editor.set_mixer_value(value)
         }
-        "lock" => editor.lock(command.text(0)),
-        "unlock" => editor.unlock(command.text(0)),
-        "macro" => editor.add_macro(command.text(0)),
-        "map" => editor.map_macro(command.text(0)),
-        "unmap" => editor.unmap_macro(command.text(0)),
-        "fx-add" => editor.add_effect(command.text(0)),
-        "fx-send" => editor.add_send(command.text(0)),
-        "chain-save" => editor.save_chain(command.text(0)),
-        "chain-load" => editor.load_chain(command.text(0)),
-        "preset" => editor.load_preset(command.text(0)),
-        "preset-save" => editor.save_preset(command.text(0)),
-        "face" => editor.set_face(command.text(0)),
-        "face-show" => editor.show_on_face(command.text(0), true),
-        "face-hide" => editor.show_on_face(command.text(0), false),
-        "inst" => editor.set_instrument(command.text(0)),
-        "sample" => editor.set_sample(command.text(0)),
-        "chop" => editor.set_chop(command.text(0)),
-        "group-name" => editor.rename_group(command.text(0)),
+        "lock" => editor.lock(command.text(0)?),
+        "unlock" => editor.unlock(command.text(0)?),
+        "macro" => editor.add_macro(command.text(0)?),
+        "map" => editor.map_macro(command.text(0)?),
+        "unmap" => editor.unmap_macro(command.text(0)?),
+        "fx-add" => editor.add_effect(command.text(0)?),
+        "fx-send" => editor.add_send(command.text(0)?),
+        "chain-save" => editor.save_chain(command.text(0)?),
+        "chain-load" => editor.load_chain(command.text(0)?),
+        "preset" => editor.load_preset(command.text(0)?),
+        "preset-save" => editor.save_preset(command.text(0)?),
+        "face" => editor.set_face(command.text(0)?),
+        "face-show" => editor.show_on_face(command.text(0)?, true),
+        "face-hide" => editor.show_on_face(command.text(0)?, false),
+        "inst" => editor.set_instrument(command.text(0)?),
+        "sample" => editor.set_sample(command.text(0)?),
+        "chop" => editor.set_chop(command.text(0)?),
+        "group-name" => editor.rename_group(command.text(0)?),
         "track-add" => {
             let tracks = &editor.grid.tracks;
             if tracks.len() >= MAX_TRACKS {
                 return Err(format!("at most {MAX_TRACKS} tracks"));
             }
-            let mut name = command.text(0).to_string();
+            let mut name = command.text(0)?.to_string();
             if name.is_empty() {
                 // The first `track N` not already taken.
-                name = (tracks.len() + 1..)
+                // Of one more than there are tracks, one's always free.
+                name = (tracks.len() + 1..=2 * tracks.len() + 1)
                     .map(|n| format!("track {n}"))
                     .find(|name| tracks.iter().all(|t| t.name != *name))
-                    .unwrap();
+                    .unwrap_or_default();
             }
             editor.checkpoint();
             let track = Track {
@@ -1344,7 +1352,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![Effect::TracksChanged])
         }
         "track-move" => {
-            let by: isize = command.int(0);
+            let by: isize = command.int(0)?;
             let to = track
                 .saturating_add_signed(by)
                 .min(editor.grid.tracks.len() - 1);
@@ -1358,9 +1366,9 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         name @ ("rot" | "drift" | "rev" | "tr") => {
             let transform = match name {
-                "rot" => Transform::Rotate(command.int(0)),
-                "drift" => Transform::Drift(command.int(0)),
-                "tr" => Transform::Transpose(command.int(0)),
+                "rot" => Transform::Rotate(command.int(0)?),
+                "drift" => Transform::Drift(command.int(0)?),
+                "tr" => Transform::Transpose(command.int(0)?),
                 _ => Transform::Reverse,
             };
             editor.checkpoint();
@@ -1383,7 +1391,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             editor.grid.tracks[track].rules.clear();
             Ok(vec![Effect::TrackChanged(track)])
         }
-        _ => unreachable!("every command in COMMANDS is handled"),
+        name => Err(format!(":{name} isn't handled")),
     }
 }
 

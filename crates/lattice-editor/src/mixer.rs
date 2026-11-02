@@ -164,14 +164,18 @@ impl Editor {
     pub fn chain(&self, strip: Strip) -> &FxChain {
         match strip {
             Strip::Track(i) => &self.grid.tracks[i].effects,
-            _ => &self.bus(strip).expect("a bus").effects,
+            Strip::Group(g) => &self.grid.groups[g].bus.effects,
+            Strip::Send => &self.buses.send.effects,
+            Strip::Master => &self.buses.master.effects,
         }
     }
 
     pub(crate) fn chain_mut(&mut self, strip: Strip) -> &mut FxChain {
         match strip {
             Strip::Track(i) => &mut self.grid.tracks[i].effects,
-            _ => &mut self.bus_mut(strip).expect("a bus").effects,
+            Strip::Group(g) => &mut self.grid.groups[g].bus.effects,
+            Strip::Send => &mut self.buses.send.effects,
+            Strip::Master => &mut self.buses.master.effects,
         }
     }
 

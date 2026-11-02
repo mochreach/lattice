@@ -33,11 +33,11 @@ impl Editor {
             self.message = Some(format!("at most {MAX_GROUPS} groups"));
             return vec![];
         }
-        // The first `group N` not already taken.
-        let name = (groups.len() + 1..)
+        // The first `group N` not already taken: of one more than there are groups, one's free.
+        let name = (groups.len() + 1..=2 * groups.len() + 1)
             .map(|n| format!("group {n}"))
             .find(|name| groups.iter().all(|g| g.name != *name))
-            .unwrap();
+            .unwrap_or_default();
         let at = groups.partition_point(|g| g.first < first);
         self.checkpoint();
         self.message = Some(format!("grouped as {name}; :group-name renames it"));

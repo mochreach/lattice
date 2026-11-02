@@ -25,3 +25,6 @@ terminal-colorsaurus = "1.0.3"
 # PulseAudio's host, which PipeWire serves too, names the devices as the desktop does.
 [target.'cfg(target_os = "linux")'.dependencies]
 cpal = { version = "0.18", features = ["pulseaudio"] }
+
+[lints]
+workspace = true

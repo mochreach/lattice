@@ -12,3 +12,12 @@ authors = ["Chris Wells Wood <chris.wood@ed.ac.uk>"]
 lattice-core = { path = "crates/lattice-core" }
 lattice-engine = { path = "crates/lattice-engine" }
 lattice-editor = { path = "crates/lattice-editor" }
+
+# Lattice shouldn't panic: outside tests, failures are handled, not unwrapped.
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unreachable = "deny"
+todo = "deny"
+unimplemented = "deny"

@@ -11,6 +11,17 @@
 //! for the frontend to carry out. Nothing here knows about terminals, audio or files, so it's
 //! tested by feeding in key sequences.
 
+// Tests may unwrap and panic: that's how they fail.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable
+    )
+)]
+
 mod chains;
 mod command;
 mod devices;
@@ -909,7 +920,7 @@ impl Editor {
         if let Key::Char(c @ '0'..='9') = key
             && (c != '0' || self.count.is_some())
         {
-            let digit = c.to_digit(10).unwrap() as usize;
+            let digit = c as usize - '0' as usize;
             self.count = Some((self.count.unwrap_or(0) * 10 + digit).min(9_999));
             return vec![];
         }

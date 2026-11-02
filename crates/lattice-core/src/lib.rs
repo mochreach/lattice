@@ -3,6 +3,17 @@
 //! Everything here is plain data and pure functions: no UI types, no audio types and no
 //! playback state. Playheads and pass counters belong to the sequencer.
 
+// Tests may unwrap and panic: that's how they fail.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable
+    )
+)]
+
 pub mod arrangement;
 pub mod chain;
 pub mod device;

@@ -959,39 +959,41 @@ fn grid_row(
             }
             None => (" ···".into(), theme.faint),
         });
-        let (text, mut style) = match step.note {
-            _ if piece.is_some() => piece.expect("just checked"),
-            // Folded: a hit, by how hard.
-            Some(note) if c.width == FOLDED => {
-                let glyph = match note.velocity {
-                    110.. => "●",
-                    80.. => "•",
-                    _ => "∙",
-                };
-                let mut style = Style::new().fg(c.colour);
-                if !c.audible {
-                    style = style.add_modifier(Modifier::DIM);
+        let (text, mut style) = match piece {
+            Some(piece) => piece,
+            None => match step.note {
+                // Folded: a hit, by how hard.
+                Some(note) if c.width == FOLDED => {
+                    let glyph = match note.velocity {
+                        110.. => "●",
+                        80.. => "•",
+                        _ => "∙",
+                    };
+                    let mut style = Style::new().fg(c.colour);
+                    if !c.audible {
+                        style = style.add_modifier(Modifier::DIM);
+                    }
+                    (format!(" {glyph}"), style)
                 }
-                (format!(" {glyph}"), style)
-            }
-            None if c.width == FOLDED && !c.tails[row] => (" ·".into(), theme.faint),
-            Some(note) => {
-                let length = if note.length > 1 {
-                    note.length.to_string()
-                } else {
-                    String::new()
-                };
-                let mut style = Style::new().fg(c.colour);
-                if !c.audible {
-                    style = style.add_modifier(Modifier::DIM);
+                None if c.width == FOLDED && !c.tails[row] => (" ·".into(), theme.faint),
+                Some(note) => {
+                    let length = if note.length > 1 {
+                        note.length.to_string()
+                    } else {
+                        String::new()
+                    };
+                    let mut style = Style::new().fg(c.colour);
+                    if !c.audible {
+                        style = style.add_modifier(Modifier::DIM);
+                    }
+                    (format!(" {} {length:>4}  ", note_name(note.pitch)), style)
                 }
-                (format!(" {} {length:>4}  ", note_name(note.pitch)), style)
-            }
-            None if c.tails[row] => (
-                " │".into(),
-                Style::new().fg(c.colour).add_modifier(Modifier::DIM),
-            ),
-            None => (" ···".into(), theme.faint),
+                None if c.tails[row] => (
+                    " │".into(),
+                    Style::new().fg(c.colour).add_modifier(Modifier::DIM),
+                ),
+                None => (" ···".into(), theme.faint),
+            },
         };
         // A step that locks settings is marked at its end, and the steps it holds over too.
         let mark = match () {

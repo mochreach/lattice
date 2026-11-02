@@ -224,7 +224,7 @@ pub fn preset(name: &str) -> Option<Preset> {
         },
         // A slow saw pad, dark until it's opened, in Lattice's shimmer.
         "night-bus" => {
-            let mut effects = crate::chain::built_in_chain("shimmer").expect("there's a shimmer");
+            let mut effects = crate::chain::built_in_chain("shimmer")?;
             effects[0].values[reverb::MIX as usize] = 0.45;
             Preset {
                 face: face("Night Bus", &[synth::ATTACK, synth::RELEASE]),

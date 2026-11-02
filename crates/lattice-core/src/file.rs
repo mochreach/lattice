@@ -35,13 +35,14 @@ impl fmt::Display for FileError {
 
 impl std::error::Error for FileError {}
 
-pub fn to_ron(song: &Song) -> String {
+pub fn to_ron(song: &Song) -> Result<String, FileError> {
     let config = PrettyConfig::new()
         .depth_limit(DEPTH_LIMIT)
         .extensions(Extensions::IMPLICIT_SOME);
-    let mut text = ron::ser::to_string_pretty(song, config).expect("songs always serialise");
+    let mut text =
+        ron::ser::to_string_pretty(song, config).map_err(|e| FileError::Invalid(e.to_string()))?;
     text.push('\n');
-    text
+    Ok(text)
 }
 
 pub fn from_ron(text: &str) -> Result<Song, FileError> {
@@ -272,13 +273,13 @@ mod tests {
     #[test]
     fn round_trips() {
         let song = song();
-        let text = to_ron(&song);
+        let text = to_ron(&song).unwrap();
         assert_eq!(from_ron(&text).unwrap(), song, "{text}");
     }
 
     #[test]
     fn writes_sparsely_and_leaves_out_defaults() {
-        let text = to_ron(&song());
+        let text = to_ron(&song()).unwrap();
         assert!(text.contains("length: 16"), "{text}");
         assert!(text.contains("0: (note: (pitch: 36)),"), "{text}");
         assert!(
@@ -320,37 +321,41 @@ mod tests {
     fn rejects_songs_that_cannot_play() {
         let mut bad = song();
         bad.grid.groups[0].len = 3;
-        let err = from_ron(&to_ron(&bad)).unwrap_err().to_string();
+        let err = from_ron(&to_ron(&bad).unwrap()).unwrap_err().to_string();
         assert!(err.contains("group \"pair\""), "{err}");
 
         let mut bad = song();
         bad.grid.tracks[0].steps.clear();
-        let err = from_ron(&to_ron(&bad)).unwrap_err().to_string();
+        let err = from_ron(&to_ron(&bad).unwrap()).unwrap_err().to_string();
         assert!(err.contains("has 0 steps"), "{err}");
 
         let mut bad = song();
         bad.arrangement.entries[0].pattern = 3;
         assert!(matches!(
-            from_ron(&to_ron(&bad)),
+            from_ron(&to_ron(&bad).unwrap()),
             Err(FileError::Invalid(_))
         ));
 
         let mut bad = song();
         let track = bad.grid.tracks[0].clone();
         bad.grid.tracks.resize(MAX_TRACKS + 1, track);
-        let err = from_ron(&to_ron(&bad)).unwrap_err().to_string();
+        let err = from_ron(&to_ron(&bad).unwrap()).unwrap_err().to_string();
         assert!(err.contains("17 tracks"), "{err}");
 
-        let text = to_ron(&song()).replace("length: 16", "length: 2");
+        let text = to_ron(&song()).unwrap().replace("length: 16", "length: 2");
         let err = from_ron(&text).unwrap_err().to_string();
         assert!(err.contains("past its length"), "{err}");
 
         assert!(matches!(from_ron("(name: 1)"), Err(FileError::Syntax(_))));
 
-        let text = to_ron(&song()).replace("\"feedback\": 0.7", "\"feedback\": 3");
+        let text = to_ron(&song())
+            .unwrap()
+            .replace("\"feedback\": 0.7", "\"feedback\": 3");
         let err = from_ron(&text).unwrap_err().to_string();
         assert!(err.contains("feedback goes from 0 to 0.95"), "{err}");
-        let text = to_ron(&song()).replace("\"feedback\"", "\"wobble\"");
+        let text = to_ron(&song())
+            .unwrap()
+            .replace("\"feedback\"", "\"wobble\"");
         let err = from_ron(&text).unwrap_err().to_string();
         assert!(err.contains("no \"wobble\" setting"), "{err}");
     }

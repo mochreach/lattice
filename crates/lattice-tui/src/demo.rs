@@ -3,6 +3,8 @@
 //! tracks of different lengths drifting against each other, and rules that change the parts as
 //! they repeat.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use lattice_core::fx::{comp, delay, drive, filter, reverb};
 use lattice_core::instrument::{clap, hat, kick, snare, string, synth, tom};
 use lattice_core::{
@@ -17,6 +19,14 @@ const DOTTED_EIGHTH: f32 = (60.0 / BPM as f32) * 0.75;
 
 /// Parses a drum line like `"X..g|x..."`: a step per character, `X` an accent, `x` a hit, `m`
 /// a medium hit, `g` a ghost note and `.` a rest. `|` and spaces are left out, to mark bars.
+/// How many hits and notes couldn't be read, playing as rests; the tests check there are none.
+static MISREAD: AtomicUsize = AtomicUsize::new(0);
+
+fn misread() -> Step {
+    MISREAD.fetch_add(1, Ordering::Relaxed);
+    Step::default()
+}
+
 fn hits(s: &str) -> Vec<Step> {
     s.chars()
         .filter(|c| !matches!(c, '|' | ' '))
@@ -27,7 +37,7 @@ fn hits(s: &str) -> Vec<Step> {
                 'm' => 80,
                 'g' => 55,
                 '.' => return Step::default(),
-                _ => panic!("bad hit {c:?}"),
+                _ => return misread(),
             };
             Step::with_note(Note {
                 pitch: DRUM_ROOT,
@@ -55,10 +65,15 @@ fn notes(s: &str) -> Vec<Step> {
                 },
             };
             let (name, length) = match tok.split_once('_') {
-                Some((name, n)) => (name, n.parse().unwrap_or_else(|_| panic!("bad length {n}"))),
+                Some((name, n)) => match n.parse() {
+                    Ok(n) => (name, n),
+                    Err(_) => return misread(),
+                },
                 None => (tok, 1),
             };
-            let pitch = note_number(name).unwrap_or_else(|| panic!("bad note {name}"));
+            let Some(pitch) = note_number(name) else {
+                return misread();
+            };
             Step::with_note(Note {
                 pitch,
                 velocity,
@@ -756,9 +771,14 @@ mod tests {
     #[test]
     fn demo_is_a_valid_song() {
         let song = song();
+        assert_eq!(
+            MISREAD.load(Ordering::Relaxed),
+            0,
+            "every hit and note reads"
+        );
         assert_eq!(song.grid.tracks.len(), TRACKS);
         assert_eq!(song.grid.tracks[KICK].instrument.kind, InstKind::Kick);
-        let read = lattice_core::from_ron(&lattice_core::to_ron(&song)).unwrap();
+        let read = lattice_core::from_ron(&lattice_core::to_ron(&song).unwrap()).unwrap();
         assert_eq!(read.arrangement, song.arrangement);
         let tracks = &song.grid.tracks;
         // All but those that play a file, which the demo hasn't got.

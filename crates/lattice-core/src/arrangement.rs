@@ -196,11 +196,12 @@ impl Arrangement {
     /// letter not taken. Doesn't select it. Returns its index.
     pub fn insert(&mut self, name: Option<String>, lanes: Vec<Lane>) -> usize {
         let index = self.current + 1;
+        // Of one more name than there are patterns, one's always free.
         let name = name.unwrap_or_else(|| {
-            (0..)
+            (0..=self.patterns.len())
                 .map(pattern_name)
                 .find(|n| self.patterns.iter().all(|p| &p.name != n))
-                .expect("names never run out")
+                .unwrap_or_default()
         });
         let bars = self.patterns[self.current].bars;
         self.patterns.insert(index, Pattern { name, bars, lanes });

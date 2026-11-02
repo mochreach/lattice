@@ -126,10 +126,13 @@ impl Looper {
         if let Some(next) = &mut self.next {
             next.write(now, left, right);
         }
-        if let Some(recording) = &mut self.recording
-            && recording.write(now, left, right)
+        if self
+            .recording
+            .as_mut()
+            .is_some_and(|recording| recording.write(now, left, right))
+            && let Some(recording) = self.recording.take()
         {
-            done(self.recording.take().unwrap());
+            done(recording);
             self.recording = self.next.take();
             self.settle();
         }
@@ -174,7 +177,7 @@ impl Looper {
             if let Some(take) = slot {
                 match to(take.track) {
                     Some(track) => take.track = track,
-                    None => done(slot.take().unwrap()),
+                    None => slot.take().into_iter().for_each(&mut done),
                 }
             }
         }

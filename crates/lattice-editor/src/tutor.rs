@@ -1036,11 +1036,13 @@ impl Editor {
         };
         let lesson = &LESSONS[at];
         let seen = (lesson.watch)(self);
-        let tutor = self.tutor.as_mut().expect("tutoring");
+        let Some(tutor) = self.tutor.as_mut() else {
+            return vec![];
+        };
         tutor.seen |= seen;
-        let tutor = self.tutor.as_ref().expect("tutoring");
-        if (lesson.done)(self, tutor) {
-            self.tutor.as_mut().expect("tutoring").complete = true;
+        let done = self.tutor.as_ref().is_some_and(|t| (lesson.done)(self, t));
+        if let Some(tutor) = self.tutor.as_mut().filter(|_| done) {
+            tutor.complete = true;
         }
         vec![]
     }

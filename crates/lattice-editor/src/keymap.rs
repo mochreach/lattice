@@ -809,19 +809,18 @@ impl Keymap {
             };
             return Ok(());
         };
-        let menu = match self.normal.get_mut(&prefix) {
-            Some(Binding::Menu(menu)) => menu,
-            _ => {
-                let menu = Menu {
-                    title: prefix.to_string(),
-                    items: vec![],
-                };
-                self.normal.insert(prefix, Binding::Menu(menu));
-                match self.normal.get_mut(&prefix) {
-                    Some(Binding::Menu(menu)) => menu,
-                    _ => unreachable!("just put there"),
-                }
-            }
+        let menu = self.normal.entry(prefix).or_insert(Binding::Menu(Menu {
+            title: prefix.to_string(),
+            items: vec![],
+        }));
+        if !matches!(menu, Binding::Menu(_)) {
+            *menu = Binding::Menu(Menu {
+                title: prefix.to_string(),
+                items: vec![],
+            });
+        }
+        let Binding::Menu(menu) = menu else {
+            return Ok(());
         };
         let at = menu.items.iter().position(|(k, _)| *k == key);
         match (binding, at) {

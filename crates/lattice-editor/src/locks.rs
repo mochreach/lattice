@@ -240,7 +240,9 @@ impl Editor {
     }
 
     fn finish_locking(&mut self) -> Result<Vec<Effect>, String> {
-        let locking = self.locking.clone().expect("locking");
+        let Some(locking) = self.locking.clone() else {
+            return Err("nothing's being locked".into());
+        };
         if !locking.matches(self) {
             self.locking = None;
             return Err("the track's chain changed; nothing locked".into());

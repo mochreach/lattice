@@ -48,7 +48,8 @@ pub fn write(path: &Path, song: &Song) -> Result<()> {
             *file = inside.to_path_buf();
         }
     }
-    std::fs::write(path, to_ron(&song)).with_context(|| format!("can't write {}", path.display()))
+    let text = to_ron(&song).with_context(|| format!("can't save {}", path.display()))?;
+    std::fs::write(path, text).with_context(|| format!("can't write {}", path.display()))
 }
 
 /// Copies the samples `song` plays from `scratch`, made before it was saved, into the samples
@@ -70,7 +71,7 @@ pub fn collect(path: &Path, song: &mut Song, scratch: &Path) -> Result<Vec<(Path
         let to = std::iter::once(samples.join(format!("{stem}.wav")))
             .chain((2..).map(|n| samples.join(format!("{stem}-{n}.wav"))))
             .find(|to| std::fs::read(to).map_or(true, |there| there == bytes))
-            .unwrap();
+            .unwrap_or_else(|| samples.join(format!("{stem}.wav")));
         if !to.exists() {
             std::fs::write(&to, &bytes).with_context(|| format!("can't write {}", to.display()))?;
         }
