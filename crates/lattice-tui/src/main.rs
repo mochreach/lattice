@@ -1,3 +1,5 @@
+// Indexing panics when it's out of range; see AGENTS.md.
+#![deny(clippy::indexing_slicing)]
 // Tests may unwrap and panic: that's how they fail.
 #![cfg_attr(
     test,
@@ -5,7 +7,8 @@
         clippy::unwrap_used,
         clippy::expect_used,
         clippy::panic,
-        clippy::unreachable
+        clippy::unreachable,
+        clippy::indexing_slicing
     )
 )]
 mod audio;
@@ -81,7 +84,7 @@ fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     // `lattice ctl …` talks to a Lattice that's running.
     if args.first().is_some_and(|a| a == "ctl") {
-        return ctl::client(&args[1..]);
+        return ctl::client(args.get(1..).unwrap_or_default());
     }
     log::start();
     log!("arguments: {args:?}");
@@ -527,10 +530,14 @@ fn apply(
             }
             return Flow::Next;
         }
-        Effect::TrackChanged(index) => Command::SetTrack {
-            index,
-            track: Box::new(editor.grid.tracks[index].clone()),
-            swaps: sequencer.swaps(),
+        // A track gone since is the tracks' sync to catch up on, not this.
+        Effect::TrackChanged(index) => match editor.grid.tracks.get(index) {
+            Some(track) => Command::SetTrack {
+                index,
+                track: Box::new(track.clone()),
+                swaps: sequencer.swaps(),
+            },
+            None => return Flow::Next,
         },
         Effect::TogglePlay if handle.status().playing() => Command::Stop,
         // A count-in only when recording, to play along from the first beat.

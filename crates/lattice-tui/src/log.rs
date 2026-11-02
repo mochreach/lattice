@@ -167,9 +167,14 @@ impl Watch {
         self.last = now;
         let h = &HEALTH;
         let counts = [&h.missed, &h.late, &h.dropped, &h.errors].map(|c| c.load(Ordering::Relaxed));
-        let [missed, late, dropped, errors] = std::array::from_fn(|i| counts[i] - self.seen[i]);
+        // The counts only go up, so these are how many since last time.
+        let mut new = counts;
+        for (n, seen) in new.iter_mut().zip(self.seen) {
+            *n = n.saturating_sub(seen);
+        }
+        let [missed, late, dropped, errors] = new;
         self.seen = counts;
-        let leaks = leaked - self.leaked;
+        let leaks = leaked.saturating_sub(self.leaked);
         self.leaked = leaked;
         let worst = h.worst.swap(0, Ordering::Relaxed);
         let mut problem = None;

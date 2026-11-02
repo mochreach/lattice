@@ -185,7 +185,7 @@ pub fn screen(buffer: &Buffer) -> String {
     for y in area.top()..area.bottom() {
         let mut line = String::new();
         for x in area.left()..area.right() {
-            line.push_str(buffer[(x, y)].symbol());
+            line.push_str(buffer.cell((x, y)).map_or(" ", |c| c.symbol()));
         }
         text.push_str(line.trim_end());
         text.push('\n');
@@ -287,7 +287,7 @@ pub fn client(args: &[String]) -> Result<()> {
         let text = std::fs::read_to_string(&path)
             .with_context(|| format!("reading {}", path.display()))?;
         let all: Vec<&str> = text.lines().collect();
-        for line in &all[all.len().saturating_sub(lines)..] {
+        for line in all.iter().skip(all.len().saturating_sub(lines)) {
             println!("{line}");
         }
         return Ok(());
@@ -331,7 +331,10 @@ fn connect(pid: Option<&str>) -> Result<UnixStream> {
     }
     match running.len() {
         0 => bail!("no Lattice is running"),
-        1 => Ok(running.remove(0).1),
+        1 => running
+            .pop()
+            .map(|(_, stream)| stream)
+            .context("no Lattice is running"),
         _ => {
             let pids: Vec<String> = (running.iter())
                 .filter_map(|(p, _)| Some(p.file_stem()?.to_string_lossy().into_owned()))

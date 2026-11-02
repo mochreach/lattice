@@ -90,7 +90,11 @@ impl Theme {
     }
 
     pub fn track(&self, index: usize) -> Color {
-        self.tracks[index % self.tracks.len()]
+        // With no track colours, tracks are in the terminal's own.
+        (index.checked_rem(self.tracks.len()))
+            .and_then(|i| self.tracks.get(i))
+            .copied()
+            .unwrap_or(Color::Reset)
     }
 
     /// A solid block of `colour` with its text in the terminal's background colour. Uses reverse

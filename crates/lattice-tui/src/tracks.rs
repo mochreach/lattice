@@ -80,7 +80,11 @@ impl Tracks {
         let wanted = editor.track_ids();
         // From the back, so the indices still to visit don't shift.
         for index in (0..self.engine.len()).rev() {
-            if !wanted.contains(&self.engine[index].0) {
+            if self
+                .engine
+                .get(index)
+                .is_some_and(|e| !wanted.contains(&e.0))
+            {
                 if !send(Command::RemoveTrack(index)) {
                     return false;
                 }
@@ -112,7 +116,10 @@ impl Tracks {
             }
         }
         for (index, track) in editor.grid.tracks.iter().enumerate() {
-            let sent = &mut self.engine[index].1;
+            // There's one for each track by now; if not, the next sync tries again.
+            let Some((_, sent)) = self.engine.get_mut(index) else {
+                return false;
+            };
             let wanted = &track.instrument;
             let plays_files = matches!(wanted.kind, InstKind::Sampler | InstKind::Chop);
             if sent.kind == wanted.kind && sent.file != wanted.file && plays_files {
@@ -140,8 +147,9 @@ impl Tracks {
                 *sent = Instrument::new(wanted.kind);
                 sent.file = wanted.file.clone();
             }
-            for (id, &value) in wanted.values.iter().enumerate() {
-                if sent.values[id] != value {
+            // Both of the one kind by now, so they've the same settings.
+            for (id, (old, &value)) in sent.values.iter_mut().zip(&wanted.values).enumerate() {
+                if *old != value {
                     let target = Target::Instrument(index);
                     if !send(Command::SetParam {
                         target,
@@ -150,7 +158,7 @@ impl Tracks {
                     }) {
                         return false;
                     }
-                    sent.values[id] = value;
+                    *old = value;
                 }
             }
         }

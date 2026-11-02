@@ -112,7 +112,9 @@ pub fn bar(
                 (if covered < 0.3 { '▕' } else { '▐' }, empty)
             } else {
                 let eighths = (covered * 8.0).round() as usize;
-                (LEFT_EIGHTHS[eighths.clamp(1, 7) - 1], empty)
+                // Clamped, so it's always there.
+                let eighths = eighths.clamp(1, LEFT_EIGHTHS.len()) - 1;
+                (LEFT_EIGHTHS.get(eighths).copied().unwrap_or(' '), empty)
             };
             Span::styled(ch.to_string(), style)
         })

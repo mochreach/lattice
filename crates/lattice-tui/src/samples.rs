@@ -54,60 +54,80 @@ pub fn load(path: &Path) -> Result<Arc<Sample>, String> {
     Ok(sample)
 }
 
+/// The `N` bytes at `i` in `b`, if it has that many there.
+fn bytes_at<const N: usize>(b: &[u8], i: usize) -> Option<[u8; N]> {
+    b.get(i..)?.first_chunk().copied()
+}
+
 /// Reads a WAV file: integer PCM of 8, 16, 24 or 32 bits, or 32- or 64-bit float, in any number
-/// of channels (the first two are kept; mono plays in both).
+/// of channels (the first two are kept; mono plays in both). The file could be anything, so every
+/// read is checked, and a short or odd one is an `Err`.
 pub fn read_wav(bytes: &[u8]) -> Result<Sample, String> {
-    if bytes.len() < 12 || &bytes[..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+    if bytes.get(..4) != Some(b"RIFF") || bytes.get(8..12) != Some(b"WAVE") {
         return Err("not a WAV file".into());
     }
     let mut format = None;
     let mut data = None;
-    let mut at = 12;
-    while at + 8 <= bytes.len() {
-        let id = &bytes[at..at + 4];
-        let len = u32::from_le_bytes([bytes[at + 4], bytes[at + 5], bytes[at + 6], bytes[at + 7]])
-            as usize;
-        let body = &bytes[at + 8..(at + 8 + len).min(bytes.len())];
+    let mut at: usize = 12;
+    while let Some(id) = bytes.get(at..at.saturating_add(4))
+        && let Some(len) = bytes_at(bytes, at.saturating_add(4))
+    {
+        let len = u32::from_le_bytes(len) as usize;
+        let start = at.saturating_add(8);
+        // The length was read, so `start` is in the file. A chunk claiming more than the file
+        // holds gets what's there.
+        let rest = bytes.get(start..).unwrap_or_default();
+        let body = rest.get(..len).unwrap_or(rest);
         match id {
             b"fmt " if body.len() >= 16 => format = Some(body),
             b"data" => data = Some(body),
             _ => {}
         }
         // Chunks are padded to an even length.
-        at += 8 + len + (len & 1);
+        at = start.saturating_add(len).saturating_add(len & 1);
     }
     let format = format.ok_or("no format chunk")?;
     let data = data.ok_or("no audio in it")?;
-    let u16_at = |i: usize| u16::from_le_bytes([format[i], format[i + 1]]);
-    let mut tag = u16_at(0);
-    let channels = usize::from(u16_at(2));
-    let rate = u32::from_le_bytes([format[4], format[5], format[6], format[7]]);
-    let bits = u16_at(14);
-    if tag == 0xFFFE && format.len() >= 26 {
+    let u16_at = |i| bytes_at(format, i).map(u16::from_le_bytes);
+    let short = "format chunk too short";
+    let mut tag = u16_at(0).ok_or(short)?;
+    let channels = usize::from(u16_at(2).ok_or(short)?);
+    let rate = u32::from_le_bytes(bytes_at(format, 4).ok_or(short)?);
+    let bits = u16_at(14).ok_or(short)?;
+    if tag == 0xFFFE
+        && let Some(sub) = u16_at(24)
+    {
         // WAVE_FORMAT_EXTENSIBLE: the real format is the first two bytes of the subformat.
-        tag = u16_at(24);
+        tag = sub;
     }
     if channels == 0 || rate == 0 {
         return Err("no channels, or no sample rate".into());
     }
     let width = usize::from(bits / 8);
-    let decode: fn(&[u8]) -> f32 = match (tag, bits) {
-        (1, 8) => |b| (f32::from(b[0]) - 128.0) / 128.0,
-        (1, 16) => |b| f32::from(i16::from_le_bytes([b[0], b[1]])) / 32_768.0,
-        (1, 24) => |b| i32::from_le_bytes([0, b[0], b[1], b[2]]) as f32 / 2_147_483_648.0,
-        (1, 32) => |b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f32 / 2_147_483_648.0,
-        (3, 32) => |b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]),
-        (3, 64) => |b| f64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]) as f32,
+    let decode: fn(&[u8]) -> Option<f32> = match (tag, bits) {
+        (1, 8) => |b| Some((f32::from(*b.first()?) - 128.0) / 128.0),
+        (1, 16) => |b| Some(f32::from(i16::from_le_bytes(bytes_at(b, 0)?)) / 32_768.0),
+        (1, 24) => |b| {
+            let [x, y, z] = bytes_at(b, 0)?;
+            Some(i32::from_le_bytes([0, x, y, z]) as f32 / 2_147_483_648.0)
+        },
+        (1, 32) => |b| Some(i32::from_le_bytes(bytes_at(b, 0)?) as f32 / 2_147_483_648.0),
+        (3, 32) => |b| Some(f32::from_le_bytes(bytes_at(b, 0)?)),
+        (3, 64) => |b| Some(f64::from_le_bytes(bytes_at(b, 0)?) as f32),
         _ => return Err(format!("can't read {bits}-bit audio of format {tag}")),
     };
-    let frame = width * channels;
+    // Every format read is at least a byte wide, and there's at least one channel.
+    let frame = width
+        .checked_mul(channels)
+        .filter(|&f| f > 0)
+        .ok_or("bad frame size")?;
     let (mut left, mut right) = (vec![], vec![]);
     for f in data.chunks_exact(frame) {
-        let l = decode(&f[..width]);
-        let r = if channels > 1 {
-            decode(&f[width..2 * width])
-        } else {
-            l
+        let mut samples = f.chunks_exact(width);
+        let l = samples.next().and_then(decode).ok_or("bad sample")?;
+        let r = match samples.next() {
+            Some(s) => decode(s).ok_or("bad sample")?,
+            None => l,
         };
         left.push(l);
         right.push(r);
@@ -191,6 +211,17 @@ mod tests {
                 .unwrap_err()
                 .contains("12-bit")
         );
+        // Cut short anywhere, or with a chunk claiming to be huge, it's an error, not a panic.
+        let good = wav(3, 2, 64, &[0; 16]);
+        for n in 0..good.len() {
+            let _ = read_wav(&good[..n]);
+        }
+        let mut huge = good.clone();
+        huge[16..20].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(read_wav(&huge).is_err());
+        let mut short_fmt = good;
+        short_fmt[16..20].copy_from_slice(&4u32.to_le_bytes());
+        assert!(read_wav(&short_fmt).is_err());
         assert!(
             load(Path::new("/nowhere/at/all.wav"))
                 .unwrap_err()

@@ -54,21 +54,25 @@ pub fn draw(
         _ => 0,
     };
     let lane_width =
-        (width.saturating_sub(LABEL + macros_width) / lanes.len()).clamp(MIN_LANE, MAX_LANE);
+        (width.saturating_sub(LABEL + macros_width) / lanes.len().max(1)).clamp(MIN_LANE, MAX_LANE);
     let locks = match strip {
         Strip::Track(t) => status.locks(t),
         _ => Locks::default(),
     };
     let track_macros = match strip {
-        Strip::Track(t) => &editor.grid.tracks[t].macros[..],
+        Strip::Track(t) => editor
+            .grid
+            .tracks
+            .get(t)
+            .map_or(&[][..], |t| t.macros.as_slice()),
         _ => &[],
     };
     // The setting the cursor's on in the macros' column, to light in its lane.
     let pointed = match editor.fx_line() {
-        FxLine::Target { index, target } if cursor.macros => {
-            let target = &track_macros[index].targets[target];
-            Some((target.fx, target.param))
-        }
+        FxLine::Target { index, target } if cursor.macros => track_macros
+            .get(index)
+            .and_then(|m| m.targets.get(target))
+            .map(|target| (target.fx, target.param)),
         _ => None,
     };
 
@@ -156,8 +160,8 @@ pub fn draw(
             }
         };
         let mut spans = match line {
-            FxLine::Fx { effect, .. } => {
-                let name = chain[effect].kind.name();
+            FxLine::Fx { effect, .. } if let Some(fx) = chain.get(effect) => {
+                let name = fx.kind.name();
                 let rule = "─".repeat(w.saturating_sub(name.chars().count() + 2));
                 vec![
                     Span::styled(
@@ -167,9 +171,10 @@ pub fn draw(
                     Span::styled(format!(" {rule}"), Style::new().fg(colour)),
                 ]
             }
-            FxLine::Param { effect, param, .. } => {
-                let fx = &chain[effect];
-                let info = &fx.params()[param];
+            FxLine::Param { effect, param, .. }
+                if let Some(fx) = chain.get(effect)
+                    && let Some(info) = fx.params().get(param) =>
+            {
                 let bar = w - PARAM_LABEL;
                 // While it plays, a setting a step has locked shows the lock's value.
                 let lock = (locks.iter())
@@ -185,13 +190,13 @@ pub fn draw(
                     }
                     None if let Some(m) = macros::mark(track_macros, id.0, id.1) => (
                         Span::styled(format!(" {m}"), turned),
-                        fx.values[param],
+                        fx.get(info.id),
                         name_style(here || pointed == Some(id)),
                         value_style(here),
                     ),
                     None => (
                         Span::raw("  "),
-                        fx.values[param],
+                        fx.get(info.id),
                         name_style(here),
                         value_style(here),
                     ),
@@ -220,8 +225,12 @@ pub fn draw(
             }
             // The lane flows on down to its out.
             FxLine::Empty => vec![Span::styled(" │", block(theme.faint))],
-            // Lanes have neither: they're the macros' column's.
-            FxLine::Out | FxLine::Macro { .. } | FxLine::Target { .. } => vec![],
+            // Lanes have neither: they're the macros' column's. An effect or setting that's gone
+            // draws as nothing, until the editor's lines catch up.
+            FxLine::Out | FxLine::Macro { .. } | FxLine::Target { .. } | FxLine::Fx { .. } => {
+                vec![]
+            }
+            FxLine::Param { .. } => vec![],
         };
         let used: usize = spans.iter().map(|s| s.content.chars().count()).sum();
         spans.push(Span::raw(" ".repeat(lane_width.saturating_sub(used))));
@@ -233,11 +242,12 @@ pub fn draw(
         let Strip::Track(t) = strip else {
             return vec![];
         };
-        let track = &editor.grid.tracks[t];
+        let Some(track) = editor.grid.tracks.get(t) else {
+            return vec![];
+        };
         let w = macros_width - 2;
         let mut spans = match line {
-            FxLine::Macro { index } => {
-                let m = &track.macros[index];
+            FxLine::Macro { index } if let Some(m) = track.macros.get(index) => {
                 // While it plays, a macro a step has locked shows the lock's value.
                 let lock = (locks.iter()).find(|l| l.is_macro() && usize::from(l.param) == index);
                 let (label, value, label_style, style) = match lock {
@@ -272,8 +282,10 @@ pub fn draw(
                 ));
                 spans
             }
-            FxLine::Target { index, target } => {
-                let target = &track.macros[index].targets[target];
+            FxLine::Target { index, target }
+                if let Some(target) =
+                    (track.macros.get(index)).and_then(|m| m.targets.get(target)) =>
+            {
                 let label = format!("  {}", target_name(track, target));
                 let mut spans = vec![Span::styled(fit(&label, MACRO_LABEL), name_style(here))];
                 spans.extend(bars::depth(
@@ -324,8 +336,16 @@ pub fn draw(
     spans.push(Span::raw(" ".repeat(macros_width)));
     for k in 0..lanes.len() {
         let here = !cursor.macros && cursor.lane == k && cursor.line == outs;
-        let out = chain.lanes()[k].out;
-        spans.extend(bars::level(out, lane_width - 1, value_style(here), theme));
+        // A lane the chain hasn't got leaves a gap.
+        match chain.lanes().get(k) {
+            Some(lane) => spans.extend(bars::level(
+                lane.out,
+                lane_width - 1,
+                value_style(here),
+                theme,
+            )),
+            None => spans.push(Span::raw(" ".repeat(lane_width - 1))),
+        }
         spans.push(Span::raw(" "));
     }
     lines.push(Line::from(spans));
@@ -349,11 +369,15 @@ pub fn draw(
 /// A strip's name and colour, as the mixer draws it.
 fn look(editor: &Editor, theme: &Theme, strip: Strip) -> (String, Color) {
     match strip {
-        Strip::Track(i) => (editor.grid.tracks[i].name.to_uppercase(), theme.track(i)),
-        Strip::Group(g) => {
-            let group = &editor.grid.groups[g];
-            (group.name.to_uppercase(), theme.track(group.first))
-        }
+        // One that's gone has no name.
+        Strip::Track(i) => match editor.grid.tracks.get(i) {
+            Some(track) => (track.name.to_uppercase(), theme.track(i)),
+            None => (String::new(), theme.track(i)),
+        },
+        Strip::Group(g) => match editor.grid.groups.get(g) {
+            Some(group) => (group.name.to_uppercase(), theme.track(group.first)),
+            None => (String::new(), theme.accent),
+        },
         Strip::Send => ("SEND".into(), theme.accent),
         Strip::Master => ("MASTER".into(), theme.visual),
     }

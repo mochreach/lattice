@@ -46,16 +46,17 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
     let playhead = playing
         .filter(|_| status.playing() && status.count_in() == 0)
         .and_then(|(entry, repeat)| {
-            let steps = pattern_steps[arrangement.entries.get(entry)?.pattern];
+            let steps = *pattern_steps.get(arrangement.entries.get(entry)?.pattern)?;
             let start = editor.entry_start(entry) as u64 * bar;
-            Some(start + u64::from(repeat) * steps + status.pattern_step().min(steps - 1))
+            let step = status.pattern_step().min(steps.saturating_sub(1));
+            Some(start + u64::from(repeat) * steps + step)
         });
     let elapsed = playhead.map_or(String::new(), |at| format!("{} / ", time(at)));
     let looped = editor.song_loop();
     // The bars the loop covers, from its first entry's first to its last's last.
-    let loop_bars = looped.map(|(start, end)| {
+    let loop_bars = looped.and_then(|(start, end)| {
         let from = editor.entry_start(start);
-        from..from + entry_bars[start..=end].iter().sum::<usize>()
+        Some(from..from + entry_bars.get(start..=end)?.iter().sum::<usize>())
     });
     let looping = match looped {
         Some((start, end)) if start == end => format!(" · looping entry {}", start + 1),
@@ -96,9 +97,9 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
         Span::raw(" ".repeat(GUTTER)),
         Span::styled(fit("entries", ENTRY), theme.dim),
     ];
-    for t in shown_tracks.clone() {
+    for (t, track) in tracks.iter().enumerate().skip(first_track).take(shown) {
         header.push(Span::styled(
-            fit(&tracks[t].name, cells + 2),
+            fit(&track.name, cells + 2),
             Style::new().fg(theme.track(t)),
         ));
     }
@@ -133,19 +134,22 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
             false => style,
         }
     };
-    let mut lanes: Vec<Option<Vec<Lane>>> = vec![None; arrangement.patterns.len()];
+    let mut all_lanes: Vec<Option<Vec<Lane>>> = vec![None; arrangement.patterns.len()];
+    let no_lanes = vec![];
     let mut start = 0;
-    for (i, entry) in arrangement.entries.iter().enumerate() {
-        let bars = entry_bars[i];
+    for (entry, &bars) in arrangement.entries.iter().zip(&entry_bars) {
         let (from, to) = (start.max(first), (start + bars).min(first + rows));
         let pattern_bars = (bars / entry.repeats.max(1) as usize).max(1);
         let colour = theme.track(entry.pattern);
-        let name = &arrangement.patterns[entry.pattern].name;
-        let lanes = lanes[entry.pattern]
-            // An entry of a pattern that isn't there draws empty.
-            .get_or_insert_with(|| {
+        // An entry of a pattern that isn't there draws empty and unnamed.
+        let pattern = arrangement.patterns.get(entry.pattern);
+        let name = pattern.map_or("", |p| p.name.as_str());
+        let lanes: &Vec<Lane> = match all_lanes.get_mut(entry.pattern) {
+            Some(lanes) => lanes.get_or_insert_with(|| {
                 (arrangement.lanes(&editor.grid, entry.pattern)).unwrap_or_default()
-            });
+            }),
+            None => &no_lanes,
+        };
         for at in from..to {
             let row = at - start;
             let repeat = row / pattern_bars;
@@ -187,7 +191,7 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
             // Named on its first row, or the first in view.
             let label = match row {
                 _ if at == from && entry.repeats > 1 => format!("{name} ×{}", entry.repeats),
-                _ if at == from => name.clone(),
+                _ if at == from => name.to_string(),
                 _ if in_pattern == 0 => format!("{}/{}", repeat + 1, entry.repeats),
                 _ => String::new(),
             };
@@ -215,7 +219,7 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
                 spans.push(Span::raw("  "));
             }
             if is_playing {
-                for span in &mut spans[1..] {
+                for span in spans.iter_mut().skip(1) {
                     span.style = span.style.add_modifier(Modifier::BOLD);
                 }
             }
@@ -228,16 +232,13 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
     let padding = (area.height as usize).saturating_sub(lines.len() + 1);
     lines.extend(std::iter::repeat_n(Line::raw(""), padding.min(1)));
     let mut patterns = vec![Span::styled(" patterns  ", theme.dim)];
-    for (p, pattern) in arrangement.patterns.iter().enumerate() {
+    for (p, (pattern, &steps)) in arrangement.patterns.iter().zip(&pattern_steps).enumerate() {
         let mut style = Style::new().fg(theme.track(p));
         if p == arrangement.current {
             style = style.add_modifier(Modifier::UNDERLINED);
         }
         patterns.push(Span::styled(pattern.name.clone(), style));
-        patterns.push(Span::styled(
-            format!(" {}   ", length(pattern_steps[p])),
-            theme.dim,
-        ));
+        patterns.push(Span::styled(format!(" {}   ", length(steps)), theme.dim));
     }
     lines.push(Line::from(patterns));
     frame.render_widget(Paragraph::new(lines), area);
@@ -259,14 +260,17 @@ fn busy_bar(lane: &Lane, from: u64, bar: u64, cells: usize) -> String {
             }
             let notes = (0..per)
                 .filter(|s| {
-                    lane.steps[((from + c * per + s) % len) as usize]
-                        .note
-                        .is_some()
+                    let step = lane.steps.get(((from + c * per + s) % len) as usize);
+                    step.is_some_and(|step| step.note.is_some())
                 })
                 .count();
             match notes {
                 0 => '·',
-                n => BUSY[(n * BUSY.len()).div_ceil(per as usize).clamp(1, BUSY.len()) - 1],
+                // Clamped, so it's always there.
+                n => {
+                    let height = (n * BUSY.len()).div_ceil(per as usize).clamp(1, BUSY.len());
+                    BUSY.get(height - 1).copied().unwrap_or('█')
+                }
             }
         })
         .collect()
@@ -285,8 +289,8 @@ fn strip<'a>(
     let mut cells: Vec<(char, Style)> = vec![];
     if total > 0 {
         let mut start = 0;
-        for (i, entry) in editor.arrangement.entries.iter().enumerate() {
-            start += lengths[i];
+        for (entry, length) in editor.arrangement.entries.iter().zip(lengths) {
+            start += length;
             // Rounded at the ends, so the strip fills the width exactly.
             let end = (start * width as u64).div_ceil(total) as usize;
             let room = end.saturating_sub(cells.len());
@@ -295,7 +299,9 @@ fn strip<'a>(
             }
             // A gap between entries, where there's room for one.
             let block = if room > 1 { room - 1 } else { 1 };
-            let name = &editor.arrangement.patterns[entry.pattern].name;
+            // An entry of a pattern that isn't there is unnamed.
+            let pattern = editor.arrangement.patterns.get(entry.pattern);
+            let name = pattern.map_or("", |p| p.name.as_str());
             let style = theme.block(theme.track(entry.pattern));
             let text = format!(" {name}");
             let text = text.chars().chain(std::iter::repeat(' ')).take(block);

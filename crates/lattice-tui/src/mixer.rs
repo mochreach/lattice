@@ -162,13 +162,12 @@ fn sync_effects(
         .zip(wanted)
         .take_while(|(a, b)| same(a, b))
         .count();
-    let after = sent[before..]
-        .iter()
-        .rev()
-        .zip(wanted[before..].iter().rev())
+    let after = (sent.iter().skip(before).rev())
+        .zip(wanted.iter().skip(before).rev())
         .take_while(|(a, b)| same(a, b))
         .count();
-    for index in (before..sent.len() - after).rev() {
+    // `before` and `after` are counted in both, so these are all in range.
+    for index in (before..sent.len().saturating_sub(after)).rev() {
         if !send(Command::RemoveEffect { chain, index }) {
             return false;
         }
@@ -177,7 +176,7 @@ fn sync_effects(
     for (index, fx) in wanted
         .iter()
         .enumerate()
-        .take(wanted.len() - after)
+        .take(wanted.len().saturating_sub(after))
         .skip(before)
     {
         let effect = EffectSlot::with_values(fx::build(fx, sample_rate), &fx.values);

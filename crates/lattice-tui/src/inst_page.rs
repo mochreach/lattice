@@ -6,7 +6,7 @@
 use std::time::{Duration, Instant};
 
 use lattice_core::macros::{self, MACRO_INFO};
-use lattice_core::{Kind, Locks};
+use lattice_core::{Kind, Locks, Track};
 use lattice_editor::{Editor, InstLine, Strip};
 use lattice_engine::Status;
 use ratatui::Frame;
@@ -46,6 +46,10 @@ pub fn draw(
     let width = area.width as usize;
     let cursor = editor.inst_cursor();
     let tracks = editor.grid.tracks.len();
+    // A song always has a track, but with none there'd be nothing to draw.
+    if tracks == 0 {
+        return;
+    }
 
     // As many columns as fit, scrolled to keep the cursor's in view.
     let shown = (width.saturating_sub(LABEL) / MIN_COLUMN).clamp(1, tracks);
@@ -54,10 +58,13 @@ pub fn draw(
     } else if cursor.track >= view.inst_left + shown {
         view.inst_left = cursor.track + 1 - shown;
     }
-    view.inst_left = view.inst_left.min(tracks - shown);
-    let columns: Vec<usize> = (view.inst_left..view.inst_left + shown).collect();
+    view.inst_left = view.inst_left.min(tracks.saturating_sub(shown));
+    let columns: Vec<(usize, &Track)> = (editor.grid.tracks.iter().enumerate())
+        .skip(view.inst_left)
+        .take(shown)
+        .collect();
     let column_width = (width.saturating_sub(LABEL) / shown).clamp(MIN_COLUMN, MAX_COLUMN);
-    let all: Vec<Vec<InstLine>> = columns.iter().map(|&t| editor.inst_lines(t)).collect();
+    let all: Vec<Vec<InstLine>> = columns.iter().map(|&(t, _)| editor.inst_lines(t)).collect();
     let longest = all.iter().map(Vec::len).max().unwrap_or(0);
 
     let left = if view.inst_left > 0 { "‹" } else { "─" };
@@ -81,8 +88,7 @@ pub fn draw(
 
     // Each track's name, in its colour, with its mute or solo.
     let mut spans = vec![Span::raw(" ".repeat(LABEL))];
-    for &t in &columns {
-        let track = &editor.grid.tracks[t];
+    for &(t, track) in &columns {
         let (flag, flag_colour) = flag(editor, Strip::Track(t), theme);
         let style = Style::new().fg(theme.track(t)).add_modifier(Modifier::BOLD);
         let name = fit(&format!(" {}", track.name.to_uppercase()), column_width - 3);
@@ -96,7 +102,7 @@ pub fn draw(
 
     // The faces' art, under their names, as tall as leaves room for the lines.
     let height = (area.height as usize).saturating_sub(ABOVE);
-    let faces = columns.iter().any(|&t| editor.shows_face(t));
+    let faces = columns.iter().any(|&(t, _)| editor.shows_face(t));
     let art = match (height.saturating_sub(BELOW_ART) / 2).min(MAX_ART) {
         rows if faces && rows >= MIN_ART => rows,
         _ => 0,
@@ -119,10 +125,10 @@ pub fn draw(
             theme.faint
         };
         let mut spans = vec![Span::styled(fit(&format!(" {l:02}"), LABEL), number)];
-        for (k, &t) in columns.iter().enumerate() {
+        for (&(t, track), lines) in columns.iter().zip(&all) {
             let here = cursor.track == t && cursor.line == l;
-            let cell = match all[k].get(l) {
-                Some(&line) => cell(editor, status, theme, t, line, here, column_width),
+            let cell = match lines.get(l) {
+                Some(&line) => cell(track, status, theme, t, line, here, column_width),
                 None => vec![],
             };
             let used: usize = cell.iter().map(|s| s.content.chars().count()).sum();
@@ -138,14 +144,16 @@ pub fn draw(
     }
     let now = Instant::now();
     let time = view.face_clock.seconds();
-    for (k, &t) in columns.iter().enumerate() {
-        let track = &editor.grid.tracks[t];
+    for (k, &(t, track)) in columns.iter().enumerate() {
         let Some(face) = track.face.as_ref().filter(|_| editor.shows_face(t)) else {
             continue;
         };
         // A new note's when the count of them changes.
         let note = status.last_note(t);
-        let seen = &mut view.notes[t];
+        // There's a slot for every track the engine can have.
+        let Some(seen) = view.notes.get_mut(t) else {
+            continue;
+        };
         if let Some((_, _, count)) = note
             && seen.is_none_or(|(c, _)| c != count)
         {
@@ -168,7 +176,7 @@ pub fn draw(
                 .unwrap_or(0.0)
         };
         let feel = Feel {
-            level: view.meters[t],
+            level: view.meters.get(t).copied().unwrap_or(0.0),
             note: note.map(|(pitch, velocity, _)| (pitch, velocity)),
             since_note,
             macros: [macro_value(0), macro_value(1)],
@@ -187,7 +195,7 @@ pub fn draw(
 
 /// Track `t`'s `line`, a column wide less a space.
 fn cell(
-    editor: &Editor,
+    track: &Track,
     status: &Status,
     theme: &Theme,
     t: usize,
@@ -195,7 +203,6 @@ fn cell(
     here: bool,
     width: usize,
 ) -> Vec<Span<'static>> {
-    let track = &editor.grid.tracks[t];
     let colour = theme.track(t);
     let w = width - 1;
     let name_style = if here {
@@ -245,8 +252,7 @@ fn cell(
                 Span::styled(format!(" {rule}"), Style::new().fg(colour)),
             ]
         }
-        InstLine::Param(p) => {
-            let info = &track.instrument.params()[p];
+        InstLine::Param(p) if let Some(info) = track.instrument.params().get(p) => {
             let lock = (locks.iter()).find(|l| l.fx.is_none() && u32::from(l.param) == info.id);
             // A macro turning it is marked with its number.
             let mark = macros::mark(&track.macros, None, info.id as u8);
@@ -254,13 +260,13 @@ fn cell(
                 (Some(lock), _) => (Span::styled(" ◆", locked), lock.value, locked, locked),
                 (None, Some(m)) => (
                     Span::styled(format!(" {m}"), Style::new().fg(theme.visual)),
-                    track.instrument.values[p],
+                    track.instrument.get(info.id),
                     name_style,
                     value_style,
                 ),
                 (None, None) => (
                     Span::raw("  "),
-                    track.instrument.values[p],
+                    track.instrument.get(info.id),
                     name_style,
                     value_style,
                 ),
@@ -272,8 +278,7 @@ fn cell(
             spans.extend(bars::param(info, value, w - PARAM_LABEL, style, theme));
             spans
         }
-        InstLine::Macro(m) => {
-            let mac = &track.macros[m];
+        InstLine::Macro(m) if let Some(mac) = track.macros.get(m) => {
             let lock = (locks.iter()).find(|l| l.is_macro() && usize::from(l.param) == m);
             let (value, label_style, style) = match lock {
                 Some(lock) => (lock.value, locked, locked),
@@ -294,6 +299,8 @@ fn cell(
             ));
             spans
         }
+        // A setting or macro that's gone draws as nothing, until the editor's lines catch up.
+        InstLine::Param(_) | InstLine::Macro(_) => vec![],
         InstLine::Chain => {
             let names: Vec<&str> = track.effects.iter().map(|fx| fx.kind.name()).collect();
             let text = if names.is_empty() {

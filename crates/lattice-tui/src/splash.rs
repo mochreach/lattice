@@ -117,9 +117,9 @@ impl Splash {
         let mut rng = Rng::new(seed);
         Self {
             start: now,
-            pattern: PATTERNS[rng.below(PATTERNS.len())],
-            scale: [1, 2, 4][rng.below(3)],
-            front: FRONTS[rng.below(FRONTS.len())],
+            pattern: rng.pick(&PATTERNS, Pattern::Carpet),
+            scale: rng.pick(&[1, 2, 4], 1),
+            front: rng.pick(&FRONTS, Front::Circle),
             hue: rng.below(64),
             ripple: if rng.below(3) == 0 { -1.0 } else { 1.0 },
         }
@@ -155,7 +155,10 @@ impl Splash {
                 if r < swept {
                     continue;
                 }
-                let cell = &mut buf[(area.x + cx, area.y + cy)];
+                // The area's in the buffer; if it weren't, there'd be nothing there to draw on.
+                let Some(cell) = buf.cell_mut((area.x + cx, area.y + cy)) else {
+                    continue;
+                };
                 cell.reset();
                 if dots == 0 {
                     continue;
@@ -165,7 +168,9 @@ impl Splash {
                     Style::new().fg(theme.accent).add_modifier(Modifier::BOLD)
                 } else {
                     let band = ((r - self.ripple * t * RIPPLE) / BAND).rem_euclid(colours as f32);
-                    Style::new().fg(theme.tracks[(band as usize + self.hue) % colours])
+                    // With no track colours, the band is left in the default one.
+                    let colour = theme.tracks.iter().cycle().nth(band as usize + self.hue);
+                    Style::new().fg(colour.copied().unwrap_or_default())
                 };
                 cell.set_style(style);
             }
@@ -203,11 +208,17 @@ impl Rng {
         Self((z ^ (z >> 31)) | 1)
     }
 
+    /// A number from 0 up to `n`, or 0 if `n` is.
     pub(crate) fn below(&mut self, n: usize) -> usize {
         self.0 ^= self.0 << 13;
         self.0 ^= self.0 >> 7;
         self.0 ^= self.0 << 17;
-        (self.0 % n as u64) as usize
+        self.0.checked_rem(n as u64).unwrap_or(0) as usize
+    }
+
+    /// One of `from`, or `or` if it's empty.
+    pub(crate) fn pick<T: Copy>(&mut self, from: &[T], or: T) -> T {
+        from.get(self.below(from.len())).copied().unwrap_or(or)
     }
 }
 

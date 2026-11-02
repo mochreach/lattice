@@ -15,12 +15,11 @@ fn path() -> Option<PathBuf> {
 /// The commands run before, or none if there's no history yet.
 pub fn load() -> Vec<String> {
     let text = path().and_then(|path| std::fs::read_to_string(path).ok());
-    let lines: Vec<String> = (text.iter().flat_map(|t| t.lines()))
+    let lines: Vec<&str> = (text.iter().flat_map(|t| t.lines()))
         .filter(|line| !line.is_empty())
-        .map(String::from)
         .collect();
     let over = lines.len().saturating_sub(MAX_HISTORY);
-    lines[over..].to_vec()
+    lines.into_iter().skip(over).map(String::from).collect()
 }
 
 pub fn save(history: &[String]) -> anyhow::Result<()> {

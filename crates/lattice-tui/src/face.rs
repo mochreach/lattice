@@ -61,9 +61,9 @@ impl Look {
         });
         let mut rng = Rng::new(hash);
         Self {
-            pattern: PATTERNS[rng.below(PATTERNS.len())],
-            scale: [1.0, 2.0, 3.0][rng.below(3)],
-            flow: [(1.0, 0.0), (0.0, 1.0), (1.0, 1.0)][rng.below(3)],
+            pattern: rng.pick(&PATTERNS, Pattern::Carpet),
+            scale: rng.pick(&[1.0, 2.0, 3.0], 1.0),
+            flow: rng.pick(&[(1.0, 0.0), (0.0, 1.0), (1.0, 1.0)], (1.0, 0.0)),
             hue: rng.below(64),
         }
     }
@@ -134,7 +134,9 @@ pub fn draw(buf: &mut Buffer, area: Rect, title: &str, feel: &Feel, theme: &Them
             } else if r < glow {
                 // Two neighbouring colours, in bands rippling out.
                 let band = (r * BANDS - time * RIPPLE).floor().rem_euclid(2.0) as usize;
-                let style = Style::new().fg(theme.hues[(hue + band) % hues]);
+                // With no hues, the band is left in the default colour.
+                let colour = theme.hues.iter().cycle().nth(hue + band);
+                let style = Style::new().fg(colour.copied().unwrap_or_default());
                 if bold {
                     style.add_modifier(Modifier::BOLD)
                 } else {
@@ -143,7 +145,10 @@ pub fn draw(buf: &mut Buffer, area: Rect, title: &str, feel: &Feel, theme: &Them
             } else {
                 theme.faint
             };
-            let cell = &mut buf[(area.x + cx, area.y + cy)];
+            // The area's in the buffer; if it weren't, there'd be nothing there to draw on.
+            let Some(cell) = buf.cell_mut((area.x + cx, area.y + cy)) else {
+                continue;
+            };
             cell.set_char(char::from_u32(0x2800 + dots).unwrap_or(' '));
             cell.set_style(style);
         }

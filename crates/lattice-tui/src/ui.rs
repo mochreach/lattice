@@ -291,8 +291,9 @@ fn draw_infobox(frame: &mut Frame, area: Rect, infobox: &Infobox, theme: &Theme)
 fn where_in_song(editor: &Editor) -> String {
     let a = &editor.arrangement;
     match (editor.song_position, editor.cue) {
-        (Some((entry, repeat)), _) => {
-            let repeats = a.entries[entry].repeats;
+        // Nothing for an entry or pattern that's gone.
+        (Some((entry, repeat)), _) if let Some(entry_at) = a.entries.get(entry) => {
+            let repeats = entry_at.repeats;
             let times = if repeats > 1 {
                 format!(" {}/{repeats}", repeat + 1)
             } else {
@@ -300,8 +301,10 @@ fn where_in_song(editor: &Editor) -> String {
             };
             format!("{times} · song {}/{}", entry + 1, a.entries.len())
         }
-        (None, Some(cue)) => format!(" → {}", a.patterns[cue].name),
-        (None, None) => String::new(),
+        (None, Some(cue)) if let Some(pattern) = a.patterns.get(cue) => {
+            format!(" → {}", pattern.name)
+        }
+        _ => String::new(),
     }
 }
 
@@ -342,20 +345,20 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         Span::styled(" LATTICE ", theme.block(theme.accent)),
         Span::styled(page, theme.block(theme.visual)),
         // Padded to the longest page's name, so the transport stays put.
-        Span::raw(" ".repeat(1 + " PATTERN ".len() - page.len())),
+        Span::raw(" ".repeat((1 + " PATTERN ".len()).saturating_sub(page.len()))),
         transport,
         if editor.record {
             Span::styled(" ● REC ", theme.block(theme.error))
         } else {
             Span::raw("")
         },
-        match editor.armed() {
-            Some(t) if status.recording() => Span::styled(
-                format!(" ● LOOP {} ", editor.grid.tracks[t].name.to_uppercase()),
+        match editor.armed().and_then(|t| editor.grid.tracks.get(t)) {
+            Some(track) if status.recording() => Span::styled(
+                format!(" ● LOOP {} ", track.name.to_uppercase()),
                 theme.block(theme.error),
             ),
-            Some(t) => Span::styled(
-                format!(" ARMED {} ", editor.grid.tracks[t].name.to_uppercase()),
+            Some(track) => Span::styled(
+                format!(" ARMED {} ", track.name.to_uppercase()),
                 theme.block(theme.visual),
             ),
             None => Span::raw(""),
@@ -407,10 +410,12 @@ fn column_width(editor: &Editor, index: usize) -> usize {
     let folded = editor
         .grid
         .group_of(index)
-        .is_some_and(|g| editor.grid.groups[g].folded);
+        .and_then(|g| editor.grid.groups.get(g))
+        .is_some_and(|g| g.folded);
+    let chop = (editor.grid.tracks.get(index)).is_some_and(|t| t.instrument.kind == InstKind::Chop);
     match () {
         _ if folded => FOLDED,
-        _ if editor.grid.tracks[index].instrument.kind == InstKind::Chop => CHOP,
+        _ if chop => CHOP,
         _ => CELL,
     }
 }
@@ -490,7 +495,8 @@ fn pieces(
             .find(|l| l.fx.is_none() && u32::from(l.param) == chop::DIRECTION)
             .map_or(instrument.get(chop::DIRECTION), |l| l.value);
         let reverse = direction >= 0.5;
-        for j in 0..usize::from(note.length).min(shown.len() - i) {
+        let held = rows.iter_mut().skip(i).take(usize::from(note.length));
+        for (j, row) in held.enumerate() {
             let (from, to) = if reverse {
                 let to = start + size * (piece + 1) as f64 - size * j as f64;
                 (to - size, to)
@@ -504,7 +510,7 @@ fn pieces(
                 Some(peaks) if inside => peaks.row(from, to, reverse, width),
                 _ => " ".repeat(width),
             };
-            rows[i + j] = Some(Piece {
+            *row = Some(Piece {
                 piece,
                 first: j == 0,
                 reverse,
@@ -595,16 +601,19 @@ fn draw_grid(
     // One column spare for the arrow that shows there are more tracks.
     let room = (area.width as usize).saturating_sub(GUTTER + 1);
     scroll_tracks(view, editor.cursor().track, &widths, room);
-    let fits = fitting(&widths[view.first_track..], room);
+    let fits = fitting(widths.get(view.first_track..).unwrap_or_default(), room);
     let columns: Vec<Column> = editor
         .grid
         .tracks
         .iter()
+        .zip(&widths)
         .enumerate()
         .skip(view.first_track)
         .take(fits)
-        .map(|(i, t)| {
-            let mut column = Column::new(i, t, widths[i], editor, status, theme, view.meters[i]);
+        .map(|(i, (t, &width))| {
+            // There's a meter for every track the engine can have.
+            let meter = view.meters.get(i).copied().unwrap_or(0.0);
+            let mut column = Column::new(i, t, width, editor, status, theme, meter);
             column.chop(&mut view.waves);
             column
         })
@@ -629,12 +638,13 @@ fn draw_grid(
 /// Keeps the cursor's track on screen when there are more tracks than fit in `room`, given each
 /// column's width, and fills the screen when there's space to the right.
 fn scroll_tracks(view: &mut ViewState, cursor: usize, widths: &[usize], room: usize) {
+    let from = |first: usize| widths.get(first..).unwrap_or_default();
     let first = &mut view.first_track;
     *first = (*first).min(cursor);
-    while *first < cursor && fitting(&widths[*first..], room) <= cursor - *first {
+    while *first < cursor && fitting(from(*first), room) <= cursor - *first {
         *first += 1;
     }
-    while *first > 0 && fitting(&widths[*first - 1..], room) == widths.len() - (*first - 1) {
+    while *first > 0 && fitting(from(*first - 1), room) == from(*first - 1).len() {
         *first -= 1;
     }
 }
@@ -670,8 +680,7 @@ fn group_line(columns: &[Column], groups: &[Group], theme: &Theme) -> Option<Lin
     }
     let mut spans = vec![Span::raw(" ".repeat(GUTTER))];
     let mut k = 0;
-    while k < columns.len() {
-        let c = &columns[k];
+    while let Some(c) = columns.get(k) {
         let Some(group) = groups.iter().find(|g| g.contains(c.index)) else {
             spans.push(Span::raw(" ".repeat(c.width + 1)));
             k += 1;
@@ -679,11 +688,10 @@ fn group_line(columns: &[Column], groups: &[Group], theme: &Theme) -> Option<Lin
         };
         // The group's columns on screen, drawn as one bracket so its name fits however narrow
         // they are.
-        let span: Vec<&Column> = columns[k..]
-            .iter()
+        let span: Vec<&Column> = (columns.iter().skip(k))
             .take_while(|c| group.contains(c.index))
             .collect();
-        let width: usize = span.iter().map(|c| c.width + 1).sum::<usize>() - 1;
+        let width = (span.iter().map(|c| c.width + 1).sum::<usize>()).saturating_sub(1);
         let opens = c.index == group.first;
         let closes = span
             .last()
@@ -753,8 +761,8 @@ fn header_lines(
             })
             .collect(),
     );
-    if left {
-        names.spans[0] = Span::styled(fit(" ‹", GUTTER), theme.dim);
+    if left && let Some(gutter) = names.spans.first_mut() {
+        *gutter = Span::styled(fit(" ‹", GUTTER), theme.dim);
     }
     if right {
         names.spans.push(Span::styled("›", theme.dim));
@@ -947,8 +955,11 @@ fn grid_row(
             continue;
         };
 
-        let piece = c.pieces.as_ref().map(|rows| match &rows[row] {
-            Some(p) => {
+        // Pieces, tails and held rows are each as long as the steps shown.
+        let tail = c.tails.get(row).copied().unwrap_or(false);
+        let held = c.held.get(row).copied().unwrap_or(false);
+        let piece = c.pieces.as_ref().map(|rows| match rows.get(row) {
+            Some(Some(p)) => {
                 let text = if p.first {
                     let direction = if p.reverse { '◂' } else { ' ' };
                     format!(" {:02X}{direction}{}", p.piece, p.wave)
@@ -957,7 +968,7 @@ fn grid_row(
                 };
                 (text, c.style())
             }
-            None => (" ···".into(), theme.faint),
+            _ => (" ···".into(), theme.faint),
         });
         let (text, mut style) = match piece {
             Some(piece) => piece,
@@ -975,7 +986,7 @@ fn grid_row(
                     }
                     (format!(" {glyph}"), style)
                 }
-                None if c.width == FOLDED && !c.tails[row] => (" ·".into(), theme.faint),
+                None if c.width == FOLDED && !tail => (" ·".into(), theme.faint),
                 Some(note) => {
                     let length = if note.length > 1 {
                         note.length.to_string()
@@ -988,7 +999,7 @@ fn grid_row(
                     }
                     (format!(" {} {length:>4}  ", note_name(note.pitch)), style)
                 }
-                None if c.tails[row] => (
+                None if tail => (
                     " │".into(),
                     Style::new().fg(c.colour).add_modifier(Modifier::DIM),
                 ),
@@ -999,7 +1010,7 @@ fn grid_row(
         let mark = match () {
             _ if c.width == FOLDED => None,
             _ if !step.locks.is_empty() => Some("◆"),
-            _ if c.held[row] => Some("╎"),
+            _ if held => Some("╎"),
             _ => None,
         };
         // In the live view, highlight what the rules have changed.
@@ -1065,7 +1076,12 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             // A mistake is underlined in the error colour.
             let range = editor.command_problem().map_or(0..0, |p| p.range);
             let chars: Vec<char> = prompt.line.chars().collect();
-            let part = |from: usize, to: usize| chars[from..to].iter().collect::<String>();
+            // A problem's range is in the line, but if it weren't, it'd underline what's there.
+            let part = |from: usize, to: usize| {
+                let to = to.min(chars.len());
+                let part = chars.get(from.min(to)..to).unwrap_or_default();
+                part.iter().collect::<String>()
+            };
             vec![
                 Span::styled(
                     format!("{}{}", prompt.kind.label(), part(0, range.start)),
@@ -1117,7 +1133,8 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             (
             format!(
                 "◆ locking {}: change settings · L lock them on the selected steps · esc cancel",
-                editor.grid.tracks[editor.locking().unwrap_or(0)].name
+                (editor.locking().and_then(|t| editor.grid.tracks.get(t)))
+                    .map_or("", |t| t.name.as_str())
             ),
             Style::new().fg(theme.accent),
         )
@@ -1246,7 +1263,9 @@ fn note_name(pitch: u8) -> String {
     } else {
         octave.to_string()
     };
-    format!("{}{octave}", NAMES[usize::from(pitch % 12)])
+    // There's a name for every pitch class.
+    let name = NAMES.get(usize::from(pitch % 12)).copied().unwrap_or("?-");
+    format!("{name}{octave}")
 }
 
 #[cfg(test)]

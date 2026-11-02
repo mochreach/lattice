@@ -75,8 +75,10 @@ fn columns(
     view.first_strip = view.first_strip.min(tracks.saturating_sub(fits));
     view.strips_shown = fits;
 
-    let track_columns = (view.first_strip..tracks).take(fits).map(|i| {
-        let track = &editor.grid.tracks[i];
+    let shown = (editor.grid.tracks.iter().enumerate())
+        .skip(view.first_strip)
+        .take(fits);
+    let track_columns = shown.map(|(i, track)| {
         let colour = theme.track(i);
         let audible = !track.mix.mute && !track.pattern_mute && (track.mix.solo || !any_solo);
         let style = Style::new().fg(colour);
@@ -90,7 +92,8 @@ fn columns(
             } else {
                 style.add_modifier(Modifier::DIM)
             },
-            meter: view.meters[i],
+            // There's a meter for every track the engine can have.
+            meter: view.meters.get(i).copied().unwrap_or(0.0),
         }
     });
     // A group's bus takes the colour of its first track.
@@ -99,7 +102,8 @@ fn columns(
             Strip::Group(g),
             group.name.to_uppercase(),
             theme.track(group.first),
-            view.group_meters[g],
+            // And one for every group it can have.
+            view.group_meters.get(g).copied().unwrap_or(0.0),
         )
     });
     let buses = group_buses.chain([
@@ -146,7 +150,9 @@ fn overview(
         };
         let mut spans = vec![Span::styled(fit(&format!(" {label}"), LABEL), style)];
         for (k, (c, cell)) in columns.iter().zip(cells).enumerate() {
-            if c.strip.is_bus() && !columns[k.saturating_sub(1)].strip.is_bus() {
+            let after_track = (k.checked_sub(1).and_then(|k| columns.get(k)))
+                .is_some_and(|before| !before.strip.is_bus());
+            if c.strip.is_bus() && after_track {
                 let more = if hidden.1 && k > 0 { "›" } else { " " };
                 spans.push(Span::styled(format!("{more}│"), theme.faint));
             }
@@ -194,7 +200,9 @@ fn overview(
         columns
             .iter()
             .map(|c| match c.strip {
-                Strip::Track(i) => bars::pan(editor.grid.tracks[i].mix.pan, CELL, c.style, theme),
+                Strip::Track(i) if let Some(track) = editor.grid.tracks.get(i) => {
+                    bars::pan(track.mix.pan, CELL, c.style, theme)
+                }
                 _ => vec![Span::raw(" ".repeat(CELL))],
             })
             .collect(),
@@ -211,10 +219,14 @@ fn overview(
 
 /// `M` when muted, `m` when muted in this pattern, `S` when soloed.
 pub fn flag(editor: &Editor, strip: Strip, theme: &Theme) -> (&'static str, Color) {
-    match strip {
-        Strip::Track(i) if editor.grid.tracks[i].mix.mute => ("M", theme.error),
-        Strip::Track(i) if editor.grid.tracks[i].pattern_mute => ("m", theme.error),
-        Strip::Track(i) if editor.grid.tracks[i].mix.solo => ("S", theme.accent),
+    let track = match strip {
+        Strip::Track(i) => editor.grid.tracks.get(i),
+        _ => None,
+    };
+    match track {
+        Some(t) if t.mix.mute => ("M", theme.error),
+        Some(t) if t.pattern_mute => ("m", theme.error),
+        Some(t) if t.mix.solo => ("S", theme.accent),
         _ => (" ", theme.accent),
     }
 }
@@ -229,20 +241,32 @@ pub fn route(editor: &Editor, strip: Strip) -> String {
     };
     match strip {
         Strip::Track(i) => {
-            let mut route = match editor.grid.group_of(i) {
-                Some(g) => format!("→ {} → master", editor.grid.groups[g].name),
+            let group = editor
+                .grid
+                .group_of(i)
+                .and_then(|g| editor.grid.groups.get(g));
+            let mut route = match group {
+                Some(group) => format!("→ {} → master", group.name),
                 None => "→ master".into(),
             };
-            if editor.grid.tracks[i].mix.send > MIN_DB {
+            if editor
+                .grid
+                .tracks
+                .get(i)
+                .is_some_and(|t| t.mix.send > MIN_DB)
+            {
                 route.push_str(", and → send");
             }
             route
         }
-        Strip::Group(g) => {
-            let group = &editor.grid.groups[g];
-            let tracks = &editor.grid.tracks[group.first..group.first + group.len];
-            format!("{} → master", names(&mut tracks.iter()))
-        }
+        // A group that's gone goes nowhere.
+        Strip::Group(g) => match editor.grid.groups.get(g) {
+            Some(group) => {
+                let mut tracks = editor.grid.tracks.iter().skip(group.first).take(group.len);
+                format!("{} → master", names(&mut tracks))
+            }
+            None => String::new(),
+        },
         Strip::Send => {
             let mut sent = editor.grid.tracks.iter().filter(|t| t.mix.send > MIN_DB);
             match names(&mut sent) {
@@ -319,7 +343,7 @@ fn detail(
         spans.push(Span::styled(format!("{name} "), name_style));
         let style = value_style(here);
         let track = match strip {
-            Strip::Track(i) => Some(&editor.grid.tracks[i]),
+            Strip::Track(i) => editor.grid.tracks.get(i),
             _ => None,
         };
         match (field, track) {
@@ -388,7 +412,11 @@ fn detail(
     };
     lines.push(Line::raw(""));
     let macros = match shown.strip {
-        Strip::Track(t) => &editor.grid.tracks[t].macros[..],
+        Strip::Track(t) => editor
+            .grid
+            .tracks
+            .get(t)
+            .map_or(&[][..], |t| t.macros.as_slice()),
         _ => &[],
     };
     lines.extend(settings(
@@ -436,9 +464,14 @@ pub fn settings(
     let cell = (width.saturating_sub(1) / PARAM_COLUMNS).max(PARAM_LABEL + 8);
     let bar = cell.saturating_sub(PARAM_LABEL + 3).min(PARAM_BAR);
     let mut lines = vec![];
-    for (r, params) in shown.params.chunks(PARAM_COLUMNS).enumerate() {
+    // A setting comes with its value, so neither is ever missing one.
+    let rows = shown
+        .params
+        .chunks(PARAM_COLUMNS)
+        .zip(shown.values.chunks(PARAM_COLUMNS));
+    for (r, (params, values)) in rows.enumerate() {
         let mut spans = vec![];
-        for (k, info) in params.iter().enumerate() {
+        for (k, (info, &value)) in params.iter().zip(values).enumerate() {
             let p = r * PARAM_COLUMNS + k;
             let here = row == Row::Param(p);
             let lock = (locks.iter()).find(|l| l.fx == slot && u32::from(l.param) == info.id);
@@ -454,13 +487,7 @@ pub fn settings(
                 None => {
                     let mark = macros::mark(macros, slot, info.id as u8);
                     spans.extend(label(info.name, here, mark));
-                    spans.extend(bars::param(
-                        info,
-                        shown.values[p],
-                        bar,
-                        value_style(here),
-                        theme,
-                    ));
+                    spans.extend(bars::param(info, value, bar, value_style(here), theme));
                 }
             }
             spans.push(Span::raw(" ".repeat(cell - PARAM_LABEL - bar)));

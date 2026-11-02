@@ -19,7 +19,8 @@ const DOTTED_EIGHTH: f32 = (60.0 / BPM as f32) * 0.75;
 
 /// Parses a drum line like `"X..g|x..."`: a step per character, `X` an accent, `x` a hit, `m`
 /// a medium hit, `g` a ghost note and `.` a rest. `|` and spaces are left out, to mark bars.
-/// How many hits and notes couldn't be read, playing as rests; the tests check there are none.
+/// How many hits and notes couldn't be read, playing as rests, or settings and lanes couldn't be
+/// set; the tests check there are none.
 static MISREAD: AtomicUsize = AtomicUsize::new(0);
 
 fn misread() -> Step {
@@ -127,7 +128,9 @@ fn changes() -> Vec<Rule> {
 fn instrument(kind: InstKind, settings: &[(u32, f32)]) -> Instrument {
     let mut instrument = Instrument::new(kind);
     for &(id, value) in settings {
-        instrument.values[id as usize] = value;
+        if !instrument.set(id, value) {
+            misread();
+        }
     }
     instrument
 }
@@ -135,7 +138,9 @@ fn instrument(kind: InstKind, settings: &[(u32, f32)]) -> Instrument {
 fn fx(kind: FxKind, settings: &[(u32, f32)]) -> Fx {
     let mut fx = Fx::new(kind);
     for &(id, value) in settings {
-        fx.values[id as usize] = value;
+        if !fx.set(id, value) {
+            misread();
+        }
     }
     fx
 }
@@ -404,11 +409,16 @@ fn section(parts: Vec<(usize, Vec<Step>, Vec<Rule>)>) -> Vec<Lane> {
         TRACKS
     ];
     for (track, steps, rules) in parts {
-        lanes[track] = Lane {
-            steps,
-            rules,
-            mute: false,
-        };
+        match lanes.get_mut(track) {
+            Some(lane) => {
+                *lane = Lane {
+                    steps,
+                    rules,
+                    mute: false,
+                }
+            }
+            None => _ = misread(),
+        }
     }
     lanes
 }
@@ -448,11 +458,14 @@ fn acid() -> Vec<Step> {
 fn stabs() -> Vec<Step> {
     let mut steps = notes(". . . C4_2 . . . . . . C4 . . . . .");
     for (param, value) in [(synth::CUTOFF, 3_200.0), (synth::RESONANCE, 0.7)] {
-        steps[10].locks.set(Lock {
+        let lock = Lock {
             fx: None,
             param: param as u8,
             value,
-        });
+        };
+        if !steps.get_mut(10).is_some_and(|s| s.locks.set(lock)) {
+            misread();
+        }
     }
     steps
 }
@@ -587,7 +600,10 @@ fn sections() -> Vec<(&'static str, u32, Vec<Lane>)> {
 
 /// The lanes with `track`'s muted.
 fn muted(mut lanes: Vec<Lane>, track: usize) -> Vec<Lane> {
-    lanes[track].mute = true;
+    match lanes.get_mut(track) {
+        Some(lane) => lane.mute = true,
+        None => _ = misread(),
+    }
     lanes
 }
 

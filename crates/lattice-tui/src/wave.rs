@@ -21,8 +21,10 @@ impl Peaks {
         let n = BUCKETS.min(sample.len()).max(1);
         let mut peaks = vec![0.0f32; n];
         for (i, (l, r)) in sample.left.iter().zip(&sample.right).enumerate() {
-            let bucket = i * n / sample.len();
-            peaks[bucket] = peaks[bucket].max(l.abs()).max(r.abs());
+            // `i` is less than the length, so the bucket's always there.
+            if let Some(peak) = peaks.get_mut(i * n / sample.len()) {
+                *peak = peak.max(l.abs()).max(r.abs());
+            }
         }
         let loudest = peaks.iter().copied().fold(0.0, f32::max);
         if loudest > 0.0 {
@@ -41,7 +43,9 @@ impl Peaks {
         } else {
             last
         };
-        self.0[first..last].iter().copied().fold(0.0, f32::max)
+        // Both are clamped to the peaks, so this is never silent for want of them.
+        let peaks = self.0.get(first..last).unwrap_or_default();
+        peaks.iter().copied().fold(0.0, f32::max)
     }
 
     /// One row, `width` cells wide, of the file from fraction `from` to `to`: four dots down, the
@@ -61,7 +65,10 @@ impl Peaks {
                 half = half.max(1);
             }
             for dot in width - half.min(width)..width + half.min(width) {
-                cells[dot / 2] |= bits[dot % 2];
+                // Up to twice the width, so each dot's in a cell.
+                if let (Some(cell), Some(bit)) = (cells.get_mut(dot / 2), bits.get(dot % 2)) {
+                    *cell |= bit;
+                }
             }
         }
         cells

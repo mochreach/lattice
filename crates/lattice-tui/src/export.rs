@@ -157,7 +157,7 @@ pub fn render(export: &Export, buses: Buses, bpm: f64, sample_rate: f32) -> Resu
     while audio.len() < max && audio.len() - last_sound < 2 * quiet {
         let from = audio.len();
         render(&mut engine, &mut audio);
-        if let Some(i) = audio[from..].iter().rposition(|s| s.abs() > SILENT) {
+        if let Some(i) = audio.iter().skip(from).rposition(|s| s.abs() > SILENT) {
             last_sound = from + i + 1;
         }
     }
@@ -178,8 +178,10 @@ fn fold(audio: &mut Vec<f32>, frames: usize) {
     }
     audio.resize(audio.len().max(len), 0.0);
     let (looped, tail) = audio.split_at_mut(len);
-    for (i, &sample) in tail.iter().enumerate() {
-        looped[i % len] += sample;
+    for lap in tail.chunks(len) {
+        for (to, sample) in looped.iter_mut().zip(lap) {
+            *to += sample;
+        }
     }
     audio.truncate(len);
 }

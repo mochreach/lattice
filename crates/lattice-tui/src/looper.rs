@@ -113,7 +113,8 @@ impl Looper {
     /// Frames to leave room for, for a pass of track `t`: a tenth more, in case the tempo
     /// slows.
     fn room(&self, editor: &Editor, t: usize) -> usize {
-        let steps = editor.grid.tracks[t].steps.len() as f64;
+        // A track that's gone has nothing to record, and needs only the margin.
+        let steps = editor.grid.tracks.get(t).map_or(0, |t| t.steps.len()) as f64;
         let per_step = 60.0 / (editor.bpm * f64::from(editor.grid.steps_per_beat.max(1)));
         (steps * per_step * f64::from(self.sample_rate) * 1.1) as usize + 1024
     }
@@ -177,7 +178,11 @@ fn open_input(
             latency.store((seconds * f64::from(rate)) as u64, Ordering::Relaxed);
             for frame in data.chunks_exact(channels) {
                 // Mono is heard in both.
-                let (l, r) = (frame[0], *frame.get(1).unwrap_or(&frame[0]));
+                let (l, r) = match *frame {
+                    [l, r, ..] => (l, r),
+                    [mono] => (mono, mono),
+                    [] => continue,
+                };
                 if frames.slots() >= 2 {
                     let _ = frames.push(l);
                     let _ = frames.push(r);

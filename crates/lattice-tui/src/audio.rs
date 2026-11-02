@@ -93,6 +93,7 @@ impl Output {
 
     fn play(&self, device: &cpal::Device, config: cpal::StreamConfig) -> Result<cpal::Stream> {
         let channels = usize::from(config.channels);
+        anyhow::ensure!(channels > 0, "the output has no channels");
         let sample_rate = self.sample_rate;
         let engine = Arc::clone(&self.engine);
         let input = Arc::clone(&self.input_latency);
@@ -117,7 +118,12 @@ impl Output {
                     engine.set_latency(output + input.load(Ordering::Relaxed));
                     for chunk in data.chunks_mut(MAX_BLOCK * channels) {
                         let frames = chunk.len() / channels;
-                        let (l, r) = (&mut left[..frames], &mut right[..frames]);
+                        // A chunk is at most a block, so this always fits.
+                        let (Some(l), Some(r)) = (left.get_mut(..frames), right.get_mut(..frames))
+                        else {
+                            chunk.fill(0.0);
+                            continue;
+                        };
                         engine.process(l, r);
                         for ((frame, &l), &r) in chunk.chunks_exact_mut(channels).zip(&*l).zip(&*r)
                         {
