@@ -45,7 +45,7 @@ pub use gesture::{Gesture, MAX_SPEED, TICKS};
 pub use group::{Group, MAX_GROUPS};
 pub use instrument::{DRUM_ROOT, InstKind, Instrument};
 pub use macros::{MACRO, MAX_MACROS, MAX_TARGETS, Macro, Target as MacroTarget};
-pub use preset::{Face, MAX_CONTROLS, PRESETS, Preset, SavedPreset, preset};
+pub use preset::{ART_ROWS, ART_WIDTH, Face, MAX_CONTROLS, PRESETS, Preset, SavedPreset, preset};
 pub use song::{
     Change, Grid, Lock, LockColumn, Locks, MAX_CHOKE, MAX_DB, MAX_LOCKS, MAX_PARAMS, MAX_STEPS,
     MAX_TRACKS, MIN_DB, Mix, Note, Song, Step, Track, db_to_gain,

@@ -340,7 +340,7 @@ the feedback send's level, the reverb's decay, or `pitch` at 7 for fifths.
 **Presets** make an instrument into one of its own: `:preset night-bus` puts an instrument, its
 settings, the effects after it and the macros that turn them on a track all at once, in place of
 the track's own, and `:preset-save cold-iron` saves a track's to put on any track of any song.
-Lattice comes with 22, each with its effects, two macros and a face:
+Lattice comes with 23, each with its effects, two macros and a face:
 
 - synths: `night-bus` (a dark saw pad in the shimmer, which `dawn` opens), `paper-lanterns` (a slow
   pad through a swaying band-pass), `cathedral` (a square organ in a stone nave), `sodium` (a bright
@@ -353,9 +353,16 @@ Lattice comes with 22, each with its effects, two macros and a face:
 - drums: `foundry` (a hard, hot kick), `velvet-boom` (an 808's long boom), `tin-roof` (a 909
   crack), `brushfire` (a snare like brushes), `cicada` (a ticking, swarming hat), `brass-bell` (the
   hat's metal rung like a bell), `crowd-pleaser` (a clap from a crowd), `thunderhead` (a low,
-  rolling tom in a storm) and `hollow-log` (a knock on wood) A preset gives its track a **face**: a title (`:face Cold Iron`), and the
-controls it puts forward, its macros and whichever settings `:face-show cutoff` adds. The track
-keeps it, and the song saves it, until its instrument changes for another kind.
+  rolling tom in a storm) and `hollow-log` (a knock on wood)
+- Krell: `great-machine` (all five choirs drifting apart over a glass body, down echoing halls;
+  `alien` drifts them further)
+
+A preset gives its track a **face**: a title (`:face Cold Iron`), and the controls it puts
+forward, its macros and whichever settings `:face-show cutoff` adds. The track keeps it, and the
+song saves it, until its instrument changes for another kind. Its art, lit by what the track
+plays, is a fractal its title picks, unless it's drawn by hand: a preset's file can give it up to
+8 rows of 31 characters, `art = ["⢠⣶⣦ ⣿", …]`, as `great-machine` draws the Great Machine of the
+Krell from *Forbidden Planet*.
 
 **Locks** automate settings by step, as on Elektron machines and in trackers' columns: a track
 can lock up to four of its instrument's or effects' settings with `:lock`, each in a column of its

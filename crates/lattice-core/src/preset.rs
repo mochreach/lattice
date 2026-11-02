@@ -2,8 +2,9 @@
 //! instrument and its settings, the chain of effects after it, and the macros that turn them,
 //! which `:preset` puts on a track all at once, in place of its own.
 //!
-//! The face is what the instrument page shows of it first: its title, art drawn from that, and
-//! the controls it puts forward, its macros and whichever of the instrument's settings it chose.
+//! The face is what the instrument page shows of it first: its title, its art, drawn by hand or
+//! else from the title, and the controls it puts forward, its macros and whichever of the
+//! instrument's settings it chose.
 //! A track keeps its face, so the song does, until its instrument changes for another kind.
 
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,10 @@ use crate::macros::{MAX_MACROS, MAX_TARGETS, Macro, Target};
 
 /// The most of the instrument's settings a face puts forward, beside its macros.
 pub const MAX_CONTROLS: usize = 6;
+/// The most rows and characters a row a face's hand-drawn art has: as much as the instrument
+/// page has room for at most.
+pub const ART_ROWS: usize = 8;
+pub const ART_WIDTH: usize = 31;
 
 /// How a preset shows itself.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -23,6 +28,9 @@ pub struct Face {
     /// The instrument's settings it puts forward, by id, in order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub controls: Vec<u8>,
+    /// Art drawn by hand, a row of text a line, in place of the art the title picks.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub art: Vec<String>,
 }
 
 impl Face {
@@ -30,6 +38,7 @@ impl Face {
         Self {
             title: title.into(),
             controls: vec![],
+            art: vec![],
         }
     }
 
@@ -37,6 +46,19 @@ impl Face {
     pub fn check(&self, kind: InstKind) -> Result<(), String> {
         if self.controls.len() > MAX_CONTROLS {
             return Err(format!("a face has at most {MAX_CONTROLS} controls"));
+        }
+        if self.art.len() > ART_ROWS {
+            return Err(format!("a face's art has at most {ART_ROWS} rows"));
+        }
+        for row in &self.art {
+            if row.chars().count() > ART_WIDTH {
+                return Err(format!(
+                    "a face's art is at most {ART_WIDTH} characters wide"
+                ));
+            }
+            if row.chars().any(char::is_control) {
+                return Err("a face's art can't have tabs or other control characters".into());
+            }
         }
         let params = kind.params().len();
         match self.controls.iter().find(|&&c| usize::from(c) >= params) {
@@ -123,6 +145,9 @@ impl TryFrom<SavedPreset> for Preset {
     }
 }
 
+/// The Great Machine of the Krell, from *Forbidden Planet* (1956), in braille.
+const GREAT_MACHINE: &str = include_str!("art/great-machine.txt");
+
 /// The presets Lattice comes with.
 pub const PRESETS: &[&str] = &[
     // Synths.
@@ -150,12 +175,14 @@ pub const PRESETS: &[&str] = &[
     "crowd-pleaser",
     "thunderhead",
     "hollow-log",
+    // Krell.
+    "great-machine",
 ];
 
 /// A preset Lattice comes with, by name.
 pub fn preset(name: &str) -> Option<Preset> {
     use crate::fx::{comp, delay, drive, filter, pitch, reverb};
-    use crate::instrument::{clap, hat, kick, monochord, snare, synth, tom};
+    use crate::instrument::{clap, hat, kick, krell, monochord, snare, synth, tom};
 
     let inst = |kind, values: &[(u32, f32)]| {
         let mut instrument = Instrument::new(kind);
@@ -186,6 +213,7 @@ pub fn preset(name: &str) -> Option<Preset> {
     let face = |title: &str, controls: &[u32]| Face {
         title: title.into(),
         controls: controls.iter().map(|&c| c as u8).collect(),
+        art: vec![],
     };
     let preset = match name {
         // A steel string, plucked bright near the bridge, in a large glassy room.
@@ -897,6 +925,63 @@ pub fn preset(name: &str) -> Option<Preset> {
                 ),
             ],
         },
+        // Krell, the harpsichord of Forbidden Planet's lost race: all five choirs drifting apart
+        // over a glass body, echoing down the Great Machine's halls. Its face is the machine.
+        "great-machine" => Preset {
+            face: Face {
+                art: GREAT_MACHINE.lines().map(String::from).collect(),
+                ..face(
+                    "The Great Machine",
+                    &[krell::STOPS, krell::DRIFT, krell::GLASS],
+                )
+            },
+            instrument: inst(
+                InstKind::Krell,
+                &[
+                    (krell::STOPS, 4.0),
+                    (krell::DRIFT, 0.3),
+                    (krell::QUILL, 0.85),
+                    (krell::DECAY, 4.0),
+                    (krell::DAMPER, 0.8),
+                    (krell::BODY, 0.5),
+                    (krell::HULL, 196.0),
+                    (krell::GLASS, 0.75),
+                    (krell::GAIN, 0.8),
+                ],
+            ),
+            effects: vec![
+                fx(
+                    FxKind::Delay,
+                    &[
+                        (delay::TIME, 0.375),
+                        (delay::FEEDBACK, 0.35),
+                        (delay::TONE, 4000.0),
+                        (delay::MIX, 0.2),
+                    ],
+                ),
+                fx(
+                    FxKind::Reverb,
+                    &[
+                        (reverb::SIZE, 0.95),
+                        (reverb::DECAY, 0.85),
+                        (reverb::MIX, 0.3),
+                    ],
+                ),
+            ]
+            .into(),
+            macros: vec![
+                mac(
+                    "alien",
+                    0.0,
+                    &[(None, krell::DRIFT, 0.6), (None, krell::GLASS, 0.25)],
+                ),
+                mac(
+                    "halls",
+                    0.0,
+                    &[(Some(1), reverb::MIX, 0.4), (Some(0), delay::FEEDBACK, 0.3)],
+                ),
+            ],
+        },
         _ => return None,
     };
     Some(preset)
@@ -933,8 +1018,29 @@ mod tests {
         let face = Face {
             title: "x".into(),
             controls: vec![8],
+            art: vec![],
         };
         assert!(face.check(InstKind::Synth).is_ok());
         assert!(face.check(InstKind::Kick).is_err());
+    }
+
+    #[test]
+    fn a_faces_art_fits_the_page() {
+        let art = |rows: &[&str]| Face {
+            art: rows.iter().map(|r| r.to_string()).collect(),
+            ..Face::new("x")
+        };
+        assert!(art(&["⣿⣿", "⠿⠿"]).check(InstKind::Synth).is_ok());
+        assert!(
+            art(&[&"⣿".repeat(ART_WIDTH + 1)])
+                .check(InstKind::Synth)
+                .is_err()
+        );
+        assert!(art(&["⣿"; ART_ROWS + 1]).check(InstKind::Synth).is_err());
+        assert!(art(&["a\tb"]).check(InstKind::Synth).is_err());
+        // The Great Machine fills it.
+        let machine = preset("great-machine").unwrap().face.art;
+        assert_eq!(machine.len(), ART_ROWS);
+        assert!(machine.iter().all(|r| r.chars().count() == ART_WIDTH));
     }
 }

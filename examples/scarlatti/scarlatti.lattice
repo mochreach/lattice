@@ -12,7 +12,7 @@
                 steps: {0: (note: (pitch: 43, velocity: 127, length: 32)), 16: (note: (pitch: 55, velocity: 120, length: 16))},
                 instrument: (kind: Krell, params: {"stops": 4.0, "drift": 0.3, "quill": 0.9, "decay": 3.0, "damper": 0.85, "body": 0.5, "hull": 196.0, "glass": 0.75, "gain": 0.8}),
                 effects: [(kind: Delay, params: {"time": 0.225, "feedback": 0.3, "tone": 5000.0, "mix": 0.22})],
-                face: (title: "Krell", controls: [1, 5, 7, 2]),
+                face: (title: "Krell", controls: [1, 5, 7, 2], art: ["⠀⠀⠀⠀⢠⣶⣦⠀⠀⠀⢠⣰⣲⣲⣺⣛⣗⣖⣖⣆⡄⠀⠀⠀⠀⠀⡇⢀⠀⡇⠀", "⠀⠀⢠⣤⠈⠛⠋⠀⢠⢸⢰⠪⢍⣉⣆⣀⣰⣉⡩⠕⡆⡇⡄⠀⠀⠀⡃⢘⠀⡃⢀", "⠠⠐⠈⠉⠀⠀⠀⢸⢸⢸⢸⢒⢒⣒⢒⣒⡒⣒⡒⡒⡇⡇⡇⡇⠀⠀⡇⢸⠀⡇⢸", "⠀⡤⡀⠀⠀⠀⠀⢸⢸⢸⢸⠘⡘⣛⢘⣛⡃⣛⢃⠃⡇⡇⡇⡇⠀⠀⡅⢨⠀⡅⢨", "⡜⠀⠱⡀⠀⠀⠀⠀⠘⢸⠘⠤⣁⠉⠈⠉⠁⠉⣈⠤⠃⡇⠃⠀⠀⠀⡇⢸⠀⡇⢸", "⠀⠀⠀⠘⡄⠀⠀⠀⠀⠀⠀⠀⠀⠉⡆⠀⢰⠉⠀⠀⠀⠀⠀⠀⠀⠀⡆⠐⠀⡆⢰", "⠀⠀⠀⠀⠘⢄⠀⠀⠀⠀⢀⠏⠉⢹⠉⠉⠉⡏⠉⠹⡀⠀⠀⠀⠀⠀⠇⠀⠀⠇⠈", "⠀⠀⠀⠀⠀⠈⢆⠄⠍⠍⠅⠄⠄⠄⠄⠤⠠⠠⠠⠠⠨⠩⠩⠠⠀⠀⠀⠀⠀⠁⠀"]),
                 mix: (level: 0.0, send: -10.0),
             ),
             (

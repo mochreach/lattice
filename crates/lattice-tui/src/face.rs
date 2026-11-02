@@ -1,15 +1,17 @@
-//! A face's art: one of the splash's fractals, drawn in braille, mirrored about the middle so it
-//! looks back at you, and played by the track. The title picks the fractal, its scale and which
-//! way it flows; the track's level lights it from the middle out, each new note sends a ring
+//! A face's art, played by the track: drawn by hand, or else one of the splash's fractals, drawn
+//! in braille and mirrored about the middle so it looks back at you. The title picks the fractal,
+//! its scale and which way it flows, the first macro zooms in on it, and the second hurries its
+//! flow. Either way, the track's level lights it from the middle out, each new note sends a ring
 //! out from the middle, and the note's pitch picks the colour, a step round the colour wheel for
-//! each step round the circle of fifths. The first macro zooms in on it, and the second hurries
-//! its flow. At rest it's a faint outline.
+//! each step round the circle of fifths. At rest it's a faint outline.
 
 use std::time::Instant;
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
+
+use lattice_core::Face;
 
 use crate::splash::{DOTS, PATTERNS, Pattern, Rng};
 use crate::theme::Theme;
@@ -85,15 +87,27 @@ impl Clock {
     }
 }
 
-/// Draws the art for `title` into `area` of `buf`, as `feel` says, `time` seconds in.
-pub fn draw(buf: &mut Buffer, area: Rect, title: &str, feel: &Feel, theme: &Theme, time: f32) {
-    let look = Look::of(title);
+/// Draws `face`'s art into `area` of `buf`, as `feel` says, `time` seconds in.
+pub fn draw(buf: &mut Buffer, area: Rect, face: &Face, feel: &Feel, theme: &Theme, time: f32) {
+    let look = Look::of(&face.title);
     let (w, h) = (f32::from(area.width) * 2.0, f32::from(area.height) * 4.0);
     if w == 0.0 || h == 0.0 {
         return;
     }
     let zoom = look.scale * (1.0 + ZOOM * feel.macros[0]);
     let flowed = time * (FLOW + HURRY * feel.macros[1]);
+    // Hand-drawn art's middle on the area's, cut down to it where it's bigger.
+    let rows: Vec<Vec<char>> = face.art.iter().map(|row| row.chars().collect()).collect();
+    let art_width = rows.iter().map(Vec::len).max().unwrap_or(0);
+    let left = (art_width as i32 - i32::from(area.width)) / 2;
+    let top = (rows.len() as i32 - i32::from(area.height)) / 2;
+    let drawn = |cx: u16, cy: u16| {
+        let row = usize::try_from(top + i32::from(cy)).ok()?;
+        let column = usize::try_from(left + i32::from(cx)).ok()?;
+        // A blank, or a braille cell with no dots, leaves the cell empty.
+        let c = *rows.get(row)?.get(column)?;
+        (!c.is_whitespace() && c != '\u{2800}').then_some(c)
+    };
     // How far out from the middle it's lit, as a share of the way to the edge.
     let glow = 0.15 + 0.85 * feel.level.clamp(0.0, 1.0).sqrt();
     let ring = (feel.since_note < RING_TIME).then_some(feel.since_note * RING_SPEED);
@@ -106,28 +120,37 @@ pub fn draw(buf: &mut Buffer, area: Rect, title: &str, feel: &Feel, theme: &Them
     let bold = feel.note.is_some_and(|(_, velocity)| velocity > LOUD);
     // How far a point is from the middle, 1 at the edge of the ellipse filling the area.
     let radius = |x: f32, y: f32| ((x - w / 2.0) / (w / 2.0)).hypot((y - h / 2.0) / (h / 2.0));
+    // The fractal's dots in a cell, within the ellipse filling the area.
+    let fractal = |cx: u16, cy: u16| {
+        let mut dots = 0u32;
+        for (i, (dx, dy)) in DOTS.iter().enumerate() {
+            let (x, y) = (
+                f32::from(cx) * 2.0 + *dx as f32 + 0.5,
+                f32::from(cy) * 4.0 + *dy as f32 + 0.5,
+            );
+            if radius(x, y) >= 1.0 {
+                continue;
+            }
+            // Mirrored about the middle, and flowing in towards it.
+            let px = (x - w / 2.0).abs() / zoom + flowed * look.flow.0;
+            let py = (y - h / 2.0).abs() / zoom + flowed * look.flow.1;
+            if look.pattern.lit(px as u32, py as u32) {
+                dots |= 1 << i;
+            }
+        }
+        (dots != 0).then(|| char::from_u32(0x2800 + dots)).flatten()
+    };
 
     for cy in 0..area.height {
         for cx in 0..area.width {
-            let mut dots = 0u32;
-            for (i, (dx, dy)) in DOTS.iter().enumerate() {
-                let (x, y) = (
-                    f32::from(cx) * 2.0 + *dx as f32 + 0.5,
-                    f32::from(cy) * 4.0 + *dy as f32 + 0.5,
-                );
-                if radius(x, y) >= 1.0 {
-                    continue;
-                }
-                // Mirrored about the middle, and flowing in towards it.
-                let px = (x - w / 2.0).abs() / zoom + flowed * look.flow.0;
-                let py = (y - h / 2.0).abs() / zoom + flowed * look.flow.1;
-                if look.pattern.lit(px as u32, py as u32) {
-                    dots |= 1 << i;
-                }
-            }
-            if dots == 0 {
+            let glyph = if rows.is_empty() {
+                fractal(cx, cy)
+            } else {
+                drawn(cx, cy)
+            };
+            let Some(glyph) = glyph else {
                 continue;
-            }
+            };
             let r = radius(f32::from(cx) * 2.0 + 1.0, f32::from(cy) * 4.0 + 2.0);
             let style = if ring.is_some_and(|ring| (r - ring).abs() < RING_WIDTH) {
                 Style::new().fg(theme.accent).add_modifier(Modifier::BOLD)
@@ -149,7 +172,7 @@ pub fn draw(buf: &mut Buffer, area: Rect, title: &str, feel: &Feel, theme: &Them
             let Some(cell) = buf.cell_mut((area.x + cx, area.y + cy)) else {
                 continue;
             };
-            cell.set_char(char::from_u32(0x2800 + dots).unwrap_or(' '));
+            cell.set_char(glyph);
             cell.set_style(style);
         }
     }
@@ -169,7 +192,7 @@ mod tests {
         let area = Rect::new(0, 0, 20, 6);
         let draw_with = |title: &str, feel: Feel| {
             let mut buf = Buffer::empty(area);
-            draw(&mut buf, area, title, &feel, &theme, 0.0);
+            draw(&mut buf, area, &Face::new(title), &feel, &theme, 0.0);
             buf
         };
         let rest = draw_with("Night Bus", Feel::default());
@@ -201,5 +224,43 @@ mod tests {
             macros: [0.0; 2],
         };
         assert!(colours(&draw_with("Night Bus", loud)) > 0);
+    }
+
+    #[test]
+    fn hand_drawn_art_is_drawn_from_its_middle_and_lights_up_too() {
+        let theme = Theme::terminal();
+        let face = Face {
+            art: vec!["ab   cd".into(), "  efg  ".into(), "hi   jk".into()],
+            ..Face::new("Night Bus")
+        };
+        let draw_in = |area: Rect, feel: Feel| {
+            let mut buf = Buffer::empty(area);
+            draw(&mut buf, area, &face, &feel, &theme, 0.0);
+            buf
+        };
+        let row = |buf: &Buffer, y: u16| {
+            (0..buf.area.width)
+                .map(|x| buf[(x, y)].symbol().to_string())
+                .collect::<String>()
+        };
+        // In the middle of a bigger area, and in place of the fractal.
+        let big = draw_in(Rect::new(0, 0, 9, 5), Feel::default());
+        assert_eq!(row(&big, 0), " ".repeat(9));
+        assert_eq!(row(&big, 1), " ab   cd ");
+        assert_eq!(row(&big, 2), "   efg   ");
+        assert_eq!(lit(&big), 11);
+        // Cut down to a smaller one about its middle.
+        let small = draw_in(Rect::new(0, 0, 3, 1), Feel::default());
+        assert_eq!(row(&small, 0), "efg");
+        // Playing, it lights up from the middle, out to its edges.
+        let loud = Feel {
+            level: 1.0,
+            note: Some((60, 120)),
+            since_note: 1.0,
+            macros: [0.0; 2],
+        };
+        let played = draw_in(Rect::new(0, 0, 9, 5), loud);
+        assert_eq!(big[(1, 1)].fg, theme.faint.fg.unwrap());
+        assert_ne!(played[(1, 1)].fg, theme.faint.fg.unwrap());
     }
 }

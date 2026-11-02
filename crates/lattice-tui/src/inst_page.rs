@@ -31,7 +31,7 @@ const PARAM_LABEL: usize = 11;
 /// Lines above the columns (the rule, a gap and the tracks' names).
 const ABOVE: usize = 3;
 /// Most and fewest rows of art, and the lines left for the columns below it at least.
-const MAX_ART: usize = 8;
+const MAX_ART: usize = lattice_core::ART_ROWS;
 const MIN_ART: usize = 3;
 const BELOW_ART: usize = 6;
 
@@ -189,7 +189,7 @@ pub fn draw(
             art as u16,
         )
         .intersection(area);
-        face::draw(frame.buffer_mut(), rect, &face.title, &feel, theme, time);
+        face::draw(frame.buffer_mut(), rect, face, &feel, theme, time);
     }
 }
 
