@@ -137,7 +137,15 @@ fn main() -> Result<()> {
     {
         editor.message = Some(problem);
     }
-    let mut terminal = ratatui::init();
+    // Without a terminal, run from a script say, there's nothing to draw in: say so, rather
+    // than panicking.
+    let mut terminal = match ratatui::try_init() {
+        Ok(terminal) => terminal,
+        Err(e) => {
+            ratatui::restore();
+            return Err(anyhow!("Lattice needs a terminal to draw in: {e}"));
+        }
+    };
     // Ask for every key as a code (the kitty protocol), as only then are the numpad's digits told
     // apart from the number row's, so they can be pads; with the shifted character, so `%` and
     // `C` still arrive as typed; and with releases, so recorded notes last as long as they're
