@@ -11,12 +11,16 @@ impl Editor {
     /// one group, ungroups it.
     pub(crate) fn toggle_group(&mut self) -> Vec<Effect> {
         let tracks = self.selected_tracks();
-        let (first, last) = (tracks[0], tracks[tracks.len() - 1]);
+        let (Some(&first), Some(&last)) = (tracks.first(), tracks.last()) else {
+            self.message = Some("no tracks to group".into());
+            return vec![];
+        };
         let groups = &self.grid.groups;
         if let Some(g) = self.grid.group_of(first)
-            && groups[g].contains(last)
+            && let Some(group) = groups.get(g)
+            && group.contains(last)
         {
-            let name = groups[g].name.clone();
+            let name = group.name.clone();
             self.checkpoint();
             self.grid.groups.remove(g);
             self.message = Some(format!("ungrouped {name}"));
@@ -38,6 +42,7 @@ impl Editor {
             .map(|n| format!("group {n}"))
             .find(|name| groups.iter().all(|g| g.name != *name))
             .unwrap_or_default();
+        // At most the length, so the insert can't fail.
         let at = groups.partition_point(|g| g.first < first);
         self.checkpoint();
         self.message = Some(format!("grouped as {name}; :group-name renames it"));
@@ -60,10 +65,14 @@ impl Editor {
             return vec![];
         }
         // Together: if any is unfolded, they all fold.
-        let fold = groups.iter().any(|&g| !self.grid.groups[g].folded);
+        let fold = (groups.iter())
+            .filter_map(|&g| self.grid.groups.get(g))
+            .any(|g| !g.folded);
         self.checkpoint();
         for g in groups {
-            self.grid.groups[g].folded = fold;
+            if let Some(group) = self.grid.groups.get_mut(g) {
+                group.folded = fold;
+            }
         }
         vec![]
     }
@@ -73,7 +82,8 @@ impl Editor {
     pub fn in_folded_group(&self) -> bool {
         self.grid
             .group_of(self.cursor().track)
-            .is_some_and(|g| self.grid.groups[g].folded)
+            .and_then(|g| self.grid.groups.get(g))
+            .is_some_and(|g| g.folded)
     }
 
     /// Renames the group the cursor's track is in.
@@ -83,7 +93,8 @@ impl Editor {
             .group_of(self.cursor().track)
             .ok_or("this track isn't in a group; tg makes one")?;
         self.checkpoint();
-        self.grid.groups[g].name = name.into();
+        let group = self.grid.groups.get_mut(g).ok_or("no such group")?;
+        group.name = name.into();
         Ok(vec![])
     }
 }

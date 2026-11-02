@@ -43,7 +43,9 @@ pub enum InstLine {
 impl Editor {
     /// Track `t`'s column on the instrument page, top to bottom.
     pub fn inst_lines(&self, t: usize) -> Vec<InstLine> {
-        let track = &self.grid.tracks[t];
+        let Some(track) = self.grid.tracks.get(t) else {
+            return vec![];
+        };
         let macros = (0..track.macros.len()).map(InstLine::Macro);
         let mut lines = vec![InstLine::Kind];
         match &track.face {
@@ -62,16 +64,26 @@ impl Editor {
 
     /// Whether track `t`'s column shows its face, rather than all its settings.
     pub fn shows_face(&self, t: usize) -> bool {
-        self.grid.tracks[t].face.is_some() && !self.inst_opened.contains(&self.ids[t])
+        let opened = self
+            .ids
+            .get(t)
+            .is_some_and(|id| self.inst_opened.contains(id));
+        self.grid
+            .tracks
+            .get(t)
+            .is_some_and(|track| track.face.is_some())
+            && !opened
     }
 
     /// `enter` on the title: opens all of a face's settings, or goes back to the face.
     fn toggle_face(&mut self, t: usize) {
-        if self.grid.tracks[t].face.is_none() {
+        let (Some(track), Some(&id)) = (self.grid.tracks.get(t), self.ids.get(t)) else {
+            return;
+        };
+        if track.face.is_none() {
             self.message = Some("no face: :preset or :face gives it one".into());
             return;
         }
-        let id = self.ids[t];
         if !self.inst_opened.remove(&id) {
             self.inst_opened.insert(id);
         }
@@ -79,14 +91,18 @@ impl Editor {
 
     /// The instrument page's cursor, kept within the tracks and the column it's in.
     pub fn inst_cursor(&self) -> InstCursor {
-        let track = self.inst.track.min(self.grid.tracks.len() - 1);
-        let line = self.inst.line.min(self.inst_lines(track).len() - 1);
+        let track = self
+            .inst
+            .track
+            .min(self.grid.tracks.len().saturating_sub(1));
+        let line = (self.inst.line).min(self.inst_lines(track).len().saturating_sub(1));
         InstCursor { track, line }
     }
 
-    pub fn inst_line(&self) -> InstLine {
+    /// The line under the instrument page's cursor; `None` only if there's no track.
+    pub fn inst_line(&self) -> Option<InstLine> {
         let cursor = self.inst_cursor();
-        self.inst_lines(cursor.track)[cursor.line]
+        self.inst_lines(cursor.track).get(cursor.line).copied()
     }
 
     /// `gi`: the instrument page, on the pattern cursor's track, or the mixer's or fx page's.
@@ -115,7 +131,7 @@ impl Editor {
         self.mixer.strip = self.inst.track;
         self.mixer.instrument = true;
         self.mixer.row = match self.inst_line() {
-            InstLine::Param(p) => Row::Param(p),
+            Some(InstLine::Param(p)) => Row::Param(p),
             _ => Row::Chain,
         };
     }
@@ -131,7 +147,10 @@ impl Editor {
     /// Starts playing the cursor's track on the piano keys.
     pub(crate) fn start_playing(&mut self) {
         self.mode = Mode::Insert;
-        let name = &self.grid.tracks[self.inst_cursor().track].name;
+        let Some(track) = self.grid.tracks.get(self.inst_cursor().track) else {
+            return;
+        };
+        let name = &track.name;
         self.message = Some(format!("playing {name} on the keyboard; esc stops"));
     }
 
@@ -161,8 +180,12 @@ impl Editor {
         let cursor = self.inst_cursor();
         let lines = self.inst_lines(cursor.track);
         // A part starts where the kind of line changes.
-        let starts = |l: usize| {
-            l == 0 || std::mem::discriminant(&lines[l]) != std::mem::discriminant(&lines[l - 1])
+        let starts = |l: usize| match l.checked_sub(1) {
+            Some(before) => {
+                lines.get(l).map(std::mem::discriminant)
+                    != lines.get(before).map(std::mem::discriminant)
+            }
+            None => true,
         };
         let mut line = cursor.line;
         for _ in 0..n {
@@ -190,7 +213,7 @@ impl Editor {
                 ..cursor
             }),
             Action::Right => self.move_inst(InstCursor {
-                track: (cursor.track + n).min(tracks - 1),
+                track: (cursor.track + n).min(tracks.saturating_sub(1)),
                 ..cursor
             }),
             Action::Up => self.move_inst(line(cursor.line.saturating_sub(n))),
@@ -206,24 +229,33 @@ impl Editor {
                 let by = if up { n as i32 } else { -(n as i32) };
                 return Some(match self.inst_line() {
                     // The mixer nudges settings.
-                    InstLine::Param(_) => self.mixer_act(action, n)?,
-                    InstLine::Macro(m) => {
-                        let value = self.grid.tracks[cursor.track].macros[m].value;
+                    Some(InstLine::Param(_)) => self.mixer_act(action, n)?,
+                    Some(InstLine::Macro(m)) => {
+                        let Some(value) = (self.grid.tracks.get(cursor.track))
+                            .and_then(|track| track.macros.get(m))
+                            .map(|m| m.value)
+                        else {
+                            return Some(vec![]);
+                        };
                         let step = crate::macros::NUDGE * by as f32;
                         self.set_macro(cursor.track, m, value + step)
                     }
-                    InstLine::Kind => {
+                    Some(InstLine::Kind) => {
                         self.message = Some("c changes the instrument".into());
                         vec![]
                     }
-                    InstLine::Chain => {
+                    Some(InstLine::Chain) => {
                         self.message = Some("enter opens the effects (gf)".into());
                         vec![]
                     }
+                    None => vec![],
                 });
             }
             Action::Change => {
-                let line = match self.inst_line() {
+                let Some(line) = self.inst_line() else {
+                    return Some(vec![]);
+                };
+                let line = match line {
                     InstLine::Kind => "inst ",
                     InstLine::Param(_) | InstLine::Macro(_) => "set ",
                     InstLine::Chain => "fx-add ",
@@ -234,13 +266,13 @@ impl Editor {
                 }
             }
             Action::Open => match self.inst_line() {
-                InstLine::Chain => self.goto_fx(),
-                InstLine::Kind => self.toggle_face(cursor.track),
+                Some(InstLine::Chain) => self.goto_fx(),
+                Some(InstLine::Kind) => self.toggle_face(cursor.track),
                 _ => {}
             },
             Action::Delete | Action::Clear => {
                 return Some(match self.inst_line() {
-                    InstLine::Macro(m) => self.remove_macro(cursor.track, m),
+                    Some(InstLine::Macro(m)) => self.remove_macro(cursor.track, m),
                     _ => {
                         self.message = Some("nothing here to remove".into());
                         vec![]
@@ -260,7 +292,7 @@ impl Editor {
     /// The macro's value under the instrument page's cursor, for `:set`.
     pub(crate) fn inst_macro(&self) -> Option<(usize, usize)> {
         match self.inst_line() {
-            InstLine::Macro(m) if self.page == Page::Instrument => {
+            Some(InstLine::Macro(m)) if self.page == Page::Instrument => {
                 Some((self.inst_cursor().track, m))
             }
             _ => None,
@@ -306,7 +338,7 @@ mod tests {
         keys(&mut e, "lgi");
         assert_eq!(e.page, Page::Instrument);
         assert_eq!(e.inst_cursor(), InstCursor { track: 1, line: 1 });
-        assert_eq!(e.inst_line(), InstLine::Param(0));
+        assert_eq!(e.inst_line(), Some(InstLine::Param(0)));
         assert_eq!(
             e.shown().unwrap().slot,
             None,
@@ -324,7 +356,7 @@ mod tests {
 
         // c on the name changes the instrument.
         keys(&mut e, "gg");
-        assert_eq!(e.inst_line(), InstLine::Kind);
+        assert_eq!(e.inst_line(), Some(InstLine::Kind));
         keys(&mut e, "c");
         keys(&mut e, "kick\n");
         assert_eq!(e.grid.tracks[0].instrument.kind, InstKind::Kick);
@@ -332,7 +364,7 @@ mod tests {
         // A macro, under the settings, turned and set.
         keys(&mut e, "j:map bloom\n");
         keys(&mut e, "w");
-        assert_eq!(e.inst_line(), InstLine::Macro(0));
+        assert_eq!(e.inst_line(), Some(InstLine::Macro(0)));
         keys(&mut e, "5A");
         assert!((e.grid.tracks[0].macros[0].value - 0.05).abs() < 1e-6);
         keys(&mut e, ":set 0.5\n");
@@ -340,7 +372,7 @@ mod tests {
 
         // The chain last, and enter opens it.
         keys(&mut e, "w");
-        assert_eq!(e.inst_line(), InstLine::Chain);
+        assert_eq!(e.inst_line(), Some(InstLine::Chain));
         keys(&mut e, "\n");
         assert_eq!(e.page, Page::Fx);
         keys(&mut e, "gi");
@@ -406,9 +438,17 @@ mod tests {
             InstLine::Chain,
         ];
         assert_eq!(e.inst_lines(0), face);
-        assert_eq!(e.inst_line(), InstLine::Macro(0), "onto the first macro");
+        assert_eq!(
+            e.inst_line(),
+            Some(InstLine::Macro(0)),
+            "onto the first macro"
+        );
         keys(&mut e, "w");
-        assert_eq!(e.inst_line(), InstLine::Param(2), "w stops on the settings");
+        assert_eq!(
+            e.inst_line(),
+            Some(InstLine::Param(2)),
+            "w stops on the settings"
+        );
         keys(&mut e, "A");
         let decay = e.grid.tracks[0].instrument.values[2];
         assert!(decay > 0.25, "turned as any setting");

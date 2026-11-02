@@ -91,7 +91,9 @@ impl FxLine {
 pub fn fx_lines(chain: &FxChain) -> Vec<Vec<FxLine>> {
     let mut lanes = vec![vec![]; chain.lanes().len()];
     for (at, row, effect) in chain.rows() {
-        let lines = &mut lanes[at.lane];
+        let Some(lines) = lanes.get_mut(at.lane) else {
+            continue;
+        };
         match (row, effect) {
             (FxRow::Send { to, level }, _) => lines.push(FxLine::Send {
                 row: at.row,
@@ -99,11 +101,14 @@ pub fn fx_lines(chain: &FxChain) -> Vec<Vec<FxLine>> {
                 level,
             }),
             (FxRow::Fx, Some(effect)) => {
+                let Some(fx) = chain.get(effect) else {
+                    continue;
+                };
                 lines.push(FxLine::Fx {
                     row: at.row,
                     effect,
                 });
-                let params = chain[effect].params().len();
+                let params = fx.params().len();
                 lines.extend((0..params).map(|param| FxLine::Param {
                     row: at.row,
                     effect,
@@ -138,8 +143,11 @@ impl Editor {
         let Strip::Track(t) = self.fx_strip() else {
             return vec![];
         };
+        let Some(track) = self.grid.tracks.get(t) else {
+            return vec![];
+        };
         let mut lines = vec![];
-        for (index, m) in self.grid.tracks[t].macros.iter().enumerate() {
+        for (index, m) in track.macros.iter().enumerate() {
             lines.push(FxLine::Macro { index });
             lines.extend((0..m.targets.len()).map(|target| FxLine::Target { index, target }));
         }
@@ -150,7 +158,7 @@ impl Editor {
     pub fn fx_cursor(&self) -> FxCursor {
         let (lanes, outs) = self.fx_page_lines();
         FxCursor {
-            lane: self.fx.lane.min(lanes.len() - 1),
+            lane: self.fx.lane.min(lanes.len().saturating_sub(1)),
             line: self.fx.line.min(outs),
             macros: self.fx.macros && matches!(self.fx_strip(), Strip::Track(_)),
         }
@@ -163,7 +171,7 @@ impl Editor {
             return (self.macro_lines().get(cursor.line).copied()).unwrap_or(FxLine::Empty);
         }
         let (lanes, outs) = self.fx_page_lines();
-        match lanes[cursor.lane].get(cursor.line) {
+        match (lanes.get(cursor.lane)).and_then(|lane| lane.get(cursor.line)) {
             Some(&line) => line,
             None if cursor.line == outs => FxLine::Out,
             None => FxLine::Empty,
@@ -233,12 +241,11 @@ impl Editor {
         let cursor = self.fx_cursor();
         let (lanes, outs) = self.fx_page_lines();
         let macros = self.macro_lines();
-        let lane = if cursor.macros {
-            &macros
-        } else {
-            &lanes[cursor.lane]
+        let lane: &[FxLine] = match cursor.macros {
+            true => &macros,
+            false => lanes.get(cursor.lane).map_or(&[], Vec::as_slice),
         };
-        let stop = |line: usize| line >= lane.len() || lane[line].is_stop();
+        let stop = |line: usize| lane.get(line).is_none_or(|l| l.is_stop());
         let mut line = cursor.line;
         for _ in 0..n {
             line = if forward {
@@ -278,12 +285,12 @@ impl Editor {
                 ..cursor
             }),
             Action::Right if cursor.macros => self.move_fx(FxCursor {
-                lane: n - 1,
+                lane: n.saturating_sub(1),
                 macros: false,
                 ..cursor
             }),
             Action::Right => self.move_fx(FxCursor {
-                lane: (cursor.lane + n).min(lanes - 1),
+                lane: (cursor.lane + n).min(lanes.saturating_sub(1)),
                 ..cursor
             }),
             Action::Up => self.move_fx(line(cursor.line.saturating_sub(n))),
@@ -331,18 +338,17 @@ impl Editor {
     /// macro's value, or the depth it turns a setting by.
     pub(crate) fn fx_value(&self) -> Option<(f32, f32, f32)> {
         let lane = self.fx_cursor().lane;
-        let macros = |t: usize| &self.grid.tracks[t].macros;
-        let track = match self.fx_strip() {
-            Strip::Track(t) => Some(t),
+        let macro_at = |index: usize| match self.fx_strip() {
+            Strip::Track(t) => self.grid.tracks.get(t)?.macros.get(index),
             _ => None,
         };
         match self.fx_line() {
-            FxLine::Macro { index } => Some((macros(track?)[index].value, 0.0, 1.0)),
+            FxLine::Macro { index } => Some((macro_at(index)?.value, 0.0, 1.0)),
             FxLine::Target { index, target } => {
-                Some((macros(track?)[index].targets[target].depth, -1.0, 1.0))
+                Some((macro_at(index)?.targets.get(target)?.depth, -1.0, 1.0))
             }
             FxLine::Out => {
-                let out = self.chain(self.fx_strip()).lanes()[lane].out;
+                let out = self.chain(self.fx_strip()).lanes().get(lane)?.out;
                 Some((out, MIN_DB, lattice_core::MAX_DB))
             }
             FxLine::Send { to, level, .. } => Some((level, MIN_DB, max_send(lane, to))),
@@ -373,7 +379,7 @@ impl Editor {
         }
         self.checkpoint();
         let lane = self.fx_cursor().lane;
-        let chain = self.chain_mut(self.fx_strip());
+        let chain = self.chain_mut_of(self.fx_strip()).ok_or("no such strip")?;
         match line {
             FxLine::Send { row, .. } => chain.set_send_level(RowAt { lane, row }, value),
             _ => chain.set_out(lane, value),
@@ -404,7 +410,8 @@ impl Editor {
             }
             FxLine::Out => {
                 self.checkpoint();
-                let removed = self.chain_mut(strip).remove_lane(cursor.lane);
+                let removed =
+                    (self.chain_mut_of(strip)).map_or(vec![], |c| c.remove_lane(cursor.lane));
                 let mut effects = vec![Effect::MixerChanged];
                 for index in removed {
                     effects.extend(self.chain_changed(strip, index, false));
@@ -414,16 +421,29 @@ impl Editor {
                 effects
             }
             FxLine::Fx { effect, .. } => {
+                if self.chain(strip).get(effect).is_none() {
+                    self.message = Some("no such effect to remove".into());
+                    return vec![];
+                }
                 self.checkpoint();
-                self.chain_mut(strip).remove(effect);
+                if let Some(chain) = self.chain_mut_of(strip) {
+                    chain.remove(effect);
+                }
                 self.chain_changed(strip, effect, false)
             }
             FxLine::Send { row, .. } => {
-                self.checkpoint();
-                (self.chain_mut(strip)).remove_send(RowAt {
+                let at = RowAt {
                     lane: cursor.lane,
                     row,
-                });
+                };
+                if !matches!(self.chain(strip).row(at), Some(FxRow::Send { .. })) {
+                    self.message = Some("no such send to remove".into());
+                    return vec![];
+                }
+                self.checkpoint();
+                if let Some(chain) = self.chain_mut_of(strip) {
+                    chain.remove_send(at);
+                }
                 vec![Effect::MixerChanged]
             }
             FxLine::Param { .. } => {
@@ -453,7 +473,8 @@ impl Editor {
         let lane = self.fx_cursor().lane;
         let row = match self.fx_line().row() {
             Some(row) => row + 1,
-            None => self.chain(self.fx_strip()).lanes()[lane].rows.len(),
+            // The cursor's lane is one there is, as `fx_cursor` keeps it so.
+            None => (self.chain(self.fx_strip()).lanes().get(lane)).map_or(0, |l| l.rows.len()),
         };
         RowAt { lane, row }
     }
@@ -461,8 +482,8 @@ impl Editor {
     /// Moves the fx cursor onto the row at `at`, after adding it.
     pub(crate) fn fx_onto(&mut self, at: RowAt) {
         let (lanes, _) = self.fx_page_lines();
-        let line = (lanes[at.lane].iter())
-            .position(|l| l.row() == Some(at.row))
+        let line = (lanes.get(at.lane))
+            .and_then(|lane| lane.iter().position(|l| l.row() == Some(at.row)))
             .unwrap_or(0);
         self.move_fx(FxCursor {
             lane: at.lane,
@@ -508,7 +529,7 @@ impl Editor {
             return Err(format!("this send goes from {MIN_DB} to {most} dB"));
         }
         self.checkpoint();
-        let chain: &mut FxChain = self.chain_mut(strip);
+        let chain = self.chain_mut_of(strip).ok_or("no such strip")?;
         if to == lanes {
             chain.add_lane();
         }

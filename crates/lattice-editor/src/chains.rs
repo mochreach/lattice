@@ -44,8 +44,14 @@ impl Editor {
     /// own. Locks on the old chain's effects go with them.
     pub fn put_chain(&mut self, name: &str, chain: FxChain) -> Vec<Effect> {
         let strip = self.chain_strip();
+        if self.chain_of(strip).is_none() {
+            self.message = Some("nothing here to put a chain on".into());
+            return vec![];
+        }
         self.checkpoint();
-        *self.chain_mut(strip) = chain;
+        if let Some(on) = self.chain_mut_of(strip) {
+            *on = chain;
+        }
         let mut effects = vec![Effect::MixerChanged];
         if let Strip::Track(t) = strip
             && (self.retain_locks(t, |lock| lock.fx.is_none() || lock.is_macro())

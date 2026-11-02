@@ -109,21 +109,26 @@ impl Editor {
                 notes.push((track, (at % len as u64) as usize, at / len as u64, from));
             }
         }
-        let Some(&(_, _, pass, from)) = notes.first() else {
-            return Some(vec![Effect::Preview {
-                track: tracks[0],
-                pitch,
-            }]);
+        let Some(&(first, _, pass, from)) = notes.first() else {
+            let heard = tracks
+                .first()
+                .map(|&track| Effect::Preview { track, pitch });
+            return Some(heard.into_iter().collect());
         };
         // Each pass through the primary track is one take, undone together.
         if self.take != Some(pass) {
             self.checkpoint();
             self.take = Some(pass);
         }
+        let velocity = self.velocity;
         for &(track, step, _, from) in &notes {
-            self.grid.tracks[track].steps[step].note = Some(Note {
+            let Some(s) = (self.grid.tracks.get_mut(track)).and_then(|t| t.steps.get_mut(step))
+            else {
+                continue;
+            };
+            s.note = Some(Note {
                 pitch,
-                velocity: self.velocity,
+                velocity,
                 length: 1,
             });
             self.held.retain(|h| h.key != key || h.track != track);
@@ -141,7 +146,7 @@ impl Editor {
         // next, the sequencer plays it there, in time.
         if from.round() <= from {
             effects.push(Effect::Preview {
-                track: notes[0].0,
+                track: first,
                 pitch,
             });
         }
@@ -169,15 +174,21 @@ impl Editor {
         let velocity = self.velocity;
         for h in self.held.iter().filter(|h| h.key == key) {
             let len = self.track_len(h.track);
-            let Some(to) = transport.at(h.track, len) else {
+            // Emptied since it was played, there's nowhere for it to go on.
+            let Some(to) = transport.at(h.track, len).filter(|_| len > 0) else {
+                continue;
+            };
+            let Some(track) = self.grid.tracks.get_mut(h.track) else {
                 continue;
             };
             // Repeated: a hit on each step of the repeat's grid it was held through.
             if h.every > 0 {
                 let first = h.from.ceil().max(0.0) as u64;
-                let steps = &mut self.grid.tracks[h.track].steps;
                 for at in (first..=to.floor().max(0.0) as u64).filter(|a| a % h.every as u64 == 0) {
-                    steps[(at % len as u64) as usize].note = Some(Note {
+                    let Some(step) = track.steps.get_mut((at % len as u64) as usize) else {
+                        continue;
+                    };
+                    step.note = Some(Note {
                         pitch: h.pitch,
                         velocity,
                         length: 1,
@@ -187,7 +198,7 @@ impl Editor {
                 continue;
             }
             let length = (to - h.from).round().clamp(1.0, len as f64) as u16;
-            if let Some(note) = &mut self.grid.tracks[h.track].steps[h.step].note
+            if let Some(note) = track.steps.get_mut(h.step).and_then(|s| s.note.as_mut())
                 && note.pitch == h.pitch
                 && note.length != length
             {

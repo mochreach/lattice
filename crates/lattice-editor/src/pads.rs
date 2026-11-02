@@ -21,11 +21,13 @@ pub struct Scale {
     pub steps: &'static [u8],
 }
 
+const MAJOR: Scale = Scale {
+    name: "major",
+    steps: &[0, 2, 4, 5, 7, 9, 11],
+};
+
 pub const SCALES: [Scale; 8] = [
-    Scale {
-        name: "major",
-        steps: &[0, 2, 4, 5, 7, 9, 11],
-    },
+    MAJOR,
     Scale {
         name: "minor",
         steps: &[0, 2, 3, 5, 7, 8, 10],
@@ -64,8 +66,8 @@ const NOTE_NAMES: [&str; 12] = [
 fn parse_root(text: &str) -> Option<u8> {
     let mut chars = text.chars();
     let letter = chars.next()?.to_ascii_uppercase();
-    let natural = [0, 2, 4, 5, 7, 9, 11]
-        [usize::from(b"CDEFGAB".iter().position(|&c| c == letter as u8)? as u8)];
+    let letter = b"CDEFGAB".iter().position(|&c| c == letter as u8)?;
+    let natural = *MAJOR.steps.get(letter)?;
     let semitone = match chars.as_str() {
         "" => natural + 12,
         "#" => natural + 13,
@@ -73,6 +75,15 @@ fn parse_root(text: &str) -> Option<u8> {
         _ => return None,
     };
     Some(semitone % 12)
+}
+
+/// A root note's name, from its semitone above C.
+fn note_name(root: u8) -> &'static str {
+    // Always there: a root is a semitone, below 12.
+    NOTE_NAMES
+        .get(usize::from(root % 12))
+        .copied()
+        .unwrap_or("C")
 }
 
 /// What the pads do.
@@ -105,7 +116,9 @@ impl Editor {
         let (track, pitch) = match self.grid.group_of(self.played_track()) {
             // In a group, its `n`th track at C-4, which plays a drum at its tuning.
             Some(g) => {
-                let group = &self.grid.groups[g];
+                let Some(group) = self.grid.groups.get(g) else {
+                    return vec![];
+                };
                 if n > group.len {
                     return vec![];
                 }
@@ -137,13 +150,19 @@ impl Editor {
         let mut effects = vec![];
         if self.mode == Mode::Insert {
             let step = self.cursor().step;
-            if step < self.track_len(track) {
+            let there = (self.grid.tracks.get(track)).is_some_and(|t| step < t.steps.len());
+            if there {
                 self.checkpoint();
-                self.grid.tracks[track].steps[step].note = Some(Note {
-                    pitch,
-                    velocity: self.velocity,
-                    length: 1,
-                });
+                let velocity = self.velocity;
+                if let Some(s) =
+                    (self.grid.tracks.get_mut(track)).and_then(|t| t.steps.get_mut(step))
+                {
+                    s.note = Some(Note {
+                        pitch,
+                        velocity,
+                        length: 1,
+                    });
+                }
                 effects.push(Effect::TrackChanged(track));
             }
         }
@@ -173,20 +192,28 @@ impl Editor {
 
     /// The scale's `degree`th note (from 0), up from its root in the keyboard octave.
     fn scale_pitch(&self, degree: usize) -> Option<u8> {
-        let steps = SCALES[self.scale].steps;
-        let octave = u16::from(self.octave) + 1 + (degree / steps.len()) as u16;
-        let pitch = octave * 12 + u16::from(self.root) + u16::from(steps[degree % steps.len()]);
+        let steps = self.scale().steps;
+        let octave = u16::from(self.octave) + 1 + degree.checked_div(steps.len())? as u16;
+        let step = *steps.get(degree.checked_rem(steps.len())?)?;
+        let pitch = octave * 12 + u16::from(self.root) + u16::from(step);
         u8::try_from(pitch).ok().filter(|&p| p <= 127)
     }
 
     fn mute_pad(&mut self, track: usize) -> Vec<Effect> {
-        let Some(t) = self.grid.tracks.get(track) else {
+        if track >= self.grid.tracks.len() {
             return vec![];
-        };
-        let mute = !t.mix.mute;
+        }
         self.checkpoint();
-        self.grid.tracks[track].mix.mute = mute;
+        if let Some(t) = self.grid.tracks.get_mut(track) {
+            t.mix.mute = !t.mix.mute;
+        }
         vec![Effect::TrackChanged(track)]
+    }
+
+    /// The scale the pads play.
+    fn scale(&self) -> Scale {
+        // Only `:scale` sets it, to one of these; major is where it starts.
+        SCALES.get(self.scale).copied().unwrap_or(MAJOR)
     }
 
     /// The numpad's other keys: velocity, and the pads' mode.
@@ -250,26 +277,19 @@ impl Editor {
         if self.keymap.layout == NoteLayout::Scale {
             self.lay_out_keys(NoteLayout::Scale);
         }
-        self.message = Some(format!(
-            "pads play {} {name}",
-            NOTE_NAMES[usize::from(root)]
-        ));
+        self.message = Some(format!("pads play {} {name}", note_name(root)));
         Ok(())
     }
 
     /// Lays the notes out on the keyboard for insert mode.
     pub(crate) fn lay_out_keys(&mut self, layout: NoteLayout) {
-        self.keymap.piano = layout.keys(&SCALES[self.scale], self.root);
+        self.keymap.piano = layout.keys(&self.scale(), self.root);
         self.keymap.layout = layout;
     }
 
     /// The scale the pads play, as `C major`.
     pub fn scale_name(&self) -> String {
-        format!(
-            "{} {}",
-            NOTE_NAMES[usize::from(self.root)],
-            SCALES[self.scale].name
-        )
+        format!("{} {}", note_name(self.root), self.scale().name)
     }
 }
 

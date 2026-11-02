@@ -11,6 +11,8 @@
 //! for the frontend to carry out. Nothing here knows about terminals, audio or files, so it's
 //! tested by feeding in key sequences.
 
+// Indexing panics when it's out of range; see AGENTS.md.
+#![deny(clippy::indexing_slicing)]
 // Tests may unwrap and panic: that's how they fail.
 #![cfg_attr(
     test,
@@ -18,7 +20,8 @@
         clippy::unwrap_used,
         clippy::expect_used,
         clippy::panic,
-        clippy::unreachable
+        clippy::unreachable,
+        clippy::indexing_slicing
     )
 )]
 
@@ -472,6 +475,19 @@ fn changed(tracks: impl IntoIterator<Item = usize>) -> Vec<Effect> {
     tracks.into_iter().map(Effect::TrackChanged).collect()
 }
 
+/// The cursor needs a track to be on, so a song without one gets one.
+fn give_track(grid: &mut Grid, arrangement: &mut Arrangement) {
+    if grid.tracks.is_empty() {
+        let track = Track {
+            name: "track 1".into(),
+            steps: vec![Step::default(); command::NEW_TRACK_STEPS],
+            ..Track::default()
+        };
+        arrangement.insert_track(0, track.steps.len());
+        grid.tracks.push(track);
+    }
+}
+
 /// The `n`th multiple of `unit` after `step`.
 fn next_multiple(step: usize, unit: usize, n: usize) -> usize {
     (step / unit + n) * unit
@@ -483,8 +499,9 @@ fn prev_multiple(step: usize, unit: usize, n: usize) -> usize {
 }
 
 impl Editor {
-    pub fn new(grid: Grid, bpm: f64) -> Self {
-        assert!(!grid.tracks.is_empty(), "need at least one track");
+    pub fn new(mut grid: Grid, bpm: f64) -> Self {
+        let mut arrangement = Arrangement::default();
+        give_track(&mut grid, &mut arrangement);
         let tracks = grid.tracks.len() as u32;
         Self {
             ids: (0..tracks).map(TrackId).collect(),
@@ -492,12 +509,12 @@ impl Editor {
             next_id: tracks,
             saved: Saved {
                 grid: grid.clone(),
-                arrangement: Arrangement::default(),
+                arrangement: arrangement.clone(),
                 buses: Buses::default(),
                 bpm,
             },
             grid,
-            arrangement: Arrangement::default(),
+            arrangement,
             cue: None,
             song_position: None,
             buses: Buses::default(),
@@ -678,19 +695,19 @@ impl Editor {
 
     /// Replaces the song, as [`Editor::load`] does, from `path` if it came from one.
     pub(crate) fn replace_song(&mut self, song: Song, path: Option<PathBuf>) -> Vec<Effect> {
-        let grid = song.grid;
-        assert!(!grid.tracks.is_empty(), "need at least one track");
+        let (mut grid, mut arrangement) = (song.grid, song.arrangement);
+        give_track(&mut grid, &mut arrangement);
         let tracks = grid.tracks.len() as u32;
         self.ids = (self.next_id..self.next_id + tracks).map(TrackId).collect();
         self.next_id += tracks;
         self.saved = Saved {
             grid: grid.clone(),
-            arrangement: song.arrangement.clone(),
+            arrangement: arrangement.clone(),
             buses: song.buses.clone(),
             bpm: song.bpm,
         };
         self.grid = grid;
-        self.arrangement = song.arrangement;
+        self.arrangement = arrangement;
         self.cue = None;
         self.song_position = None;
         self.song = Default::default();
@@ -730,17 +747,23 @@ impl Editor {
 
     /// The primary selection's moving end, which the view follows.
     pub fn cursor(&self) -> Cursor {
-        self.selections[self.primary].cursor
+        self.primary_selection().cursor
     }
 
     /// The primary selection's fixed end.
     pub fn anchor(&self) -> Cursor {
-        self.selections[self.primary].anchor
+        self.primary_selection().anchor
     }
 
     /// The primary selection.
     pub fn selection(&self) -> Region {
-        self.selections[self.primary].region()
+        self.primary_selection().region()
+    }
+
+    /// The primary selection. There's always one, as `set_selections` keeps `primary` on one;
+    /// were there not, the first step would stand in, as where a song starts.
+    fn primary_selection(&self) -> Selection {
+        (self.selections.get(self.primary).copied()).unwrap_or_default()
     }
 
     /// The keys available after a prefix key, while it waits for the next one.
@@ -1003,7 +1026,9 @@ impl Editor {
             }
             self.checkpoint();
             for c in &cursors {
-                if let Some(step) = self.grid.tracks[c.track].steps.get_mut(c.step) {
+                if let Some(step) =
+                    (self.grid.tracks.get_mut(c.track)).and_then(|t| t.steps.get_mut(c.step))
+                {
                     step.note = Some(Note {
                         pitch,
                         velocity: self.velocity,
@@ -1111,7 +1136,10 @@ impl Editor {
             return;
         }
         let next = prompt.selected.map_or(0, |i| (i + 1) % found.len());
-        prompt.line = format!("{}{}", &typed[..word_start(&typed)], found[next].text);
+        let (Some(start), Some(choice)) = (typed.get(..word_start(&typed)), found.get(next)) else {
+            return;
+        };
+        prompt.line = format!("{start}{}", choice.text);
         prompt.typed = typed;
         prompt.selected = Some(next);
     }
@@ -1126,18 +1154,19 @@ impl Editor {
             prompt.prefix = prompt.line.clone();
         }
         let history = &self.history;
-        let fits =
-            |i: &usize| history[*i].starts_with(&prompt.prefix) && history[*i] != prompt.line;
+        let fits = |i: &usize| {
+            (history.get(*i)).is_some_and(|h| h.starts_with(&prompt.prefix) && *h != prompt.line)
+        };
         let at = prompt.history.unwrap_or(history.len());
         let next = if older {
             (0..at).rev().find(fits)
         } else {
             (at + 1..history.len()).find(fits)
         };
-        match next {
-            Some(i) => {
+        match next.and_then(|i| Some((i, history.get(i)?))) {
+            Some((i, line)) => {
                 prompt.history = Some(i);
-                prompt.line = history[i].clone();
+                prompt.line = line.clone();
             }
             None if !older => {
                 prompt.history = None;
@@ -1199,7 +1228,7 @@ impl Editor {
                 _ => "no matches".into(),
             });
         }
-        let primary = primary.min(selections.len() - 1);
+        let primary = primary.min(selections.len().saturating_sub(1));
         Ok((selections, primary))
     }
 
@@ -1208,8 +1237,9 @@ impl Editor {
         self.columns(region)
             .flat_map(|(track, steps)| steps.map(move |step| Cursor { track, step }))
             .filter(|c| {
-                self.grid.tracks[c.track].steps[c.step]
-                    .note
+                (self.grid.tracks.get(c.track))
+                    .and_then(|t| t.steps.get(c.step))
+                    .and_then(|s| s.note)
                     .is_some_and(|n| pattern.matches(n.pitch))
             })
             .collect()
@@ -1254,7 +1284,7 @@ impl Editor {
             // Like Helix, these finish the selection.
             self.mode = Mode::Normal;
         }
-        let last_track = self.grid.tracks.len() - 1;
+        let last_track = self.grid.tracks.len().saturating_sub(1);
         let by = n as isize;
         let at_step = |step: usize| move |_: &Self, c: Cursor| Cursor { step, ..c };
         let at_track = |track: usize| move |_: &Self, c: Cursor| Cursor { track, ..c };
@@ -1356,23 +1386,23 @@ impl Editor {
                 let merged = self
                     .selections
                     .iter()
-                    .fold(self.selections[self.primary], |m, s| m.merge(*s));
+                    .fold(self.primary_selection(), |m, s| m.merge(*s));
                 self.set_selections(vec![merged], 0);
             }
-            Action::KeepPrimary => self.set_selections(vec![self.selections[self.primary]], 0),
+            Action::KeepPrimary => self.set_selections(vec![self.primary_selection()], 0),
             Action::RemovePrimary => {
                 if self.selections.len() == 1 {
                     self.message = Some("can't remove the only selection".into());
-                } else {
+                } else if self.primary < self.selections.len() {
                     self.selections.remove(self.primary);
-                    self.primary = self.primary.min(self.selections.len() - 1);
+                    self.primary = self.primary.min(self.selections.len().saturating_sub(1));
                 }
             }
             Action::RotateForward => {
-                self.primary = (self.primary + n) % self.selections.len();
+                self.primary = (self.primary + n) % self.selections.len().max(1);
             }
             Action::RotateBackward => {
-                let len = self.selections.len();
+                let len = self.selections.len().max(1);
                 self.primary = (self.primary + len - n % len) % len;
             }
             Action::SelectNotes => self.open_prompt(PromptKind::Select),
@@ -1407,7 +1437,9 @@ impl Editor {
                 self.checkpoint();
                 let cursors: Vec<Cursor> = self.selections.iter().map(|s| s.cursor).collect();
                 for c in &cursors {
-                    if let Some(step) = self.grid.tracks[c.track].steps.get_mut(c.step) {
+                    if let Some(step) =
+                        (self.grid.tracks.get_mut(c.track)).and_then(|t| t.steps.get_mut(c.step))
+                    {
                         *step = Step::default();
                     }
                 }
@@ -1502,7 +1534,7 @@ impl Editor {
         self.track_clipboard = self
             .selected_tracks()
             .into_iter()
-            .map(|t| self.grid.tracks[t].clone())
+            .filter_map(|t| self.grid.tracks.get(t).cloned())
             .collect();
         self.message = Some(match self.track_clipboard.len() {
             1 => "copied 1 track".into(),
@@ -1524,7 +1556,8 @@ impl Editor {
         for &t in tracks.iter().rev() {
             let _ = self.remove_track(t);
         }
-        let first = (tracks.first().copied().unwrap_or(0)).min(self.grid.tracks.len() - 1);
+        let first =
+            (tracks.first().copied().unwrap_or(0)).min(self.grid.tracks.len().saturating_sub(1));
         self.select_point(first, self.cursor().step);
         vec![Effect::TracksChanged]
     }
@@ -1562,8 +1595,9 @@ impl Editor {
         })
     }
 
+    /// How many steps `track` has: none if there's no such track.
     fn track_len(&self, track: usize) -> usize {
-        self.grid.tracks[track].steps.len()
+        self.grid.tracks.get(track).map_or(0, |t| t.steps.len())
     }
 
     /// The last step a cursor can reach: the end of the longest track the selection spans.
@@ -1572,12 +1606,16 @@ impl Editor {
             anchor.track.min(cursor.track),
             anchor.track.max(cursor.track),
         );
-        (a..=b).map(|t| self.track_len(t)).max().unwrap_or(1) - 1
+        (a..=b)
+            .map(|t| self.track_len(t))
+            .max()
+            .unwrap_or(1)
+            .saturating_sub(1)
     }
 
     /// A selection between these ends, kept on the grid.
     fn clamped(&self, anchor: Cursor, cursor: Cursor) -> Selection {
-        let last_track = self.grid.tracks.len() - 1;
+        let last_track = self.grid.tracks.len().saturating_sub(1);
         let clamp_track = |c: Cursor| Cursor {
             track: c.track.min(last_track),
             step: c.step,
@@ -1594,7 +1632,10 @@ impl Editor {
     /// Replaces the selections, merging any that overlap into the rectangle covering them, as
     /// Helix does, and putting them in order.
     fn set_selections(&mut self, mut selections: Vec<Selection>, primary: usize) {
-        let main = selections[primary].cursor;
+        // Without a primary the cursor would be nowhere, so the selections stay as they were.
+        let Some(main) = selections.get(primary).map(|s| s.cursor) else {
+            return;
+        };
         // Merging grows a rectangle, which can make it overlap one it didn't before.
         loop {
             let before = selections.len();
@@ -1648,7 +1689,7 @@ impl Editor {
             track: c
                 .track
                 .saturating_add_signed(tracks)
-                .min(self.grid.tracks.len() - 1),
+                .min(self.grid.tracks.len().saturating_sub(1)),
             step: c.step.saturating_add_signed(steps),
         }
     }
@@ -1659,8 +1700,8 @@ impl Editor {
 
     /// The next or previous step with a note on the cursor's track.
     fn find_note(&self, cursor: Cursor, forwards: bool) -> Option<usize> {
-        let steps = &self.grid.tracks[cursor.track].steps;
-        let has_note = |&i: &usize| steps[i].note.is_some();
+        let steps = &self.grid.tracks.get(cursor.track)?.steps;
+        let has_note = |&i: &usize| steps.get(i).is_some_and(|s| s.note.is_some());
         if forwards {
             (cursor.step + 1..steps.len()).find(has_note)
         } else {
@@ -1744,7 +1785,10 @@ impl Editor {
         self.map_selections(|e, s| {
             let c = s.cursor;
             let at = Cursor {
-                step: (c.step + e.auto_step) % e.track_len(c.track),
+                // An empty track has only its first step to be on.
+                step: (c.step + e.auto_step)
+                    .checked_rem(e.track_len(c.track))
+                    .unwrap_or(0),
                 ..c
             };
             e.clamped(at, at)
@@ -1769,7 +1813,12 @@ impl Editor {
             .iter()
             .map(|s| {
                 self.columns(s.region())
-                    .map(|(t, steps)| self.grid.tracks[t].steps[steps].to_vec())
+                    // `columns` keeps to the track, and a missing one has no steps to copy.
+                    .map(|(t, steps)| {
+                        (self.grid.tracks.get(t))
+                            .and_then(|t| t.steps.get(steps))
+                            .map_or(vec![], <[Step]>::to_vec)
+                    })
                     .collect()
             })
             .collect();
@@ -1784,7 +1833,12 @@ impl Editor {
             .flat_map(|s| self.columns(s.region()))
             .collect();
         for (t, steps) in &columns {
-            for step in &mut self.grid.tracks[*t].steps[steps.clone()] {
+            let Some(steps) =
+                (self.grid.tracks.get_mut(*t)).and_then(|t| t.steps.get_mut(steps.clone()))
+            else {
+                continue;
+            };
+            for step in steps {
                 f(step);
             }
         }
@@ -1811,15 +1865,18 @@ impl Editor {
         // What each selection wrote: its tracks, its first step and how many rows.
         let mut writes = vec![];
         // Lowest first, so inserting doesn't move a step another selection has yet to paste at.
-        let mut order: Vec<usize> = (0..selections.len()).collect();
-        order.sort_by_key(|&i| std::cmp::Reverse(selections[i].region().first_step));
-        for i in order {
-            let clip = &self.clipboard[i.min(self.clipboard.len() - 1)];
+        let mut order: Vec<(usize, Region)> =
+            selections.iter().map(|s| s.region()).enumerate().collect();
+        order.sort_by_key(|(_, region)| std::cmp::Reverse(region.first_step));
+        for (i, region) in order {
+            // The last clip goes to any selections past the clips.
+            let Some(clip) = self.clipboard.get(i).or(self.clipboard.last()) else {
+                continue;
+            };
             let rows = clip.first().map_or(0, Vec::len);
             if rows == 0 {
                 continue;
             }
-            let region = selections[i].region();
             let (track, step, total) = (region.first_track, region.first_step, rows * n);
             for (j, column) in clip.iter().enumerate() {
                 let Some(steps) = self.grid.tracks.get_mut(track + j).map(|t| &mut t.steps) else {
@@ -1834,13 +1891,13 @@ impl Editor {
                     steps.splice(step..step, values);
                     steps.truncate(len);
                 } else {
-                    for (slot, value) in steps[step..].iter_mut().zip(values) {
+                    for (slot, value) in steps.iter_mut().skip(step).zip(values) {
                         *slot = value;
                     }
                 }
                 tracks.push(track + j);
             }
-            let last_track = track + clip.len() - 1;
+            let last_track = track + clip.len().saturating_sub(1);
             writes.push((i, track..=last_track, step, total));
         }
         for &(i, ref span, step, total) in &writes {
@@ -1851,16 +1908,19 @@ impl Editor {
                 .map(|w| w.3)
                 .sum();
             let first = step + shift;
-            selections[i] = self.clamped(
+            let pasted = self.clamped(
                 Cursor {
                     track: *span.start(),
                     step: first,
                 },
                 Cursor {
                     track: *span.end(),
-                    step: first + total - 1,
+                    step: (first + total).saturating_sub(1),
                 },
             );
+            if let Some(selection) = selections.get_mut(i) {
+                *selection = pasted;
+            }
         }
         self.set_selections(selections, self.primary);
         changed(tracks)
@@ -1926,7 +1986,9 @@ impl Editor {
             return false;
         }
         self.arrangement.insert_track(index, len);
-        self.ids.insert(index, TrackId(self.next_id));
+        // One id per track, so `index` is in range; were it not, the id would go on the end.
+        self.ids
+            .insert(index.min(self.ids.len()), TrackId(self.next_id));
         self.next_id += 1;
         for entry in &mut self.song.yanked {
             entry.insert_track(index);
@@ -1942,7 +2004,9 @@ impl Editor {
             return false;
         }
         self.arrangement.remove_track(index);
-        self.ids.remove(index);
+        if index < self.ids.len() {
+            self.ids.remove(index);
+        }
         for entry in &mut self.song.yanked {
             entry.remove_track(index);
         }
@@ -1957,8 +2021,11 @@ impl Editor {
             return false;
         }
         self.arrangement.move_track(from, to);
-        let id = self.ids.remove(from);
-        self.ids.insert(to, id);
+        // One id per track, so these are in range.
+        if from < self.ids.len() {
+            let id = self.ids.remove(from);
+            self.ids.insert(to.min(self.ids.len()), id);
+        }
         for entry in &mut self.song.yanked {
             entry.move_track(from, to);
         }

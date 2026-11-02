@@ -86,7 +86,12 @@ impl Editor {
             .map(|steps| (steps / bar) as usize)
             .collect();
         (self.arrangement.entries.iter())
-            .map(|e| pattern_bars[e.pattern] * e.repeats as usize)
+            // An entry of no pattern plays nothing.
+            .map(|e| {
+                pattern_bars
+                    .get(e.pattern)
+                    .map_or(0, |b| b * e.repeats as usize)
+            })
             .collect()
     }
 
@@ -313,10 +318,12 @@ impl Editor {
             return;
         };
         let (tracks, what) = match tracks.clone().count() {
-            1 => (
-                self.grid.tracks[*tracks.start()].name.clone(),
-                what.to_string(),
-            ),
+            1 => {
+                let Some(track) = self.grid.tracks.get(*tracks.start()) else {
+                    return;
+                };
+                (track.name.clone(), what.to_string())
+            }
             n => (format!("{n} tracks"), what.replacen("plays", "play", 1)),
         };
         let entries = match entries.count() {
@@ -434,16 +441,20 @@ impl Editor {
         let Some(&entry) = self.arrangement.entries.get(at) else {
             return vec![];
         };
-        let bars = self.entry_bars()[at];
+        let Some(&bars) = self.entry_bars().get(at) else {
+            return vec![];
+        };
         let pattern_bars = (bars / entry.repeats.max(1) as usize).max(1);
-        let into = (self.song_bar() - self.entry_start(at)) % pattern_bars;
+        let into = (self.song_bar().saturating_sub(self.entry_start(at))) % pattern_bars;
         let column = self.song_column();
         self.page = Page::Pattern;
         let effects = self.go_to_pattern(entry.pattern);
         // Playing, the pattern's only cued, and the grid's still the one playing.
         if self.arrangement.current == entry.pattern {
             let track = column.checked_sub(1).unwrap_or(self.cursor().track);
-            let len = self.grid.tracks[track].steps.len().max(1);
+            let Some(len) = self.grid.tracks.get(track).map(|t| t.steps.len().max(1)) else {
+                return effects;
+            };
             let bar = BEATS_PER_BAR as usize * self.grid.steps_per_beat.max(1) as usize;
             self.select_point(track, into * bar % len);
         }
@@ -486,7 +497,7 @@ impl Editor {
     /// Removes the selected entries, copying them if `yank`.
     fn remove_entries(&mut self, yank: bool) {
         let selected = self.song_entries();
-        if *selected.end() >= self.arrangement.entries.len() {
+        if selected.is_empty() || *selected.end() >= self.arrangement.entries.len() {
             return;
         }
         self.checkpoint();

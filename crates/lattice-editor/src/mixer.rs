@@ -10,10 +10,12 @@
 //! jump to the instrument and the effects, from the pattern page too. `C-a` `C-x` (and `+` `-`)
 //! nudge the value under the cursor, as Helix increments numbers, and `c` types one in.
 
+use std::sync::LazyLock;
+
 use lattice_core::instrument::chop;
 use lattice_core::{
     Bus, Fx, FxChain, FxKind, InstKind, Instrument, Kind, MAX_CHOKE, MAX_DB, MAX_EFFECTS, MIN_DB,
-    ParamInfo, Step,
+    ParamInfo, Step, Track,
 };
 
 use crate::keymap::Action;
@@ -146,7 +148,7 @@ impl Editor {
     pub fn bus(&self, strip: Strip) -> Option<&Bus> {
         match strip {
             Strip::Track(_) => None,
-            Strip::Group(g) => Some(&self.grid.groups[g].bus),
+            Strip::Group(g) => self.grid.groups.get(g).map(|g| &g.bus),
             Strip::Send => Some(&self.buses.send),
             Strip::Master => Some(&self.buses.master),
         }
@@ -155,42 +157,51 @@ impl Editor {
     fn bus_mut(&mut self, strip: Strip) -> Option<&mut Bus> {
         match strip {
             Strip::Track(_) => None,
-            Strip::Group(g) => Some(&mut self.grid.groups[g].bus),
+            Strip::Group(g) => self.grid.groups.get_mut(g).map(|g| &mut g.bus),
             Strip::Send => Some(&mut self.buses.send),
             Strip::Master => Some(&mut self.buses.master),
         }
     }
 
+    /// A strip's chain; for a track or group there isn't, an empty one, as there's nothing on
+    /// it to show.
     pub fn chain(&self, strip: Strip) -> &FxChain {
+        static NONE: LazyLock<FxChain> = LazyLock::new(FxChain::default);
+        self.chain_of(strip).unwrap_or(&NONE)
+    }
+
+    /// A strip's chain, if there's such a strip.
+    pub(crate) fn chain_of(&self, strip: Strip) -> Option<&FxChain> {
         match strip {
-            Strip::Track(i) => &self.grid.tracks[i].effects,
-            Strip::Group(g) => &self.grid.groups[g].bus.effects,
-            Strip::Send => &self.buses.send.effects,
-            Strip::Master => &self.buses.master.effects,
+            Strip::Track(i) => self.grid.tracks.get(i).map(|t| &t.effects),
+            Strip::Group(g) => self.grid.groups.get(g).map(|g| &g.bus.effects),
+            Strip::Send => Some(&self.buses.send.effects),
+            Strip::Master => Some(&self.buses.master.effects),
         }
     }
 
-    pub(crate) fn chain_mut(&mut self, strip: Strip) -> &mut FxChain {
+    /// A strip's chain to change, if there's such a strip.
+    pub(crate) fn chain_mut_of(&mut self, strip: Strip) -> Option<&mut FxChain> {
         match strip {
-            Strip::Track(i) => &mut self.grid.tracks[i].effects,
-            Strip::Group(g) => &mut self.grid.groups[g].bus.effects,
-            Strip::Send => &mut self.buses.send.effects,
-            Strip::Master => &mut self.buses.master.effects,
+            Strip::Track(i) => self.grid.tracks.get_mut(i).map(|t| &mut t.effects),
+            Strip::Group(g) => self.grid.groups.get_mut(g).map(|g| &mut g.bus.effects),
+            Strip::Send => Some(&mut self.buses.send.effects),
+            Strip::Master => Some(&mut self.buses.master.effects),
         }
     }
 
     /// The track's instrument, for a track's strip.
     pub fn instrument(&self, strip: Strip) -> Option<&Instrument> {
         match strip {
-            Strip::Track(i) => Some(&self.grid.tracks[i].instrument),
+            Strip::Track(i) => self.grid.tracks.get(i).map(|t| &t.instrument),
             _ => None,
         }
     }
 
-    /// A strip's level, in dB.
+    /// A strip's level, in dB; 0 for a strip there isn't, as for a bus.
     pub fn strip_level(&self, strip: Strip) -> f32 {
         match strip {
-            Strip::Track(i) => self.grid.tracks[i].mix.level,
+            Strip::Track(i) => self.grid.tracks.get(i).map_or(0.0, |t| t.mix.level),
             bus => self.bus(bus).map_or(0.0, |b| b.level),
         }
     }
@@ -212,7 +223,7 @@ impl Editor {
         cursor.row = match self.mixer.row {
             Row::Mix(field) if !kind.fields().contains(&field) => Row::Mix(Field::Level),
             Row::Param(p) => match self.shown_at(cursor) {
-                Some(shown) => Row::Param(p.min(shown.params.len() - 1)),
+                Some(shown) => Row::Param(p.min(shown.params.len().saturating_sub(1))),
                 None => Row::Chain,
             },
             row => row,
@@ -281,8 +292,8 @@ impl Editor {
             Row::Chain if params > 0 => Row::Param(0),
             Row::Param(p) if p + PARAM_COLUMNS < params => Row::Param(p + PARAM_COLUMNS),
             // Onto the last row's last setting, if this column ends a row higher.
-            Row::Param(p) if p / PARAM_COLUMNS < (params - 1) / PARAM_COLUMNS => {
-                Row::Param(params - 1)
+            Row::Param(p) if p / PARAM_COLUMNS < params.saturating_sub(1) / PARAM_COLUMNS => {
+                Row::Param(params.saturating_sub(1))
             }
             row => row,
         };
@@ -313,7 +324,9 @@ impl Editor {
             Row::Mix(field) => {
                 let fields = self.strip(cursor.strip).fields();
                 let at = fields.iter().position(|&f| f == field).unwrap_or(0);
-                cursor.row = Row::Mix(fields[step(at, fields.len())]);
+                if let Some(&field) = fields.get(step(at, fields.len())) {
+                    cursor.row = Row::Mix(field);
+                }
             }
             Row::Chain => {
                 let (at, len) = self.chain_position(cursor);
@@ -361,7 +374,7 @@ impl Editor {
             Action::FirstStep => self.mixer.row = Row::Strips,
             Action::LastStep => {
                 self.mixer.row = match self.shown() {
-                    Some(shown) => Row::Param(shown.params.len() - 1),
+                    Some(shown) => Row::Param(shown.params.len().saturating_sub(1)),
                     None => Row::Chain,
                 };
             }
@@ -424,7 +437,7 @@ impl Editor {
         let cursor = self.mixer_cursor();
         let strip = self.strip(cursor.strip);
         let track = match strip {
-            Strip::Track(i) => Some(&self.grid.tracks[i]),
+            Strip::Track(i) => self.grid.tracks.get(i),
             _ => None,
         };
         match cursor.row {
@@ -435,7 +448,7 @@ impl Editor {
             Row::Chain => None,
             Row::Param(p) => {
                 let shown = self.shown()?;
-                let info = shown.params[p];
+                let info = *shown.params.get(p)?;
                 // Recording locks, nudges go on from the last one.
                 let value = match self.live_lock {
                     Some((id, lock))
@@ -447,7 +460,7 @@ impl Editor {
                     {
                         lock.value
                     }
-                    _ => shown.values[p],
+                    _ => *shown.values.get(p)?,
                 };
                 Some((value, info.min, info.max))
             }
@@ -489,7 +502,7 @@ impl Editor {
         };
         match (row, strip) {
             (Row::Mix(field), Strip::Track(i)) => {
-                let track = &mut self.grid.tracks[i];
+                let track = self.grid.tracks.get_mut(i).ok_or("no such track")?;
                 match field {
                     Field::Level => track.mix.level = value,
                     Field::Pan => track.mix.pan = value / 100.0,
@@ -504,10 +517,21 @@ impl Editor {
                 }
             }
             (Row::Param(p), Strip::Track(i)) if cursor.instrument => {
-                let info = self.grid.tracks[i].instrument.params()[p];
-                self.grid.tracks[i].instrument.values[p] = info.clamp(value);
+                let instrument = &mut self
+                    .grid
+                    .tracks
+                    .get_mut(i)
+                    .ok_or("no such track")?
+                    .instrument;
+                let info = *instrument.params().get(p).ok_or("no such setting")?;
+                instrument.set(info.id, info.clamp(value));
             }
-            (Row::Param(p), _) => self.chain_mut(strip)[cursor.effect].values[p] = value,
+            (Row::Param(p), _) => {
+                let fx = (self.chain_mut_of(strip))
+                    .and_then(|chain| chain.get_mut(cursor.effect))
+                    .ok_or("no such effect")?;
+                *fx.values.get_mut(p).ok_or("no such setting")? = value;
+            }
             _ => {}
         }
         Ok(vec![Effect::MixerChanged])
@@ -524,8 +548,8 @@ impl Editor {
             // Kept to whole percent, so repeated nudges don't drift.
             Row::Mix(Field::Pan) => (old + by as f32 * PAN_STEP * 100.0).round(),
             Row::Mix(Field::Choke) => old + by as f32,
-            Row::Param(p) => match self.shown() {
-                Some(shown) => shown.params[p].nudge(old, by),
+            Row::Param(p) => match self.shown().and_then(|shown| shown.params.get(p).copied()) {
+                Some(info) => info.nudge(old, by),
                 None => return vec![],
             },
             Row::Chain => return vec![],
@@ -545,12 +569,13 @@ impl Editor {
         let (strip, index) = match self.page {
             Page::Fx => {
                 let strip = self.fx_strip();
-                if self.chain(strip).len() >= MAX_EFFECTS {
+                if self.chain_of(strip).ok_or("no such strip")?.len() >= MAX_EFFECTS {
                     return Err(format!("at most {MAX_EFFECTS} effects in a chain"));
                 }
                 self.checkpoint();
                 let at = self.fx_insert_at();
-                let index = self.chain_mut(strip).insert_at(at, Fx::new(kind));
+                let chain = self.chain_mut_of(strip).ok_or("no such strip")?;
+                let index = chain.insert_at(at, Fx::new(kind));
                 self.fx_onto(at);
                 return Ok(self.chain_changed(strip, index, true));
             }
@@ -567,18 +592,18 @@ impl Editor {
             }
             Page::Instrument => {
                 let track = self.inst_cursor().track;
-                (Strip::Track(track), self.grid.tracks[track].effects.len())
+                (Strip::Track(track), self.chain(Strip::Track(track)).len())
             }
             Page::Pattern | Page::Song | Page::Help => {
                 let track = self.cursor().track;
-                (Strip::Track(track), self.grid.tracks[track].effects.len())
+                (Strip::Track(track), self.chain(Strip::Track(track)).len())
             }
         };
-        if self.chain(strip).len() >= MAX_EFFECTS {
+        if self.chain_of(strip).ok_or("no such track")?.len() >= MAX_EFFECTS {
             return Err(format!("at most {MAX_EFFECTS} effects in a chain"));
         }
         self.checkpoint();
-        self.chain_mut(strip).insert(index, Fx::new(kind));
+        (self.chain_mut_of(strip).ok_or("no such track")?).insert(index, Fx::new(kind));
         if self.page == Page::Mixer {
             self.mixer.row = Row::Chain;
             self.mixer.effect = index;
@@ -600,7 +625,7 @@ impl Editor {
         let tracks: Vec<usize> = self
             .mix_targets()?
             .into_iter()
-            .filter(|&t| self.grid.tracks[t].instrument.kind != kind)
+            .filter(|&t| (self.grid.tracks.get(t)).is_some_and(|t| t.instrument.kind != kind))
             .collect();
         if tracks.is_empty() {
             return Ok(vec![]);
@@ -608,8 +633,11 @@ impl Editor {
         self.checkpoint();
         let mut effects = vec![Effect::MixerChanged];
         for t in tracks {
-            self.grid.tracks[t].instrument = Instrument::new(kind);
-            self.grid.tracks[t].face = None;
+            let Some(track) = self.grid.tracks.get_mut(t) else {
+                continue;
+            };
+            track.instrument = Instrument::new(kind);
+            track.face = None;
             // The old instrument's settings mean nothing to the new one.
             if self.retain_locks(t, |lock| lock.fx.is_some())
                 | self.retain_targets(t, |target| target.fx.is_some())
@@ -631,7 +659,9 @@ impl Editor {
         let tracks = self.mix_targets()?;
         self.checkpoint();
         for &t in &tracks {
-            let track = &mut self.grid.tracks[t];
+            let Some(track) = self.grid.tracks.get_mut(t) else {
+                continue;
+            };
             if track.instrument.kind != InstKind::Sampler {
                 track.instrument = Instrument::new(InstKind::Sampler);
                 track.face = None;
@@ -641,9 +671,9 @@ impl Editor {
         let name = path
             .file_name()
             .map_or_else(String::new, |n| n.to_string_lossy().into());
-        self.message = Some(match tracks[..] {
-            [t] => format!("{} plays {name}", self.grid.tracks[t].name),
-            _ => format!("{} tracks play {name}", tracks.len()),
+        self.message = Some(match self.only_track(&tracks) {
+            Some(track) => format!("{} plays {name}", track.name),
+            None => format!("{} tracks play {name}", tracks.len()),
         });
         if self.page == Page::Mixer {
             self.mixer.row = Row::Chain;
@@ -665,13 +695,13 @@ impl Editor {
         let name = path
             .file_name()
             .map_or_else(String::new, |n| n.to_string_lossy().into());
-        self.message = Some(match tracks[..] {
-            [t] => format!(
+        self.message = Some(match self.only_track(&tracks) {
+            Some(track) => format!(
                 "{} plays {name}, in {} pieces",
-                self.grid.tracks[t].name,
-                self.grid.tracks[t].steps.len().min(chop::MAX_PIECES)
+                track.name,
+                track.steps.len().min(chop::MAX_PIECES)
             ),
-            _ => format!("{} tracks play {name}, in pieces", tracks.len()),
+            None => format!("{} tracks play {name}, in pieces", tracks.len()),
         });
         let mut effects: Vec<Effect> = tracks.iter().map(|&t| Effect::TrackChanged(t)).collect();
         effects.push(Effect::MixerChanged);
@@ -681,15 +711,25 @@ impl Editor {
     /// Track `t` plays `path` on a chop track, cut into a piece for each step, each step playing
     /// its own; locks are kept.
     pub(crate) fn chop_track(&mut self, t: usize, path: std::path::PathBuf) {
-        let track = &mut self.grid.tracks[t];
+        let Some(track) = self.grid.tracks.get_mut(t) else {
+            return;
+        };
         if track.instrument.kind != InstKind::Chop {
             track.instrument = Instrument::new(InstKind::Chop);
         }
         track.instrument.file = Some(path);
         let pieces = track.steps.len().clamp(1, chop::MAX_PIECES);
-        track.instrument.values[chop::PIECES as usize] = pieces as f32;
+        track.instrument.set(chop::PIECES, pieces as f32);
         for (i, step) in track.steps.iter_mut().enumerate() {
             step.note = Step::note(chop::pitch(i % pieces)).note;
+        }
+    }
+
+    /// The track, when `tracks` is just the one.
+    fn only_track(&self, tracks: &[usize]) -> Option<&Track> {
+        match tracks {
+            [t] => self.grid.tracks.get(*t),
+            _ => None,
         }
     }
 
@@ -715,12 +755,17 @@ impl Editor {
     fn remove_effect(&mut self) -> Vec<Effect> {
         let cursor = self.mixer_cursor();
         let strip = self.strip(cursor.strip);
-        if cursor.row != Row::Chain || cursor.instrument || self.chain(strip).is_empty() {
+        if cursor.row != Row::Chain
+            || cursor.instrument
+            || self.chain(strip).get(cursor.effect).is_none()
+        {
             self.message = Some("move onto an effect on the chain to remove it".into());
             return vec![];
         }
         self.checkpoint();
-        self.chain_mut(strip).remove(cursor.effect);
+        if let Some(chain) = self.chain_mut_of(strip) {
+            chain.remove(cursor.effect);
+        }
         self.mixer = self.mixer_cursor();
         self.chain_changed(strip, cursor.effect, false)
     }

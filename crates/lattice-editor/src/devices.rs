@@ -60,7 +60,9 @@ impl Devices {
         if let Ok(n) = typed.parse::<usize>() {
             return match n {
                 0 => Ok(None),
-                n if n <= self.found.len() => Ok(Some(self.found[n - 1].id.clone())),
+                n if n <= self.found.len() => (self.found.get(n - 1))
+                    .map(|d| Some(d.id.clone()))
+                    .ok_or_else(|| format!("no {way} {n}")),
                 _ if !self.looked => Err(format!("still looking for {way}s")),
                 n => Err(format!("no {way} {n}; there are {}", self.found.len())),
             };

@@ -34,7 +34,10 @@ impl Editor {
             },
         };
         let t = self.cursor().track;
-        let track = self.ids[t];
+        let (Some(&track), Some(to_arm)) = (self.ids.get(t), self.grid.tracks.get(t)) else {
+            return Err("no such track".into());
+        };
+        let name = to_arm.name.clone();
         self.armed = Some(Armed {
             track,
             fresh,
@@ -45,7 +48,6 @@ impl Editor {
         } else {
             "a new loop"
         };
-        let name = &self.grid.tracks[t].name;
         let until = match passes {
             Some(1) => " for one pass".into(),
             Some(n) => format!(" for {n} passes"),
@@ -59,8 +61,9 @@ impl Editor {
 
     /// `:disarm`.
     pub(crate) fn disarm(&mut self) {
-        self.message = Some(match self.armed() {
-            Some(t) => format!("{} disarmed", self.grid.tracks[t].name),
+        let armed = self.armed().and_then(|t| self.grid.tracks.get(t));
+        self.message = Some(match armed {
+            Some(track) => format!("{} disarmed", track.name),
             None => "nothing's armed".into(),
         });
         self.armed = None;
@@ -100,13 +103,17 @@ impl Editor {
     /// A pass has been recorded for track `t` into `path`: the track plays it, cut into a piece
     /// a step if it wasn't playing a loop already, as one undo.
     pub fn recorded(&mut self, t: usize, path: PathBuf) -> Vec<Effect> {
-        if t >= self.grid.tracks.len() {
+        let Some(track) = self.grid.tracks.get(t) else {
+            self.message = Some("the track recorded into has gone".into());
             return vec![];
-        }
+        };
+        let name = track.name.clone();
         self.checkpoint();
         let overdub = self.overdubbing(t).is_some();
         if overdub {
-            self.grid.tracks[t].instrument.file = Some(path);
+            if let Some(track) = self.grid.tracks.get_mut(t) {
+                track.instrument.file = Some(path);
+            }
         } else {
             self.chop_track(t, path);
         }
@@ -121,7 +128,6 @@ impl Editor {
         if done {
             self.armed = None;
         }
-        let name = &self.grid.tracks[t].name;
         let pass = match overdub {
             true => "pass overdubbed",
             false => "pass recorded",

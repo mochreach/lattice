@@ -19,8 +19,11 @@ impl Editor {
     pub(crate) fn repeat_steps(&mut self, unit: usize) -> Vec<Effect> {
         self.rearrange(|steps, _| {
             let unit = unit.clamp(1, steps.len().max(1));
-            for i in unit..steps.len() {
-                steps[i] = steps[i % unit];
+            let Some((first, rest)) = steps.split_at_mut_checked(unit) else {
+                return;
+            };
+            for (to, from) in rest.iter_mut().zip(first.iter().cycle()) {
+                *to = *from;
             }
         })
     }
@@ -42,11 +45,18 @@ impl Editor {
         let columns: Vec<_> = (self.selections.iter())
             .flat_map(|s| self.columns(s.region()))
             .collect();
-        for (t, steps) in &columns {
-            let track = &mut self.grid.tracks[*t];
-            f(&mut track.steps[steps.clone()], &track.instrument);
+        let mut tracks = vec![];
+        for (t, steps) in columns {
+            let Some(track) = self.grid.tracks.get_mut(t) else {
+                continue;
+            };
+            let Some(steps) = track.steps.get_mut(steps) else {
+                continue;
+            };
+            f(steps, &track.instrument);
+            tracks.push(t);
         }
-        changed(columns.into_iter().map(|(t, _)| t))
+        changed(tracks)
     }
 }
 
@@ -54,8 +64,10 @@ pub(crate) fn reverse(steps: &mut [Step], instrument: &Instrument) {
     let n = steps.len();
     let mut reversed = vec![Step::default(); n];
     // Steps with only locks first, so a note landing on one keeps them as well as its own.
-    for (i, step) in steps.iter().enumerate().filter(|(_, s)| s.note.is_none()) {
-        reversed[n - 1 - i] = *step;
+    for (to, step) in reversed.iter_mut().rev().zip(steps.iter()) {
+        if step.note.is_none() {
+            *to = *step;
+        }
     }
     for (i, step) in steps.iter().enumerate() {
         let Some(mut note) = step.note else {
@@ -69,7 +81,10 @@ pub(crate) fn reverse(steps: &mut [Step], instrument: &Instrument) {
         if instrument.kind == InstKind::Chop {
             turn_piece(&mut turned, span, instrument);
         }
-        let to = &mut reversed[n - i - span];
+        // In range: `span` is at most `n - i`.
+        let Some(to) = reversed.get_mut(n - i - span) else {
+            continue;
+        };
         for lock in to.locks.iter() {
             if turned.locks.find(lock).is_none() {
                 turned.locks.set(*lock);

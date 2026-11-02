@@ -609,10 +609,16 @@ impl NoteLayout {
                 // A fourth is 5 of 12 semitones: 3 steps of a seven-note scale, 2 of five or six
                 // (rounding a half down, as blues' third step is a tritone).
                 let steps = scale.steps;
+                // Every scale has steps, but one without would have nothing to lay out.
+                if steps.is_empty() {
+                    return grid(5, 1, &semitones);
+                }
                 let up = (steps.len() * 5 + 5) / 12;
                 grid(up, 1, &|degree| {
                     let octave = (degree / steps.len()) as u8;
-                    root + steps[degree % steps.len()] + 12 * octave
+                    // In range: the remainder is less than the length.
+                    let step = steps.get(degree % steps.len()).copied().unwrap_or_default();
+                    root + step + 12 * octave
                 })
             }
         }
@@ -824,7 +830,11 @@ impl Keymap {
         };
         let at = menu.items.iter().position(|(k, _)| *k == key);
         match (binding, at) {
-            (Some(binding), Some(i)) => menu.items[i].1 = binding,
+            (Some(binding), Some(i)) => {
+                if let Some(item) = menu.items.get_mut(i) {
+                    item.1 = binding;
+                }
+            }
             (Some(binding), None) => menu.items.push((key, binding)),
             (None, Some(i)) => {
                 menu.items.remove(i);

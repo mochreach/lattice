@@ -8,7 +8,8 @@
 //! and every lesson's solution is played through to check it still works.
 
 use lattice_core::{
-    Arrangement, Buses, Condition, Entry, FxKind, Grid, InstKind, Instrument, Song, Step, Track,
+    Arrangement, Buses, Condition, Entry, FxKind, Grid, InstKind, Instrument, Note, Song, Step,
+    Track,
 };
 
 use lattice_core::instrument::chop;
@@ -118,15 +119,18 @@ fn never(_: &Editor) -> bool {
 fn nothing(_: &mut Editor) {}
 
 /// The track called `name`, which lessons find by name as tracks can be added and moved.
-fn track<'a>(e: &'a Editor, name: &str) -> &'a Track {
-    let t = index(e, name);
-    &e.grid.tracks[t]
+/// None if it's been renamed or removed, and then its lesson can't be done.
+fn track<'a>(e: &'a Editor, name: &str) -> Option<&'a Track> {
+    e.grid.tracks.get(index(e, name)?)
 }
 
-fn index(e: &Editor, name: &str) -> usize {
-    (e.grid.tracks.iter())
-        .position(|t| t.name == name)
-        .unwrap_or(0)
+fn index(e: &Editor, name: &str) -> Option<usize> {
+    e.grid.tracks.iter().position(|t| t.name == name)
+}
+
+/// The note on `step` of `track`, if there's such a step.
+fn note(track: &Track, step: usize) -> Option<Option<Note>> {
+    track.steps.get(step).map(|s| s.note)
 }
 
 fn has_note(track: &Track, step: usize) -> bool {
@@ -139,10 +143,14 @@ fn run() -> std::ops::RangeInclusive<usize> {
 }
 
 fn fill_run(e: &mut Editor) {
-    let t = index(e, "BASS");
+    let Some(bass) = index(e, "BASS").and_then(|t| e.grid.tracks.get_mut(t)) else {
+        return;
+    };
     for (i, step) in run().enumerate() {
-        if !has_note(&e.grid.tracks[t], step) {
-            e.grid.tracks[t].steps[step] = Step::note(36 + 3 * i as u8);
+        if let Some(slot) = bass.steps.get_mut(step)
+            && slot.note.is_none()
+        {
+            *slot = Step::note(36 + 3 * i as u8);
         }
     }
 }
@@ -160,7 +168,7 @@ const SECTIONS: &[(&str, &str)] = &[
 fn section(lesson: usize) -> &'static str {
     (SECTIONS.iter())
         .rev()
-        .find(|(_, first)| LESSONS[..=lesson].iter().any(|l| l.title == *first))
+        .find(|(_, first)| (LESSONS.iter().take(lesson + 1)).any(|l| l.title == *first))
         .map_or("", |(name, _)| name)
 }
 
@@ -179,7 +187,7 @@ const LESSONS: &[Lesson] = &[
         watch: never,
         done: |e, _| {
             let c = e.cursor();
-            c.track == index(e, "BASS") && c.step == 8
+            index(e, "BASS") == Some(c.track) && c.step == 8
         },
         solution: "ll8j",
     },
@@ -211,7 +219,7 @@ const LESSONS: &[Lesson] = &[
         watch: never,
         done: |e, _| {
             let c = e.cursor();
-            c.track == e.grid.tracks.len() - 1 && c.step == e.track_len(c.track) - 1
+            c.track + 1 == e.grid.tracks.len() && c.step + 1 == e.track_len(c.track)
         },
         solution: "gegl",
     },
@@ -236,7 +244,8 @@ const LESSONS: &[Lesson] = &[
         setup: nothing,
         watch: never,
         done: |e, _| {
-            let notes = (track(e, "LEAD").steps.iter())
+            let notes = (track(e, "LEAD").into_iter())
+                .flat_map(|t| &t.steps)
                 .filter(|s| s.note.is_some())
                 .count();
             notes >= 4 && e.mode == Mode::Normal
@@ -286,8 +295,9 @@ const LESSONS: &[Lesson] = &[
         setup: fill_run,
         watch: never,
         done: |e, _| {
-            let bass = track(e, "BASS");
-            run().all(|s| !has_note(bass, s)) && has_note(bass, 0) && has_note(bass, 8)
+            track(e, "BASS").is_some_and(|bass| {
+                run().all(|s| !has_note(bass, s)) && has_note(bass, 0) && has_note(bass, 8)
+            })
         },
         solution: "ghllgg4jv3jd",
     },
@@ -299,19 +309,25 @@ const LESSONS: &[Lesson] = &[
         commands: &[],
         // Reached some other way than by deleting them, delete them, to undo.
         setup: |e| {
-            let t = index(e, "BASS");
-            if !e.undo.is_empty() && run().all(|s| !has_note(&e.grid.tracks[t], s)) {
+            let Some(t) = index(e, "BASS") else {
+                return;
+            };
+            let deleted = (e.grid.tracks.get(t)).is_some_and(|b| run().all(|s| !has_note(b, s)));
+            if !e.undo.is_empty() && deleted {
                 return;
             }
             fill_run(e);
             e.checkpoint();
-            let t = index(e, "BASS");
-            for s in run() {
-                e.grid.tracks[t].steps[s] = Step::default();
+            if let Some(bass) = e.grid.tracks.get_mut(t) {
+                for s in run() {
+                    if let Some(step) = bass.steps.get_mut(s) {
+                        *step = Step::default();
+                    }
+                }
             }
         },
         watch: never,
-        done: |e, _| run().all(|s| has_note(track(e, "BASS"), s)),
+        done: |e, _| track(e, "BASS").is_some_and(|bass| run().all(|s| has_note(bass, s))),
         solution: "u",
     },
     Lesson {
@@ -335,9 +351,13 @@ const LESSONS: &[Lesson] = &[
         setup: fill_run,
         watch: never,
         done: |e, t| {
-            let (now, was) = (track(e, "BASS"), &t.start.tracks[index(e, "BASS")]);
-            run().all(|s| match (now.steps[s].note, was.steps[s].note) {
-                (Some(now), Some(was)) => now.pitch == was.pitch + 12,
+            let now = track(e, "BASS");
+            let was = index(e, "BASS").and_then(|b| t.start.tracks.get(b));
+            let (Some(now), Some(was)) = (now, was) else {
+                return false;
+            };
+            run().all(|s| match (note(now, s), note(was, s)) {
+                (Some(Some(now)), Some(Some(was))) => now.pitch == was.pitch + 12,
                 _ => false,
             })
         },
@@ -353,8 +373,10 @@ const LESSONS: &[Lesson] = &[
         setup: nothing,
         watch: never,
         done: |e, _| {
-            let (kick, hat) = (track(e, "KICK"), track(e, "HAT"));
-            (0..4).all(|s| kick.steps[s].note == hat.steps[8 + s].note)
+            let (Some(kick), Some(hat)) = (track(e, "KICK"), track(e, "HAT")) else {
+                return false;
+            };
+            (0..4).all(|s| note(kick, s).is_some_and(|n| note(hat, 8 + s) == Some(n)))
         },
         solution: "ghggv3jyl5jp",
     },
@@ -419,9 +441,12 @@ const LESSONS: &[Lesson] = &[
             if e.selections.len() > 1 {
                 return;
             }
-            let t = index(e, "KICK");
-            let points: Vec<Selection> = (0..e.track_len(t))
-                .filter(|&s| has_note(&e.grid.tracks[t], s))
+            let Some((t, kick)) = index(e, "KICK").and_then(|t| Some((t, e.grid.tracks.get(t)?)))
+            else {
+                return;
+            };
+            let points: Vec<Selection> = (0..kick.steps.len())
+                .filter(|&s| has_note(kick, s))
                 .map(|step| {
                     let point = Cursor { track: t, step };
                     e.clamped(point, point)
@@ -462,8 +487,8 @@ const LESSONS: &[Lesson] = &[
         ],
         commands: &["pattern-mute"],
         setup: nothing,
-        watch: |e| track(e, "BASS").mix.mute,
-        done: |e, t| t.seen && !track(e, "BASS").mix.mute,
+        watch: |e| track(e, "BASS").is_some_and(|t| t.mix.mute),
+        done: |e, t| t.seen && track(e, "BASS").is_some_and(|t| !t.mix.mute),
         solution: "ghlltmtm",
     },
     Lesson {
@@ -485,8 +510,12 @@ const LESSONS: &[Lesson] = &[
         setup: nothing,
         watch: never,
         done: |e, t| {
-            let was = t.start.tracks[index(e, "BASS")].rules.len();
-            (track(e, "BASS").rules.iter().skip(was)).any(|r| r.when != Condition::Always)
+            let Some(was) = index(e, "BASS").and_then(|b| t.start.tracks.get(b)) else {
+                return false;
+            };
+            (track(e, "BASS").into_iter())
+                .flat_map(|t| t.rules.iter().skip(was.rules.len()))
+                .any(|r| r.when != Condition::Always)
         },
         solution: "ghll:tr 5 every 4<ret>",
     },
@@ -524,8 +553,10 @@ const LESSONS: &[Lesson] = &[
         setup: nothing,
         watch: never,
         done: |e, t| {
-            let was = t.start.tracks[index(e, "BASS")].mix.level;
-            track(e, "BASS").mix.level < was && e.page == Page::Pattern
+            let Some(was) = index(e, "BASS").and_then(|b| t.start.tracks.get(b)) else {
+                return false;
+            };
+            track(e, "BASS").is_some_and(|t| t.mix.level < was.mix.level) && e.page == Page::Pattern
         },
         solution: "ghllgm<C-x>gp",
     },
@@ -545,7 +576,11 @@ const LESSONS: &[Lesson] = &[
         commands: &["inst", "sample", "fx-add"],
         setup: nothing,
         watch: never,
-        done: |e, _| (track(e, "LEAD").effects.iter()).any(|fx| fx.kind == FxKind::Reverb),
+        done: |e, _| {
+            (track(e, "LEAD").into_iter())
+                .flat_map(|t| t.effects.iter())
+                .any(|fx| fx.kind == FxKind::Reverb)
+        },
         solution: "gl:fx-add reverb<ret>",
     },
     Lesson {
@@ -565,9 +600,14 @@ const LESSONS: &[Lesson] = &[
         setup: nothing,
         watch: never,
         done: |e, _| {
-            let lead = &track(e, "LEAD").effects;
+            let Some(lead) = track(e, "LEAD").map(|t| &t.effects) else {
+                return false;
+            };
             (lead.rows()).any(|(at, _, effect)| {
-                at.lane > 0 && effect.is_some_and(|i| lead[i].kind == FxKind::Delay)
+                at.lane > 0
+                    && effect
+                        .and_then(|i| lead.get(i))
+                        .is_some_and(|fx| fx.kind == FxKind::Delay)
             })
         },
         solution: "gpglgf:fx-send B<ret>l:fx-add delay<ret>gp",
@@ -586,7 +626,9 @@ const LESSONS: &[Lesson] = &[
         setup: nothing,
         watch: never,
         done: |e, _| {
-            (track(e, "LEAD").effects.iter()).any(|fx| fx.kind == FxKind::Pitch)
+            (track(e, "LEAD").into_iter())
+                .flat_map(|t| t.effects.iter())
+                .any(|fx| fx.kind == FxKind::Pitch)
                 && e.page == Page::Pattern
         },
         solution: "gpgl:chain-load shimmer<ret>gfgp",
@@ -603,10 +645,14 @@ const LESSONS: &[Lesson] = &[
         setup: nothing,
         watch: never,
         done: |e, _| {
-            let lead = track(e, "LEAD");
+            let Some(lead) = track(e, "LEAD") else {
+                return false;
+            };
             let cutoff = (lead.instrument.params().iter()).find(|p| p.name == "cutoff");
             cutoff.is_some_and(|p| {
-                (lead.steps[0].locks.iter()).any(|l| l.fx.is_none() && u32::from(l.param) == p.id)
+                (lead.steps.first().into_iter())
+                    .flat_map(|s| s.locks.iter())
+                    .any(|l| l.fx.is_none() && u32::from(l.param) == p.id)
             })
         },
         solution: "glgg:lock cutoff 2000<ret>",
@@ -628,8 +674,8 @@ const LESSONS: &[Lesson] = &[
         setup: nothing,
         watch: never,
         done: |e, _| {
-            let lead = track(e, "LEAD");
-            (lead.macros.iter())
+            (track(e, "LEAD").into_iter())
+                .flat_map(|t| t.macros.iter())
                 .any(|m| m.name == "bloom" && m.value > 0.0 && !m.targets.is_empty())
         },
         solution: "gpglgf:fx-add filter<ret>jj:map bloom<ret>hk10<C-a>gp",
@@ -653,7 +699,9 @@ const LESSONS: &[Lesson] = &[
         setup: nothing,
         watch: never,
         done: |e, _| {
-            let lead = track(e, "LEAD");
+            let Some(lead) = track(e, "LEAD") else {
+                return false;
+            };
             let resonance = (lead.instrument.params().iter()).position(|p| p.name == "resonance");
             (lead.face.as_ref()).is_some_and(|face| {
                 face.title == "Night Bus"
@@ -698,7 +746,8 @@ const LESSONS: &[Lesson] = &[
             if !e.grid.tracks.iter().any(chopped) {
                 // Silent, without a file, but there to rearrange.
                 let mut instrument = Instrument::new(InstKind::Chop);
-                instrument.values[chop::PIECES as usize] = 16.0;
+                // A chop has its pieces, so this sets them.
+                let _ = instrument.set(chop::PIECES, 16.0);
                 let steps = (0..16).map(|i| Step::note(chop::pitch(i))).collect();
                 let beat = Track {
                     name: "BEAT".into(),
@@ -706,7 +755,10 @@ const LESSONS: &[Lesson] = &[
                     instrument,
                     ..Track::default()
                 };
-                let at = (index(e, "HAT") + 1).min(e.grid.tracks.len());
+                // After the HAT track, or first if it's gone.
+                let at = index(e, "HAT")
+                    .map_or(0, |h| h + 1)
+                    .min(e.grid.tracks.len());
                 // At most at the end, so it goes in.
                 let _ = e.insert_track(at, beat);
             }
@@ -716,13 +768,20 @@ const LESSONS: &[Lesson] = &[
             let Some(c) = e.grid.tracks.iter().position(chopped) else {
                 return false;
             };
-            let (now, was) = (&e.grid.tracks[c], &t.start.tracks[c]);
-            if now.steps.len() < 16 || was.steps.len() < 16 {
+            let (Some(now), Some(was)) = (e.grid.tracks.get(c), t.start.tracks.get(c)) else {
                 return false;
-            }
-            let mut turned = was.steps[12..16].to_vec();
+            };
+            let (Some(now_end), Some(was_end), Some(now_run), Some(repeated)) = (
+                now.steps.get(12..16),
+                was.steps.get(12..16),
+                now.steps.get(4..8),
+                was.steps.get(4),
+            ) else {
+                return false;
+            };
+            let mut turned = was_end.to_vec();
             crate::rearrange::reverse(&mut turned, &was.instrument);
-            now.steps[12..16] == turned[..] && now.steps[4..8].iter().all(|s| *s == was.steps[4])
+            now_end == turned.as_slice() && now_run.iter().all(|s| s == repeated)
         },
         solution: "ghllgg12jv3j~<esc>;11kv3j*",
     },
@@ -765,7 +824,7 @@ const LESSONS: &[Lesson] = &[
         ],
         setup: nothing,
         watch: never,
-        done: |e, _| e.arrangement.patterns[e.arrangement.current].name == "chorus",
+        done: |e, _| e.pattern_name() == "chorus",
         solution: ":pattern-dup chorus<ret>",
     },
     Lesson {
@@ -872,7 +931,9 @@ fn song() -> Song {
     let track = |name: &str, kind: InstKind, notes: &[(usize, u8)]| {
         let mut steps = vec![Step::default(); 16];
         for &(step, pitch) in notes {
-            steps[step] = Step::note(pitch);
+            if let Some(slot) = steps.get_mut(step) {
+                *slot = Step::note(pitch);
+            }
         }
         Track {
             name: name.into(),
@@ -927,10 +988,9 @@ fn song() -> Song {
 fn fill(text: &str, keymap: &Keymap) -> String {
     let mut out = String::new();
     let mut rest = text;
-    while let Some(open) = rest.find('{') {
-        out.push_str(&rest[..open]);
-        let close = rest[open..].find('}').map_or(rest.len(), |c| open + c);
-        let name = &rest[open + 1..close.min(rest.len())];
+    while let Some((before, after)) = rest.split_once('{') {
+        out.push_str(before);
+        let (name, after) = after.split_once('}').unwrap_or((after, ""));
         match Action::named(name) {
             Some(action) => match keys_for(keymap, action).first() {
                 Some(keys) => out.push_str(&format!("`{keys}`")),
@@ -938,7 +998,7 @@ fn fill(text: &str, keymap: &Keymap) -> String {
             },
             None => out.push_str(name),
         }
-        rest = rest.get(close + 1..).unwrap_or_default();
+        rest = after;
     }
     out.push_str(rest);
     out
@@ -1012,7 +1072,7 @@ impl Editor {
     /// The lesson to show, if the tutor's running.
     pub fn tutor_view(&self) -> Option<TutorView> {
         let tutor = self.tutor.as_ref()?;
-        let lesson = &LESSONS[tutor.lesson];
+        let lesson = LESSONS.get(tutor.lesson)?;
         Some(TutorView {
             number: tutor.lesson + 1,
             total: LESSONS.len(),
@@ -1036,7 +1096,9 @@ impl Editor {
         else {
             return vec![];
         };
-        let lesson = &LESSONS[at];
+        let Some(lesson) = LESSONS.get(at) else {
+            return vec![];
+        };
         let seen = (lesson.watch)(self);
         let Some(tutor) = self.tutor.as_mut() else {
             return vec![];
@@ -1069,12 +1131,14 @@ impl Editor {
     /// Starts a lesson from wherever the last one left off: its setup changes only what it
     /// must.
     fn start_lesson(&mut self, lesson: usize) -> Vec<Effect> {
-        let lesson = lesson.min(LESSONS.len() - 1);
+        let lesson = lesson.min(LESSONS.len().saturating_sub(1));
         let before = self.grid.clone();
         self.mode = Mode::Normal;
         self.pending = None;
         self.count = None;
-        (LESSONS[lesson].setup)(self);
+        if let Some(l) = LESSONS.get(lesson) {
+            (l.setup)(self);
+        }
         self.tutor = Some(Tutor {
             lesson,
             start: self.grid.clone(),

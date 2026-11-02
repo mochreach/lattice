@@ -2,7 +2,9 @@
 //! and cleared with `:unlock` on every step the selections reach.
 
 use lattice_core::macros::MACRO_INFO;
-use lattice_core::{Curve, Fx, Instrument, Kind, Lock, MACRO, MAX_LOCKS, ParamInfo, Track};
+use lattice_core::{
+    Curve, Fx, Grid, Instrument, Kind, Lock, MACRO, MAX_LOCKS, ParamInfo, Step, Track,
+};
 
 use crate::{Editor, Effect, Row, Strip, TrackId, changed};
 
@@ -107,14 +109,18 @@ fn find(track: &Track, name: &str) -> Option<Setting> {
         Some(("macro", name)) => macro_named(name),
         Some((device, param)) => match device.parse::<usize>() {
             Ok(n) => effect(n.checked_sub(1)?, param),
-            Err(_) => (0..track.effects.len())
-                .filter(|&fx| track.effects[fx].kind.name() == device)
-                .find_map(|fx| effect(fx, param)),
+            Err(_) => (track.effects.iter().enumerate())
+                .filter(|(_, e)| e.kind.name() == device)
+                .find_map(|(fx, _)| effect(fx, param)),
         },
         None => instrument()
             .or_else(|| (0..track.effects.len()).find_map(|fx| effect(fx, name)))
             .or_else(|| macro_named(name)),
     }
+}
+
+fn step_mut(grid: &mut Grid, t: usize, step: usize) -> Option<&mut Step> {
+    grid.tracks.get_mut(t)?.steps.get_mut(step)
 }
 
 /// `word` as a value of `info`: a number in its range, or one of its choices by name.
@@ -164,7 +170,7 @@ impl Editor {
         // Every track has to have it, and every step room for it, before anything changes.
         let mut edits = vec![];
         for (t, steps) in &columns {
-            let track = &self.grid.tracks[*t];
+            let track = self.grid.tracks.get(*t).ok_or("no such track")?;
             let setting = find(track, name).ok_or_else(|| {
                 let names: Vec<String> = settings(track).iter().map(|s| s.name(track)).collect();
                 format!("{} has no {name}: try {}", track.name, names.join(", "))
@@ -179,7 +185,7 @@ impl Editor {
                     setting.info.at(a + (b - a) * along)
                 };
                 let lock = setting.lock(value);
-                let locks = &track.steps[step].locks;
+                let locks = &track.steps.get(step).ok_or("no such step")?.locks;
                 if locks.find(&lock).is_none() && locks.len() == MAX_LOCKS {
                     return Err(format!("a step holds at most {MAX_LOCKS} locks"));
                 }
@@ -187,8 +193,11 @@ impl Editor {
             }
         }
         self.checkpoint();
+        // Each step was found above.
         for &(t, step, lock) in &edits {
-            self.grid.tracks[t].steps[step].locks.set(lock);
+            if let Some(step) = step_mut(&mut self.grid, t, step) {
+                step.locks.set(lock);
+            }
         }
         Ok(changed(edits.into_iter().map(|(t, ..)| t)))
     }
@@ -272,9 +281,11 @@ impl Editor {
             );
         for (fx, was, params, now) in devices {
             for (p, info) in params.iter().enumerate() {
-                if was.get(p) != now.get(p) {
+                if let Some(&value) = now.get(p)
+                    && was.get(p) != Some(&value)
+                {
                     let setting = Setting::new(fx, info);
-                    let lock = setting.lock(now[p]);
+                    let lock = setting.lock(value);
                     new.push((setting, lock));
                 }
             }
@@ -305,7 +316,7 @@ impl Editor {
             return Err("no steps selected in this track".into());
         };
         for &step in &steps {
-            let locks = &track.steps[step].locks;
+            let locks = &track.steps.get(step).ok_or("no such step")?.locks;
             let adding = new.iter().filter(|(_, l)| locks.find(l).is_none()).count();
             if locks.len() + adding > MAX_LOCKS {
                 return Err(format!(
@@ -336,7 +347,9 @@ impl Editor {
         self.checkpoint();
         for &step in &steps {
             for (_, lock) in &new {
-                self.grid.tracks[t].steps[step].locks.set(*lock);
+                if let Some(step) = step_mut(&mut self.grid, t, step) {
+                    step.locks.set(*lock);
+                }
             }
         }
         self.message = Some(message);
@@ -364,7 +377,7 @@ impl Editor {
         let Strip::Track(t) = shown.strip else {
             return None;
         };
-        let info = &shown.params[p];
+        let info = shown.params.get(p)?;
         let lock = Lock {
             fx: shown.slot.map(|s| s as u8),
             param: info.id as u8,
@@ -386,7 +399,13 @@ impl Editor {
         }
         let at = at.floor() as u64;
         let (step, pass) = ((at % len as u64) as usize, at / len as u64);
-        let locks = &self.grid.tracks[t].steps[step].locks;
+        // The step playing is within the track, as `len` is its length.
+        let Some(locks) = (self.grid.tracks.get(t))
+            .and_then(|track| track.steps.get(step))
+            .map(|s| s.locks)
+        else {
+            return Some(vec![]);
+        };
         if locks.find(&lock).is_none() && locks.len() == MAX_LOCKS {
             self.message = Some(format!("step {step} already holds {MAX_LOCKS} locks"));
             return Some(vec![]);
@@ -395,14 +414,18 @@ impl Editor {
             self.checkpoint();
             self.take = Some(pass);
         }
-        self.grid.tracks[t].steps[step].locks.set(lock);
-        self.live_lock = self.ids.get(t).map(|&id| (id, lock));
-        let track = &self.grid.tracks[t];
+        let Some(track) = self.grid.tracks.get_mut(t) else {
+            return Some(vec![]);
+        };
+        if let Some(step) = track.steps.get_mut(step) {
+            step.locks.set(lock);
+        }
         self.message = Some(format!(
             "◆ {} on {} step {step}",
             describe(track, &lock),
             track.name
         ));
+        self.live_lock = self.ids.get(t).map(|&id| (id, lock));
         Some(vec![
             Effect::TrackChanged(t),
             Effect::Lock { track: t, lock },
@@ -421,16 +444,19 @@ impl Editor {
         for (t, _) in &columns {
             let setting = match name {
                 "" => None,
-                name => Some(
-                    find(&self.grid.tracks[*t], name)
-                        .ok_or_else(|| format!("{} has no {name}", self.grid.tracks[*t].name))?,
-                ),
+                name => {
+                    let track = self.grid.tracks.get(*t).ok_or("no such track")?;
+                    Some(find(track, name).ok_or_else(|| format!("{} has no {name}", track.name))?)
+                }
             };
             wanted.push(setting.map(|s| (s.fx, s.param)));
         }
         self.checkpoint();
         for ((t, steps), wanted) in columns.iter().zip(wanted) {
-            for step in &mut self.grid.tracks[*t].steps[steps.clone()] {
+            let Some(track) = self.grid.tracks.get_mut(*t) else {
+                continue;
+            };
+            for step in track.steps.get_mut(steps.clone()).into_iter().flatten() {
                 match wanted {
                     Some((fx, param)) => step.locks.retain(|l| (l.fx, l.param) != (fx, param)),
                     None => step.locks.clear(),
@@ -451,8 +477,10 @@ impl Editor {
         let lanes = (self.arrangement.patterns.iter_mut())
             .filter_map(|p| p.lanes.get_mut(t))
             .flat_map(|lane| lane.steps.iter_mut());
+        // A track there isn't has no steps of its own, but its patterns' lanes are still seen to.
+        let steps = (self.grid.tracks.get_mut(t)).map_or(&mut [][..], |track| &mut track.steps);
         let mut changed = false;
-        for step in self.grid.tracks[t].steps.iter_mut().chain(lanes) {
+        for step in steps.iter_mut().chain(lanes) {
             let before = step.locks;
             step.locks.retain(&mut keep);
             changed |= step.locks != before;

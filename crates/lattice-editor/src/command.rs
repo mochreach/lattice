@@ -110,7 +110,7 @@ pub struct Spec {
 
 const CONDITION: &str = "[every N [OFFSET] | pass K]";
 /// Steps in a track added with `:track-add`.
-const NEW_TRACK_STEPS: usize = 16;
+pub(crate) const NEW_TRACK_STEPS: usize = 16;
 
 use Param::{Condition as When, Value as V};
 
@@ -768,10 +768,9 @@ pub fn hint(line: &str) -> Option<String> {
     let spec = find(name)?;
     let words: Vec<&str> = rest.split_whitespace().collect();
     // The word under the cursor, if one is half-typed.
-    let (complete, partial) = if rest.is_empty() || rest.ends_with(' ') {
-        (&words[..], None)
-    } else {
-        (&words[..words.len() - 1], words.last().copied())
+    let (complete, partial) = match words.split_last() {
+        Some((&last, init)) if !rest.ends_with(' ') => (init, Some(last)),
+        _ => (words.as_slice(), None),
     };
 
     let values: Vec<&str> = spec
@@ -787,15 +786,15 @@ pub fn hint(line: &str) -> Option<String> {
     let mut todo: Vec<String> = Vec::new();
     let mut suffix = String::new();
     if complete.len() < values.len() {
-        todo.extend(values[complete.len()..].iter().map(|s| s.to_string()));
+        todo.extend(values.iter().skip(complete.len()).map(|s| s.to_string()));
         if has_condition {
             todo.push(CONDITION.into());
         }
-        if partial.is_some() {
+        if partial.is_some() && !todo.is_empty() {
             todo.remove(0);
         }
-    } else if has_condition {
-        match (&complete[values.len()..], partial) {
+    } else if has_condition && let Some(extra) = complete.get(values.len()..) {
+        match (extra, partial) {
             ([], None) => todo.push(CONDITION.into()),
             ([], Some(p)) => {
                 if let Some(rest) = "every".strip_prefix(p) {
@@ -1099,12 +1098,32 @@ fn save_path(editor: &Editor, typed: &str) -> Result<PathBuf, String> {
 
 /// Changes the mixer settings of every track the selections reach, as one undo step.
 fn mix(editor: &mut Editor, change: impl Fn(&mut Mix)) -> Result<Vec<Effect>, String> {
-    let tracks = editor.mix_targets()?;
+    let tracks = mix_tracks(editor)?;
     editor.checkpoint();
     for &t in &tracks {
-        change(&mut editor.grid.tracks[t].mix);
+        if let Some(track) = editor.grid.tracks.get_mut(t) {
+            change(&mut track.mix);
+        }
     }
     Ok(tracks.into_iter().map(Effect::TrackChanged).collect())
+}
+
+/// The tracks a mixer setting goes to, all of them there.
+fn mix_tracks(editor: &Editor) -> Result<Vec<usize>, String> {
+    let tracks = editor.mix_targets()?;
+    if tracks.iter().any(|&t| t >= editor.grid.tracks.len()) {
+        return Err("no such track".into());
+    }
+    Ok(tracks)
+}
+
+/// Track `track`, for a command that changes it.
+fn track_mut(editor: &mut Editor, track: usize) -> Result<&mut Track, String> {
+    editor
+        .grid
+        .tracks
+        .get_mut(track)
+        .ok_or_else(|| "no such track".into())
 }
 
 pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String> {
@@ -1139,12 +1158,16 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         "pattern-remove" => editor.remove_pattern(),
         "pattern-mute" => {
-            let tracks = editor.mix_targets()?;
+            let tracks = mix_tracks(editor)?;
             // Toggled together, as mutes are.
-            let on = tracks.iter().any(|&t| !editor.grid.tracks[t].pattern_mute);
+            let on = (tracks.iter())
+                .filter_map(|&t| editor.grid.tracks.get(t))
+                .any(|t| !t.pattern_mute);
             editor.checkpoint();
             for &t in &tracks {
-                editor.grid.tracks[t].pattern_mute = on;
+                if let Some(track) = editor.grid.tracks.get_mut(t) {
+                    track.pattern_mute = on;
+                }
             }
             Ok(tracks.into_iter().map(Effect::TrackChanged).collect())
         }
@@ -1174,7 +1197,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         "len" => {
             let len: usize = command.int(0)?;
             editor.checkpoint();
-            editor.grid.tracks[track].steps.resize(len, Step::default());
+            track_mut(editor, track)?.steps.resize(len, Step::default());
             editor.clamp_selection();
             Ok(vec![Effect::TrackChanged(track)])
         }
@@ -1251,7 +1274,8 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![Effect::Click(editor.click)])
         }
         "name" => {
-            editor.grid.tracks[track].name = command.text(0)?.into();
+            let name = command.text(0)?.into();
+            track_mut(editor, track)?.name = name;
             Ok(vec![])
         }
         "level" => {
@@ -1271,10 +1295,12 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         "choke" => {
             let choke = command.int(0)?;
-            let tracks = editor.mix_targets()?;
+            let tracks = mix_tracks(editor)?;
             editor.checkpoint();
             for &t in &tracks {
-                editor.grid.tracks[t].choke = choke;
+                if let Some(track) = editor.grid.tracks.get_mut(t) {
+                    track.choke = choke;
+                }
             }
             Ok(tracks.into_iter().map(Effect::TrackChanged).collect())
         }
@@ -1282,7 +1308,9 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             let solo = command.spec.name == "solo";
             let flag = |mix: Mix| if solo { mix.solo } else { mix.mute };
             // Toggled together: if any selected track is off, they all go on.
-            let on = (editor.mix_targets()?.iter()).any(|&t| !flag(editor.grid.tracks[t].mix));
+            let on = (mix_tracks(editor)?.iter())
+                .filter_map(|&t| editor.grid.tracks.get(t))
+                .any(|t| !flag(t.mix));
             mix(editor, |mix| {
                 if solo {
                     mix.solo = on;
@@ -1359,7 +1387,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             let by: isize = command.int(0)?;
             let to = track
                 .saturating_add_signed(by)
-                .min(editor.grid.tracks.len() - 1);
+                .min(editor.grid.tracks.len().saturating_sub(1));
             if to == track {
                 return Ok(vec![]);
             }
@@ -1378,7 +1406,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                 _ => Transform::Reverse,
             };
             editor.checkpoint();
-            editor.grid.tracks[track].rules.push(Rule {
+            track_mut(editor, track)?.rules.push(Rule {
                 transform,
                 when: command.when,
             });
@@ -1386,7 +1414,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         "pop" => {
             editor.checkpoint();
-            editor.grid.tracks[track]
+            track_mut(editor, track)?
                 .rules
                 .pop()
                 .ok_or("no rules to remove")?;
@@ -1394,7 +1422,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         "clear" => {
             editor.checkpoint();
-            editor.grid.tracks[track].rules.clear();
+            track_mut(editor, track)?.rules.clear();
             Ok(vec![Effect::TrackChanged(track)])
         }
         name => Err(format!(":{name} isn't handled")),

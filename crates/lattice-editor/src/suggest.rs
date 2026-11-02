@@ -92,7 +92,9 @@ impl Editor {
                 .map(|w| (w.to_string(), String::new()))
                 .collect()
         };
-        let track = &self.grid.tracks[self.cursor().track];
+        let Some(track) = self.grid.tracks.get(self.cursor().track) else {
+            return vec![];
+        };
         match (name, before.len()) {
             ("fx-add", 0) => kinds(FxKind::ALL.iter().map(|k| (k.name(), k.params())).collect()),
             ("inst", 0) => kinds(
@@ -127,9 +129,13 @@ impl Editor {
                 .map(|(p, &value)| (p.name.to_string(), p.format(value)))
                 .collect(),
             ("lock" | "unlock", 0) => suggest_settings(track),
-            ("lock", 1) => words(&suggest_choices(track, before[0])),
+            ("lock", 1) => match before.first() {
+                Some(setting) => words(&suggest_choices(track, setting)),
+                None => vec![],
+            },
             ("map" | "unmap", 0) => match self.macro_track() {
-                Ok(t) => (self.grid.tracks[t].macros.iter().enumerate())
+                Ok(t) => (self.grid.tracks.get(t).into_iter())
+                    .flat_map(|track| track.macros.iter().enumerate())
                     .map(|(i, m)| {
                         let n = m.targets.len();
                         let s = if n == 1 { "" } else { "s" };
@@ -211,15 +217,15 @@ impl Editor {
             _ => vec![],
         };
         let values = usize::from(name != "rev");
-        if before.len() < values {
+        let Some(when) = before.get(values..) else {
             return amount;
-        }
+        };
         let pairs = |pairs: Vec<(u32, String)>| {
             (pairs.into_iter())
                 .map(|(n, what)| (n.to_string(), what))
                 .collect()
         };
-        match before[values..] {
+        match when {
             [] => vec![
                 (
                     "every".into(),
@@ -264,7 +270,7 @@ fn any_number(name: &str, before: &[&str]) -> Option<(&'static str, String)> {
     if !matches!(name, "tr" | "rot" | "drift" | "rev") {
         return None;
     }
-    if before.len() < values {
+    let Some(when) = before.get(values..) else {
         return Some(match name {
             "tr" => ("[N]", "N semitones up, or down if negative, to 127".into()),
             "rot" => (
@@ -276,8 +282,8 @@ fn any_number(name: &str, before: &[&str]) -> Option<(&'static str, String)> {
                 format!("N steps later each time, or earlier if negative, to {steps}"),
             ),
         });
-    }
-    match before[values..] {
+    };
+    match when {
         ["every"] => Some(("[N]", "every Nth pass".into())),
         ["every", n] => {
             let n: u32 = n.parse().ok()?;
@@ -344,7 +350,9 @@ fn ranked(typed: &str, choices: Vec<(String, String)>) -> Vec<Completion> {
 /// whose names match what's after its last `/`, folders first. Files are only those ending in
 /// `extension`, if it's given; hidden ones only once a `.` is typed.
 fn paths(typed: &str, extension: Option<&str>) -> Vec<Completion> {
-    let (folder, name) = typed.split_at(typed.rfind('/').map_or(0, |i| i + 1));
+    // Just after a `/` is always a char boundary, so it always splits.
+    let after = typed.rfind('/').map_or(0, |i| i + 1);
+    let (folder, name) = typed.split_at_checked(after).unwrap_or(("", typed));
     let path = match folder.strip_prefix("~/") {
         Some(rest) => std::env::var_os("HOME").map(|home| PathBuf::from(home).join(rest)),
         None if folder.is_empty() => Some(PathBuf::from(".")),

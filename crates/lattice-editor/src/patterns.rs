@@ -26,7 +26,8 @@ impl Editor {
 
     /// The pattern being edited.
     pub fn pattern_name(&self) -> &str {
-        &self.arrangement.patterns[self.arrangement.current].name
+        // The current pattern is always there; were it not, it would have no name.
+        (self.arrangement.patterns.get(self.arrangement.current)).map_or("", |p| &p.name)
     }
 
     /// The pattern called `name`, or numbered so from 1.
@@ -47,11 +48,15 @@ impl Editor {
     /// Goes to pattern `index`: now if stopped, or when the playing pattern ends if not.
     pub(crate) fn go_to_pattern(&mut self, index: usize) -> Vec<Effect> {
         let current = self.arrangement.current;
+        let Some(pattern) = self.arrangement.patterns.get(index) else {
+            self.message = Some("no such pattern".into());
+            return vec![];
+        };
         if self.transport.is_some() {
             // Played by hand, the song leaves the arrangement.
             self.song_position = None;
             self.cue = (index != current).then_some(index);
-            let name = &self.arrangement.patterns[index].name;
+            let name = &pattern.name;
             self.message = Some(match self.cue {
                 Some(_) => format!("{name} cued, after {}", self.pattern_name()),
                 None => format!("staying on {name}"),
@@ -135,9 +140,14 @@ impl Editor {
         if self.find_pattern(name).is_ok() {
             return Err(format!("there's already a pattern {name}"));
         }
-        self.checkpoint();
         let pattern = self.named_pattern();
-        self.arrangement.patterns[pattern].name = name.into();
+        if self.arrangement.patterns.get(pattern).is_none() {
+            return Err("no such pattern".into());
+        }
+        self.checkpoint();
+        if let Some(pattern) = self.arrangement.patterns.get_mut(pattern) {
+            pattern.name = name.into();
+        }
         Ok(())
     }
 
@@ -178,12 +188,17 @@ impl Editor {
                     .ok_or_else(|| format!("bars: 1 to {MAX_BARS}, or auto"))?,
             ),
         };
-        self.checkpoint();
         let pattern = self.named_pattern();
+        if self.arrangement.patterns.get(pattern).is_none() {
+            return Err("no such pattern".into());
+        }
+        self.checkpoint();
         // The song page's cursor stays on its entry, as far into it as it can.
         let entry = self.song_cursor();
-        let into = self.song_bar() - self.entry_start(entry);
-        self.arrangement.patterns[pattern].bars = bars;
+        let into = self.song_bar().saturating_sub(self.entry_start(entry));
+        if let Some(p) = self.arrangement.patterns.get_mut(pattern) {
+            p.bars = bars;
+        }
         self.song.bar = self.entry_start(entry) + into;
         self.keep_on_entry(entry);
         let bar = u64::from(BEATS_PER_BAR * self.grid.steps_per_beat.max(1));
@@ -193,11 +208,8 @@ impl Editor {
         } else {
             ", as long as its longest track"
         };
-        self.message = Some(format!(
-            "{} plays {} bars{auto}",
-            self.arrangement.patterns[pattern].name,
-            steps / bar
-        ));
+        let name = (self.arrangement.patterns.get(pattern)).map_or("", |p| &p.name);
+        self.message = Some(format!("{name} plays {} bars{auto}", steps / bar));
         Ok(())
     }
 
@@ -233,7 +245,10 @@ impl Editor {
         let current = self.arrangement.current;
         let pattern = match self.song_position {
             Some(position) => match self.next_position(position) {
-                Some((entry, _)) => self.arrangement.entries[entry].pattern,
+                Some((entry, _)) => match self.arrangement.entries.get(entry) {
+                    Some(e) => e.pattern,
+                    None => return Next::Stop,
+                },
                 None => return Next::Stop,
             },
             None => self.cue.unwrap_or(current),
@@ -265,7 +280,9 @@ impl Editor {
         if let Some(position) = self.song_position {
             // Moved on, unless the engine did something else, as when a change came too late.
             let next = self.next_position(position);
-            let expected = next.map(|(entry, _)| self.arrangement.entries[entry].pattern);
+            let expected = next
+                .and_then(|(entry, _)| self.arrangement.entries.get(entry))
+                .map(|e| e.pattern);
             let pattern = changed_to.unwrap_or(self.arrangement.current);
             if expected == Some(pattern) {
                 self.song_position = next;

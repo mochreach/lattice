@@ -43,18 +43,26 @@ impl Editor {
 
     /// The macro called `name` on track `t`, by name or by number from 1.
     fn find_macro(&self, t: usize, name: &str) -> Option<usize> {
-        let macros = &self.grid.tracks[t].macros;
+        let macros = &self.grid.tracks.get(t)?.macros;
         macros.iter().position(|m| m.name == name).or_else(|| {
             let n: usize = name.parse().ok()?;
             (1..=macros.len()).contains(&n).then(|| n - 1)
         })
     }
 
+    fn macro_of(&self, t: usize, m: usize) -> Option<&Macro> {
+        self.grid.tracks.get(t)?.macros.get(m)
+    }
+
+    fn macro_of_mut(&mut self, t: usize, m: usize) -> Option<&mut Macro> {
+        self.grid.tracks.get_mut(t)?.macros.get_mut(m)
+    }
+
     /// `:macro NAME`: adds a macro to the track.
     pub(crate) fn add_macro(&mut self, name: &str) -> Result<Vec<Effect>, String> {
         let t = self.macro_track()?;
         let name = macro_name(name)?;
-        let track = &self.grid.tracks[t];
+        let track = self.grid.tracks.get(t).ok_or("no such track")?;
         if track.macros.iter().any(|m| m.name == name) {
             return Err(format!("{} already has a macro called {name}", track.name));
         }
@@ -62,12 +70,14 @@ impl Editor {
             return Err(format!("a track has at most {MAX_MACROS} macros"));
         }
         self.checkpoint();
-        self.grid.tracks[t].macros.push(Macro::new(&name));
+        let macros = &mut self.grid.tracks.get_mut(t).ok_or("no such track")?.macros;
+        macros.push(Macro::new(&name));
+        let added = macros.len() - 1;
         self.message = Some(format!(
             "added {name}: :map {name} on a setting to have it turn it"
         ));
         if self.page == Page::Fx {
-            self.goto_macro(self.grid.tracks[t].macros.len() - 1);
+            self.goto_macro(added);
         }
         Ok(vec![Effect::TrackChanged(t)])
     }
@@ -110,34 +120,38 @@ impl Editor {
             "map works on a track's setting: move onto one on the mixer (gm) or fx page (gf)",
         )?;
         // An existing macro by name or number, or a new one's name.
-        let index = self.find_macro(t, word);
-        let name = match index {
-            Some(m) => self.grid.tracks[t].macros[m].name.clone(),
+        let macros = &self.grid.tracks.get(t).ok_or("no such track")?.macros;
+        let found = self
+            .find_macro(t, word)
+            .and_then(|m| Some((m, macros.get(m)?)));
+        let name = match found {
+            Some((_, m)) => m.name.clone(),
             None => macro_name(word)?,
         };
-        let macros = &self.grid.tracks[t].macros;
-        let existing = index.and_then(|m| macros[m].targets.iter().position(|g| g.is(fx, param)));
-        if index.is_none() && macros.len() == MAX_MACROS {
+        let existing = found.and_then(|(_, m)| m.targets.iter().position(|g| g.is(fx, param)));
+        if found.is_none() && macros.len() == MAX_MACROS {
             return Err(format!("a track has at most {MAX_MACROS} macros"));
         }
-        if let Some(m) = index
+        if let Some((_, m)) = found
             && existing.is_none()
-            && macros[m].targets.len() == MAX_TARGETS
+            && m.targets.len() == MAX_TARGETS
         {
             return Err(format!("a macro turns at most {MAX_TARGETS} settings"));
         }
+        let index = found.map(|(m, _)| m);
         self.checkpoint();
-        let macros = &mut self.grid.tracks[t].macros;
+        let macros = &mut self.grid.tracks.get_mut(t).ok_or("no such track")?.macros;
         let m = index.unwrap_or_else(|| {
             macros.push(Macro::new(&name));
             macros.len() - 1
         });
+        let targets = &mut macros.get_mut(m).ok_or("no such macro")?.targets;
         let target = MacroTarget { fx, param, depth };
-        match existing {
-            Some(i) => macros[m].targets[i] = target,
-            None => macros[m].targets.push(target),
+        match existing.and_then(|i| targets.get_mut(i)) {
+            Some(old) => *old = target,
+            None => targets.push(target),
         }
-        let track = &self.grid.tracks[t];
+        let track = self.grid.tracks.get(t).ok_or("no such track")?;
         self.message = Some(format!(
             "{name} turns {} by {depth:+.2}",
             target_name(track, &target)
@@ -152,22 +166,38 @@ impl Editor {
             .ok_or("unmap works on a track's setting: move onto one")?;
         let m =
             (self.find_macro(t, name.trim())).ok_or_else(|| format!("no macro called {name:?}"))?;
-        let at = (self.grid.tracks[t].macros[m].targets.iter())
+        let macros = &self.grid.tracks.get(t).ok_or("no such track")?.macros;
+        let targets = &macros.get(m).ok_or("no such macro")?.targets;
+        let at = (targets.iter())
             .position(|g| g.is(fx, param))
             .ok_or_else(|| format!("{name} doesn't turn this"))?;
         Ok(self.remove_target(t, m, at))
     }
 
     pub(crate) fn remove_target(&mut self, t: usize, m: usize, at: usize) -> Vec<Effect> {
+        if self
+            .macro_of(t, m)
+            .is_none_or(|mac| at >= mac.targets.len())
+        {
+            return vec![];
+        }
         self.checkpoint();
-        self.grid.tracks[t].macros[m].targets.remove(at);
+        if let Some(mac) = self.macro_of_mut(t, m) {
+            mac.targets.remove(at);
+        }
         vec![Effect::TrackChanged(t)]
     }
 
     /// Removes macro `m`, and its locks.
     pub(crate) fn remove_macro(&mut self, t: usize, m: usize) -> Vec<Effect> {
+        if self.macro_of(t, m).is_none() {
+            return vec![];
+        }
         self.checkpoint();
-        let removed = self.grid.tracks[t].macros.remove(m);
+        let Some(track) = self.grid.tracks.get_mut(t) else {
+            return vec![];
+        };
+        let removed = track.macros.remove(m);
         let index = m as u8;
         self.retain_locks(t, |lock| match lock.is_macro() {
             true if lock.param == index => false,
@@ -188,21 +218,31 @@ impl Editor {
         if let Some(effects) = self.record_lock_of(t, Lock::of_macro(m, value)) {
             return effects;
         }
-        if self.grid.tracks[t].macros[m].value == value {
+        let Some(old) = self.macro_of(t, m).map(|m| m.value) else {
+            return vec![];
+        };
+        if old == value {
             return vec![];
         }
         self.checkpoint();
-        self.grid.tracks[t].macros[m].value = value;
+        if let Some(mac) = self.macro_of_mut(t, m) {
+            mac.value = value;
+        }
         vec![Effect::TrackChanged(t)]
     }
 
     pub(crate) fn set_depth(&mut self, t: usize, m: usize, at: usize, depth: f32) -> Vec<Effect> {
         let depth = DEPTH_INFO.clamp(depth);
-        if self.grid.tracks[t].macros[m].targets[at].depth == depth {
+        let Some(old) = (self.macro_of(t, m)).and_then(|m| m.targets.get(at)) else {
+            return vec![];
+        };
+        if old.depth == depth {
             return vec![];
         }
         self.checkpoint();
-        self.grid.tracks[t].macros[m].targets[at].depth = depth;
+        if let Some(target) = (self.macro_of_mut(t, m)).and_then(|m| m.targets.get_mut(at)) {
+            target.depth = depth;
+        }
         vec![Effect::TrackChanged(t)]
     }
 
@@ -227,8 +267,11 @@ impl Editor {
         t: usize,
         mut keep: impl FnMut(&mut MacroTarget) -> bool,
     ) -> bool {
+        let Some(track) = self.grid.tracks.get_mut(t) else {
+            return false;
+        };
         let mut changed = false;
-        for m in &mut self.grid.tracks[t].macros {
+        for m in &mut track.macros {
             let before = m.targets.clone();
             m.targets.retain_mut(&mut keep);
             changed |= m.targets != before;
