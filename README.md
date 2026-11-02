@@ -38,7 +38,8 @@ There's an example of chopping a loop in [`examples/amen`](examples/amen): the A
 programmed on the drums, sampled, and cut up a step at a time. For most of what Lattice does in
 one song, [`examples/mountain-king`](examples/mountain-king) is Grieg's *In the Hall of the
 Mountain King*: groups, a branching effects chain, a macro, faces, choke, rules, mutes in the
-arrangement, locks that slide, and a section chopped from its own render.
+arrangement, locks that slide, a section chopped from its own render, and the conductor speeding
+it up.
 
 New to it? `:tutor` (or `lattice --tutor`) teaches the keys a lesson at a time, on a song of its
 own, as Helix's tutor does. Once you've done what a lesson asks, a box says so and `space` goes
