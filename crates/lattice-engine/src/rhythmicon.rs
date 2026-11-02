@@ -99,7 +99,13 @@ impl<V: Voice> Drum<V> {
 impl<V: Voice> Processor for Drum<V> {
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]) {
         segments(events, left.len(), |segment| match segment {
-            Segment::Render(range) => self.render(&mut left[range.clone()], &mut right[range]),
+            Segment::Render(range) => {
+                // The channels are the same length, so both have the range; if one didn't,
+                // there'd be no right way to render it.
+                if let (Some(l), Some(r)) = (left.get_mut(range.clone()), right.get_mut(range)) {
+                    self.render(l, r);
+                }
+            }
             Segment::Event(event) => match event.kind {
                 EventKind::NoteOn { pitch, velocity } => {
                     let semitones = f32::from(pitch) - f32::from(DRUM_ROOT);
@@ -211,9 +217,10 @@ const KICKS: [KickModel; 3] = [
     },
 ];
 
-/// The model a choice setting picks, from `models`.
-fn model<T>(models: &'static [T], value: f32) -> &'static T {
-    &models[(value as usize).min(models.len() - 1)]
+/// The model a choice setting picks, from `models`: the last for a value past the end, and none
+/// only if there are none.
+fn model<T>(models: &'static [T], value: f32) -> Option<&'static T> {
+    models.get(value as usize).or(models.last())
 }
 
 struct KickVoice {
@@ -277,7 +284,11 @@ impl Voice for KickVoice {
 
     fn set(&mut self, id: u32, value: f32) {
         match id {
-            kick::MODEL => self.model = model(&KICKS, value),
+            kick::MODEL => {
+                if let Some(model) = model(&KICKS, value) {
+                    self.model = model;
+                }
+            }
             kick::TUNE => self.tune = value,
             kick::PUNCH => self.punch = value,
             kick::DECAY => self.decay = value,
@@ -437,7 +448,11 @@ impl Voice for SnareVoice {
 
     fn set(&mut self, id: u32, value: f32) {
         match id {
-            snare::MODEL => self.model = model(&SNARES, value),
+            snare::MODEL => {
+                if let Some(model) = model(&SNARES, value) {
+                    self.model = model;
+                }
+            }
             snare::TUNE => self.tune = value,
             snare::DECAY => self.decay = value,
             snare::SNAP => self.snap = value,
@@ -560,7 +575,11 @@ impl Voice for HatVoice {
 
     fn set(&mut self, id: u32, value: f32) {
         match id {
-            hat::MODEL => self.model = model(&HATS, value),
+            hat::MODEL => {
+                if let Some(model) = model(&HATS, value) {
+                    self.model = model;
+                }
+            }
             hat::TUNE => self.tune = value,
             hat::DECAY => self.amp_coef = fade(value, self.sample_rate),
             hat::TONE => self.highpass = one_pole(value, self.sample_rate),
@@ -585,7 +604,8 @@ impl Voice for HatVoice {
         }
         let metal = if self.model.pairs {
             // Multiplying squares is XOR-ing them: sum and difference tones, and a harsher clang.
-            squares.chunks(2).map(|p| p[0] * p[1]).sum::<f32>() / 3.0
+            let [a, b, c, d, e, f] = squares;
+            (a * b + c * d + e * f) / 3.0
         } else {
             squares.iter().sum::<f32>() / 6.0
         };
@@ -593,7 +613,7 @@ impl Voice for HatVoice {
         let source = metal * (1.0 - noise) + self.noise.next() * noise;
         // High-pass: what's left after taking away the lows, stage by stage.
         let mut x = source;
-        for low in &mut self.lows[..self.model.stages] {
+        for low in self.lows.iter_mut().take(self.model.stages) {
             *low += self.highpass * (x - *low);
             x -= *low;
         }
@@ -696,7 +716,11 @@ impl Voice for ClapVoice {
 
     fn set(&mut self, id: u32, value: f32) {
         match id {
-            clap::MODEL => self.model = model(&CLAPS, value),
+            clap::MODEL => {
+                if let Some(model) = model(&CLAPS, value) {
+                    self.model = model;
+                }
+            }
             clap::TUNE => self.tune = value,
             clap::DECAY => self.tail_coef = fade(value, self.sample_rate),
             clap::SPREAD => self.spread = value * self.sample_rate,
@@ -831,7 +855,11 @@ impl Voice for TomVoice {
 
     fn set(&mut self, id: u32, value: f32) {
         match id {
-            tom::MODEL => self.model = model(&TOMS, value),
+            tom::MODEL => {
+                if let Some(model) = model(&TOMS, value) {
+                    self.model = model;
+                }
+            }
             tom::TUNE => self.tune = value,
             tom::DECAY => self.decay = value,
             tom::BEND => self.bend = value,

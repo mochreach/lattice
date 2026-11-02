@@ -174,22 +174,30 @@ impl Synth {
     }
 
     fn note_on(&mut self, pitch: u8, velocity: u8) {
-        // A free voice, else the oldest released one, else the oldest of all.
-        let oldest = |only_released: bool| {
-            (0..VOICES)
-                .filter(|&i| !only_released || self.stage[i] == Stage::Release)
-                .min_by_key(|&i| self.started[i])
+        // A free voice, else the oldest released one, else the oldest of all. The first of
+        // equals wins.
+        let free = |(stage, &started): (&Stage, &u64)| match stage {
+            Stage::Idle => (0, 0),
+            Stage::Release => (1, started),
+            Stage::Attack | Stage::Decay => (2, started),
         };
-        let i = (0..VOICES)
-            .find(|&i| self.stage[i] == Stage::Idle)
-            .or_else(|| oldest(true))
-            .or_else(|| oldest(false))
-            .unwrap_or(0);
+        let voices = self.stage.iter().zip(&self.started).enumerate();
+        // There are always voices, so there's always one to take.
+        let Some((i, _)) = voices.min_by_key(|&(_, voice)| free(voice)) else {
+            return;
+        };
+        let (Some(stage), Some(voice_pitch), Some(started)) = (
+            self.stage.get_mut(i),
+            self.pitch.get_mut(i),
+            self.started.get_mut(i),
+        ) else {
+            return;
+        };
 
         self.notes_started += 1;
-        self.stage[i] = Stage::Attack;
-        self.pitch[i] = pitch;
-        self.started[i] = self.notes_started;
+        *stage = Stage::Attack;
+        *voice_pitch = pitch;
+        *started = self.notes_started;
         set_lane(&mut self.inc, i, midi_to_hz(pitch) / self.sample_rate);
         set_lane(&mut self.velocity, i, f32::from(velocity) / 127.0);
         set_lane(&mut self.env_target, i, ATTACK_TARGET);
@@ -198,24 +206,28 @@ impl Synth {
     }
 
     fn note_off(&mut self, pitch: u8) {
-        for i in 0..VOICES {
-            if self.pitch[i] == pitch && matches!(self.stage[i], Stage::Attack | Stage::Decay) {
-                self.stage[i] = Stage::Release;
-                set_lane(&mut self.env_target, i, 0.0);
-                set_lane(&mut self.env_coef, i, self.release_coef);
-            }
-        }
+        self.release(|voice_pitch| voice_pitch == pitch);
     }
 
     /// Releases every voice.
     fn choke(&mut self) {
-        for i in 0..VOICES {
-            if matches!(self.stage[i], Stage::Attack | Stage::Decay) {
-                self.stage[i] = Stage::Release;
-                set_lane(&mut self.env_target, i, 0.0);
-                set_lane(&mut self.env_coef, i, self.release_coef);
+        self.release(|_| true);
+    }
+
+    /// Releases the voices sounding whose pitch passes `which`.
+    fn release(&mut self, which: impl Fn(u8) -> bool) {
+        let mut target = self.env_target.to_array();
+        let mut coef = self.env_coef.to_array();
+        let lanes = target.iter_mut().zip(&mut coef);
+        for ((stage, &pitch), (target, coef)) in self.stage.iter_mut().zip(&self.pitch).zip(lanes) {
+            if which(pitch) && matches!(stage, Stage::Attack | Stage::Decay) {
+                *stage = Stage::Release;
+                *target = 0.0;
+                *coef = self.release_coef;
             }
         }
+        self.env_target = f32x8::new(target);
+        self.env_coef = f32x8::new(coef);
     }
 
     /// Envelope stage changes and filter coefficients, every `CONTROL_PERIOD` samples.
@@ -223,16 +235,17 @@ impl Synth {
         let mut env = self.env.to_array();
         let mut target = self.env_target.to_array();
         let mut coef = self.env_coef.to_array();
-        for i in 0..VOICES {
-            match self.stage[i] {
-                Stage::Attack if env[i] >= 1.0 => {
-                    self.stage[i] = Stage::Decay;
-                    target[i] = self.patch.amp.sustain;
-                    coef[i] = self.decay_coef;
+        let lanes = env.iter_mut().zip(target.iter_mut().zip(&mut coef));
+        for (stage, (env, (target, coef))) in self.stage.iter_mut().zip(lanes) {
+            match stage {
+                Stage::Attack if *env >= 1.0 => {
+                    *stage = Stage::Decay;
+                    *target = self.patch.amp.sustain;
+                    *coef = self.decay_coef;
                 }
-                Stage::Release if env[i] < SILENCE => {
-                    self.stage[i] = Stage::Idle;
-                    env[i] = 0.0;
+                Stage::Release if *env < SILENCE => {
+                    *stage = Stage::Idle;
+                    *env = 0.0;
                 }
                 _ => {}
             }
@@ -243,7 +256,8 @@ impl Synth {
         self.silent = self.stage.iter().all(|&s| s == Stage::Idle);
 
         // TPT state-variable filter coefficients for each voice's current cutoff.
-        let nyquist_ish = 0.45 * self.sample_rate;
+        // Kept over the bottom, as `clamp` panics otherwise, at an absurdly low rate.
+        let nyquist_ish = (0.45 * self.sample_rate).max(20.0);
         let g = f32x8::new(env.map(|e| {
             let cutoff = self.patch.cutoff + self.patch.env_amount * e.min(1.0);
             (PI * cutoff.clamp(20.0, nyquist_ish) / self.sample_rate).tan()
@@ -301,7 +315,11 @@ impl Processor for Synth {
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]) {
         segments(events, left.len(), |segment| match segment {
             Segment::Render(range) => {
-                self.render(&mut left[range.clone()], &mut right[range]);
+                // The channels are the same length, so both have the range; if one didn't,
+                // there'd be no right way to render it.
+                if let (Some(l), Some(r)) = (left.get_mut(range.clone()), right.get_mut(range)) {
+                    self.render(l, r);
+                }
             }
             Segment::Event(event) => match event.kind {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
@@ -345,10 +363,13 @@ fn fract(x: f32x8) -> f32x8 {
         .bitselect(f32x8::splat(0.0), wrapped)
 }
 
+/// Sets one of `v`'s lanes; there's nothing to set past the last.
 fn set_lane(v: &mut f32x8, lane: usize, value: f32) {
     let mut a = v.to_array();
-    a[lane] = value;
-    *v = f32x8::new(a);
+    if let Some(x) = a.get_mut(lane) {
+        *x = value;
+        *v = f32x8::new(a);
+    }
 }
 
 fn midi_to_hz(pitch: u8) -> f32 {

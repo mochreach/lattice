@@ -9,6 +9,9 @@ use lattice_core::{DRUM_ROOT, InstKind};
 use crate::param::{ParamInfo, Smoothed};
 use crate::processor::{Event, EventKind, Processor, Segment, segments};
 
+/// How many parameters it has.
+const COUNT: usize = InstKind::Sampler.params().len();
+
 /// A sound file's audio, in stereo.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sample {
@@ -150,19 +153,18 @@ impl Player {
             return;
         }
         let per_sample = |seconds: f32| 1.0 / (seconds * self.sample_rate).max(1.0);
-        // A free voice, else the oldest releasing, else the oldest.
-        let oldest = |releasing: bool| {
-            (0..VOICES)
-                .filter(|&i| !releasing || self.voices[i].stage == Stage::Releasing)
-                .min_by_key(|&i| self.voices[i].started)
+        // A free voice, else the oldest releasing, else the oldest. The first of equals wins.
+        let free = |v: &Voice| match v.stage {
+            Stage::Idle => (0, 0),
+            Stage::Releasing => (1, v.started),
+            Stage::Playing => (2, v.started),
         };
-        let i = (0..VOICES)
-            .find(|&i| self.voices[i].stage == Stage::Idle)
-            .or_else(|| oldest(true))
-            .or_else(|| oldest(false))
-            .unwrap_or(0);
+        // There are always voices, so there's always one to take.
+        let Some(voice) = self.voices.iter_mut().min_by_key(|v| free(v)) else {
+            return;
+        };
         self.notes += 1;
-        self.voices[i] = Voice {
+        *voice = Voice {
             stage: Stage::Playing,
             pitch: play.pitch,
             started: self.notes,
@@ -258,26 +260,32 @@ impl Player {
 
 pub struct Sampler {
     player: Player,
-    values: [f32; 9],
+    values: [f32; COUNT],
     gain: Smoothed,
 }
 
 impl Sampler {
     pub fn new(sample_rate: f32, values: &[f32], sample: Option<Arc<Sample>>) -> Self {
-        let mut all = [0.0; 9];
+        let mut all = [0.0; COUNT];
         for (v, info) in all.iter_mut().zip(InstKind::Sampler.params()) {
             *v = info.default;
         }
         for (v, &value) in all.iter_mut().zip(values) {
             *v = value;
         }
-        Self {
+        let mut sampler = Self {
             player: Player::new(sample_rate, sample),
-            gain: Smoothed::new(all[GAIN as usize], sample_rate),
+            gain: Smoothed::new(0.0, sample_rate),
             values: all,
-        }
+        };
+        sampler.gain.reset(sampler.value(GAIN));
+        sampler
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "only ever given the sampler's own parameter ids, constants below COUNT"
+    )]
     fn value(&self, id: u32) -> f32 {
         self.values[id as usize]
     }
@@ -338,17 +346,22 @@ impl Processor for Sampler {
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]) {
         segments(events, left.len(), |segment| match segment {
             Segment::Render(range) => {
-                (self.player).render(&mut self.gain, &mut left[range.clone()], &mut right[range]);
+                // The channels are the same length, so both have the range; if one didn't,
+                // there'd be no right way to render it.
+                if let (Some(l), Some(r)) = (left.get_mut(range.clone()), right.get_mut(range)) {
+                    self.player.render(&mut self.gain, l, r);
+                }
             }
             Segment::Event(event) => match event.kind {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
                 EventKind::NoteOff { pitch } => self.note_off(pitch),
                 EventKind::Choke => self.player.choke(),
                 EventKind::Param { id, value } => {
-                    if let Some(info) = InstKind::Sampler.params().get(id as usize) {
-                        self.values[id as usize] = info.clamp(value);
+                    let info = InstKind::Sampler.params().get(id as usize);
+                    if let (Some(info), Some(slot)) = (info, self.values.get_mut(id as usize)) {
+                        *slot = info.clamp(value);
                         if id == GAIN {
-                            self.gain.set(self.values[id as usize]);
+                            self.gain.set(*slot);
                         }
                     }
                 }

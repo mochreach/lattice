@@ -28,19 +28,21 @@ impl Delay {
     /// Allocates the delay line, so build it off the audio thread.
     pub fn new(sample_rate: f32) -> Self {
         let len = (MAX_TIME * sample_rate) as usize + 2;
-        let default = |id: u32| PARAMS[id as usize].default;
         let mut delay = Self {
             sample_rate,
             left: vec![0.0; len],
             right: vec![0.0; len],
             write: 0,
-            time: Smoothed::new(default(TIME) * sample_rate, sample_rate),
-            feedback: Smoothed::new(default(FEEDBACK), sample_rate),
-            mix: Smoothed::new(default(MIX), sample_rate),
+            time: Smoothed::new(0.0, sample_rate),
+            feedback: Smoothed::new(0.0, sample_rate),
+            mix: Smoothed::new(0.0, sample_rate),
             tone: 0.0,
             low: [0.0; 2],
         };
-        delay.set_tone(default(TONE));
+        for info in PARAMS {
+            delay.set(info.id, info.default);
+        }
+        delay.settle();
         delay
     }
 
@@ -50,10 +52,14 @@ impl Delay {
         for (id, &value) in values.iter().enumerate() {
             delay.set(id as u32, value);
         }
-        delay.time.reset(delay.time.target());
-        delay.feedback.reset(delay.feedback.target());
-        delay.mix.reset(delay.mix.target());
+        delay.settle();
         delay
+    }
+
+    fn settle(&mut self) {
+        for s in [&mut self.time, &mut self.feedback, &mut self.mix] {
+            s.reset(s.target());
+        }
     }
 
     fn set_tone(&mut self, hz: f32) {
@@ -73,6 +79,10 @@ impl Delay {
         }
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "the lines are the same length, never empty, and every index is wrapped to it"
+    )]
     fn render(&mut self, left: &mut [f32], right: &mut [f32]) {
         let len = self.left.len();
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
@@ -92,13 +102,14 @@ impl Delay {
             for (low, d) in self.low.iter_mut().zip(delayed) {
                 *low += self.tone * (d - *low);
             }
+            let [low_l, low_r] = self.low;
 
-            self.left[self.write] = *l + self.low[0] * feedback;
-            self.right[self.write] = *r + self.low[1] * feedback;
+            self.left[self.write] = *l + low_l * feedback;
+            self.right[self.write] = *r + low_r * feedback;
             self.write = (self.write + 1) % len;
 
-            *l += (self.low[0] - *l) * mix;
-            *r += (self.low[1] - *r) * mix;
+            *l += (low_l - *l) * mix;
+            *r += (low_r - *r) * mix;
         }
     }
 }
@@ -106,7 +117,13 @@ impl Delay {
 impl Processor for Delay {
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]) {
         segments(events, left.len(), |segment| match segment {
-            Segment::Render(range) => self.render(&mut left[range.clone()], &mut right[range]),
+            Segment::Render(range) => {
+                // The channels are the same length, so both have the range; if one didn't,
+                // there'd be no right way to render it.
+                if let (Some(l), Some(r)) = (left.get_mut(range.clone()), right.get_mut(range)) {
+                    self.render(l, r);
+                }
+            }
             Segment::Event(event) => {
                 if let EventKind::Param { id, value } = event.kind {
                     self.set(id, value);

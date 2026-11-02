@@ -31,13 +31,18 @@ struct Line {
 impl Line {
     fn new(len: usize) -> Self {
         Self {
-            buffer: vec![0.0; len.max(2)],
+            // Room for a read at least a sample back, between two samples.
+            buffer: vec![0.0; len.max(3)],
             write: 0,
         }
     }
 
     /// `delay` samples back, between samples.
     #[inline]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "the buffer's never empty, and both indices are wrapped to its length"
+    )]
     fn read(&self, delay: f32) -> f32 {
         let len = self.buffer.len();
         let back = self.write as f32 + len as f32 - delay.clamp(1.0, (len - 2) as f32);
@@ -48,6 +53,10 @@ impl Line {
     }
 
     #[inline]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "`write` is kept wrapped to the buffer's length"
+    )]
     fn write(&mut self, x: f32) {
         self.buffer[self.write] = x;
         self.write = (self.write + 1) % self.buffer.len();
@@ -126,7 +135,6 @@ impl Reverb {
             second: stage(second, false),
             low: 0.0,
         };
-        let default = |id: u32| PARAMS[id as usize].default;
         let mut reverb = Self {
             sample_rate,
             rate_scale,
@@ -145,15 +153,16 @@ impl Reverb {
             ],
             feedback: [0.0; 2],
             phase: 0.0,
-            size: Smoothed::new(default(SIZE), sample_rate),
-            decay: Smoothed::new(default(DECAY), sample_rate),
+            size: Smoothed::new(0.0, sample_rate),
+            decay: Smoothed::new(0.0, sample_rate),
             damping: 0.0,
-            predelay_time: Smoothed::new(default(PREDELAY) * sample_rate, sample_rate),
-            mix: Smoothed::new(default(MIX), sample_rate),
+            predelay_time: Smoothed::new(0.0, sample_rate),
+            mix: Smoothed::new(0.0, sample_rate),
         };
-        reverb.set(TONE, default(TONE));
-        for (id, &value) in values.iter().enumerate() {
-            reverb.set(id as u32, value);
+        // Each parameter from `values`, or its default where they stop short.
+        for info in PARAMS {
+            let value = values.get(info.id as usize).copied();
+            reverb.set(info.id, value.unwrap_or(info.default));
         }
         for s in [
             &mut reverb.size,
@@ -205,10 +214,12 @@ impl Reverb {
 
             // Round the tank: each half takes the input and what the other half sent last.
             let decay_diffusion = (decay + 0.15).clamp(0.25, 0.5);
-            let fed = self.feedback;
-            for (h, half) in self.halves.iter_mut().enumerate() {
-                let mut y = x + fed[1 - h];
-                let swing = if h == 0 { wander } else { -wander };
+            // Each half takes what the other sent, and they wander in opposite directions.
+            let [fed_a, fed_b] = self.feedback;
+            let inputs = [(fed_b, wander), (fed_a, -wander)];
+            let halves = self.halves.iter_mut().zip(&mut self.feedback);
+            for ((half, feedback), (fed, swing)) in halves.zip(inputs) {
+                let mut y = x + fed;
                 y = half
                     .wander
                     .line
@@ -221,7 +232,7 @@ impl Reverb {
                     .line
                     .allpass(y, half.allpass.length * scale, decay_diffusion);
                 y = half.second.line.delay(y, half.second.length * scale);
-                self.feedback[h] = y * decay;
+                *feedback = y * decay;
             }
 
             // Tapped from both halves, differently for each side.
@@ -246,7 +257,13 @@ impl Reverb {
 impl Processor for Reverb {
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]) {
         segments(events, left.len(), |segment| match segment {
-            Segment::Render(range) => self.render(&mut left[range.clone()], &mut right[range]),
+            Segment::Render(range) => {
+                // The channels are the same length, so both have the range; if one didn't,
+                // there'd be no right way to render it.
+                if let (Some(l), Some(r)) = (left.get_mut(range.clone()), right.get_mut(range)) {
+                    self.render(l, r);
+                }
+            }
             Segment::Event(event) => {
                 if let EventKind::Param { id, value } = event.kind {
                     self.set(id, value);

@@ -32,18 +32,20 @@ pub struct Drive {
 
 impl Drive {
     pub fn new(sample_rate: f32) -> Self {
-        let default = |id: u32| PARAMS[id as usize].default;
         let mut drive = Self {
             sample_rate,
-            drive: Smoothed::new(default(DRIVE), sample_rate),
-            mix: Smoothed::new(default(MIX), sample_rate),
-            level: Smoothed::new(db_to_gain(default(LEVEL)), sample_rate),
+            drive: Smoothed::new(0.0, sample_rate),
+            mix: Smoothed::new(0.0, sample_rate),
+            level: Smoothed::new(0.0, sample_rate),
             tone: 0.0,
             low: [0.0; 2],
             dc: [[0.0; 2]; 2],
             dc_coef: 1.0 - TAU * 5.0 / sample_rate,
         };
-        drive.set_tone(default(TONE));
+        for info in PARAMS {
+            drive.set(info.id, info.default);
+        }
+        drive.settle();
         drive
     }
 
@@ -53,10 +55,14 @@ impl Drive {
         for (id, &value) in values.iter().enumerate() {
             drive.set(id as u32, value);
         }
-        for smoothed in [&mut drive.drive, &mut drive.mix, &mut drive.level] {
+        drive.settle();
+        drive
+    }
+
+    fn settle(&mut self) {
+        for smoothed in [&mut self.drive, &mut self.mix, &mut self.level] {
             smoothed.reset(smoothed.target());
         }
-        drive
     }
 
     fn set_tone(&mut self, hz: f32) {
@@ -87,12 +93,12 @@ impl Drive {
             // Scaled so the larger, negative side of a full-scale input peaks at 1, however
             // hard it's driven.
             let norm = 1.0 / ((gain - bias).tanh() + bias.tanh());
-            for (ch, x) in [l, r].into_iter().enumerate() {
+            let channels = self.dc.iter_mut().zip(&mut self.low);
+            for (x, (dc, low)) in [l, r].into_iter().zip(channels) {
                 let shaped = ((*x * gain + bias).tanh() - bias.tanh()) * norm;
-                let [last_in, last_out] = self.dc[ch];
+                let [last_in, last_out] = *dc;
                 let centred = shaped - last_in + self.dc_coef * last_out;
-                self.dc[ch] = [shaped, centred];
-                let low = &mut self.low[ch];
+                *dc = [shaped, centred];
                 *low += self.tone * (centred - *low);
                 *x = (*x + (*low - *x) * mix) * level;
             }
@@ -103,7 +109,13 @@ impl Drive {
 impl Processor for Drive {
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]) {
         segments(events, left.len(), |segment| match segment {
-            Segment::Render(range) => self.render(&mut left[range.clone()], &mut right[range]),
+            Segment::Render(range) => {
+                // The channels are the same length, so both have the range; if one didn't,
+                // there'd be no right way to render it.
+                if let (Some(l), Some(r)) = (left.get_mut(range.clone()), right.get_mut(range)) {
+                    self.render(l, r);
+                }
+            }
             Segment::Event(event) => {
                 if let EventKind::Param { id, value } = event.kind {
                     self.set(id, value);

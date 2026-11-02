@@ -57,6 +57,7 @@ const CLICK_TIME: f32 = 0.0015;
 const GAIN: f32 = 0.35;
 
 /// What sets one kind of string apart.
+#[derive(Debug)]
 struct StringModel {
     /// The hardest pluck's brightness, as a fraction of the way from the fundamental to the top.
     pick: f32,
@@ -98,18 +99,32 @@ const STRINGS: [StringModel; 3] = [
     },
 ];
 
+/// Takes each of `burst`'s samples, as far as there's one `gap` on, from that one, in place: each
+/// is read before it's written.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "`k + gap` is under the burst's length for every `k` the loop takes"
+)]
+fn less_ahead(burst: &mut [f32], gap: usize) {
+    for k in 0..burst.len().saturating_sub(gap) {
+        burst[k] = burst[k + gap] - burst[k];
+    }
+}
+
 /// A delay line, written a sample at a time.
 #[derive(Debug, Clone)]
 struct Line {
+    /// A power of two long, so a mask wraps an index round it.
     samples: Box<[f32]>,
     /// Where the next sample goes.
     write: usize,
 }
 
 impl Line {
+    /// At least `len` long.
     fn new(len: usize) -> Self {
         Self {
-            samples: vec![0.0; len].into_boxed_slice(),
+            samples: vec![0.0; len.next_power_of_two()].into_boxed_slice(),
             write: 0,
         }
     }
@@ -121,11 +136,16 @@ impl Line {
     /// Where the sample written `delay` samples ago sits.
     #[inline]
     fn at(&self, delay: usize) -> usize {
-        (self.write + self.samples.len() - delay) & self.mask()
+        // Wrapping, so a delay longer than the line wraps round it too.
+        (self.write + self.samples.len()).wrapping_sub(delay) & self.mask()
     }
 
     /// The sample `delay` (at least 1) samples back.
     #[inline]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "`at` masks the index to the line's length, a power of two"
+    )]
     fn read(&self, delay: usize) -> f32 {
         self.samples[self.at(delay)]
     }
@@ -144,7 +164,22 @@ impl Line {
             + d * dm1 * dm2 / 6.0 * tap(3)
     }
 
+    /// Mixes `x` into the sample `delay` back, over what's there times `keep`.
     #[inline]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "`at` masks the index to the line's length, a power of two"
+    )]
+    fn blend(&mut self, delay: usize, keep: f32, x: f32) {
+        let at = self.at(delay);
+        self.samples[at] = self.samples[at] * keep + x;
+    }
+
+    #[inline]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "`write` is kept masked to the line's length, a power of two"
+    )]
     fn write(&mut self, x: f32) {
         self.samples[self.write] = x;
         self.write = (self.write + 1) & self.mask();
@@ -253,7 +288,7 @@ struct Voice {
 pub struct Monochord {
     sample_rate: f32,
     voices: [Voice; VOICES],
-    model: usize,
+    model: &'static StringModel,
     pluck: f32,
     position: f32,
     decay: f32,
@@ -301,7 +336,7 @@ impl Monochord {
         let mut string = Self {
             sample_rate,
             voices: std::array::from_fn(|_| voice.clone()),
-            model: 0,
+            model: &STRINGS[0],
             pluck: 0.0,
             position: 0.0,
             decay: 1.0,
@@ -332,7 +367,12 @@ impl Monochord {
     /// Decay, tone and bow change the strings sounding too; the rest wait for the next pluck.
     fn set(&mut self, id: u32, value: f32) {
         match id {
-            MODEL => self.model = (value.round() as usize).min(STRINGS.len() - 1),
+            MODEL => {
+                // The last for a value past the end.
+                if let Some(model) = STRINGS.get(value.round() as usize).or(STRINGS.last()) {
+                    self.model = model;
+                }
+            }
             PLUCK => self.pluck = value,
             POSITION => self.position = value,
             DECAY => self.decay = value,
@@ -341,46 +381,44 @@ impl Monochord {
             _ => {}
         }
         if matches!(id, DECAY | TONE) {
-            for i in 0..VOICES {
-                if self.voices[i].sounding {
-                    self.tune(i);
-                }
+            for voice in self.voices.iter_mut().filter(|v| v.sounding) {
+                Self::tune(voice, self.model, self.tone, self.decay, self.sample_rate);
             }
         }
     }
 
-    /// The loop's losses and delays for voice `i`'s pitch, from the decay and tone.
-    fn tune(&mut self, i: usize) {
-        let model = &STRINGS[self.model];
-        let damping = model.bright + (0.5 - model.bright) * (1.0 - self.tone);
-        let voice = &mut self.voices[i];
+    /// The loop's losses and delays for `voice`'s pitch, from the decay and tone.
+    fn tune(voice: &mut Voice, model: &StringModel, tone: f32, decay: f32, sample_rate: f32) {
+        let damping = model.bright + (0.5 - model.bright) * (1.0 - tone);
         voice.damping = damping;
         // Lost per sample, so every string fades over the decay whatever its period.
-        let loss = (-SIXTY_DB / (self.decay * self.sample_rate)).exp();
+        let loss = (-SIXTY_DB / (decay * sample_rate)).exp();
         let hz = midi_to_hz(voice.pitch).max(LOWEST_HZ);
-        voice.tilt_coef = one_pole(hz * BOW_TILT, self.sample_rate);
+        voice.tilt_coef = one_pole(hz * BOW_TILT, sample_rate);
         for (c, course) in voice.courses.iter_mut().enumerate() {
             let cents = if c == 0 { 0.0 } else { model.detune };
-            let period = self.sample_rate / (hz * 2f32.powf(cents / 1200.0));
+            let period = sample_rate / (hz * 2f32.powf(cents / 1200.0));
             course.tune(period, damping);
             course.loss = loss.powf(period);
         }
     }
 
     fn note_on(&mut self, pitch: u8, velocity: u8) {
-        // The string already playing this note, else a silent one, else the oldest.
-        let i = (0..VOICES)
-            .find(|&i| self.voices[i].sounding && self.voices[i].pitch == pitch)
-            .or_else(|| (0..VOICES).find(|&i| !self.voices[i].sounding))
-            .unwrap_or_else(|| {
-                (0..VOICES)
-                    .min_by_key(|&i| self.voices[i].started)
-                    .unwrap_or(0)
-            });
-        let ringing = self.voices[i].sounding && self.voices[i].pitch == pitch;
-        let model = &STRINGS[self.model];
+        // The string already playing this note, else a silent one, else the oldest. The first of
+        // equals wins.
+        let free = |v: &Voice| match (v.sounding, v.pitch == pitch) {
+            (true, true) => (0, 0),
+            (false, _) => (1, 0),
+            (true, false) => (2, v.started),
+        };
+        let voices = self.voices.iter_mut().enumerate();
+        // There are always voices, so there's always one to take.
+        let Some((i, voice)) = voices.min_by_key(|(_, v)| free(v)) else {
+            return;
+        };
+        let ringing = voice.sounding && voice.pitch == pitch;
+        let model = self.model;
         self.plucks += 1;
-        let voice = &mut self.voices[i];
         voice.pitch = pitch;
         voice.velocity = f32::from(velocity) / 127.0;
         voice.strings = model.courses;
@@ -399,7 +437,7 @@ impl Monochord {
         voice.click = 1.0;
         voice.click_level =
             CLICK_LEVEL * self.pluck * self.pluck * voice.velocity * (1.0 - self.bow);
-        self.tune(i);
+        Self::tune(voice, model, self.tone, self.decay, self.sample_rate);
         self.pluck(i, if ringing { REPLUCK } else { 0.0 });
     }
 
@@ -407,8 +445,11 @@ impl Monochord {
     /// where it lands, goes round each of its strings, over what's left of the string times
     /// `keep`. A bow takes over from the pluck as it's turned up.
     fn pluck(&mut self, i: usize, keep: f32) {
-        let model = &STRINGS[self.model];
-        let voice = &self.voices[i];
+        let model = self.model;
+        // `i` is the voice just picked.
+        let Some(voice) = self.voices.get_mut(i) else {
+            return;
+        };
         let level = PLUCK_LEVEL * voice.velocity * (1.0 - self.bow);
         let period = voice.courses[0].period;
         let len = (period.round() as usize).clamp(2, self.scratch.len() / 2);
@@ -422,42 +463,52 @@ impl Monochord {
 
         // Plucking a fraction `position` along cancels the harmonics with a node there.
         let gap = ((self.position * period).round() as usize).clamp(1, len - 1);
-        let burst = &mut self.scratch[..len + gap];
+        // Under the scratch's length, which has room for two periods.
+        let Some(burst) = self.scratch.get_mut(..len + gap) else {
+            return;
+        };
         let mut y = 0.0;
         // A period's worth first, so the filter has settled by the one that's kept.
         for _ in 0..2 {
-            for x in burst[..len].iter_mut() {
+            for x in burst.iter_mut().take(len) {
                 y += smooth * (self.noise.next() - y);
                 *x = y;
             }
         }
         // The period, less itself `gap` samples on, going round.
         burst.copy_within(..gap, len);
-        for k in 0..len {
-            burst[k] = burst[k + gap] - burst[k];
-        }
-        let burst = &self.scratch[..len];
-        let mean = burst.iter().sum::<f32>() / len as f32;
-        let rms = (burst.iter().map(|x| (x - mean) * (x - mean)).sum::<f32>() / len as f32)
+        less_ahead(burst, gap);
+        let burst = &*burst;
+        let mean = burst.iter().take(len).sum::<f32>() / len as f32;
+        let rms = (burst
+            .iter()
+            .take(len)
+            .map(|x| (x - mean) * (x - mean))
+            .sum::<f32>()
+            / len as f32)
             .sqrt()
             .max(1e-9);
         let scale = level / rms;
-        // The pluck as the bridge's line will give it back, `k` samples from now.
-        let wave = |k: isize| (burst[k.rem_euclid(len as isize) as usize] - mean) * scale;
+        // The pluck as the bridge's line will give it back, `k` samples from now. The wrapped
+        // index is under `len`, so always in the burst.
+        let wave = |k: isize| {
+            let at = k.rem_euclid(len as isize) as usize;
+            burst.get(at).map_or(0.0, |x| (x - mean) * scale)
+        };
 
-        let voice = &mut self.voices[i];
-        for course in &mut voice.courses[..voice.strings] {
+        let strings = voice.strings;
+        for course in voice.courses.iter_mut().take(strings) {
             // A sample `j` back in the bridge's line comes out in `bridge - j` samples, and one
             // `j` back in the neck's goes over to the bridge's, inverted, `neck - j` from now.
             let bridge = course.bridge_delay as isize;
             let neck = course.neck_delay as isize;
             for j in 1..=bridge + 3 {
-                let at = course.bridge.at(j as usize);
-                course.bridge.samples[at] = course.bridge.samples[at] * keep + wave(bridge - j);
+                course.bridge.blend(j as usize, keep, wave(bridge - j));
             }
             for j in 1..=neck {
-                let at = course.neck.at(j as usize);
-                course.neck.samples[at] = course.neck.samples[at] * keep - wave(neck - j + bridge);
+                course
+                    .neck
+                    .blend(j as usize, keep, -wave(neck - j + bridge));
             }
             course.last *= keep;
         }
@@ -523,12 +574,12 @@ impl Monochord {
                 });
                 let strings = voice.strings;
                 let mut sum = [0.0; 2];
-                for (c, course) in voice.courses[..strings].iter_mut().enumerate() {
+                let courses = voice.courses.iter_mut().zip(&mut voice.tilt).zip(&mut sum);
+                for ((course, tilt), sum) in courses.take(strings) {
                     let x = course.tick(voice.damping, voice.buzz, bow);
                     // Tilted as far as the bow's on the string; a pluck rings as it is.
-                    let tilt = &mut voice.tilt[c];
                     *tilt += voice.tilt_coef * (x - *tilt);
-                    sum[c] = x + voice.bow * (BOW_LIFT * *tilt - x);
+                    *sum = x + voice.bow * (BOW_LIFT * *tilt - x);
                 }
                 let mut click = 0.0;
                 if voice.click > SILENCE {
@@ -569,7 +620,13 @@ fn midi_to_hz(pitch: u8) -> f32 {
 impl Processor for Monochord {
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]) {
         segments(events, left.len(), |segment| match segment {
-            Segment::Render(range) => self.render(&mut left[range.clone()], &mut right[range]),
+            Segment::Render(range) => {
+                // The channels are the same length, so both have the range; if one didn't,
+                // there'd be no right way to render it.
+                if let (Some(l), Some(r)) = (left.get_mut(range.clone()), right.get_mut(range)) {
+                    self.render(l, r);
+                }
+            }
             Segment::Event(event) => match event.kind {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
                 EventKind::NoteOff { pitch } => self.note_off(pitch),

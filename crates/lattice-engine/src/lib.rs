@@ -4,6 +4,9 @@
 //! allocation, no I/O. The host (cpal) layer lives outside this crate, so the engine can be
 //! driven by tests, offline rendering or a plugin wrapper just as well.
 
+// Indexing panics when it's out of range; see AGENTS.md. The DSP keeps a few, each with its
+// reason, where a wrapped index into a delay line is clearest.
+#![deny(clippy::indexing_slicing)]
 // Tests may unwrap and panic: that's how they fail.
 #![cfg_attr(
     test,
@@ -11,7 +14,8 @@
         clippy::unwrap_used,
         clippy::expect_used,
         clippy::panic,
-        clippy::unreachable
+        clippy::unreachable,
+        clippy::indexing_slicing
     )
 )]
 

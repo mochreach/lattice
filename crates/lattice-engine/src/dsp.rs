@@ -157,7 +157,7 @@ impl Svf {
 
     /// The coefficient for `cutoff`, worth working out once for several filters.
     pub fn g(cutoff: f32, sample_rate: f32) -> f32 {
-        (PI * cutoff.clamp(20.0, 0.45 * sample_rate) / sample_rate).tan()
+        (PI * between(cutoff, 20.0, 0.45 * sample_rate) / sample_rate).tan()
     }
 
     /// The low-, band- and high-pass outputs, for a coefficient from [`Svf::g`] and a damping
@@ -173,6 +173,15 @@ impl Svf {
         self.ic2 = 2.0 * v2 - self.ic2;
         (v2, v1, input - k * v1 - v2)
     }
+}
+
+/// `x` brought up to `low` and down to `high`, as `f32::clamp` does, but without its panic when
+/// `high` is under `low`, which a very low sample rate would make of a filter's range. (Here it
+/// also measured faster than `clamp` with the top held over the bottom.)
+#[inline]
+fn between(x: f32, low: f32, high: f32) -> f32 {
+    let x = if x < low { low } else { x };
+    if x > high { high } else { x }
 }
 
 /// The filter's damping, 2 (none) down to 0.04, for a resonance from 0 to just under 1.

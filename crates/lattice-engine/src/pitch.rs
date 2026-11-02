@@ -40,18 +40,22 @@ impl Pitch {
     /// Allocates the delay lines, so build it off the audio thread.
     pub fn new(sample_rate: f32) -> Self {
         let len = (MAX_WINDOW * sample_rate) as usize + 4;
-        let default = |id: u32| PARAMS[id as usize].default;
-        Self {
+        let mut pitch = Self {
             sample_rate,
             lines: [vec![0.0; len], vec![0.0; len]],
             write: 0,
-            shift: Smoothed::new(default(PITCH) + default(FINE) / 100.0, sample_rate),
-            pitch: default(PITCH),
-            fine: default(FINE),
-            window: Smoothed::new(default(WINDOW) * sample_rate, sample_rate),
-            mix: Smoothed::new(default(MIX), sample_rate),
+            shift: Smoothed::new(0.0, sample_rate),
+            pitch: 0.0,
+            fine: 0.0,
+            window: Smoothed::new(0.0, sample_rate),
+            mix: Smoothed::new(0.0, sample_rate),
             phase: 0.0,
+        };
+        for info in PARAMS {
+            pitch.set(info.id, info.default);
         }
+        pitch.settle();
+        pitch
     }
 
     /// Starts at `values` (one per parameter, by id) rather than gliding to them.
@@ -60,10 +64,14 @@ impl Pitch {
         for (id, &value) in values.iter().enumerate() {
             pitch.set(id as u32, value);
         }
-        for smoothed in [&mut pitch.shift, &mut pitch.window, &mut pitch.mix] {
+        pitch.settle();
+        pitch
+    }
+
+    fn settle(&mut self) {
+        for smoothed in [&mut self.shift, &mut self.window, &mut self.mix] {
             smoothed.reset(smoothed.target());
         }
-        pitch
     }
 
     fn set(&mut self, id: u32, value: f32) {
@@ -80,17 +88,10 @@ impl Pitch {
         self.shift.set(self.pitch + self.fine / 100.0);
     }
 
-    /// The line `ch` read `delay` samples back from the last written, between samples.
-    fn read(&self, ch: usize, delay: f32) -> f32 {
-        let line = &self.lines[ch];
-        let len = line.len();
-        let back = delay.floor();
-        let frac = delay - back;
-        let at = (self.write + len - back as usize % len) % len;
-        let before = (at + len - 1) % len;
-        line[at] + (line[before] - line[at]) * frac
-    }
-
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "the lines are the same length, never empty, and `write` is wrapped to it"
+    )]
     fn render(&mut self, left: &mut [f32], right: &mut [f32]) {
         let len = self.lines[0].len();
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
@@ -100,23 +101,45 @@ impl Pitch {
             // A head reading faster than the writing closes in on it, so its delay shrinks.
             self.phase = (self.phase + (1.0 - ratio) / window).rem_euclid(1.0);
             let heads = [self.phase, (self.phase + 0.5) % 1.0];
-            for (ch, x) in [l, r].into_iter().enumerate() {
-                self.lines[ch][self.write] = *x;
+            let write = self.write;
+            for (line, x) in self.lines.iter_mut().zip([l, r]) {
+                line[write] = *x;
                 let shifted: f32 = heads
                     .iter()
-                    .map(|&h| (PI * h).sin().powi(2) * self.read(ch, MIN_DELAY + h * window))
+                    .map(|&h| (PI * h).sin().powi(2) * read(line, write, MIN_DELAY + h * window))
                     .sum();
                 *x += (shifted - *x) * mix;
             }
-            self.write = (self.write + 1) % len;
+            self.write = (write + 1) % len;
         }
     }
+}
+
+/// `line`, `delay` samples back from the last written, at `write`, between samples.
+#[inline]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "`at` and `before` are wrapped to the line's length, and the line's never empty"
+)]
+fn read(line: &[f32], write: usize, delay: f32) -> f32 {
+    let len = line.len();
+    let back = delay.floor();
+    let frac = delay - back;
+    let at = (write + len - back as usize % len) % len;
+    let before = (at + len - 1) % len;
+    line[at] + (line[before] - line[at]) * frac
 }
 
 impl Processor for Pitch {
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]) {
         segments(events, left.len(), |segment| match segment {
-            Segment::Render(range) => self.render(&mut left[range.clone()], &mut right[range]),
+            Segment::Render(range) => {
+                // The channels are the same length, so both have the range; if one didn't,
+                // there'd be no right way to render it.
+                if let (Some(l), Some(r)) = (left.get_mut(range.clone()), right.get_mut(range)) {
+                    self.render(l, r);
+                }
+            }
             Segment::Event(event) => {
                 if let EventKind::Param { id, value } = event.kind {
                     self.set(id, value);

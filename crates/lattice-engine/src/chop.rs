@@ -11,31 +11,40 @@ use crate::param::{ParamInfo, Smoothed};
 use crate::processor::{Event, EventKind, Processor, Segment, segments};
 use crate::sampler::{Play, Player, Sample};
 
+/// How many parameters it has.
+const COUNT: usize = InstKind::Chop.params().len();
+
 /// A piece fades in over this, so it never clicks on.
 const ATTACK_SECONDS: f32 = 0.000_5;
 
 pub struct Chop {
     player: Player,
-    values: [f32; 7],
+    values: [f32; COUNT],
     gain: Smoothed,
 }
 
 impl Chop {
     pub fn new(sample_rate: f32, values: &[f32], sample: Option<Arc<Sample>>) -> Self {
-        let mut all = [0.0; 7];
+        let mut all = [0.0; COUNT];
         for (v, info) in all.iter_mut().zip(InstKind::Chop.params()) {
             *v = info.default;
         }
         for (v, &value) in all.iter_mut().zip(values) {
             *v = value;
         }
-        Self {
+        let mut chop = Self {
             player: Player::new(sample_rate, sample),
-            gain: Smoothed::new(all[GAIN as usize], sample_rate),
+            gain: Smoothed::new(0.0, sample_rate),
             values: all,
-        }
+        };
+        chop.gain.reset(chop.value(GAIN));
+        chop
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "only ever given the chop's own parameter ids, constants below COUNT"
+    )]
     fn value(&self, id: u32) -> f32 {
         self.values[id as usize]
     }
@@ -100,17 +109,22 @@ impl Processor for Chop {
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]) {
         segments(events, left.len(), |segment| match segment {
             Segment::Render(range) => {
-                (self.player).render(&mut self.gain, &mut left[range.clone()], &mut right[range]);
+                // The channels are the same length, so both have the range; if one didn't,
+                // there'd be no right way to render it.
+                if let (Some(l), Some(r)) = (left.get_mut(range.clone()), right.get_mut(range)) {
+                    self.player.render(&mut self.gain, l, r);
+                }
             }
             Segment::Event(event) => match event.kind {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
                 EventKind::NoteOff { pitch } => self.player.release(pitch),
                 EventKind::Choke => self.player.choke(),
                 EventKind::Param { id, value } => {
-                    if let Some(info) = InstKind::Chop.params().get(id as usize) {
-                        self.values[id as usize] = info.clamp(value);
+                    let info = InstKind::Chop.params().get(id as usize);
+                    if let (Some(info), Some(slot)) = (info, self.values.get_mut(id as usize)) {
+                        *slot = info.clamp(value);
                         if id == GAIN {
-                            self.gain.set(self.values[id as usize]);
+                            self.gain.set(*slot);
                         }
                     }
                 }

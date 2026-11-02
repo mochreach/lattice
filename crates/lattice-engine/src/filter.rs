@@ -34,20 +34,21 @@ fn octaves(hz: f32) -> f32 {
 
 impl Filter {
     pub fn with_values(sample_rate: f32, values: &[f32]) -> Self {
-        let default = |id: u32| PARAMS[id as usize].default;
         let mut filter = Self {
             sample_rate,
             filters: Default::default(),
             kind: 0,
-            cutoff: Smoothed::new(octaves(default(CUTOFF)), sample_rate),
-            resonance: Smoothed::new(default(RESONANCE), sample_rate),
-            sweep: Smoothed::new(default(SWEEP), sample_rate),
-            mix: Smoothed::new(default(MIX), sample_rate),
-            rate: default(RATE),
+            cutoff: Smoothed::new(0.0, sample_rate),
+            resonance: Smoothed::new(0.0, sample_rate),
+            sweep: Smoothed::new(0.0, sample_rate),
+            mix: Smoothed::new(0.0, sample_rate),
+            rate: 0.0,
             phase: 0.0,
         };
-        for (id, &value) in values.iter().enumerate() {
-            filter.set(id as u32, value);
+        // Each parameter from `values`, or its default where they stop short.
+        for info in PARAMS {
+            let value = values.get(info.id as usize).copied();
+            filter.set(info.id, value.unwrap_or(info.default));
         }
         for s in [
             &mut filter.cutoff,
@@ -100,7 +101,13 @@ impl Filter {
 impl Processor for Filter {
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]) {
         segments(events, left.len(), |segment| match segment {
-            Segment::Render(range) => self.render(&mut left[range.clone()], &mut right[range]),
+            Segment::Render(range) => {
+                // The channels are the same length, so both have the range; if one didn't,
+                // there'd be no right way to render it.
+                if let (Some(l), Some(r)) = (left.get_mut(range.clone()), right.get_mut(range)) {
+                    self.render(l, r);
+                }
+            }
             Segment::Event(event) => {
                 if let EventKind::Param { id, value } = event.kind {
                     self.set(id, value);
