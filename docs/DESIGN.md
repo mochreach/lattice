@@ -210,6 +210,56 @@ goes through a DC blocker, since the buzz can shift its centre. Each voice is sc
 work is two reads, a filter, the friction curve while bowed and two writes per sample, cheap
 enough not to need SIMD lanes.
 
+### Switched, the modular engine
+
+The third engine, named after Wendy Carlos's *Switched-On Bach*, the record that put the Moog
+modular in front of everyone. One instrument, `:inst modular`: a stack of saws through a ladder
+filter, big, bright and in stereo. Eight voices in SIMD lanes, as in the test synth, with the
+envelopes, glides, the ladder's coefficients and the sync worked out every 16 samples.
+
+- **The stack** is up to seven saws per voice, each a few cents from the note by `spread` (up to
+  50 cents for the outermost) and panned by `width`, equal power, so it's as loud wherever it
+  sits: `one` saw in the middle, a `pair` either side, a `swarm` of seven detuned evenly and
+  panned alternately, so each side gets the whole spread, organ `stops` (16' in the middle, 8'
+  and 4' pairs spread out) and `fifths` (the note and its fifth in pairs, and the octave).
+  A voice starting from silence starts its saws spread through their cycles, as free-running
+  oscillators would be, so a big stack doesn't open with every saw jumping at once.
+- **Grit** is hard sync. Each saw has a master at its pitch, and runs faster than it, up to four
+  times, by `grit` and by how far the envelope has opened, so a note sweeps as it plays: the sync
+  scream. When the master comes round it restarts the saw from where it had got to. Every jump,
+  a restart or the saw's own, is smoothed by a polyBLEP a sample late: the sample before the
+  jump is held back to take the first half of the correction, from where in the sample the jump
+  fell. That keeps synced saws, and stacks of plain ones, clean.
+- **The ladder** is four one-pole low-passes in a row with the last fed back, as in Moog's
+  ladder, its input driven through a soft clipper (a rational tanh, flat beyond ±3). The clipper
+  bounds the loop, so the feedback can go past the point where it rings on its own (about 4; it
+  reaches 4.4 at full `scream`) without running away: it growls, then screams, then sings. The
+  drive rises with the scream, and the input's raised a little with the feedback to make up the
+  low end resonance takes. The cutoff follows the note half way (as its pitch over middle C to
+  the power 0.5), and the envelope opens it up to seven octaves by `contour`, further for harder
+  notes. It stops at 0.3 of the sample rate, and the feedback eases off as the cutoff rises, as
+  the loop's sample of delay would otherwise let it ring up near Nyquist. Each side has its own
+  ladder, so the stack's stereo survives it.
+- **Snap** is one control for both envelopes, from a pluck (instant, decaying to nothing in
+  0.12 s) through a held organ note (instant, full sustain) at the middle, to a slow swell (a
+  1.5 s attack) at the top. The filter's envelope decays faster than the amplifier's and holds
+  lower, so a pluck closes as it fades and an organ note keeps some of its edge.
+
+| Control | Range | |
+| --- | --- | --- |
+| stack | `one` `pair` `swarm` `stops` `fifths` | what's stacked |
+| spread | 0–1 | detune, up to 50 cents either side |
+| width | 0–1 | how far the stack spreads left and right |
+| grit | 0–1 | hard sync, up to four times the master |
+| ladder | 20 Hz–16 kHz | cutoff at middle C, before the envelope |
+| scream | 0–1 | resonance and drive, ringing on its own near the top |
+| contour | 0–1 | how far the envelope opens the ladder, up to seven octaves |
+| snap | 0–1 | pluck, organ, swell |
+| gain | 0–1 | |
+
+A `G` gesture glides its notes, as on the synth. It costs about five times the test synth: the
+voices benchmark plays eight voices of a swarm at around 400 times real time.
+
 ### Sampler
 
 Plays a WAV file: a region of it (`start`, `end`), pitched from C-4, or cut into up to 16
@@ -406,7 +456,7 @@ should hint at the engine's character. The docs can say where each name comes fr
 | --- | --- | --- |
 | Folly | Tower Folly, Daphne Oram's studio | drawn wavetables |
 | Maida | Maida Vale, home of the Radiophonic Workshop (Delia Derbyshire) | test oscillators and tape |
-| Switched | *Switched-On Bach* (Wendy Carlos) | big modular, ladder filter |
+| Switched | *Switched-On Bach* (Wendy Carlos) | big modular, ladder filter (built: `:inst modular`) |
 | Nemo | Nemo Studios (Vangelis) | expressive brass and pads, shaped by pressure |
 | Oxygen | *Oxygène* (Jean-Michel Jarre) | string machine and phaser |
 | Seven | *Seven Waves* (Suzanne Ciani) | west-coast: wavefolding, low-pass gates, plucks |

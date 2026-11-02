@@ -9,6 +9,7 @@ use crate::monochord::Monochord;
 use crate::processor::Processor;
 use crate::rhythmicon;
 use crate::sampler::{Sample, Sampler};
+use crate::switched::Switched;
 use crate::synth::Synth;
 
 /// The processor for `instrument`, starting at its settings, with `sample` loaded from its file if
@@ -23,6 +24,7 @@ pub fn build(
         InstKind::Chop => Box::new(Chop::new(sample_rate, &instrument.values, sample)),
         InstKind::Synth => Box::new(Synth::with_values(sample_rate, &instrument.values)),
         InstKind::String => Box::new(Monochord::with_values(sample_rate, &instrument.values)),
+        InstKind::Modular => Box::new(Switched::with_values(sample_rate, &instrument.values)),
         // Every other instrument is a drum; were one not, it'd play as a synth.
         kind => rhythmicon::build(kind, sample_rate, &instrument.values)
             .unwrap_or_else(|| Box::new(Synth::with_values(sample_rate, &instrument.values))),

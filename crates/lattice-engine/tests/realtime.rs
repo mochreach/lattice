@@ -9,7 +9,7 @@
 )]
 
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
-use lattice_core::instrument::{kick, string};
+use lattice_core::instrument::{kick, modular, string};
 use lattice_core::{
     Condition, Fx, FxKind, Grid, InstKind, Instrument, Lane, Lock, Macro, MacroTarget, Rule, Step,
     Track, Transform,
@@ -150,6 +150,11 @@ fn rendering_never_allocates() {
         .collect();
     let mut strings = Some(lattice_engine::instrument::build(
         &Instrument::new(InstKind::String),
+        48_000.0,
+        None,
+    ));
+    let mut modular = Some(lattice_engine::instrument::build(
+        &Instrument::new(InstKind::Modular),
         48_000.0,
         None,
     ));
@@ -350,6 +355,34 @@ fn rendering_never_allocates() {
                     handle.send(Command::RemoveEffect {
                         chain: Chain::Send,
                         index: 0,
+                    });
+                }
+                803 => {
+                    handle.send(Command::SetInstrument {
+                        index: 0,
+                        instrument: modular.take().unwrap(),
+                    });
+                    handle.send(Command::SetParam {
+                        target: Target::Instrument(0),
+                        id: modular::GRIT,
+                        value: 0.8,
+                    });
+                    handle.send(Command::Preview {
+                        track: 0,
+                        pitch: 48,
+                        velocity: 100,
+                        held: true,
+                    });
+                }
+                806 => {
+                    handle.send(Command::SetParam {
+                        target: Target::Instrument(0),
+                        id: modular::STACK,
+                        value: 3.0,
+                    });
+                    handle.send(Command::Release {
+                        track: 0,
+                        pitch: 48,
                     });
                 }
                 810 => {

@@ -12,6 +12,9 @@
 //!
 //! The string is Monochord, the second engine, named after Pythagoras' one-stringed instrument
 //! for studying pitch: a plucked or bowed string, modelled as a waveguide.
+//!
+//! The modular is Switched, after Wendy Carlos's *Switched-On Bach*: a stack of saws, hard-synced
+//! for grit, through a screaming ladder filter, in stereo.
 
 use serde::{Deserialize, Serialize};
 
@@ -43,11 +46,13 @@ pub enum InstKind {
     String,
     Sampler,
     Chop,
+    Modular,
 }
 
 impl InstKind {
-    pub const ALL: [InstKind; 9] = [
+    pub const ALL: [InstKind; 10] = [
         InstKind::Synth,
+        InstKind::Modular,
         InstKind::String,
         InstKind::Sampler,
         InstKind::Chop,
@@ -73,6 +78,7 @@ impl InstKind {
             InstKind::String => &string::PARAMS,
             InstKind::Sampler => &sampler::PARAMS,
             InstKind::Chop => &chop::PARAMS,
+            InstKind::Modular => &modular::PARAMS,
         }
     }
 }
@@ -89,6 +95,7 @@ impl Kind for InstKind {
             InstKind::String => "string",
             InstKind::Sampler => "sampler",
             InstKind::Chop => "chop",
+            InstKind::Modular => "modular",
         }
     }
 
@@ -130,6 +137,48 @@ pub mod synth {
         param(ENV, "env", (0.0, 10_000.0, 3_000.0), "Hz", Curve::Linear),
         param(RESONANCE, "resonance", (0.0, 0.95, 0.3), "", Curve::Linear),
         param(GAIN, "gain", (0.0, 1.0, 0.2), "", Curve::Linear),
+    ];
+}
+
+/// Switched, the modular: a stack of saws, each hard-synced to a master at its own pitch, through
+/// a four-pole ladder filter that screams as its resonance goes up, with one envelope for both.
+pub mod modular {
+    use super::*;
+
+    /// What's stacked: one saw, a pair a little apart, a swarm of seven, organ stops (16', 8' and
+    /// 4') or fifths. Each spreads across the stereo field as far as `width` takes it.
+    pub const STACK: u32 = 0;
+    /// How far the stack's saws are detuned from each other, up to half a semitone either side.
+    pub const SPREAD: u32 = 1;
+    /// How far the stack spreads left and right.
+    pub const WIDTH: u32 = 2;
+    /// Hard sync: each saw restarted by a master at the note, running up to four times faster
+    /// as the envelope opens, for the tearing sync sweep.
+    pub const GRIT: u32 = 3;
+    /// The ladder's cutoff at the note middle C, before the envelope opens it; it follows the
+    /// keys half way.
+    pub const LADDER: u32 = 4;
+    /// Resonance, driven harder as it goes up, until the ladder sings on its own.
+    pub const SCREAM: u32 = 5;
+    /// How far the envelope opens the ladder, up to seven octaves.
+    pub const CONTOUR: u32 = 6;
+    /// The envelope's shape: a pluck at the bottom, an organ's held note half way, a slow swell
+    /// at the top.
+    pub const SNAP: u32 = 7;
+    pub const GAIN: u32 = 8;
+
+    pub const STACKS: &[&str] = &["one", "pair", "swarm", "stops", "fifths"];
+
+    pub(super) const PARAMS: [ParamInfo; 9] = [
+        param(STACK, "stack", (0.0, 4.0, 2.0), "", Curve::Choice(STACKS)),
+        param(SPREAD, "spread", (0.0, 1.0, 0.3), "", Curve::Linear),
+        param(WIDTH, "width", (0.0, 1.0, 0.6), "", Curve::Linear),
+        param(GRIT, "grit", (0.0, 1.0, 0.0), "", Curve::Linear),
+        param(LADDER, "ladder", (20.0, 16_000.0, 900.0), "Hz", Curve::Log),
+        param(SCREAM, "scream", (0.0, 1.0, 0.3), "", Curve::Linear),
+        param(CONTOUR, "contour", (0.0, 1.0, 0.45), "", Curve::Linear),
+        param(SNAP, "snap", (0.0, 1.0, 0.35), "", Curve::Linear),
+        param(GAIN, "gain", (0.0, 1.0, 0.25), "", Curve::Linear),
     ];
 }
 

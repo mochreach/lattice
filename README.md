@@ -225,7 +225,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:group-name NAME` | rename this track's group |
 | `:level DB`, `:pan P`, `:send DB` | mixer, for every track the selections reach: level (-60 to 6 dB), pan (-100 left to 100 right), send to the send bus (-60, off, to 6 dB); on the mixer page, `:level` sets a bus too |
 | `:set VALUE` | on the mixer page, set the value under the cursor (also `c`) |
-| `:inst INSTRUMENT` | the instrument for every track the selections reach (or the mixer cursor's): `synth`, `string`, `sampler`, `chop`, `kick`, `snare`, `hat`, `clap` or `tom` |
+| `:inst INSTRUMENT` | the instrument for every track the selections reach (or the mixer cursor's): `synth`, `modular`, `string`, `sampler`, `chop`, `kick`, `snare`, `hat`, `clap` or `tom` |
 | `:arm [PASSES]`, `:arm! [PASSES]`, `:disarm` | arm the track for the looper, or disarm it: with record on (`R`), playing records the audio input a pass of the track at a time into a chop track, until stopped, or for PASSES passes and then disarms (`:arm 1` for just one). `:arm` records over what a chop track plays (unless its notes have all been deleted); `:arm!` starts a new loop |
 | `:input [DEVICE]`, `:output [DEVICE]` | the device the looper records, or that you hear Lattice through: type `:input ` to list them, then a number, or part of a name; 0 is the system's default. Remembered between runs; with nothing typed, says which is in use |
 | `:latency MS` | move what the looper records earlier (negative) or later, if it's out of time with what you heard (-500 to 500); remembered for each input |
@@ -372,8 +372,8 @@ mixer, cancels). To perform them instead, arm record (`R`) on the mixer page and
 setting you change is locked on the step that's playing, and heard at once, so a sweep played on
 `^a` goes in step by step. Each pass is one undo, as with recorded notes. A lock on a step with no
 note changes the setting on its own, so a few locks down an empty stretch move an effect along.
-In the demo, the second stab in each bar is brighter and rings, from its locked cutoff and
-resonance, and the first puts them back.
+In the demo, the second stab in each bar is brighter and rings, from its locked ladder and
+scream, and the first puts them back.
 
 **Gestures** are what a tracker's effect columns do: things that happen once on a step. An open
 track has two gesture fields on each step, after the velocity (`fg` `fG`); in insert mode, type
@@ -396,7 +396,7 @@ can't do one, the field shows it dimmed, the status line says so, and it does no
 |---|---|
 | `<` | on a `sampler` or `chop` track, plays the note's sound, or its piece, the other way round from its `direction`: backwards, usually |
 | `O8` | on a `sampler` or `chop` track, starts the note 8/16 of the way into its sound, or its piece (0–15) |
-| `G6` | on a `synth` or `string` track, slides the note from the last one's pitch over 6/24 of a step (1–23) |
+| `G6` | on a `synth`, `modular` or `string` track, slides the note from the last one's pitch over 6/24 of a step (1–23) |
 
 Conditions decide whether the step plays at all, its note, locks and other gestures with it:
 
@@ -478,12 +478,17 @@ Rhythmicon, the drum engine: one drum per track, played at its tuning by C-4 and
 by other notes. Each has a model (`tight` `boom` `hard` for the kick, `tight` `fat` `crack` for
 the snare, `metal` `ring` `sizzle` for the hat, `tight` `room` `crowd` for the clap, `tight`
 `round` `hard` for the tom) and four controls within it (see
-[docs/DESIGN.md](docs/DESIGN.md)). `string` is Monochord, a plucked or bowed string, modelled
+[docs/DESIGN.md](docs/DESIGN.md)). `modular` is Switched, after
+*Switched-On Bach*: a stack of saws (`one`, a `pair`, a `swarm` of seven, organ `stops` or
+`fifths`) detuned by `spread` and spread in stereo by `width`, hard-synced by `grit` into a sync
+sweep, through a four-pole ladder filter (`ladder`) whose `scream` drives its resonance until it
+sings on its own; `contour` sets how far the envelope opens it, and `snap` shapes the envelope
+from a pluck through an organ's held note to a slow swell. `string` is Monochord, a plucked or bowed string, modelled
 as a waveguide: models `nylon`, `steel` (pairs of strings a few cents apart, spread in stereo)
 and `sitar` (buzzing against its bridge), with pluck (soft thumb to hard, clicking pick), position (along
 the string), decay, tone and bow (a real bowed string while the note is held, light to heavy;
 it takes over from the pluck as it's turned up, and long notes suit it). Strings ring on after a
-note ends, as a harp's do; a note-off only lifts the bow. A `G` gesture glides a synth's or a
+note ends, as a harp's do; a note-off only lifts the bow. A `G` gesture glides a synth's, a modular's or a
 string's note in from the last one's pitch, a string plucked there and slid along. `sampler` plays a WAV file (`:sample kick.wav`; 8 to 32-bit, or float, mono or
 stereo, any rate). C-4 plays it as recorded and other notes pitch it, or with `slices` above 1 it's
 chopped into equal slices, C-4 playing the first and each note up the next, at the file's pitch. Its
@@ -550,8 +555,8 @@ one Lattice running, `--pid` says which.
 The demo song is techno at 130 BPM in F minor, in six sections (`gs` shows them; `^space` plays the
 lot). It opens on `peak`, which has everything: drums folded into a group with drive and a
 compressor on its bus (`tz` unfolds it), hats sharing a choke, a five-step tom and a seven-step
-sitar drifting against the bar, a bowed steel pad, dub stabs into the send's dotted-eighth echo, and
-an acid line through a drive. The bass, stabs and pad follow a chord change every four passes with
+sitar drifting against the bar, a bowed steel pad, dub stabs on the modular into the send's
+dotted-eighth echo, and an acid line through a drive. The bass, stabs and pad follow a chord change every four passes with
 `transpose` rules.
 
 Tracks can be added, removed and moved while playing, and undo brings a removed track back with

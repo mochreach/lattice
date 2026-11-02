@@ -104,7 +104,9 @@ impl Gesture {
             Gesture::Reverse | Gesture::Offset(_) => {
                 matches!(kind, InstKind::Sampler | InstKind::Chop)
             }
-            Gesture::Glide(_) => matches!(kind, InstKind::Synth | InstKind::String),
+            Gesture::Glide(_) => {
+                matches!(kind, InstKind::Synth | InstKind::Modular | InstKind::String)
+            }
             _ => true,
         }
     }

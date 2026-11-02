@@ -37,6 +37,7 @@ pub mod reverb;
 pub mod rhythmicon;
 pub mod routing;
 pub mod sampler;
+pub mod switched;
 pub mod synth;
 
 pub use chop::Chop;

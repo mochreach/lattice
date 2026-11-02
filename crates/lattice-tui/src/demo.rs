@@ -7,7 +7,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use lattice_core::fx::{comp, delay, drive, filter, reverb};
-use lattice_core::instrument::{clap, hat, kick, snare, string, synth, tom};
+use lattice_core::instrument::{clap, hat, kick, modular, snare, string, synth, tom};
 use lattice_core::{
     Arrangement, Bus, Buses, Change, Condition, DRUM_ROOT, Entry, Fx, FxKind, Grid, Group,
     InstKind, Instrument, Lane, Lock, Note, Pattern, Rule, Song, Step, Track, Transform,
@@ -170,7 +170,6 @@ const PLUCK: usize = 11;
 const TRACKS: usize = 12;
 
 const SAW: f32 = 0.0;
-const SQUARE: f32 = 1.0;
 
 /// The tracks' sounds, mix and effects, with no steps yet.
 fn tracks() -> Vec<Track> {
@@ -310,16 +309,21 @@ fn tracks() -> Vec<Track> {
     acid.mix.pan = 0.15;
     acid.mix.send = -14.0;
 
-    // Dub chords: a short stab, most of it in the echoes.
+    // Dub chords: a short stab on the modular, a pair of saws apart, most of it in the echoes.
     let mut stab = track(
         "stab",
-        synth(
-            SQUARE,
-            (0.002, 0.22, 0.0, 0.25),
-            1_300.0,
-            1_400.0,
-            0.4,
-            0.18,
+        instrument(
+            Modular,
+            &[
+                (modular::STACK, 1.0),
+                (modular::SPREAD, 0.3),
+                (modular::WIDTH, 0.7),
+                (modular::LADDER, 1_200.0),
+                (modular::SCREAM, 0.4),
+                (modular::CONTOUR, 0.45),
+                (modular::SNAP, 0.1),
+                (modular::GAIN, 0.55),
+            ],
         ),
     );
     stab.mix.level = -9.0;
@@ -488,7 +492,7 @@ fn acid() -> Vec<Step> {
 /// them has a perfect fifth.
 fn stabs() -> Vec<Step> {
     let mut steps = notes(". . . C4_2 . . . . . . C4 . . . . .");
-    for (param, value) in [(synth::CUTOFF, 3_200.0), (synth::RESONANCE, 0.7)] {
+    for (param, value) in [(modular::LADDER, 2_400.0), (modular::SCREAM, 0.75)] {
         let lock = Lock {
             fx: None,
             param: param as u8,
