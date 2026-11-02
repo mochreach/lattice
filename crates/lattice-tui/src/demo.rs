@@ -1,5 +1,6 @@
 //! The demo song: a techno track in F minor, arranged in six sections, that uses a bit of
-//! everything: every instrument, every effect, groups, a choke, sends, locks, a pattern mute,
+//! everything: every instrument, every effect, groups, a choke, sends, locks, gestures, a pattern
+//! mute,
 //! tracks of different lengths drifting against each other, and rules that change the parts as
 //! they repeat.
 
@@ -424,14 +425,30 @@ fn section(parts: Vec<(usize, Vec<Step>, Vec<Rule>)>) -> Vec<Lane> {
 }
 
 // The parts, shared between sections.
+/// Puts gestures on steps, each written as it's typed: `(14, "R3")`.
+fn gestured(mut steps: Vec<Step>, gestures: &[(usize, &str)]) -> Vec<Step> {
+    for &(at, text) in gestures {
+        let free = (steps.get_mut(at)).and_then(|s| s.gestures.iter_mut().find(|g| g.is_none()));
+        match (free, text.parse()) {
+            (Some(field), Ok(gesture)) => *field = Some(gesture),
+            _ => {
+                misread();
+            }
+        }
+    }
+    steps
+}
+
 fn four_to_the_floor() -> Vec<Step> {
     hits("X...x...X...x...")
 }
+/// The second clap pushed a little late.
 fn clap_on_two_and_four() -> Vec<Step> {
-    hits("....x.......x...")
+    gestured(hits("....x.......x..."), &[(12, "D2")])
 }
+/// A ratchet into the next bar.
 fn hats() -> Vec<Step> {
-    hits("x..mx..mx..mx.gm")
+    gestured(hits("x..mx..mx..mx.gm"), &[(14, "R3")])
 }
 fn open_hats() -> Vec<Step> {
     hits("..x...x...x...x.")
@@ -449,9 +466,11 @@ fn perc() -> (Vec<Step>, Vec<Rule>) {
 fn bass() -> Vec<Step> {
     notes(". F1 F1 F2? . F1 F1 F2? . F1 F1 F2? . F1 Ab1 C2")
 }
-/// Twelve steps against sixteen, so it lands differently on the beat each bar.
+/// Twelve steps against sixteen, so it lands differently on the beat each bar; its octave
+/// gated short, and its Ab going round its major chord.
 fn acid() -> Vec<Step> {
-    notes("F2! F2 F3 . Eb3 F2! . C3 F2 Ab2! F3? C3")
+    let steps = notes("F2! F2 F3 . Eb3 F2! . C3 F2 Ab2! F3? C3");
+    gestured(steps, &[(2, "X8"), (9, "A47")])
 }
 /// The second, answering stab brighter and ringing, from settings locked on its step, and the
 /// first put back to the mixer's. On the fifth, which the changes keep in key, as every chord in
@@ -481,10 +500,11 @@ fn stabs() -> Vec<Step> {
 fn pad() -> Vec<Step> {
     notes("C4_16 . . . . . . . . . . . . . . . | F3_16 . . . . . . . . . . . . . . .")
 }
-/// Seven steps, turned a step back every other pass.
+/// Seven steps, turned a step back every other pass, and turning round on its G, so it goes
+/// back and forth.
 fn pluck() -> (Vec<Step>, Vec<Rule>) {
     (
-        notes("C5 . Eb5 . G5? F5 ."),
+        gestured(notes("C5 . Eb5 . G5? F5 ."), &[(4, "B")]),
         vec![rule(Transform::Drift(-1), every(2, 0))],
     )
 }

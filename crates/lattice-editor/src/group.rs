@@ -260,15 +260,15 @@ mod tests {
 
     #[test]
     fn the_conductor_left_of_a_folded_group_takes_digits() {
-        use lattice_core::{Gesture, Group};
+        use lattice_core::{Group, SongGesture};
 
         let mut e = editor();
         e.grid.groups = vec![Group::new("kit", 0..2)];
         e.grid.groups[0].folded = true;
-        keys(&mut e, "fgiM1\n");
+        keys(&mut e, "fCiM1\n");
         assert_eq!(
             e.conductor().unwrap().get(0, 0),
-            Some(Gesture::Mute { track: 1, on: true })
+            Some(SongGesture::Mute { track: 1, on: true })
         );
     }
 }

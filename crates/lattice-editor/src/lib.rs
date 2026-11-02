@@ -800,10 +800,17 @@ impl Editor {
                 let columns = self.lock_columns(t);
                 Some(Infobox {
                     title: "field".into(),
-                    items: [("n".into(), "note".into()), ("v".into(), "velocity".into())]
-                        .into_iter()
-                        .chain(columns.into_iter().map(|c| (c.key.to_string(), c.full)))
-                        .collect(),
+                    items: [
+                        ("n", "note"),
+                        ("v", "velocity"),
+                        ("g", "gestures"),
+                        ("G", "second gestures"),
+                    ]
+                    .map(|(k, f)| (k.to_string(), f.to_string()))
+                    .into_iter()
+                    .chain(columns.into_iter().map(|c| (c.key.to_string(), c.full)))
+                    .chain([("C".into(), "the conductor".into())])
+                    .collect(),
                 })
             }
             Pending::Menu(key) => {

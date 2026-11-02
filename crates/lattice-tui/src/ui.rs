@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use lattice_core::instrument::chop;
 use lattice_core::{
-    Change, Conductor, Gesture, Group, InstKind, MAX_GROUPS, MAX_TRACKS, Step, Track, realise,
+    Change, Conductor, Group, InstKind, MAX_GROUPS, MAX_TRACKS, SongGesture, Step, Track, realise,
 };
 use lattice_editor::{
     BEATS_PER_BAR, ColumnLabel, Completion, Cursor, Editor, Infobox, Mode, NoteLayout, PadMode,
@@ -415,8 +415,8 @@ const CHOP: usize = 15;
 /// Width of an open track's field: its velocity, or a lock column's value, and a gap.
 const FIELD: usize = 4;
 
-/// Width of a conductor's gesture field, and of the conductor's column: its two fields, and a
-/// gap.
+/// Width of a gesture field, the conductor's or a track's; and of the conductor's column: its
+/// two fields, and a gap.
 const GESTURE: usize = 5;
 const CONDUCTOR: usize = 2 * GESTURE + 1;
 
@@ -456,24 +456,25 @@ impl<'a> Conducting<'a> {
             let gesture = self.conductor.and_then(|c| c.get(row, field));
             let (text, own) = match gesture {
                 _ if row >= self.len => (String::new(), Style::new()),
-                Some(g @ (Gesture::Tempo(_) | Gesture::Slide(_) | Gesture::SongTempo)) => {
-                    (format!(" {g}"), Style::new().fg(theme.accent))
-                }
-                Some(Gesture::Stop) => (" X".into(), Style::new().fg(theme.error)),
+                Some(
+                    g @ (SongGesture::Tempo(_) | SongGesture::Slide(_) | SongGesture::SongTempo),
+                ) => (format!(" {g}"), Style::new().fg(theme.accent)),
+                Some(SongGesture::Stop) => (" X".into(), Style::new().fg(theme.error)),
                 Some(g) => (format!(" {g}"), theme.text),
                 None => ("  ··".into(), theme.faint),
             };
-            let style =
-                if conducting && primary.step == row && editor.field() == StepField::Gesture(field)
-                {
-                    theme.block(mode_colour)
-                } else if self.playhead == Some(row) && row < self.len {
-                    theme.block(theme.accent)
-                } else if selected {
-                    own.bg(theme.selection)
-                } else {
-                    own.patch(band)
-                };
+            let style = if conducting
+                && primary.step == row
+                && editor.field() == StepField::Conductor(field)
+            {
+                theme.block(mode_colour)
+            } else if self.playhead == Some(row) && row < self.len {
+                theme.block(theme.accent)
+            } else if selected {
+                own.bg(theme.selection)
+            } else {
+                own.patch(band)
+            };
             spans.push(Span::styled(fit(&text, GESTURE), style));
         }
         spans.push(Span::styled(" ", band));
@@ -486,7 +487,11 @@ fn column_width(editor: &Editor, index: usize) -> usize {
     let notes = note_width(editor, index);
     match notes {
         FOLDED => FOLDED,
-        _ if editor.is_open(index) => notes + FIELD * (1 + editor.lock_columns(index).len()),
+        _ if editor.is_open(index) => {
+            notes
+                + FIELD * (1 + editor.lock_columns(index).len())
+                + GESTURE * lattice_core::GESTURES
+        }
         _ => notes,
     }
 }
@@ -998,6 +1003,14 @@ fn header_lines(
             .flat_map(|c| spaced(bars::meter(c.meter, c.width, c.colour, theme)))
             .collect(),
     ));
+    // A gesture field's key, `f` then it going there, underlined, and room after it.
+    let key = |k: &'static str, after: usize| {
+        [
+            Span::raw(" "),
+            Span::styled(k, theme.dim.add_modifier(Modifier::UNDERLINED)),
+            Span::raw(" ".repeat(after)),
+        ]
+    };
     // Open tracks name their fields, with the key `f` goes to each by underlined.
     let mut fields = line(
         columns
@@ -1010,6 +1023,7 @@ fn header_lines(
                     Span::raw(" ".repeat(c.note_width)),
                     Span::styled(fit(" vel", FIELD), theme.dim),
                 ];
+                spans.extend(["g", "G"].into_iter().flat_map(|k| key(k, 3)));
                 for (label, _) in fields {
                     spans.push(Span::raw(" "));
                     let name: String = label.name.chars().take(FIELD - 1).collect();
@@ -1032,17 +1046,9 @@ fn header_lines(
             .collect(),
     );
     if conducting && !fields.spans.is_empty() {
-        let key = |k: &'static str| {
-            [
-                Span::raw(" "),
-                Span::styled(k, theme.dim.add_modifier(Modifier::UNDERLINED)),
-                Span::raw("   "),
-            ]
-        };
         let spans = [Span::raw(" ".repeat(GUTTER))]
             .into_iter()
-            .chain(key("g"))
-            .chain(key("G"))
+            .chain(key("C", GESTURE * 2 - 2))
             .chain([Span::raw(" ")]);
         // In place of the line's lead, the gutter and the conductor's width.
         fields.spans.splice(0..1, spans);
@@ -1222,7 +1228,7 @@ fn grid_row(
         // Closed, a step that locks settings is marked at its end; open, its columns show them.
         let mark = match () {
             _ if c.width == FOLDED || c.fields.is_some() => None,
-            _ if !step.locks.is_empty() => Some("◆"),
+            _ if !step.locks.is_empty() || step.gestures().next().is_some() => Some("◆"),
             _ => None,
         };
         // In the live view, highlight what the rules have changed.
@@ -1287,6 +1293,20 @@ fn grid_row(
                 fit(&velocity.unwrap_or_default(), FIELD),
                 cursor(StepField::Velocity, c.style()),
             ));
+            // Gestures: on the note in the track's colour, on the playhead in the accent.
+            for (g, gesture) in step.gestures.iter().enumerate() {
+                let (text, own) = match gesture {
+                    Some(gesture) if gesture.is_playhead() => {
+                        (format!(" {gesture}"), Style::new().fg(theme.accent))
+                    }
+                    Some(gesture) => (format!(" {gesture}"), c.style()),
+                    None => ("  ··".into(), theme.faint),
+                };
+                spans.push(Span::styled(
+                    fit(&text, GESTURE),
+                    cursor(StepField::Gesture(g), own),
+                ));
+            }
             for (k, (_, rows)) in fields.iter().enumerate() {
                 let (text, own) = match rows.get(row) {
                     Some(Field::Lock(text)) => (format!(" {text}"), c.style()),
@@ -1406,7 +1426,8 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
         ),
         Mode::Normal => {
             let cursor = editor.cursor();
-            let locks = editor.describe_locks(cursor.track, cursor.step);
+            let mut locks = editor.describe_gestures(cursor.track, cursor.step);
+            locks.extend(editor.describe_locks(cursor.track, cursor.step));
             if locks.is_empty() {
                 (
                     "v select · x rows · g goto · ] next · i insert · d delete · : command".into(),

@@ -52,6 +52,19 @@ fn rendering_never_allocates() {
                 if i % 3 == 1 {
                     step.locks.set(Lock::of_macro(0, 0.9));
                 }
+                // Every gesture, notes played later in a step and playheads moved.
+                let gestures = [
+                    ["R9", "D3"],
+                    ["r4", "X12"],
+                    ["A37", "!"],
+                    ["*4", "W2"],
+                    ["B", "J?"],
+                    ["/3", "J0"],
+                    ["X6", "*2"],
+                ];
+                if let Some(pair) = gestures.get(i as usize) {
+                    step.gestures = pair.map(|g| g.parse().ok());
+                }
                 step
             })
             .collect(),

@@ -142,7 +142,7 @@ fn check_track(track: &Track) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::arrangement::{Arrangement, Entry, Lane, Pattern};
-    use crate::conductor::{Conductor, Gesture};
+    use crate::conductor::{Conductor, SongGesture};
     use crate::fx::{self, Bus, Buses, Fx, FxKind};
     use crate::group::Group;
     use crate::instrument::{InstKind, Instrument, kick};
@@ -190,6 +190,8 @@ mod tests {
             ..Mix::default()
         };
         bass.steps[0] = Step::note(36);
+        bass.steps[0].gestures = [Some("R3".parse().unwrap()), None];
+        bass.steps[5].gestures = [None, Some("J0".parse().unwrap())];
         let cutoff = crate::LockColumn {
             fx: Some(0),
             param: 1,
@@ -244,13 +246,13 @@ mod tests {
                         lanes: vec![],
                         conductor: Conductor {
                             steps: vec![
-                                [Some(Gesture::Tempo(120)), None],
+                                [Some(SongGesture::Tempo(120)), None],
                                 [None; 2],
                                 [
-                                    Some(Gesture::Slide(140)),
-                                    Some(Gesture::Mute { track: 2, on: true }),
+                                    Some(SongGesture::Slide(140)),
+                                    Some(SongGesture::Mute { track: 2, on: true }),
                                 ],
-                                [Some(Gesture::Stop), None],
+                                [Some(SongGesture::Stop), None],
                             ],
                         },
                     },
@@ -307,7 +309,11 @@ mod tests {
     fn writes_sparsely_and_leaves_out_defaults() {
         let text = to_ron(&song()).unwrap();
         assert!(text.contains("length: 16"), "{text}");
-        assert!(text.contains("0: (note: (pitch: 36)),"), "{text}");
+        assert!(
+            text.contains(r#"0: (note: (pitch: 36), gestures: ["R3"]),"#),
+            "{text}"
+        );
+        assert!(text.contains(r#"gestures: ["", "J0"]),"#), "{text}");
         assert!(
             text.contains("3: (note: (pitch: 43, velocity: 80, length: 2)),"),
             "{text}"

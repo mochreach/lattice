@@ -21,6 +21,7 @@ pub mod conductor;
 pub mod device;
 pub mod file;
 pub mod fx;
+pub mod gesture;
 pub mod group;
 pub mod instrument;
 pub mod macros;
@@ -36,10 +37,11 @@ pub use chain::{
     CHAINS, FxChain, FxLane, FxRow, MAX_LANES, MAX_SENDS, RowAt, SavedChain, built_in_chain,
     is_feedback, max_send,
 };
-pub use conductor::{Conductor, GESTURES, Gesture, Gestures, MAX_BPM, MIN_BPM};
+pub use conductor::{Conductor, ConductorStep, GESTURES, MAX_BPM, MIN_BPM, SongGesture};
 pub use device::{Curve, Device, Kind, ParamInfo};
 pub use file::{FileError, from_ron, to_ron};
 pub use fx::{Bus, Buses, Fx, FxKind, MAX_EFFECTS};
+pub use gesture::{Gesture, MAX_SPEED, TICKS};
 pub use group::{Group, MAX_GROUPS};
 pub use instrument::{DRUM_ROOT, InstKind, Instrument};
 pub use macros::{MACRO, MAX_MACROS, MAX_TARGETS, Macro, Target as MacroTarget};

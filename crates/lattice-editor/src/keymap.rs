@@ -466,7 +466,7 @@ impl Action {
             Action::PrevTrack => "previous track, on its notes",
             Action::NextTrack => "next track, on its notes",
             Action::GotoField => {
-                "to a field: n note, v velocity, a lock column's letter, g the conductor"
+                "to a field: n note, v velocity, g G gestures, a lock column's letter, C the conductor"
             }
             Action::Fill => "fill the field evenly between the selection's ends",
             Action::ToggleGroup => "group / ungroup tracks",

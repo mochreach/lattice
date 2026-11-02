@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 
 use anyhow::{Context, Result};
-use lattice_core::{Buses, Gesture, MIN_BPM};
+use lattice_core::{Buses, MIN_BPM, SongGesture};
 use lattice_editor::{Editor, Export, Part, file_name};
 use lattice_engine::{Command, Cue, Engine, Handle, Section};
 
@@ -68,7 +68,7 @@ impl Exports {
 fn cues_left_out(export: &Export) -> &'static str {
     let cues = (export.parts.iter())
         .flat_map(|p| p.conductor.gestures())
-        .any(|(_, g)| matches!(g, Gesture::Pattern(_)));
+        .any(|(_, g)| matches!(g, SongGesture::Pattern(_)));
     if cues {
         ", as arranged: the conductor's P cues are left out"
     } else {

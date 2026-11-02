@@ -8,8 +8,8 @@
 //! and every lesson's solution is played through to check it still works.
 
 use lattice_core::{
-    Arrangement, Buses, Condition, Entry, FxKind, Grid, InstKind, Instrument, Note, Song, Step,
-    Track,
+    Arrangement, Buses, Condition, Entry, FxKind, Gesture, Grid, InstKind, Instrument, Note, Song,
+    Step, Track,
 };
 
 use lattice_core::instrument::chop;
@@ -658,7 +658,7 @@ const LESSONS: &[Lesson] = &[
                too, and again closes them. `:lock cutoff` alone adds a column, and `:unlock` \
                along the whole track takes one away.\n\n\
                {goto_field}, then a field's letter, underlined in its header, goes straight to \
-               it: `n` the note, `v` the velocity. In a field, insert mode's digits type values, \
+               it: `n` the note, `v` the velocity, `g` `G` the gestures. In a field, insert mode's digits type values, \
                two to a step, `~` first slides and `-` puts the setting back; {note_up} \
                {note_down} nudge them, {delete} {yank} {paste} work on them, and {fill} fills \
                a selection evenly between the values at its ends.\n\n\
@@ -937,10 +937,38 @@ const LESSONS: &[Lesson] = &[
         solution: "gs<space><playing><space><stopped>",
     },
     Lesson {
+        title: "Gestures",
+        text: "Beside its velocity, an open track has two gesture fields on each step \
+               ({goto_field} `g` `G`), for things that happen once there. In insert mode, type \
+               one. Some act on the step's note, or on the one still sounding if the step has \
+               none: `R3` plays it three times in the step, `r3` fading away, `D8` starts it \
+               8/24 of a step late, `X6` cuts it 6/24 in, `A37` goes round it and the notes 3 \
+               and 7 semitones up, and `!` accents it. Others move the track's playhead: `J12` \
+               carries on from step 12, `J?` from any step, the same each time the song plays; \
+               `W2` plays the step twice more before going on, `B` turns the track backwards, \
+               or forwards again, and `*2` `/2` play it twice or half as fast, until the next \
+               speed or the top of its loop.\n\n\
+               Each goes in once it's whole, or with enter (`D2` could be `D23`), and the \
+               status line says what the one under the cursor does. {note_up} {note_down} \
+               change its amount, and {delete} {yank} {paste} work as in any field.\n\n\
+               Put a retrigger on the first step of the KICK track, for a flam.",
+        teaches: &[],
+        commands: &[],
+        setup: nothing,
+        watch: never,
+        done: |e, _| {
+            (track(e, "KICK").and_then(|t| t.steps.first())).is_some_and(|s| {
+                s.gestures()
+                    .any(|g| matches!(g, Gesture::Retrigger(_) | Gesture::Fade(_)))
+            })
+        },
+        solution: "gpghggfgiR2<esc>",
+    },
+    Lesson {
         title: "The conductor",
         text: "Left of the first track is the conductor: two fields on each step for what \
                belongs to the whole song, not one track. From the first track's notes \
-               ({first_track}), {left} goes into them, and {goto_field} `g` straight there. In \
+               ({first_track}), {left} goes into them, and {goto_field} `C` straight there, from any track. In \
                insert mode, type a gesture: `T140` sets the tempo from that step, `~140` \
                slides there, arriving on the step, and `T--` goes back to the song's `:bpm`; \
                `X` stops the song at the end of the step, `P3` cues pattern 3 for the next bar, \
@@ -958,9 +986,9 @@ const LESSONS: &[Lesson] = &[
         done: |e, _| {
             (e.conductor().into_iter())
                 .flat_map(|c| c.gestures())
-                .any(|(_, g)| g == lattice_core::Gesture::Tempo(140))
+                .any(|(_, g)| g == lattice_core::SongGesture::Tempo(140))
         },
-        solution: "gpghhhggit140<esc>",
+        solution: "gpfCggit140<esc>",
     },
     Lesson {
         title: "Finding more",

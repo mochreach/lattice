@@ -618,7 +618,7 @@ impl Editor {
             None => "?".into(),
         };
         let names: Vec<String> = settings.iter().map(own).collect();
-        let mut taken = vec!['n', 'v', 'g', 'G'];
+        let mut taken = vec!['n', 'v', 'g', 'G', 'C'];
         (columns.into_iter().zip(&settings).zip(&names).enumerate())
             .map(|(i, ((column, setting), own))| {
                 let clashes = names.iter().filter(|n| *n == own).count() > 1;
@@ -643,6 +643,13 @@ impl Editor {
                 }
             })
             .collect()
+    }
+
+    /// The gestures on a step, as `R3: retrigger, 3 hits`, for showing.
+    pub fn describe_gestures(&self, track: usize, step: usize) -> Vec<String> {
+        (self.grid.tracks.get(track))
+            .and_then(|t| t.steps.get(step))
+            .map_or_else(Vec::new, |s| s.gestures().map(|g| g.describe()).collect())
     }
 
     /// The locks on a step, as `cutoff 800Hz`, for showing.

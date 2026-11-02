@@ -15,13 +15,13 @@ use crate::song::{MAX_STEPS, MAX_TRACKS};
 pub const MIN_BPM: u16 = 20;
 pub const MAX_BPM: u16 = 400;
 
-/// Gesture fields on each of the conductor's steps.
+/// Gesture fields on each step, the conductor's and each track's.
 pub const GESTURES: usize = 2;
 
 /// Something the conductor does once, on a step. Written as it's typed: `T140`, `~140`, `T--`,
 /// `X`, `P3`, `M2` `M-2`, `S2` `S-2`. Patterns and tracks are numbered from 1, as they're shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Gesture {
+pub enum SongGesture {
     /// `T140`: this tempo from this step, until the next.
     Tempo(u16),
     /// `~140`: slides from the last tempo to this one, arriving on this step.
@@ -38,11 +38,11 @@ pub enum Gesture {
     Solo { track: u8, on: bool },
 }
 
-impl Gesture {
+impl SongGesture {
     /// The tempo it sets or slides to, if it's a tempo.
     pub fn tempo(self) -> Option<u16> {
         match self {
-            Gesture::Tempo(bpm) | Gesture::Slide(bpm) => Some(bpm),
+            SongGesture::Tempo(bpm) | SongGesture::Slide(bpm) => Some(bpm),
             _ => None,
         }
     }
@@ -51,7 +51,7 @@ impl Gesture {
     pub fn is_tempo(self) -> bool {
         matches!(
             self,
-            Gesture::Tempo(_) | Gesture::Slide(_) | Gesture::SongTempo
+            SongGesture::Tempo(_) | SongGesture::Slide(_) | SongGesture::SongTempo
         )
     }
 
@@ -76,13 +76,13 @@ impl Gesture {
     pub fn check(self) -> Result<(), String> {
         let bpm = MIN_BPM..=MAX_BPM;
         match self {
-            Gesture::Tempo(t) | Gesture::Slide(t) if !bpm.contains(&t) => {
+            SongGesture::Tempo(t) | SongGesture::Slide(t) if !bpm.contains(&t) => {
                 Err(format!("tempos go from {MIN_BPM} to {MAX_BPM}"))
             }
-            Gesture::Pattern(p) if !(1..=MAX_PATTERNS).contains(&usize::from(p)) => {
+            SongGesture::Pattern(p) if !(1..=MAX_PATTERNS).contains(&usize::from(p)) => {
                 Err(format!("patterns go from 1 to {MAX_PATTERNS}"))
             }
-            Gesture::Mute { track: t, .. } | Gesture::Solo { track: t, .. }
+            SongGesture::Mute { track: t, .. } | SongGesture::Solo { track: t, .. }
                 if !(1..=MAX_TRACKS).contains(&usize::from(t)) =>
             {
                 Err(format!("tracks go from 1 to {MAX_TRACKS}"))
@@ -92,21 +92,21 @@ impl Gesture {
     }
 }
 
-impl fmt::Display for Gesture {
+impl fmt::Display for SongGesture {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Gesture::Tempo(bpm) => write!(f, "T{bpm}"),
-            Gesture::Slide(bpm) => write!(f, "~{bpm}"),
-            Gesture::SongTempo => write!(f, "T--"),
-            Gesture::Stop => write!(f, "X"),
-            Gesture::Pattern(p) => write!(f, "P{p}"),
-            Gesture::Mute { track, on } => write!(f, "M{}{track}", if *on { "" } else { "-" }),
-            Gesture::Solo { track, on } => write!(f, "S{}{track}", if *on { "" } else { "-" }),
+            SongGesture::Tempo(bpm) => write!(f, "T{bpm}"),
+            SongGesture::Slide(bpm) => write!(f, "~{bpm}"),
+            SongGesture::SongTempo => write!(f, "T--"),
+            SongGesture::Stop => write!(f, "X"),
+            SongGesture::Pattern(p) => write!(f, "P{p}"),
+            SongGesture::Mute { track, on } => write!(f, "M{}{track}", if *on { "" } else { "-" }),
+            SongGesture::Solo { track, on } => write!(f, "S{}{track}", if *on { "" } else { "-" }),
         }
     }
 }
 
-impl std::str::FromStr for Gesture {
+impl std::str::FromStr for SongGesture {
     type Err = String;
 
     /// Reads a gesture as it's written, upper or lower case, and checks it.
@@ -137,16 +137,16 @@ impl std::str::FromStr for Gesture {
         };
         let small = |n: u16| u8::try_from(n).map_err(|_| unknown());
         let gesture = match first {
-            'T' if rest == "--" => Gesture::SongTempo,
-            'T' => Gesture::Tempo(number("a tempo")?),
-            '~' => Gesture::Slide(number("a tempo")?),
-            'X' if rest.is_empty() => Gesture::Stop,
-            'P' => Gesture::Pattern(small(number("a pattern")?)?),
-            'M' => Gesture::Mute {
+            'T' if rest == "--" => SongGesture::SongTempo,
+            'T' => SongGesture::Tempo(number("a tempo")?),
+            '~' => SongGesture::Slide(number("a tempo")?),
+            'X' if rest.is_empty() => SongGesture::Stop,
+            'P' => SongGesture::Pattern(small(number("a pattern")?)?),
+            'M' => SongGesture::Mute {
                 track: small(number("a track")?)?,
                 on,
             },
-            'S' => Gesture::Solo {
+            'S' => SongGesture::Solo {
                 track: small(number("a track")?)?,
                 on,
             },
@@ -157,13 +157,13 @@ impl std::str::FromStr for Gesture {
     }
 }
 
-impl Serialize for Gesture {
+impl Serialize for SongGesture {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.collect_str(self)
     }
 }
 
-impl<'de> Deserialize<'de> for Gesture {
+impl<'de> Deserialize<'de> for SongGesture {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
         text.parse().map_err(serde::de::Error::custom)
@@ -171,14 +171,14 @@ impl<'de> Deserialize<'de> for Gesture {
 }
 
 /// A step of the conductor: its two gesture fields.
-pub type Gestures = [Option<Gesture>; GESTURES];
+pub type ConductorStep = [Option<SongGesture>; GESTURES];
 
 /// A pattern's conductor lane. It has its own length, so a tempo change can come round every
 /// bar or once a song; with no steps, it's as long as the pattern and does nothing.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "SparseConductor", into = "SparseConductor")]
 pub struct Conductor {
-    pub steps: Vec<Gestures>,
+    pub steps: Vec<ConductorStep>,
 }
 
 impl Conductor {
@@ -195,12 +195,12 @@ impl Conductor {
     }
 
     /// The gesture in field `field` of step `at`, if there's one.
-    pub fn get(&self, at: usize, field: usize) -> Option<Gesture> {
+    pub fn get(&self, at: usize, field: usize) -> Option<SongGesture> {
         self.steps.get(at)?.get(field).copied().flatten()
     }
 
     /// Every gesture, with its step, in order.
-    pub fn gestures(&self) -> impl Iterator<Item = (usize, Gesture)> + '_ {
+    pub fn gestures(&self) -> impl Iterator<Item = (usize, SongGesture)> + '_ {
         (self.steps.iter().enumerate())
             .flat_map(|(at, step)| step.iter().flatten().map(move |&g| (at, g)))
     }
@@ -213,7 +213,7 @@ impl Conductor {
 struct SparseConductor {
     length: usize,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    steps: BTreeMap<usize, Vec<Gesture>>,
+    steps: BTreeMap<usize, Vec<SongGesture>>,
 }
 
 impl From<Conductor> for SparseConductor {
@@ -263,34 +263,39 @@ mod tests {
     #[test]
     fn gestures_read_as_they_are_written() {
         for text in ["T140", "~96", "T--", "X", "P3", "M2", "M-2", "S16", "S-16"] {
-            let gesture: Gesture = text.parse().unwrap();
+            let gesture: SongGesture = text.parse().unwrap();
             assert_eq!(gesture.to_string(), text);
         }
-        assert_eq!("t140".parse(), Ok(Gesture::Tempo(140)));
-        assert_eq!("p12".parse(), Ok(Gesture::Pattern(12)));
-        assert!("T10".parse::<Gesture>().unwrap_err().contains("20 to 400"));
-        assert!("S17".parse::<Gesture>().is_err());
-        assert!("P0".parse::<Gesture>().is_err());
-        assert!("Q1".parse::<Gesture>().is_err());
-        assert!("T".parse::<Gesture>().is_err());
+        assert_eq!("t140".parse(), Ok(SongGesture::Tempo(140)));
+        assert_eq!("p12".parse(), Ok(SongGesture::Pattern(12)));
+        assert!(
+            "T10"
+                .parse::<SongGesture>()
+                .unwrap_err()
+                .contains("20 to 400")
+        );
+        assert!("S17".parse::<SongGesture>().is_err());
+        assert!("P0".parse::<SongGesture>().is_err());
+        assert!("Q1".parse::<SongGesture>().is_err());
+        assert!("T".parse::<SongGesture>().is_err());
     }
 
     #[test]
     fn typing_goes_on_until_a_gesture_is_whole() {
-        assert!(Gesture::could_go_on("T"));
-        assert!(Gesture::could_go_on("T14"));
-        assert!(!Gesture::could_go_on("T140"));
-        assert!(Gesture::could_go_on("T-"));
-        assert!(!Gesture::could_go_on("T--"));
-        assert!(!Gesture::could_go_on("X"));
-        assert!(Gesture::could_go_on("P1"));
-        assert!(!Gesture::could_go_on("P12"));
-        assert!(Gesture::could_go_on("M-"));
-        assert!(Gesture::could_go_on("M-1"));
-        assert!(!Gesture::could_go_on("M-16"));
+        assert!(SongGesture::could_go_on("T"));
+        assert!(SongGesture::could_go_on("T14"));
+        assert!(!SongGesture::could_go_on("T140"));
+        assert!(SongGesture::could_go_on("T-"));
+        assert!(!SongGesture::could_go_on("T--"));
+        assert!(!SongGesture::could_go_on("X"));
+        assert!(SongGesture::could_go_on("P1"));
+        assert!(!SongGesture::could_go_on("P12"));
+        assert!(SongGesture::could_go_on("M-"));
+        assert!(SongGesture::could_go_on("M-1"));
+        assert!(!SongGesture::could_go_on("M-16"));
         assert_eq!(
             "m-3".parse(),
-            Ok(Gesture::Mute {
+            Ok(SongGesture::Mute {
                 track: 3,
                 on: false
             })

@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::arrangement::Arrangement;
 use crate::chain::{FxChain, FxLane};
+use crate::conductor::GESTURES;
 use crate::fx::{Buses, Fx};
+use crate::gesture::Gesture;
 use crate::group::Group;
 use crate::instrument::Instrument;
 use crate::macros::Macro;
@@ -60,6 +62,17 @@ pub struct Step {
     /// Settings of the track's instrument or effects that change on this step.
     #[serde(default, skip_serializing_if = "Locks::is_empty")]
     pub locks: Locks,
+    /// What happens once on this step, to its note or the track's playhead: `R3`, `J12`.
+    #[serde(
+        default,
+        skip_serializing_if = "no_gestures",
+        with = "crate::gesture::fields"
+    )]
+    pub gestures: [Option<Gesture>; GESTURES],
+}
+
+fn no_gestures(gestures: &[Option<Gesture>; GESTURES]) -> bool {
+    gestures.iter().all(Option::is_none)
 }
 
 impl Step {
@@ -70,20 +83,25 @@ impl Step {
                 velocity: DEFAULT_VELOCITY,
                 length: 1,
             }),
-            locks: Locks::default(),
+            ..Self::default()
         }
     }
 
     pub fn with_note(note: Note) -> Self {
         Self {
             note: Some(note),
-            locks: Locks::default(),
+            ..Self::default()
         }
     }
 
     /// Whether the step changes what's playing: a note, or a lock. Locks hold until the next.
     pub fn triggers(&self) -> bool {
         self.note.is_some() || !self.locks.is_empty()
+    }
+
+    /// Its gestures, in its fields' order.
+    pub fn gestures(&self) -> impl Iterator<Item = Gesture> + '_ {
+        self.gestures.iter().flatten().copied()
     }
 
     pub fn is_empty(&self) -> bool {

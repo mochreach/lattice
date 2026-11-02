@@ -89,9 +89,9 @@ in order, repeating the last if there are more selections than values. So `%`, t
 
 | Moving and selecting | |
 | --- | --- |
-| `h j k l`, arrows | move between fields and steps: `h` `l` go through the open track's fields (note, velocity, lock columns), then on to the next track; left of the first track's notes, into the conductor's |
+| `h j k l`, arrows | move between fields and steps: `h` `l` go through the open track's fields (note, velocity, gestures, lock columns), then on to the next track; left of the first track's notes, into the conductor's |
 | `th` `tl` | previous / next track, on its notes |
-| `f` then a key | to a field of the open track: `n` note, `v` velocity, a lock column by the letter its header underlines, or `g` `G` the conductor's |
+| `f` then a key | to a field of the open track: `n` note, `v` velocity, `g` `G` gestures, a lock column by the letter its header underlines; or `C` the conductor's, from any track |
 | `w` `b` | next / previous note |
 | `^u` `^d`, `^b` `^f` | up / down half a page, a page |
 | `gg` `ge` `gh` `gl` | first step, last step, first track, last track |
@@ -109,7 +109,7 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `tp` `tP` | paste copied tracks after / before this one, with their notes, rules, mix and instrument |
 | `tg` | group the tracks the selections reach (from the first to the last), or ungroup the group they're in; a group's tracks mix into its bus, a strip on the mixer page with a level and effects |
 | `tz` | fold or unfold the groups the selections reach: each track narrows to a column of hits (`●` `•` `∙` by velocity), like a drum machine's steps |
-| `te` | keep the tracks the selections reach open, showing their velocity and lock columns as the cursor's track does; again, close them |
+| `te` | keep the tracks the selections reach open, showing their velocity, gestures and lock columns as the cursor's track does; again, close them |
 | `;` `A-;` | collapse the selection, flip which end the cursor is |
 | `~` | reverse the selected steps; on a chop track each piece plays backwards too |
 | `*` | repeat the selection's first step through the rest of it, or with a count (`2*`) the first that many |
@@ -371,9 +371,40 @@ note changes the setting on its own, so a few locks down an empty stretch move a
 In the demo, the second stab in each bar is brighter and rings, from its locked cutoff and
 resonance, and the first puts them back.
 
+**Gestures** are what a tracker's effect columns do: things that happen once on a step. An open
+track has two gesture fields on each step, after the velocity (`fg` `fG`); in insert mode, type
+one, and it goes in once it's whole, or with `enter` or `esc`. Note gestures act on the step's
+note, or on the one still sounding when the step has none, timed in 24ths of a step:
+
+| Gesture | |
+|---|---|
+| `R3` | plays the note 3 times (2–9) within the step |
+| `r3` | as `R3`, each hit quieter |
+| `D8` | starts the note 8/24 of a step late (1–23), for flams and pushed feels |
+| `X6` | cuts the note 6/24 of a step in (1–23) |
+| `A37` | plays the note, then 3 and 7 semitones up, in turn, a sixth of a step each, for as long as it's held |
+| `!` | plays the note at full velocity |
+
+Playhead gestures move the track's own playhead, so each track can loop, wait or turn round on its
+own, and are shown in the accent colour:
+
+| Gesture | |
+|---|---|
+| `J12` | after this step, carries on from step 12 (`J0` loops the track there) |
+| `J?` | after this step, carries on from any step, the same one each time the song plays |
+| `W2` | plays this step 2 more times before going on |
+| `B` | plays the track backwards from here, or forwards again |
+| `*2` `/2` | plays the track 2 (to 4) times as fast, or as slow, until the next speed or the top of its loop; `*1` is the song's speed |
+
+The status line says what the gestures under the cursor do, `^a` `^x` change their amounts, and
+`d` `y` `p` work on them as in any field. Closed tracks mark a step with gestures `◆`. A muted
+track's playhead still goes where its gestures send it, so it's in place when it comes back. In
+the demo, the hats ratchet into each bar, the second clap is pushed late, the acid's octave is
+gated and its A♭ goes round its chord, and the pluck turns round on its G, going back and forth.
+
 The **conductor** is a lane of each pattern for what belongs to the whole song: left of the
 first track, beside the step numbers, two fields on each step. `h` from the first track's notes
-(`gh`) goes into them, or `fg`. In insert mode, type a gesture: `T140` sets the tempo from that
+(`gh`) goes into them, or `fC` from any track. In insert mode, type a gesture: `T140` sets the tempo from that
 step, `~140` slides there, arriving on the step, `T--` goes back to the song's `:bpm`, `X` stops
 the song at the end of the step, `P3` cues pattern 3 for the next bar, `M2` mutes track 2 and `M-2`
 unmutes it, and `S2` `S-2` solo and unsolo it. Those mutes and solos last until the song stops,

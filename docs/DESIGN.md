@@ -802,7 +802,8 @@ would have, until the setting's next lock. Arming record on the mixer page doesn
 mode, and a change during the count-in does nothing.
 
 The track under the cursor opens out on the grid, as do the tracks `te` keeps open
-(`Editor::is_open`): after its notes, each note's velocity and a field for each lock column. A
+(`Editor::is_open`): after its notes, each note's velocity, its two gesture fields, and a field
+for each lock column. A
 value shows from 00 to 99 across the setting's range on its own curve (`lock_text`), `~` before
 it for a slide, `--` for a reset, and `╵` on the rows it carries on over, counting round from the
 track's last lock, as the loop plays it. A header row names the fields, underlining the letter
@@ -811,8 +812,8 @@ instrument's cutoff and a filter's say, an effect's column puts its number first
 2.cutoff` does (`2cu`), and `f`'s infobox gives each its full name. Closed tracks mark a step with locks `◆` at its
 end. The status line lists the cursor's locks in place of the key hints.
 
-The cursor has a field as well as a step (`StepField`: the note, the velocity, or a lock column
-by its place), kept on the editor rather than in each selection: `h` `l` step through the open
+The cursor has a field as well as a step (`StepField`: the note, the velocity, a gesture field, a
+lock column by its place, or the conductor's), kept on the editor rather than in each selection: `h` `l` step through the open
 track's fields and then on to the next track, and any other motion that changes track puts it
 back on the notes, as do `th` `tl`. Edits go to the field only while every selection is on the
 cursor's track (`Editor::on_field`); across tracks they take whole steps, as before. A field's
@@ -861,16 +862,69 @@ pattern's with its lanes in the `Section`. `:export` renders each part with its 
 conductor, its own cues aside, as the parts are already the arrangement's (the status line
 says so when there are any); a selection exports without one.
 
-In the editor, the conductor's fields are the first track's leftmost (`StepField::Gesture`): `h`
-from its notes goes into them, `fg` `fG` straight there. Its cursor is bounded by the
+In the editor, the conductor's fields are the first track's leftmost (`StepField::Conductor`):
+`h` from its notes goes into them, `fC` straight there from any track. Its cursor is bounded by the
 conductor's length rather than the track's, and `:len` there sets that. Insert mode types a
 gesture letter by letter: it goes in once it can't go on (`T140`, `X`), or with enter or `esc`
 (`P3`, which might have been `P31`), and a letter that can't follow puts in what was there
 before it. The field ops (`d` `y` `p`, `^a` `^x` a tempo by 1 BPM and octave keys by 10, `&`
-filling tempos) read and write gestures as values (`fields::Value::Gesture`). The grid shows the
+filling tempos) read and write gestures as values (`fields::Value::Conductor`). The grid shows the
 lane only when it has gestures or the cursor's in it, with the playhead from
 `Status::conductor_step`, and the header's tempo is the engine's (`Status::tempo`) while
 playing.
+
+### Gestures
+
+A track's **gestures** (`lattice-core/src/gesture.rs`) are what trackers' effect columns are
+mostly used for: things that happen once on a step. A `Step` has two fields of them,
+`[Option<Gesture>; GESTURES]`, so it stays `Copy`; each is written as it's typed (`R3`, `J12`)
+and saved that way. Times are in 24ths of a step (`TICKS`): at 120 BPM a 24th is 5 ms, about the
+smallest shift that's felt, and 24 divides into halves, thirds, quarters, sixths and eighths.
+
+- **Note gestures** act on the step's note, or on the one still sounding if it has none: `R3`
+  retriggers it 3 times within the step, `r3` fading; `D8` starts it 8/24 late; `X6` cuts it
+  6/24 in; `A37` goes round it and 3 and 7 semitones up, a sixth of a step each, for as long as
+  it's held; `!` plays it at full velocity.
+- **Playhead gestures** move the track's playhead: `J12` carries on from step 12 after this one,
+  and `J?` from a step picked from the pass, the step and the track, so the song plays the same
+  each time; `W2` plays the step twice more before going on; `B` turns the track backwards, or
+  forwards again; `*2` `/2` play it 2 to 4 times as fast or as slow, until the next speed or the
+  top of its loop.
+
+Rules move gestures with their steps, as they move locks. A muted track's notes and note
+gestures go unplayed, but its playhead gestures still move it, so it's where it should be when
+it comes back.
+
+The engine plays them with **events due later in a step**. Each `TrackPlayer` has a queue
+(`due`, room for `MAX_DUE`, made when it is) of note events at frames counted from the engine's
+start: a delayed note starting (`Later::Start`), a held note playing again as itself or as an
+arpeggio's next pitch (`Later::Change`, which follows the held note's pitch so its note-off
+ends what's sounding), and a cut ending every held note (`Later::Cut`). A step's gestures queue
+what they play when the step does, timed from its length at the tempo of the moment; anything
+left due before the next step is played first, and the rest before the block ends
+(`Engine::play_due`), each at its exact offset. A retrigger or arpeggio only acts on a note still
+held, so a cut, or the note ending, stops it. `tests/realtime.rs` plays every gesture, so none
+of this allocates.
+
+A track's steps are played by `Engine::play_track_step`, once per song step at the song's
+speed. The playhead's gestures are read as it arrives at a step (not again while a `W` waits),
+so a speed sets the step's own length; then, after the notes, the playhead moves on: nowhere
+while waiting, to a jump's step, or one back or on. Coming round to step 0 (going forwards, by a
+jump to 0, or going backwards past 0) starts a new pass, realised afresh for the rules, and puts
+the speed back. A fast track queues its next step within the song's (`Later::Step`); a slow one
+sits out the song's steps between its own (`rest`). Note lengths count the track's own steps, so
+a note at half speed lasts twice as long. A track that's moving at another speed, or jumping,
+drifts against the others, as tracks of different lengths do; a new pattern, and stopping, put
+every playhead back at the top, forwards, at the song's speed.
+
+In the editor, a track's gesture fields come after its velocity (`StepField::Gesture`, `fg`
+`fG`). Typing one goes letter by letter as the conductor's do, through the same code (`Typed`
+gives each kind its parsing, and `r` stays small, as it fades where `R` doesn't); it goes in once
+nothing could follow (`R3`, `D3`, `J?`), or with enter or `esc` (`D2`, which might be `D23`), and
+the status line describes it (`Gesture::describe`), as it does the gestures under the cursor in
+normal mode. `^a` `^x` change a gesture's amount within its range; `&` doesn't fill them. The
+grid draws note gestures in the track's colour and playhead gestures in the accent, and a closed
+track marks a step with gestures `◆`, as it does locks.
 
 ### Macros
 

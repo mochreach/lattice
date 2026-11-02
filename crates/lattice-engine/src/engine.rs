@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 use lattice_core::{
     Change, Conductor, Gesture, Grid, Lane, Lock, Locks, MACRO, MAX_LOCKS, MAX_PARAMS, MAX_STEPS,
-    Mix, ParamInfo, Step, Track, db_to_gain, realise_into,
+    Mix, ParamInfo, SongGesture, Step, TICKS, Track, db_to_gain, realise_into,
 };
 pub use lattice_core::{MAX_EFFECTS, MAX_GROUPS, MAX_TRACKS};
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
@@ -37,6 +37,10 @@ pub(crate) const MAX_BLOCK: usize = 256;
 const MAX_EVENTS: usize = 128;
 /// Notes a track can hold at once before the oldest is cut.
 const MAX_HELD: usize = 16;
+/// Events a track's gestures can have waiting for later in its step; more are dropped.
+const MAX_DUE: usize = 64;
+/// An arpeggio's notes in each step.
+const ARPEGGIO: u64 = 6;
 const COMMAND_QUEUE: usize = 256;
 /// Most input waiting to be read, in frames, before the oldest is dropped: it builds up if the
 /// input's clock runs faster than the output's, and adds to the latency.
@@ -715,7 +719,30 @@ impl Handle {
 #[derive(Debug, Clone, Copy)]
 struct Held {
     pitch: u8,
+    velocity: u8,
     steps_left: u16,
+    /// An arpeggio it goes round each step: its root, and the two steps above it.
+    arpeggio: Option<(u8, u8, u8)>,
+}
+
+/// Something a track's gestures play later in a step, at a frame counted from the engine's
+/// start.
+#[derive(Debug, Clone, Copy)]
+struct Due {
+    at: u64,
+    what: Later,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Later {
+    /// A delayed note starts, if it's still held.
+    Start { pitch: u8, velocity: u8 },
+    /// The held note `from` plays again as `to`: a retrigger, or an arpeggio's next note.
+    Change { from: u8, to: u8, velocity: u8 },
+    /// Every held note ends.
+    Cut,
+    /// The track's next step, played faster than the song's.
+    Step,
 }
 
 /// A track as the engine plays it: the pattern, its instrument and the buffers to play it with.
@@ -748,6 +775,20 @@ pub struct TrackPlayer {
     /// The conductor's mute and solo (`M2`, `S-2`) over the track's own, while the song plays.
     conducted_mute: Option<bool>,
     conducted_solo: Option<bool>,
+    /// The pass `steps` was realised for, if it's been realised since playing began.
+    realised: Option<u32>,
+    /// What the step's gestures play later in it. Room for `MAX_DUE`.
+    due: Vec<Due>,
+    /// Where the playhead's gestures have it going: backwards (`B`), so many times as fast
+    /// (`*2`) or as slow (`/2`), how many more times it plays this step (`W2`), and how many of
+    /// the song's steps it sits out before its next, at a slow speed.
+    backwards: bool,
+    faster: u8,
+    slower: u8,
+    waits: Option<u8>,
+    rest: u8,
+    /// The frame the song's step playing ends on, which a fast track's steps fit within.
+    step_ends: u64,
 }
 
 /// A setting sliding from one value to the next, along its curve, for a slide lock.
@@ -776,6 +817,14 @@ impl TrackPlayer {
             ramps: [None; MAX_LOCKS],
             conducted_mute: None,
             conducted_solo: None,
+            realised: None,
+            due: Vec::with_capacity(MAX_DUE),
+            backwards: false,
+            faster: 1,
+            slower: 1,
+            waits: None,
+            rest: 0,
+            step_ends: 0,
             track,
             instrument,
             effects: effects(),
@@ -796,6 +845,52 @@ impl TrackPlayer {
 }
 
 impl TrackPlayer {
+    /// Back to the top of its steps, going forwards at the song's speed, with nothing due.
+    fn rewind(&mut self) {
+        self.playhead = 0;
+        self.pass = 0;
+        self.realised = None;
+        self.due.clear();
+        self.backwards = false;
+        self.faster = 1;
+        self.slower = 1;
+        self.waits = None;
+        self.rest = 0;
+    }
+
+    /// Takes the earliest event due before frame `until`, if there is one.
+    fn take_due(&mut self, until: u64) -> Option<Due> {
+        let (i, _) = (self.due.iter().enumerate())
+            .filter(|(_, d)| d.at < until)
+            .min_by_key(|(_, d)| d.at)?;
+        // In range, as it was just found.
+        Some(self.due.remove(i))
+    }
+
+    /// Plays a note event that's come due, `offset` frames into the block.
+    fn play_later(&mut self, what: Later, offset: u32) {
+        match what {
+            Later::Start { pitch, velocity } => {
+                if self.held.iter().any(|h| h.pitch == pitch) {
+                    push(&mut self.events, note_on(offset, pitch, velocity));
+                }
+            }
+            Later::Change { from, to, velocity } => {
+                if let Some(h) = self.held.iter_mut().find(|h| h.pitch == from) {
+                    push(&mut self.events, note_off(offset, from));
+                    push(&mut self.events, note_on(offset, to, velocity));
+                    h.pitch = to;
+                }
+            }
+            Later::Cut => {
+                for h in self.held.drain(..) {
+                    push(&mut self.events, note_off(offset, h.pitch));
+                }
+            }
+            Later::Step => {}
+        }
+    }
+
     /// How the track sits in the mix: its own, with the conductor's mute and solo over it.
     fn mix(&self) -> Mix {
         let mut mix = self.track.mix;
@@ -1239,8 +1334,7 @@ impl Engine {
                 push(&mut t.events, note_off(0, h.pitch));
             }
             t.unlock();
-            t.playhead = 0;
-            t.pass = 0;
+            t.rewind();
             t.position = u64::MAX;
             // The conductor's mutes and solos last while the song plays.
             t.conducted_mute = None;
@@ -1317,6 +1411,7 @@ impl Engine {
                         t.settle_macros(0);
                         // Re-realise so the edit is heard on this pass, not the next.
                         realise_into(&t.track, t.pass, &mut t.steps);
+                        t.realised = Some(t.pass);
                     }
                     self.discard(Garbage::Track(track));
                 }
@@ -1629,6 +1724,7 @@ impl Engine {
             player.pass = (self.step_index / len) as u32;
         }
         realise_into(&player.track, player.pass, &mut player.steps);
+        player.realised = self.playing.then_some(player.pass);
         player.settle_macros(0);
         let index = index.min(self.tracks.len());
         self.tracks.insert(index, player);
@@ -1752,6 +1848,10 @@ impl Engine {
         loop {
             let until = self.clock.frames_until_step() as usize;
             if until == 0 {
+                // What the last step's gestures left due before this one comes first.
+                if self.playing {
+                    self.play_due(self.frames + pos as u64);
+                }
                 let step = self.clock.step();
                 self.clock.take_step();
                 if self.playing {
@@ -1766,6 +1866,9 @@ impl Engine {
             if pos == len {
                 break;
             }
+        }
+        if self.playing {
+            self.play_due(self.frames + len as u64);
         }
 
         for t in &mut self.tracks {
@@ -1932,70 +2035,21 @@ impl Engine {
 
         // Which tracks hit on this step, for choking.
         let mut hits = [false; MAX_TRACKS];
-        // When this step's played, and how long until what's played along with it reaches the
-        // engine.
-        let (at, latency) = (self.frames + u64::from(offset), self.latency());
-        let mutes = self.mutes;
-        let frames_per_step = self.clock.samples_per_step();
-        for (index, t) in self.tracks.iter_mut().enumerate() {
-            // Note-offs first, so a voice can be reused by this step's note.
-            t.held.retain_mut(|h| {
-                h.steps_left -= 1;
-                if h.steps_left == 0 {
-                    push(&mut t.events, note_off(offset, h.pitch));
-                }
-                h.steps_left > 0
-            });
-            if t.track.steps.is_empty() {
-                continue;
-            }
-
-            if t.playhead == 0 {
-                realise_into(&t.track, t.pass, &mut t.steps);
-                self.looper.pass_starts(index, at, latency);
-            }
-            t.position = u64::from(t.pass) << 32 | t.playhead as u64;
-            self.status.set_position(index, t.position);
-            // Muted in this pattern or by the song, its steps go by unplayed.
-            // The playhead is kept within the steps, being reset whenever they change.
-            let Some(&realised) = t.steps.get(t.playhead) else {
-                t.playhead = 0;
+        let ends = self.frames + u64::from(offset) + self.clock.samples_per_step().round() as u64;
+        for index in 0..self.tracks.len() {
+            let Some(t) = self.tracks.get_mut(index) else {
                 continue;
             };
-            let step = match t.track.pattern_mute || mutes >> index & 1 == 1 {
-                true => Step::default(),
-                false => realised,
-            };
-            if !step.locks.is_empty() {
-                // Before the note, so it plays with the step's settings.
-                t.lock(step.locks, offset);
-                t.start_ramps(t.playhead, step.locks, frames_per_step);
+            t.step_ends = ends;
+            // A slow track sits out the song's steps between its own.
+            if t.rest > 0 {
+                t.rest -= 1;
+                continue;
             }
-            if let Some(note) = step.note {
-                // Retriggering a held pitch, or out of room: end the old note first.
-                let existing = t.held.iter().position(|h| h.pitch == note.pitch);
-                let full = (t.held.len() == MAX_HELD).then_some(0);
-                if let Some(i) = existing.or(full)
-                    && let Some(old) = t.held.get(i)
-                {
-                    push(&mut t.events, note_off(offset, old.pitch));
-                    t.held.remove(i);
-                }
-                push(&mut t.events, note_on(offset, note.pitch, note.velocity));
-                self.status.started_note(index, note.pitch, note.velocity);
-                if let Some(hit) = hits.get_mut(index) {
-                    *hit = true;
-                }
-                t.held.push(Held {
-                    pitch: note.pitch,
-                    steps_left: note.length.max(1),
-                });
-            }
-
-            t.playhead += 1;
-            if t.playhead >= t.steps.len() {
-                t.playhead = 0;
-                t.pass += 1;
+            if self.play_track_step(index, offset)
+                && let Some(hit) = hits.get_mut(index)
+            {
+                *hit = true;
             }
         }
         for (index, &hit) in hits.iter().enumerate() {
@@ -2003,6 +2057,217 @@ impl Engine {
                 self.choke_others(index, offset, &hits);
             }
         }
+    }
+
+    /// Plays what's due on every track before frame `until`, in time order: the notes its
+    /// gestures play later in a step, and a fast track's steps between the song's.
+    fn play_due(&mut self, until: u64) {
+        for index in 0..self.tracks.len() {
+            while let Some(due) = self.tracks.get_mut(index).and_then(|t| t.take_due(until)) {
+                // Due before `until`, so within the block.
+                let offset = u32::try_from(due.at.saturating_sub(self.frames)).unwrap_or(0);
+                match due.what {
+                    Later::Step => {
+                        if self.play_track_step(index, offset) {
+                            self.choke_others(index, offset, &[]);
+                        }
+                    }
+                    what => {
+                        if let Some(t) = self.tracks.get_mut(index) {
+                            t.play_later(what, offset);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Plays track `index`'s next step, `offset` frames into the block, and moves its playhead
+    /// on, as its gestures say. Whether it played a note.
+    fn play_track_step(&mut self, index: usize, offset: u32) -> bool {
+        // When this step's played, and how long until what's played along with it reaches the
+        // engine.
+        let (at, latency) = (self.frames + u64::from(offset), self.latency());
+        let muted = self.mutes >> index & 1 == 1;
+        let song_step = self.clock.samples_per_step();
+        let Some(t) = self.tracks.get_mut(index) else {
+            return false;
+        };
+        if t.track.steps.is_empty() {
+            // Note-offs still come, so nothing's left sounding.
+            t.held.retain_mut(|h| {
+                h.steps_left -= 1;
+                if h.steps_left == 0 {
+                    push(&mut t.events, note_off(offset, h.pitch));
+                }
+                h.steps_left > 0
+            });
+            return false;
+        }
+        if t.realised != Some(t.pass) {
+            realise_into(&t.track, t.pass, &mut t.steps);
+            t.realised = Some(t.pass);
+            self.looper.pass_starts(index, at, latency);
+        }
+        t.position = u64::from(t.pass) << 32 | t.playhead as u64;
+        self.status.set_position(index, t.position);
+        // The playhead is kept within the steps, being reset whenever they change.
+        let Some(&realised) = t.steps.get(t.playhead) else {
+            t.playhead = 0;
+            return false;
+        };
+        // The playhead's gestures, once as it arrives rather than each time a wait plays the
+        // step again: a speed sets this step's own length.
+        if t.waits.is_none() {
+            for gesture in realised.gestures() {
+                match gesture {
+                    Gesture::Faster(n) => (t.faster, t.slower) = (n.max(1), 1),
+                    Gesture::Slower(n) => (t.faster, t.slower) = (1, n.max(1)),
+                    Gesture::Backwards => t.backwards = !t.backwards,
+                    _ => {}
+                }
+            }
+        }
+        let slower = t.slower;
+        let length = song_step * f64::from(slower) / f64::from(t.faster);
+        let ends = at + length.round() as u64;
+        let ticks = |n: u8| at + (length * f64::from(n) / f64::from(TICKS)).round() as u64;
+
+        // Note-offs first, so a voice can be reused by this step's note; a note held on goes
+        // on round its arpeggio.
+        let (held, events, due) = (&mut t.held, &mut t.events, &mut t.due);
+        held.retain_mut(|h| {
+            h.steps_left -= 1;
+            if h.steps_left == 0 {
+                push(events, note_off(offset, h.pitch));
+            } else if let Some(arpeggio) = h.arpeggio {
+                arpeggiate(due, h.pitch, arpeggio, 0, (at, ends), h.velocity);
+            }
+            h.steps_left > 0
+        });
+
+        // Muted in this pattern or by the song, its notes go by unplayed, but its playhead
+        // still goes where its gestures send it.
+        let step = match t.track.pattern_mute || muted {
+            true => Step::default(),
+            false => realised,
+        };
+        if !step.locks.is_empty() {
+            // Before the note, so it plays with the step's settings.
+            t.lock(step.locks, offset);
+            t.start_ramps(t.playhead, step.locks, length);
+        }
+        let delay = (step.gestures()).find_map(|g| match g {
+            Gesture::Delay(n) => Some(n),
+            _ => None,
+        });
+        let starts = delay.map_or(at, ticks);
+        let mut hit = false;
+        if let Some(mut note) = step.note {
+            if step.gestures().any(|g| g == Gesture::Accent) {
+                note.velocity = 127;
+            }
+            // Retriggering a held pitch, or out of room: end the old note first.
+            let existing = t.held.iter().position(|h| h.pitch == note.pitch);
+            let full = (t.held.len() == MAX_HELD).then_some(0);
+            if let Some(i) = existing.or(full)
+                && let Some(old) = t.held.get(i)
+            {
+                push(&mut t.events, note_off(offset, old.pitch));
+                t.held.remove(i);
+            }
+            match delay {
+                Some(_) => queue(
+                    &mut t.due,
+                    starts,
+                    Later::Start {
+                        pitch: note.pitch,
+                        velocity: note.velocity,
+                    },
+                ),
+                None => push(&mut t.events, note_on(offset, note.pitch, note.velocity)),
+            }
+            self.status.started_note(index, note.pitch, note.velocity);
+            hit = true;
+            t.held.push(Held {
+                pitch: note.pitch,
+                velocity: note.velocity,
+                steps_left: note.length.max(1),
+                arpeggio: None,
+            });
+        }
+        // The note gestures act on the step's note, or else the latest still sounding, from
+        // the step's start; on the step's own note, from its first hit.
+        let first = u64::from(hit);
+        let (held, due) = (&mut t.held, &mut t.due);
+        if let Some(h) = held.last_mut() {
+            for gesture in step.gestures() {
+                match gesture {
+                    Gesture::Retrigger(n) | Gesture::Fade(n) => {
+                        let n = u64::from(n);
+                        for k in first..n {
+                            let velocity = match gesture {
+                                Gesture::Fade(_) => (u64::from(h.velocity) * (n - k) / n).max(1),
+                                _ => u64::from(h.velocity),
+                            } as u8;
+                            let at = starts + (ends.saturating_sub(starts)) * k / n;
+                            let (from, to) = (h.pitch, h.pitch);
+                            queue(due, at, Later::Change { from, to, velocity });
+                        }
+                    }
+                    Gesture::Arpeggio(a, b) => {
+                        let arpeggio = (h.pitch, a, b);
+                        h.arpeggio = Some(arpeggio);
+                        arpeggiate(due, h.pitch, arpeggio, first, (starts, ends), h.velocity);
+                    }
+                    Gesture::Cut(n) => queue(due, ticks(n), Later::Cut),
+                    _ => {}
+                }
+            }
+        }
+
+        // On to the next step: none yet if it's waiting, the one it jumps to, or the one
+        // before or after.
+        let wait = realised.gestures().find_map(|g| match g {
+            Gesture::Wait(n) => Some(n),
+            _ => None,
+        });
+        t.waits = match (wait, t.waits) {
+            (Some(n), None) => Some(n),
+            (Some(_), Some(left)) if left > 1 => Some(left - 1),
+            _ => None,
+        };
+        if t.waits.is_none() {
+            let len = t.steps.len();
+            let jump = realised.gestures().find_map(|g| match g {
+                Gesture::Jump(to) => Some(usize::from(to) % len),
+                Gesture::Wander => Some(wander(t.pass, t.playhead, index, len)),
+                _ => None,
+            });
+            let (next, top) = match jump {
+                Some(to) => (to, to == 0),
+                None if t.backwards => match t.playhead.checked_sub(1) {
+                    Some(before) => (before, false),
+                    None => (len - 1, true),
+                },
+                None if t.playhead + 1 >= len => (0, true),
+                None => (t.playhead + 1, false),
+            };
+            t.playhead = next;
+            // Round to the top of its loop: a new pass, at the song's speed.
+            if top {
+                t.pass += 1;
+                (t.faster, t.slower) = (1, 1);
+            }
+        }
+        // Its next step, once this one's over: within the song's step if it's fast, or so many
+        // of the song's steps on if it's slow.
+        if ends + 1 < t.step_ends {
+            queue(&mut t.due, ends, Later::Step);
+        } else {
+            t.rest = slower - 1;
+        }
+        hit
     }
 
     /// Plays the conductor's step for `pattern_step` steps into the pattern, its loops
@@ -2024,22 +2289,24 @@ impl Engine {
         let mut tempo = None;
         for gesture in gestures.into_iter().flatten() {
             match gesture {
-                Gesture::Tempo(bpm) | Gesture::Slide(bpm) => tempo = Some(Some(f64::from(bpm))),
-                Gesture::SongTempo => tempo = Some(None),
-                Gesture::Stop => self.stopping = true,
-                Gesture::Pattern(p) => {
+                SongGesture::Tempo(bpm) | SongGesture::Slide(bpm) => {
+                    tempo = Some(Some(f64::from(bpm)))
+                }
+                SongGesture::SongTempo => tempo = Some(None),
+                SongGesture::Stop => self.stopping = true,
+                SongGesture::Pattern(p) => {
                     let pattern = usize::from(p).saturating_sub(1);
                     // Full, the UI thread's fallen behind; it'll miss this cue.
                     let _ = self.conducted.push(Conducted::Pattern(pattern));
                 }
-                Gesture::Mute { track, on } => {
+                SongGesture::Mute { track, on } => {
                     let track = usize::from(track).saturating_sub(1);
                     if let Some(player) = self.tracks.get_mut(track) {
                         player.conducted_mute = Some(on);
                         let _ = self.conducted.push(Conducted::Mute { track, muted: on });
                     }
                 }
-                Gesture::Solo { track, on } => {
+                SongGesture::Solo { track, on } => {
                     let track = usize::from(track).saturating_sub(1);
                     if let Some(player) = self.tracks.get_mut(track) {
                         player.conducted_solo = Some(on);
@@ -2056,7 +2323,7 @@ impl Engine {
                     let gesture = step.iter().flatten().rev().find(|g| g.is_tempo())?;
                     Some((k + 1, *gesture))
                 })?;
-            let Gesture::Slide(target) = target else {
+            let SongGesture::Slide(target) = target else {
                 return None;
             };
             let share = 1.0 / (ahead as f64 + 1.0);
@@ -2113,8 +2380,7 @@ impl Engine {
         }
         for t in &mut self.tracks {
             t.unlock();
-            t.playhead = 0;
-            t.pass = 0;
+            t.rewind();
         }
         self.pattern_step = 0;
         self.conductor_at = 0;
@@ -2148,6 +2414,49 @@ impl Engine {
             }
         }
     }
+}
+
+/// Puts an event in a track's queue for later in the step, unless it's full.
+fn queue(due: &mut Vec<Due>, at: u64, what: Later) {
+    if due.len() < due.capacity() {
+        due.push(Due { at, what });
+    }
+}
+
+/// Queues an arpeggio's notes from the `first`th of its step (each a sixth of the way from
+/// `start` to `end`), starting from the held note `from`: its root, then the steps above, in turn.
+fn arpeggiate(
+    due: &mut Vec<Due>,
+    from: u8,
+    (root, a, b): (u8, u8, u8),
+    first: u64,
+    (start, end): (u64, u64),
+    velocity: u8,
+) {
+    let mut from = from;
+    for k in first..ARPEGGIO {
+        let up = match k % 3 {
+            0 => 0,
+            1 => a,
+            _ => b,
+        };
+        let to = root.saturating_add(up).min(127);
+        let at = start + (end.saturating_sub(start)) * k / ARPEGGIO;
+        queue(due, at, Later::Change { from, to, velocity });
+        from = to;
+    }
+}
+
+/// The step a `J?` jumps to, out of `len`: the same for the same pass, step and track, so the
+/// song plays the same each time.
+fn wander(pass: u32, step: usize, track: usize, len: usize) -> usize {
+    // SplitMix64's finaliser, to scatter neighbouring passes and steps.
+    let mut x = u64::from(pass) << 32 ^ (step as u64) << 8 ^ track as u64;
+    x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    x ^= x >> 31;
+    (x % len.max(1) as u64) as usize
 }
 
 fn note_on(offset: u32, pitch: u8, velocity: u8) -> Event {
@@ -2612,6 +2921,183 @@ mod tests {
             }
         }
         Box::new(Silent)
+    }
+
+    type Notes = std::sync::Arc<std::sync::Mutex<Vec<(u64, bool, u8, u8)>>>;
+
+    /// An instrument that writes down each note on and off: its frame, whether it's on, its
+    /// pitch and velocity.
+    fn logger() -> (Box<dyn Processor>, Notes) {
+        struct Log(u64, Notes);
+        impl Processor for Log {
+            fn process(&mut self, events: &[Event], left: &mut [f32], _: &mut [f32]) {
+                let mut log = self.1.lock().unwrap();
+                for e in events {
+                    let at = self.0 + u64::from(e.offset);
+                    match e.kind {
+                        EventKind::NoteOn { pitch, velocity } => {
+                            log.push((at, true, pitch, velocity))
+                        }
+                        EventKind::NoteOff { pitch } => log.push((at, false, pitch, 0)),
+                        _ => {}
+                    }
+                }
+                self.0 += left.len() as u64;
+            }
+        }
+        let notes = Notes::default();
+        (Box::new(Log(0, notes.clone())), notes)
+    }
+
+    /// A track of `pitches` with these gestures, playing at 120 BPM and 48 kHz: 6,000 frames a
+    /// step, and 250 a 24th.
+    fn gesturing(pitches: &[u8], gestures: &[(usize, &str)]) -> (Engine, Notes) {
+        let mut steps: Vec<Step> = pitches.iter().map(|&p| Step::note(p)).collect();
+        for &(at, gesture) in gestures {
+            let fields = &mut steps[at].gestures;
+            let free = fields.iter_mut().find(|g| g.is_none()).unwrap();
+            *free = Some(gesture.parse().unwrap());
+        }
+        let grid = Grid {
+            name: "gestures".into(),
+            steps_per_beat: 4,
+            tracks: vec![Track {
+                steps,
+                ..Track::default()
+            }],
+            groups: vec![],
+        };
+        let (instrument, notes) = logger();
+        let (mut engine, _) = Engine::new(48_000.0, 120.0, &grid, vec![instrument]);
+        engine.play();
+        (engine, notes)
+    }
+
+    #[test]
+    fn note_gestures_play_within_their_step() {
+        let gestures = [
+            (0, "R3"),
+            (1, "D8"),
+            (2, "X6"),
+            (3, "A37"),
+            (4, "!"),
+            (4, "r2"),
+        ];
+        let (mut engine, notes) = gesturing(&[60, 62, 64, 65, 67], &gestures);
+        render(&mut engine, 256, 30_000);
+        let on = |at, pitch, velocity| (at, true, pitch, velocity);
+        let off = |at, pitch| (at, false, pitch, 0);
+        assert_eq!(
+            *notes.lock().unwrap(),
+            [
+                // Three hits in the step.
+                on(0, 60, 100),
+                off(2_000, 60),
+                on(2_000, 60, 100),
+                off(4_000, 60),
+                on(4_000, 60, 100),
+                // 8/24 late.
+                off(6_000, 60),
+                on(8_000, 62, 100),
+                // Cut 6/24 in.
+                off(12_000, 62),
+                on(12_000, 64, 100),
+                off(13_500, 64),
+                // The note, +3 and +7, a sixth of a step each.
+                on(18_000, 65, 100),
+                off(19_000, 65),
+                on(19_000, 68, 100),
+                off(20_000, 68),
+                on(20_000, 72, 100),
+                off(21_000, 72),
+                on(21_000, 65, 100),
+                off(22_000, 65),
+                on(22_000, 68, 100),
+                off(23_000, 68),
+                on(23_000, 72, 100),
+                // Accented, then a second hit at half that.
+                off(24_000, 72),
+                on(24_000, 67, 127),
+                off(27_000, 67),
+                on(27_000, 67, 63),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_gesture_on_a_step_without_a_note_acts_on_the_one_sounding() {
+        let (mut engine, notes) = gesturing(&[60], &[]);
+        let track = &mut engine.tracks[0].track;
+        track.steps[0].note.as_mut().unwrap().length = 2;
+        track.steps.push(Step::default());
+        track.steps[1].gestures[0] = Some("X12".parse().unwrap());
+        render(&mut engine, 256, 11_000);
+        // Held on into step 1, and cut halfway through it.
+        assert_eq!(
+            *notes.lock().unwrap(),
+            [(0, true, 60, 100), (9_000, false, 60, 0)]
+        );
+    }
+
+    /// The pitches played, in order, on a track whose step `i` plays pitch `i`.
+    fn played(notes: &Notes) -> Vec<(u64, u8)> {
+        (notes.lock().unwrap().iter())
+            .filter(|n| n.1)
+            .map(|n| (n.0, n.2))
+            .collect()
+    }
+
+    #[test]
+    fn playhead_gestures_jump_wait_and_turn_round() {
+        let pitches: Vec<u8> = (0..8).collect();
+        let gestures = [(2, "J5"), (6, "W1"), (7, "B")];
+        let (mut engine, notes) = gesturing(&pitches, &gestures);
+        render(&mut engine, 256, 6_000 * 14);
+        let order: Vec<u8> = played(&notes).into_iter().map(|(_, p)| p).collect();
+        // On to 5 after 2; 6 twice; backwards from 7, waiting on 6 again; then round 5 to 2.
+        assert_eq!(order, [0, 1, 2, 5, 6, 6, 7, 6, 6, 5, 4, 3, 2, 5]);
+    }
+
+    #[test]
+    fn speed_gestures_last_until_the_next_or_the_top_of_the_loop() {
+        let (mut engine, notes) = gesturing(&[0, 1, 2, 3], &[(2, "*2")]);
+        render(&mut engine, 100, 30_000);
+        let fast = [
+            (0, 0),
+            (6_000, 1),
+            (12_000, 2),
+            (15_000, 3),
+            (18_000, 0),
+            (24_000, 1),
+        ];
+        assert_eq!(played(&notes), fast);
+
+        let (mut engine, notes) = gesturing(&[0, 1, 2, 3], &[(1, "/2")]);
+        render(&mut engine, 100, 45_000);
+        let slow = [(0, 0), (6_000, 1), (18_000, 2), (30_000, 3), (42_000, 0)];
+        assert_eq!(played(&notes), slow);
+        // Half speed holds notes twice as long.
+        assert!(notes.lock().unwrap().contains(&(30_000, false, 2, 0)));
+    }
+
+    #[test]
+    fn a_random_jump_is_the_same_each_time_the_song_plays() {
+        let pitches: Vec<u8> = (0..16).collect();
+        let order = || {
+            let (mut engine, notes) = gesturing(&pitches, &[(3, "J?")]);
+            render(&mut engine, 256, 6_000 * 40);
+            played(&notes)
+                .into_iter()
+                .map(|(_, p)| p)
+                .collect::<Vec<_>>()
+        };
+        let first = order();
+        assert_eq!(first, order());
+        assert_eq!(first[..4], [0, 1, 2, 3]);
+        assert!(
+            first.iter().filter(|&&p| p == 3).count() > 2,
+            "it comes round"
+        );
     }
 
     #[test]
