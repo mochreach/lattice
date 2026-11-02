@@ -1520,10 +1520,11 @@ impl Editor {
         }
         self.yank_tracks();
         self.checkpoint();
+        // The selected tracks are there, so each comes out.
         for &t in tracks.iter().rev() {
-            self.remove_track(t);
+            let _ = self.remove_track(t);
         }
-        let first = tracks[0].min(self.grid.tracks.len() - 1);
+        let first = (tracks.first().copied().unwrap_or(0)).min(self.grid.tracks.len() - 1);
         self.select_point(first, self.cursor().step);
         vec![Effect::TracksChanged]
     }
@@ -1544,8 +1545,10 @@ impl Editor {
             _ => cursor.track + 1,
         };
         self.checkpoint();
+        let at = at.min(self.grid.tracks.len());
         for (i, track) in self.track_clipboard.clone().into_iter().enumerate() {
-            self.insert_track(at + i, track);
+            // Each goes in after the one before, so there's room.
+            let _ = self.insert_track(at + i, track);
         }
         self.select_point(at, cursor.step);
         vec![Effect::TracksChanged]
@@ -1914,29 +1917,45 @@ impl Editor {
     }
 
     /// Adds a track at `index`, with a new id.
-    pub(crate) fn insert_track(&mut self, index: usize, track: Track) {
-        self.arrangement.insert_track(index, track.steps.len());
-        self.grid.insert_track(index, track);
+    /// Adds a track at `index`, with a new id. False, changing nothing, if `index` is past the
+    /// end.
+    #[must_use]
+    pub(crate) fn insert_track(&mut self, index: usize, track: Track) -> bool {
+        let len = track.steps.len();
+        if !self.grid.insert_track(index, track) {
+            return false;
+        }
+        self.arrangement.insert_track(index, len);
         self.ids.insert(index, TrackId(self.next_id));
         self.next_id += 1;
         for entry in &mut self.song.yanked {
             entry.insert_track(index);
         }
         self.reconcile();
+        true
     }
 
-    pub(crate) fn remove_track(&mut self, index: usize) {
-        self.grid.remove_track(index);
+    /// Removes the track at `index`. False, changing nothing, if there's no such track.
+    #[must_use]
+    pub(crate) fn remove_track(&mut self, index: usize) -> bool {
+        if self.grid.remove_track(index).is_none() {
+            return false;
+        }
         self.arrangement.remove_track(index);
         self.ids.remove(index);
         for entry in &mut self.song.yanked {
             entry.remove_track(index);
         }
         self.reconcile();
+        true
     }
 
-    pub(crate) fn move_track(&mut self, from: usize, to: usize) {
-        self.grid.move_track(from, to);
+    /// Moves the track at `from` to `to`. False, changing nothing, if either isn't a track.
+    #[must_use]
+    pub(crate) fn move_track(&mut self, from: usize, to: usize) -> bool {
+        if !self.grid.move_track(from, to) {
+            return false;
+        }
         self.arrangement.move_track(from, to);
         let id = self.ids.remove(from);
         self.ids.insert(to, id);
@@ -1944,6 +1963,7 @@ impl Editor {
             entry.move_track(from, to);
         }
         self.reconcile();
+        true
     }
 
     /// Where the track with `id` is now, if it's still there.
@@ -3057,8 +3077,8 @@ mod tests {
         let mut e = editor();
         e.sounding.push((Key::Char('z'), TrackId(1), 60, false));
         e.sounding.push((Key::Char('z'), TrackId(0), 62, false));
-        e.move_track(1, 0);
-        e.remove_track(1);
+        assert!(e.move_track(1, 0));
+        assert!(e.remove_track(1));
         // Track 0, a, has gone, and its note with it; b's ends where b is now.
         assert_eq!(
             e.release_previews(Key::Char('z'), false),

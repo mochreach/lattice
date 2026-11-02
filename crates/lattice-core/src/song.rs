@@ -153,8 +153,13 @@ impl Locks {
                 None => return false,
             },
         };
-        self.0[slot] = Some(lock);
-        true
+        match self.0.get_mut(slot) {
+            Some(slot) => {
+                *slot = Some(lock);
+                true
+            }
+            None => false,
+        }
     }
 
     /// Keeps only the locks `keep` says to, letting it change them as it goes.

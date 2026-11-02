@@ -159,9 +159,26 @@ impl<K: Kind> Device<K> {
         self.kind.params()
     }
 
-    /// The value of the parameter with this id.
+    /// The value of the parameter with this id. There's one for each of the kind's
+    /// parameters, so one that's missing reads as its default, as a new device's would.
     pub fn get(&self, id: u32) -> f32 {
-        self.values[id as usize]
+        match self.values.get(id as usize) {
+            Some(&value) => value,
+            None => (self.params().iter())
+                .find(|p| p.id == id)
+                .map_or(0.0, |p| p.default),
+        }
+    }
+
+    /// Sets the parameter with this id. False if the device has no such parameter.
+    pub fn set(&mut self, id: u32, value: f32) -> bool {
+        match self.values.get_mut(id as usize) {
+            Some(slot) => {
+                *slot = value;
+                true
+            }
+            None => false,
+        }
     }
 }
 
@@ -210,7 +227,9 @@ impl<K: Kind> TryFrom<Sparse<K>> for Device<K> {
                     param.min, param.max
                 ));
             }
-            device.values[param.id as usize] = value;
+            if !device.set(param.id, value) {
+                return Err(format!("the {kind}'s {name} setting is missing"));
+            }
         }
         Ok(device)
     }

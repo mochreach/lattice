@@ -21,7 +21,7 @@ pub enum Next {
 impl Editor {
     /// How many steps the pattern being edited plays for.
     pub fn pattern_steps(&self) -> u64 {
-        self.arrangement.steps(&self.grid, self.arrangement.current)
+        self.arrangement.current_steps(&self.grid)
     }
 
     /// The pattern being edited.
@@ -67,9 +67,12 @@ impl Editor {
         if index == self.arrangement.current {
             return vec![];
         }
+        if !self.arrangement.select(&mut self.grid, index) {
+            self.message = Some(format!("no pattern {}", index + 1));
+            return vec![];
+        }
         self.held.clear();
         self.take = None;
-        self.arrangement.select(&mut self.grid, index);
         self.clamp_selection();
         self.message = Some(format!("pattern {}", self.pattern_name()));
         changed(0..self.grid.tracks.len())
@@ -95,7 +98,7 @@ impl Editor {
             return Err(format!("there's already a pattern {name}"));
         }
         let lanes = if copy {
-            self.arrangement.lanes(&self.grid, self.arrangement.current)
+            self.grid.tracks.iter().map(Lane::of).collect()
         } else {
             self.grid
                 .tracks
@@ -184,7 +187,7 @@ impl Editor {
         self.song.bar = self.entry_start(entry) + into;
         self.keep_on_entry(entry);
         let bar = u64::from(BEATS_PER_BAR * self.grid.steps_per_beat.max(1));
-        let steps = self.arrangement.steps(&self.grid, pattern);
+        let steps = (self.arrangement.steps(&self.grid, pattern)).ok_or("no such pattern")?;
         let auto = if bars.is_some() {
             ""
         } else {
@@ -334,7 +337,7 @@ mod tests {
         );
         run(&mut e, "pat A");
         assert!(e.grid.tracks[0].pattern_mute);
-        assert!(!e.arrangement.lanes(&e.grid, 1)[0].mute);
+        assert!(!e.arrangement.lanes(&e.grid, 1).unwrap()[0].mute);
         // And it's undone like any edit.
         e.handle(Key::Char('t'));
         e.handle(Key::Char('M'));

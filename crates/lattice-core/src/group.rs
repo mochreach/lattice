@@ -61,8 +61,13 @@ impl Grid {
     }
 
     /// Inserts a track at `index`. Inserted inside a group, between two of its tracks, it joins
-    /// the group; at either end it stays outside.
-    pub fn insert_track(&mut self, index: usize, track: Track) {
+    /// the group; at either end it stays outside. False, changing nothing, if `index` is past
+    /// the end.
+    #[must_use]
+    pub fn insert_track(&mut self, index: usize, track: Track) -> bool {
+        if index > self.tracks.len() {
+            return false;
+        }
         self.tracks.insert(index, track);
         for group in &mut self.groups {
             if index <= group.first {
@@ -71,10 +76,15 @@ impl Grid {
                 group.len += 1;
             }
         }
+        true
     }
 
-    /// Removes the track at `index`, and its group if it was the group's last track.
-    pub fn remove_track(&mut self, index: usize) -> Track {
+    /// Removes the track at `index`, and its group if it was the group's last track. `None`
+    /// if there's no such track.
+    pub fn remove_track(&mut self, index: usize) -> Option<Track> {
+        if index >= self.tracks.len() {
+            return None;
+        }
         let track = self.tracks.remove(index);
         for group in &mut self.groups {
             if index < group.first {
@@ -84,12 +94,17 @@ impl Grid {
             }
         }
         self.groups.retain(|g| g.len > 0);
-        track
+        Some(track)
     }
 
     /// Moves a track to `to`. It stays in its group while it moves within it, leaves it when it
     /// moves past either end, and joins a group it lands inside.
-    pub fn move_track(&mut self, from: usize, to: usize) {
+    /// False, changing nothing, if either isn't a track.
+    #[must_use]
+    pub fn move_track(&mut self, from: usize, to: usize) -> bool {
+        if from >= self.tracks.len() || to >= self.tracks.len() {
+            return false;
+        }
         let group = self.group_of(from);
         let track = self.tracks.remove(from);
         for (i, g) in self.groups.iter_mut().enumerate() {
@@ -111,6 +126,7 @@ impl Grid {
             }
         }
         self.groups.retain(|g| g.len > 0);
+        true
     }
 }
 
@@ -144,21 +160,21 @@ mod tests {
     #[test]
     fn inserting_inside_joins_and_at_the_ends_stays_out() {
         let mut g = grid();
-        g.insert_track(3, Track::default());
+        assert!(g.insert_track(3, Track::default()));
         assert_eq!(g.groups[0].tracks(), 2..6);
-        g.insert_track(2, Track::default());
+        assert!(g.insert_track(2, Track::default()));
         assert_eq!(g.groups[0].tracks(), 3..7);
-        g.insert_track(7, Track::default());
+        assert!(g.insert_track(7, Track::default()));
         assert_eq!(g.groups[0].tracks(), 3..7);
     }
 
     #[test]
     fn removing_shrinks_and_empties_the_group() {
         let mut g = grid();
-        g.remove_track(0);
+        g.remove_track(0).unwrap();
         assert_eq!(members(&g), ["2", "3", "4"]);
         for _ in 0..3 {
-            g.remove_track(1);
+            g.remove_track(1).unwrap();
         }
         assert!(g.groups.is_empty());
     }
@@ -167,18 +183,18 @@ mod tests {
     fn moving_within_keeps_members_and_past_the_ends_leaves() {
         let mut g = grid();
         // The first member, one along, and back again.
-        g.move_track(2, 3);
+        assert!(g.move_track(2, 3));
         assert_eq!(members(&g), ["3", "2", "4"]);
-        g.move_track(3, 2);
+        assert!(g.move_track(3, 2));
         assert_eq!(members(&g), ["2", "3", "4"]);
         // The last member, one out.
-        g.move_track(4, 5);
+        assert!(g.move_track(4, 5));
         assert_eq!(members(&g), ["2", "3"]);
         // A track from outside, into the middle.
-        g.move_track(0, 2);
+        assert!(g.move_track(0, 2));
         assert_eq!(members(&g), ["2", "0", "3"]);
         // The first member, one out to the left.
-        g.move_track(1, 0);
+        assert!(g.move_track(1, 0));
         assert_eq!(members(&g), ["0", "3"]);
     }
 
@@ -186,9 +202,9 @@ mod tests {
     fn a_two_track_group_survives_its_members_swapping() {
         let mut g = grid();
         g.groups = vec![Group::new("pair", 1..3)];
-        g.move_track(1, 2);
+        assert!(g.move_track(1, 2));
         assert_eq!(members(&g), ["2", "1"]);
-        g.move_track(2, 1);
+        assert!(g.move_track(2, 1));
         assert_eq!(members(&g), ["1", "2"]);
     }
 }

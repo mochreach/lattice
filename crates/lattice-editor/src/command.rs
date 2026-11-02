@@ -1338,7 +1338,9 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                 steps: vec![Step::default(); NEW_TRACK_STEPS],
                 ..Track::default()
             };
-            editor.insert_track(editor.cursor().track + 1, track);
+            if !editor.insert_track(editor.cursor().track + 1, track) {
+                return Err("can't add a track there".into());
+            }
             editor.select_point(editor.cursor().track + 1, editor.cursor().step);
             Ok(vec![Effect::TracksChanged])
         }
@@ -1347,7 +1349,9 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                 return Err("can't remove the only track".into());
             }
             editor.checkpoint();
-            editor.remove_track(track);
+            if !editor.remove_track(track) {
+                return Err("no such track".into());
+            }
             editor.select_point(track, editor.cursor().step);
             Ok(vec![Effect::TracksChanged])
         }
@@ -1360,7 +1364,9 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                 return Ok(vec![]);
             }
             editor.checkpoint();
-            editor.move_track(track, to);
+            if !editor.move_track(track, to) {
+                return Err("no such track".into());
+            }
             editor.select_point(to, editor.cursor().step);
             Ok(vec![Effect::TracksChanged])
         }

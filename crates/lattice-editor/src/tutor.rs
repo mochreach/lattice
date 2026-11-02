@@ -706,7 +706,9 @@ const LESSONS: &[Lesson] = &[
                     instrument,
                     ..Track::default()
                 };
-                e.insert_track(index(e, "HAT") + 1, beat);
+                let at = (index(e, "HAT") + 1).min(e.grid.tracks.len());
+                // At most at the end, so it goes in.
+                let _ = e.insert_track(at, beat);
             }
         },
         watch: never,

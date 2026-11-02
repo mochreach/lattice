@@ -28,9 +28,7 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
     let tracks = &editor.grid.tracks;
     let steps_per_beat = u64::from(editor.grid.steps_per_beat.max(1));
     let bar = u64::from(BEATS_PER_BAR) * steps_per_beat;
-    let pattern_steps: Vec<u64> = (0..arrangement.patterns.len())
-        .map(|p| arrangement.steps(&editor.grid, p))
-        .collect();
+    let pattern_steps = arrangement.all_steps(&editor.grid);
     let entry_bars = editor.entry_bars();
     let total = entry_bars.iter().sum::<usize>() as u64 * bar;
     let time = |steps: u64| {
@@ -144,7 +142,10 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
         let colour = theme.track(entry.pattern);
         let name = &arrangement.patterns[entry.pattern].name;
         let lanes = lanes[entry.pattern]
-            .get_or_insert_with(|| arrangement.lanes(&editor.grid, entry.pattern));
+            // An entry of a pattern that isn't there draws empty.
+            .get_or_insert_with(|| {
+                (arrangement.lanes(&editor.grid, entry.pattern)).unwrap_or_default()
+            });
         for at in from..to {
             let row = at - start;
             let repeat = row / pattern_bars;

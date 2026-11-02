@@ -82,8 +82,8 @@ impl Editor {
     /// How many bars each entry plays for.
     pub fn entry_bars(&self) -> Vec<usize> {
         let bar = u64::from(BEATS_PER_BAR * self.grid.steps_per_beat.max(1));
-        let pattern_bars: Vec<usize> = (0..self.arrangement.patterns.len())
-            .map(|p| (self.arrangement.steps(&self.grid, p) / bar) as usize)
+        let pattern_bars: Vec<usize> = (self.arrangement.all_steps(&self.grid).into_iter())
+            .map(|steps| (steps / bar) as usize)
             .collect();
         (self.arrangement.entries.iter())
             .map(|e| pattern_bars[e.pattern] * e.repeats as usize)
@@ -840,9 +840,9 @@ mod tests {
             mutes,
         };
         e.song.yanked = vec![entry(0, 0b0100), entry(1, 0b1000)];
-        e.move_track(3, 0);
+        assert!(e.move_track(3, 0));
         assert_eq!(e.song.yanked, [entry(0, 0b1000), entry(1, 0b0001)]);
-        e.remove_track(3);
+        assert!(e.remove_track(3));
         assert_eq!(e.song.yanked, [entry(0, 0b0000), entry(1, 0b0001)]);
         // Pattern 1's the one being edited; removing it takes its entries.
         e.select_pattern(1);

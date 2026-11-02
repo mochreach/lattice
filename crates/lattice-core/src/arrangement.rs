@@ -106,6 +106,15 @@ impl Entry {
     }
 }
 
+/// Steps in `bars`, or if it's `None`, in enough bars for `longest` steps (one at least).
+fn steps_for(grid: &Grid, bars: Option<u32>, longest: Option<usize>) -> u64 {
+    let bar = u64::from(BEATS_PER_BAR * grid.steps_per_beat.max(1));
+    match bars {
+        Some(bars) => u64::from(bars) * bar,
+        None => (longest.unwrap_or(0) as u64).div_ceil(bar).max(1) * bar,
+    }
+}
+
 fn is_zero(n: &u32) -> bool {
     *n == 0
 }
@@ -157,46 +166,63 @@ pub fn pattern_name(index: usize) -> String {
 
 impl Arrangement {
     /// Makes `index` the pattern being edited: the current pattern's lanes go back here, and
-    /// `index`'s go into the tracks.
-    pub fn select(&mut self, grid: &mut Grid, index: usize) {
-        if index == self.current || index >= self.patterns.len() {
-            return;
+    /// `index`'s go into the tracks. False, changing nothing, if there's no such pattern, or
+    /// it's already the one being edited.
+    #[must_use]
+    pub fn select(&mut self, grid: &mut Grid, index: usize) -> bool {
+        if index == self.current || self.patterns.get(self.current).is_none() {
+            return false;
         }
-        let mut lanes = std::mem::take(&mut self.patterns[index].lanes);
+        let Some(pattern) = self.patterns.get_mut(index) else {
+            return false;
+        };
+        let mut lanes = std::mem::take(&mut pattern.lanes);
         for (track, lane) in grid.tracks.iter_mut().zip(&mut lanes) {
             lane.swap(track);
         }
-        self.patterns[self.current].lanes = lanes;
+        if let Some(current) = self.patterns.get_mut(self.current) {
+            current.lanes = lanes;
+        }
         self.current = index;
+        true
     }
 
-    /// Pattern `index`'s lanes, wherever they are.
-    pub fn lanes(&self, grid: &Grid, index: usize) -> Vec<Lane> {
+    /// Pattern `index`'s lanes, wherever they are, if there's such a pattern.
+    pub fn lanes(&self, grid: &Grid, index: usize) -> Option<Vec<Lane>> {
         if index == self.current {
-            grid.tracks.iter().map(Lane::of).collect()
+            Some(grid.tracks.iter().map(Lane::of).collect())
         } else {
-            self.patterns[index].lanes.clone()
+            Some(self.patterns.get(index)?.lanes.clone())
         }
     }
 
-    /// How many steps pattern `index` plays for.
-    pub fn steps(&self, grid: &Grid, index: usize) -> u64 {
-        let bar = u64::from(BEATS_PER_BAR * grid.steps_per_beat.max(1));
-        match self.patterns[index].bars {
-            Some(bars) => u64::from(bars) * bar,
-            None => {
-                let longest = if index == self.current {
-                    grid.tracks.iter().map(|t| t.steps.len()).max()
-                } else {
-                    self.patterns[index]
-                        .lanes
-                        .iter()
-                        .map(|l| l.steps.len())
-                        .max()
-                };
-                (longest.unwrap_or(0) as u64).div_ceil(bar).max(1) * bar
-            }
+    /// How many steps pattern `index` plays for, if there's such a pattern.
+    pub fn steps(&self, grid: &Grid, index: usize) -> Option<u64> {
+        let pattern = self.patterns.get(index)?;
+        Some(self.steps_of(grid, index, pattern))
+    }
+
+    /// How many steps each pattern plays for.
+    pub fn all_steps(&self, grid: &Grid) -> Vec<u64> {
+        (self.patterns.iter().enumerate())
+            .map(|(index, pattern)| self.steps_of(grid, index, pattern))
+            .collect()
+    }
+
+    /// How many steps the pattern being edited plays for: its bars, or as long as its longest
+    /// track.
+    pub fn current_steps(&self, grid: &Grid) -> u64 {
+        let bars = self.patterns.get(self.current).and_then(|p| p.bars);
+        let longest = grid.tracks.iter().map(|t| t.steps.len()).max();
+        steps_for(grid, bars, longest)
+    }
+
+    fn steps_of(&self, grid: &Grid, index: usize, pattern: &Pattern) -> u64 {
+        if index == self.current {
+            return self.current_steps(grid);
         }
+        let longest = pattern.lanes.iter().map(|l| l.steps.len()).max();
+        steps_for(grid, pattern.bars, longest)
     }
 
     /// A new pattern after the current one, with `lanes`, named `name` or else the first
@@ -210,7 +236,8 @@ impl Arrangement {
                 .find(|n| self.patterns.iter().all(|p| &p.name != n))
                 .unwrap_or_default()
         });
-        let bars = self.patterns[self.current].bars;
+        let bars = self.patterns.get(self.current).and_then(|p| p.bars);
+        let index = index.min(self.patterns.len());
         self.patterns.insert(index, Pattern { name, bars, lanes });
         for entry in &mut self.entries {
             if entry.pattern >= index {
@@ -251,7 +278,10 @@ impl Arrangement {
                 steps: vec![Step::default(); len],
                 ..Lane::default()
             };
-            pattern.lanes.insert(index, lane);
+            // Each pattern has a lane per track, so there's room.
+            if index <= pattern.lanes.len() {
+                pattern.lanes.insert(index, lane);
+            }
         }
     }
 
@@ -261,7 +291,9 @@ impl Arrangement {
             entry.remove_track(index);
         }
         for pattern in self.others_mut() {
-            pattern.lanes.remove(index);
+            if index < pattern.lanes.len() {
+                pattern.lanes.remove(index);
+            }
         }
     }
 
@@ -271,8 +303,10 @@ impl Arrangement {
             entry.move_track(from, to);
         }
         for pattern in self.others_mut() {
-            let lane = pattern.lanes.remove(from);
-            pattern.lanes.insert(to, lane);
+            if from < pattern.lanes.len() && to < pattern.lanes.len() {
+                let lane = pattern.lanes.remove(from);
+                pattern.lanes.insert(to, lane);
+            }
         }
     }
 
@@ -449,14 +483,14 @@ mod tests {
             ],
         );
         assert_eq!(a.patterns[b].name, "B");
-        a.select(&mut g, b);
+        assert!(a.select(&mut g, b));
         assert_eq!(g.tracks[0].steps, vec![Step::note(40); 4]);
         assert!(a.patterns[b].lanes.is_empty());
         assert_eq!(a.patterns[0].lanes[0].steps[0], Step::note(60));
         a.check(2).unwrap();
-        a.select(&mut g, 0);
+        assert!(a.select(&mut g, 0));
         assert_eq!(g.tracks[0].steps.len(), 16);
-        assert_eq!(a.lanes(&g, 1)[1].steps.len(), 4);
+        assert_eq!(a.lanes(&g, 1).unwrap()[1].steps.len(), 4);
     }
 
     #[test]
@@ -504,11 +538,15 @@ mod tests {
     #[test]
     fn a_pattern_lasts_its_bars_or_its_longest_track() {
         let mut a = Arrangement::default();
-        assert_eq!(a.steps(&grid(&[16, 12]), 0), 16);
-        assert_eq!(a.steps(&grid(&[7, 20]), 0), 32, "rounded up to whole bars");
+        assert_eq!(a.steps(&grid(&[16, 12]), 0), Some(16));
+        assert_eq!(
+            a.steps(&grid(&[7, 20]), 0),
+            Some(32),
+            "rounded up to whole bars"
+        );
         let g = grid(&[16, 12]);
         a.patterns[0].bars = Some(2);
-        assert_eq!(a.steps(&g, 0), 32);
+        assert_eq!(a.steps(&g, 0), Some(32));
     }
 
     #[test]

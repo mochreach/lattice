@@ -45,9 +45,12 @@ impl Editor {
     pub(crate) fn export_song(&self, args: &str) -> Result<Vec<Effect>, String> {
         let mut words: Vec<&str> = args.split_whitespace().collect();
         let a = &self.arrangement;
-        let part = |pattern| Part {
-            lanes: a.lanes(&self.grid, pattern),
-            steps: a.steps(&self.grid, pattern),
+        let part = |pattern| -> Result<Part, String> {
+            let missing = || format!("no pattern {}", pattern + 1);
+            Ok(Part {
+                lanes: a.lanes(&self.grid, pattern).ok_or_else(missing)?,
+                steps: a.steps(&self.grid, pattern).ok_or_else(missing)?,
+            })
         };
         let parts = match words.last().map(|w| w.parse::<u32>()) {
             Some(Ok(bars)) => {
@@ -58,21 +61,23 @@ impl Editor {
                 let bar = u64::from(BEATS_PER_BAR * self.grid.steps_per_beat.max(1));
                 vec![Part {
                     steps: u64::from(bars) * bar,
-                    ..part(a.current)
+                    ..part(a.current)?
                 }]
             }
             // With nothing arranged, this pattern once round.
-            _ if a.entries.is_empty() => vec![part(a.current)],
+            _ if a.entries.is_empty() => vec![part(a.current)?],
             // Each entry's tracks muted as the song mutes them.
-            _ => (a.entries.iter())
-                .flat_map(|e| {
-                    let mut part = part(e.pattern);
+            _ => {
+                let mut parts = vec![];
+                for e in &a.entries {
+                    let mut part = part(e.pattern)?;
                     for (t, lane) in part.lanes.iter_mut().enumerate() {
                         lane.mute |= e.muted(t);
                     }
-                    std::iter::repeat_n(part, e.repeats as usize)
-                })
-                .collect(),
+                    parts.extend(std::iter::repeat_n(part, e.repeats as usize));
+                }
+                parts
+            }
         };
         Ok(vec![Effect::Export(Box::new(Export {
             path: self.wav_path(&words.join(" "))?,

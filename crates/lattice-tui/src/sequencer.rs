@@ -62,12 +62,16 @@ impl Sequencer {
             }
         }
         let next = editor.next();
-        let (lanes, steps) = match next {
-            Next::Pattern(p) => (
+        let (next, lanes, steps) = match next {
+            Next::Pattern(p) => match (
                 editor.arrangement.lanes(&editor.grid, p),
                 editor.arrangement.steps(&editor.grid, p),
-            ),
-            Next::Loop | Next::Stop => (vec![], 0),
+            ) {
+                (Some(lanes), Some(steps)) => (next, lanes, steps),
+                // There's no such pattern to go on to, so the song stops.
+                _ => (Next::Stop, vec![], 0),
+            },
+            Next::Loop | Next::Stop => (next, vec![], 0),
         };
         let wanted = (next, lanes, steps);
         if self.cued.as_ref() != Some(&wanted) {

@@ -159,15 +159,16 @@ pub fn preset(name: &str) -> Option<Preset> {
 
     let inst = |kind, values: &[(u32, f32)]| {
         let mut instrument = Instrument::new(kind);
+        // The ids are the kind's own, so each is there to set.
         for &(id, value) in values {
-            instrument.values[id as usize] = value;
+            instrument.set(id, value);
         }
         instrument
     };
     let fx = |kind, values: &[(u32, f32)]| {
         let mut fx = Fx::new(kind);
         for &(id, value) in values {
-            fx.values[id as usize] = value;
+            fx.set(id, value);
         }
         fx
     };
@@ -225,7 +226,7 @@ pub fn preset(name: &str) -> Option<Preset> {
         // A slow saw pad, dark until it's opened, in Lattice's shimmer.
         "night-bus" => {
             let mut effects = crate::chain::built_in_chain("shimmer")?;
-            effects[0].values[reverb::MIX as usize] = 0.45;
+            effects.first_mut()?.set(reverb::MIX, 0.45);
             Preset {
                 face: face("Night Bus", &[synth::ATTACK, synth::RELEASE]),
                 instrument: inst(

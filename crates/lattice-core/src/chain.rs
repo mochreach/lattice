@@ -207,10 +207,18 @@ impl FxChain {
 
     /// Inserts `fx` as the row at `at`, in its lane, returning its index among the effects.
     pub fn insert_at(&mut self, at: RowAt, fx: Fx) -> usize {
+        // A chain always has its first lane; should it not, it's given one back.
+        if self.lanes.is_empty() {
+            self.lanes.push(FxLane::default());
+        }
         let lane = at.lane.min(self.lanes.len() - 1);
-        let row = at.row.min(self.lanes[lane].rows.len());
-        let index = self.effects_before(RowAt { lane, row });
-        self.lanes[lane].rows.insert(row, FxRow::Fx);
+        let row = (self.lanes.get(lane)).map_or(0, |l| at.row.min(l.rows.len()));
+        let index = self
+            .effects_before(RowAt { lane, row })
+            .min(self.effects.len());
+        if let Some(l) = self.lanes.get_mut(lane) {
+            l.rows.insert(row, FxRow::Fx);
+        }
         self.effects.insert(index, fx);
         index
     }
@@ -223,7 +231,11 @@ impl FxChain {
     /// Removes effect `index`, and its row, if there's such an effect.
     pub fn remove(&mut self, index: usize) -> Option<Fx> {
         let at = self.effect_at(index)?;
-        self.lanes[at.lane].rows.remove(at.row);
+        let rows = &mut self.lanes.get_mut(at.lane)?.rows;
+        if at.row >= rows.len() || index >= self.effects.len() {
+            return None;
+        }
+        rows.remove(at.row);
         Some(self.effects.remove(index))
     }
 
@@ -254,7 +266,9 @@ impl FxChain {
             .collect();
         effects.reverse();
         for &i in &effects {
-            self.effects.remove(i);
+            if i < self.effects.len() {
+                self.effects.remove(i);
+            }
         }
         self.lanes.remove(lane);
         for l in &mut self.lanes {
@@ -273,14 +287,14 @@ impl FxChain {
 
     /// Puts a send into lane `to` as the row at `at`.
     pub fn insert_send(&mut self, at: RowAt, to: usize, level: f32) -> Result<(), String> {
-        if to >= self.lanes.len() || at.lane >= self.lanes.len() {
+        if to >= self.lanes.len() {
             return Err("no such lane".into());
         }
         if self.sends() >= MAX_SENDS {
             return Err(format!("at most {MAX_SENDS} sends in a chain"));
         }
         let level = level.min(max_send(at.lane, to));
-        let rows = &mut self.lanes[at.lane].rows;
+        let rows = &mut self.lanes.get_mut(at.lane).ok_or("no such lane")?.rows;
         rows.insert(at.row.min(rows.len()), FxRow::Send { to, level });
         Ok(())
     }
@@ -298,8 +312,9 @@ impl FxChain {
     /// Removes the send at `at`, if there is one.
     pub fn remove_send(&mut self, at: RowAt) -> bool {
         let is_send = matches!(self.row(at), Some(FxRow::Send { .. }));
-        if is_send {
-            self.lanes[at.lane].rows.remove(at.row);
+        // It's a send, so the lane and row are there.
+        if is_send && let Some(lane) = self.lanes.get_mut(at.lane) {
+            lane.rows.remove(at.row);
         }
         is_send
     }
@@ -397,8 +412,9 @@ fn shimmer() -> Option<FxChain> {
 
     let with = |kind, values: &[(u32, f32)]| {
         let mut fx = Fx::new(kind);
+        // The ids are the kind's own, so each is there to set.
         for &(id, value) in values {
-            fx.values[id as usize] = value;
+            fx.set(id, value);
         }
         fx
     };
