@@ -5,7 +5,7 @@
 
 use lattice_core::{BEATS_PER_BAR, Entry, Lane, MAX_BARS, MAX_ENTRIES, MAX_PATTERNS, Step};
 
-use crate::{Editor, Effect, changed};
+use crate::{Editor, Effect, Page, changed};
 
 /// What the frontend should have the engine do when the playing pattern ends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,13 +118,23 @@ impl Editor {
         Ok(self.go_to_pattern(index))
     }
 
+    /// The pattern `:bars` and `:pattern-name` change: on the song page the cursor's entry's,
+    /// and elsewhere the one being edited.
+    fn named_pattern(&self) -> usize {
+        match self.page {
+            Page::Song => (self.arrangement.entries.get(self.song_cursor()))
+                .map_or(self.arrangement.current, |e| e.pattern),
+            _ => self.arrangement.current,
+        }
+    }
+
     pub(crate) fn rename_pattern(&mut self, name: &str) -> Result<(), String> {
         if self.find_pattern(name).is_ok() {
             return Err(format!("there's already a pattern {name}"));
         }
         self.checkpoint();
-        let current = self.arrangement.current;
-        self.arrangement.patterns[current].name = name.into();
+        let pattern = self.named_pattern();
+        self.arrangement.patterns[pattern].name = name.into();
         Ok(())
     }
 
@@ -156,10 +166,15 @@ impl Editor {
             ),
         };
         self.checkpoint();
-        let current = self.arrangement.current;
-        self.arrangement.patterns[current].bars = bars;
+        let pattern = self.named_pattern();
+        // The song page's cursor stays on its entry, as far into it as it can.
+        let entry = self.song_cursor();
+        let into = self.song_bar() - self.entry_start(entry);
+        self.arrangement.patterns[pattern].bars = bars;
+        self.song.bar = self.entry_start(entry) + into;
+        self.keep_on_entry(entry);
         let bar = u64::from(BEATS_PER_BAR * self.grid.steps_per_beat.max(1));
-        let steps = self.pattern_steps();
+        let steps = self.arrangement.steps(&self.grid, pattern);
         let auto = if bars.is_some() {
             ""
         } else {
@@ -167,7 +182,7 @@ impl Editor {
         };
         self.message = Some(format!(
             "{} plays {} bars{auto}",
-            self.pattern_name(),
+            self.arrangement.patterns[pattern].name,
             steps / bar
         ));
         Ok(())

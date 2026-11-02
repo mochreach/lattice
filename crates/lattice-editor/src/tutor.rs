@@ -791,7 +791,9 @@ const LESSONS: &[Lesson] = &[
         text: "On the song page, {open_below} adds an entry after the cursor's, playing the same \
                pattern, and {open_above} one before. {delete} removes an entry, {yank} copies it \
                and {paste} pastes it after. {open} goes to the entry's pattern, to edit \
-               it.\n\nAdd an entry, then edit its pattern.",
+               it. {change} renames the entry's pattern, and `:bars` and `:pattern-name` here \
+               change the cursor's pattern rather than the one being edited.\n\nAdd an entry, \
+               then edit its pattern.",
         teaches: &[Action::OpenBelow, Action::OpenAbove, Action::Open],
         commands: &[],
         setup: nothing,

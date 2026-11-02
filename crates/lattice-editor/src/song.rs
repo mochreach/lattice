@@ -4,7 +4,7 @@
 
 use lattice_core::{BEATS_PER_BAR, Entry, MAX_ENTRIES, MAX_REPEATS};
 
-use crate::{Action, Editor, Effect, Mode, Page};
+use crate::{Action, Editor, Effect, Mode, Page, PromptKind};
 
 /// Where an entry goes, relative to the cursor's.
 #[derive(Clone, Copy)]
@@ -61,7 +61,7 @@ impl Editor {
     }
 
     /// Keeps the cursor on `entry` after it's changed length, on the same bar if it still plays.
-    fn keep_on_entry(&mut self, entry: usize) {
+    pub(crate) fn keep_on_entry(&mut self, entry: usize) {
         let start = self.entry_start(entry);
         let bars = self.entry_bars().get(entry).copied().unwrap_or(1);
         self.song.bar = self.song.bar.clamp(start, start + bars.max(1) - 1);
@@ -121,6 +121,14 @@ impl Editor {
             }
             Action::TogglePlay => return Some(self.play_song()),
             Action::TogglePatternMute => self.mute_in_entry(entry),
+            Action::Change if self.song.column == 0 => {
+                // Renaming the entry's pattern.
+                self.open_prompt(PromptKind::Command);
+                if let Mode::Command(prompt) = &mut self.mode {
+                    prompt.line = "pattern-name ".into();
+                }
+                return Some(vec![]);
+            }
             Action::Undo
             | Action::Redo
             | Action::CommandLine
@@ -413,6 +421,32 @@ mod tests {
         assert_eq!(e.song_mutes(), (0, 0));
         keys(&mut e, "u");
         assert!(!e.arrangement.entries[1].muted(0));
+    }
+
+    #[test]
+    fn the_cursors_pattern_is_renamed_and_lengthened() {
+        let mut e = editor();
+        keys(&mut e, "o");
+        e.handle(Key::Ctrl('a'));
+        keys(&mut e, "k");
+        assert_eq!(e.arrangement.current, 1, "editing the second pattern");
+
+        // c on the entries renames the cursor's pattern, not the one being edited.
+        keys(&mut e, "cchorus");
+        e.handle(Key::Enter);
+        assert_eq!(e.arrangement.patterns[0].name, "chorus");
+        assert_eq!(e.arrangement.patterns[1].name, "B");
+
+        // :bars too, and the cursor stays on its entry.
+        keys(&mut e, "j:bars 3");
+        e.handle(Key::Enter);
+        assert_eq!(e.arrangement.patterns[1].bars, Some(3));
+        assert_eq!(e.entry_bars(), [1, 3]);
+        assert_eq!((e.song_cursor(), e.song_bar()), (1, 1));
+        keys(&mut e, "k:bars 2");
+        e.handle(Key::Enter);
+        assert_eq!(e.entry_bars(), [2, 3]);
+        assert_eq!((e.song_cursor(), e.song_bar()), (0, 0));
     }
 
     #[test]

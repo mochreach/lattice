@@ -509,7 +509,7 @@ pub const COMMANDS: &[Spec] = &[
         name: "pattern-name",
         alias: None,
         params: &[text("NAME", "name")],
-        describe: "rename this pattern",
+        describe: "rename this pattern (on the song page, the cursor's)",
     },
     Spec {
         name: "pattern-mute",
@@ -527,7 +527,7 @@ pub const COMMANDS: &[Spec] = &[
         name: "bars",
         alias: None,
         params: &[optional_text("[BARS | auto]", "bars")],
-        describe: "how long this pattern plays, in bars; auto (the default) is as long as its longest track",
+        describe: "how long this pattern (on the song page, the cursor's) plays, in bars; auto (the default) is as long as its longest track",
     },
     Spec {
         name: "export",
