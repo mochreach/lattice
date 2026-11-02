@@ -24,7 +24,7 @@ muted each time:
 3. **A** again, the `lead` doubling Krell, leaning on the long notes that start its bars (`!`) and
    gliding into its octave leaps (`G6`), and the snare's backbeat in. From bar 24 to 30 its
    ladder opens, a lock sliding in its column: open the lead (`te`) to see it.
-4. **B**, first time, with the `arp` in place of the lead: a pair of saws two or three octaves over the
+4. **B**, first time, with the `arp` in place of the lead: a single saw two or three octaves over the
    bass, a note every eighth, rising and falling through the chord the left hand holds (its
    root, third and fifth where it has them, and the octave).
 5. **B** again, everything at once. The lead's ladder opens over the chromatic climb from bar 52

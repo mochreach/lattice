@@ -36,9 +36,9 @@
             (
                 name: "arp",
                 length: 32,
-                instrument: (kind: Switched, params: {"stack": 1.0, "spread": 0.2, "width": 0.6, "grit": 0.3, "ladder": 1600.0, "scream": 0.6, "contour": 0.55, "snap": 0.3, "gain": 0.6}),
+                instrument: (kind: Switched, params: {"stack": 0.0, "spread": 0.2, "width": 0.6, "grit": 0.3, "ladder": 1600.0, "scream": 0.45, "contour": 0.55, "snap": 0.3, "gain": 0.6}),
                 effects: [(kind: Delay, params: {"time": 0.45, "feedback": 0.45, "tone": 4000.0, "mix": 0.3})],
-                mix: (level: 0.0, pan: 0.6, send: -12.0),
+                mix: (level: -5.0, pan: 0.6, send: -12.0),
             ),
             (
                 name: "bass",
