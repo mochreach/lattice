@@ -4,7 +4,8 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::unreachable
+    clippy::unreachable,
+    clippy::indexing_slicing
 )]
 
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};

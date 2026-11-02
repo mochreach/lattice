@@ -9,10 +9,10 @@ A panic takes the player's song with it, so code outside tests must not be able 
 
 - **No `unwrap`, `expect`, `panic!`, `unreachable!`, `todo!` or `unimplemented!`.** The workspace's
   clippy lints deny them; don't `allow` them to get round it.
-- **Use `.get()` rather than indexing** (`v[i]`, `&s[a..b]`) wherever an index or range could be
-  wrong: one from the cursor, the song, a file, the engine or the user. Slicing panics as indexing
-  does. So do `Vec::remove`, `insert`, `swap` and `split_at` with an index out of range: check
-  first, or use a form that can't fail.
+- **Use `.get()` rather than indexing** (`v[i]`, `&s[a..b]`), which the lints deny too, wherever an
+  index or range could be wrong: one from the cursor, the song, a file, the engine or the user.
+  Slicing panics as indexing does. So do `Vec::remove`, `insert`, `swap` and `split_at` with an
+  index out of range: check first, or use a form that can't fail.
 - **Handle the failure; don't hide it.** `.get(i).unwrap_or_default()` turns a crash into a quiet
   wrong answer, which is worse to track down. For each place, decide what's right:
   - pass an error up with `?`, so the status line says what went wrong (commands return

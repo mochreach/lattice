@@ -5,7 +5,6 @@
 //! a list of events stamped with their sample offset within that block. Parameters are described
 //! by [`ParamInfo`] and changed by [`EventKind::Param`] events, in their own units, as in CLAP.
 
-use std::ops::Range;
 use std::sync::Arc;
 
 pub use crate::param::ParamInfo;
@@ -63,26 +62,42 @@ impl std::fmt::Debug for dyn Processor {
 }
 
 pub enum Segment<'a> {
-    /// Render these frames.
-    Render(Range<usize>),
+    /// Render these frames of the left and right channels.
+    Render(&'a mut [f32], &'a mut [f32]),
     /// Apply this event before rendering on.
     Event(&'a Event),
 }
 
-/// Walks a block of `len` frames in order, yielding the stretches of audio between events and
-/// each event at its offset. Saves every instrument writing the same splitting loop.
-pub fn segments(events: &[Event], len: usize, mut f: impl FnMut(Segment<'_>)) {
+/// Walks a block in order, handing over the stretches of `left` and `right` between events and
+/// each event at its offset. Saves every instrument writing the same splitting loop. The block is
+/// as long as the shorter channel; an event past its end is applied at the end.
+pub fn segments(
+    events: &[Event],
+    left: &mut [f32],
+    right: &mut [f32],
+    mut f: impl FnMut(Segment<'_>),
+) {
+    let len = left.len().min(right.len());
+    let (mut left, mut right) = (frames(left, len), frames(right, len));
     let mut pos = 0;
     for event in events {
-        let at = (event.offset as usize).min(len);
-        if at > pos {
-            f(Segment::Render(pos..at));
-            pos = at;
+        let at = (event.offset as usize).clamp(pos, len);
+        // `at` is between `pos` and `len`, so both channels, `len - pos` long, split there.
+        // (Taken, so the rest can be put back; were a split ever out of range, the rest of the
+        // block would go unrendered rather than panic.)
+        if let (Some((l, left_rest)), Some((r, right_rest))) = (
+            std::mem::take(&mut left).split_at_mut_checked(at - pos),
+            std::mem::take(&mut right).split_at_mut_checked(at - pos),
+        ) {
+            if !l.is_empty() {
+                f(Segment::Render(l, r));
+            }
+            (left, right, pos) = (left_rest, right_rest, at);
         }
         f(Segment::Event(event));
     }
-    if pos < len {
-        f(Segment::Render(pos..len));
+    if !left.is_empty() {
+        f(Segment::Render(left, right));
     }
 }
 
@@ -109,14 +124,32 @@ mod tests {
             },
         };
         let events = [on(0), on(10), on(10), on(40)];
+        let (mut left, mut right) = ([0.0; 32], [0.0; 32]);
         let mut seen = Vec::new();
-        segments(&events, 32, |s| {
+        let mut pos = 0;
+        segments(&events, &mut left, &mut right, |s| {
             seen.push(match s {
-                Segment::Render(r) => format!("{}..{}", r.start, r.end),
+                Segment::Render(l, r) => {
+                    assert_eq!(l.len(), r.len());
+                    pos += l.len();
+                    format!("{}..{}", pos - l.len(), pos)
+                }
                 Segment::Event(e) => format!("@{}", e.offset),
             })
         });
         // An event past the end of the block is applied at the end.
         assert_eq!(seen, ["@0", "0..10", "@10", "@10", "10..32", "@40"]);
+    }
+
+    #[test]
+    fn segments_stop_at_the_shorter_channel() {
+        let (mut left, mut right) = ([0.0; 32], [0.0; 20]);
+        let mut lengths = Vec::new();
+        segments(&[], &mut left, &mut right, |s| {
+            if let Segment::Render(l, r) = s {
+                lengths.push((l.len(), r.len()));
+            }
+        });
+        assert_eq!(lengths, [(20, 20)]);
     }
 }

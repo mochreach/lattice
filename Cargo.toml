@@ -21,3 +21,5 @@ panic = "deny"
 unreachable = "deny"
 todo = "deny"
 unimplemented = "deny"
+# Indexing panics when it's out of range; see AGENTS.md.
+indexing_slicing = "deny"

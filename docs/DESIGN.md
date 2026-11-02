@@ -491,12 +491,13 @@ status line said. Three late blocks in a second, or a stream error, also go on t
 panic hook writes the backtrace to the log, since the terminal UI owns the screen.
 
 **Not panicking.** A panic would take the song with it, so outside tests the workspace's lints deny
-`unwrap`, `expect`, `panic!`, `unreachable!`, `todo!` and `unimplemented!`. What can fail returns
-a `Result` or an `Option` and is handled: `?` to pass an error up to the status line, `let … else`
-to give up quietly, or a sensible default where one exists. Tests may unwrap, as that's how they
-fail. Should something panic regardless (indexing still can), `main` catches it once the UI thread
-unwinds, puts the terminal back and saves the song, if it had changes, as `.rescue.lattice`
-beside it, leaving the original alone in case the song was half changed.
+`unwrap`, `expect`, `panic!`, `unreachable!`, `todo!` and `unimplemented!`, and indexing: lookups
+use `get`, and the DSP's few fixed buffers indexed by a wrapped position say why they're in range.
+What can fail returns a `Result` or an `Option` and is handled: `?` to pass an error up to the
+status line, `let … else` to give up quietly, or a sensible default where one exists. Tests may
+unwrap, as that's how they fail. Should something panic regardless, from a library, `main` catches
+it once the UI thread unwinds, puts the terminal back and saves the song, if it had changes, as
+`.rescue.lattice` beside it, leaving the original alone in case the song was half changed.
 
 **Driving it from outside.** Each Lattice listens on a Unix socket of its own,
 `$XDG_RUNTIME_DIR/lattice/<pid>.sock` (mode 600, in a 700 folder), so a script or an agent can

@@ -313,14 +313,8 @@ impl Synth {
 
 impl Processor for Synth {
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]) {
-        segments(events, left.len(), |segment| match segment {
-            Segment::Render(range) => {
-                // The channels are the same length, so both have the range; if one didn't,
-                // there'd be no right way to render it.
-                if let (Some(l), Some(r)) = (left.get_mut(range.clone()), right.get_mut(range)) {
-                    self.render(l, r);
-                }
-            }
+        segments(events, left, right, |segment| match segment {
+            Segment::Render(l, r) => self.render(l, r),
             Segment::Event(event) => match event.kind {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
                 EventKind::NoteOff { pitch } => self.note_off(pitch),

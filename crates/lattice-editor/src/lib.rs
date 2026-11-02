@@ -11,8 +11,6 @@
 //! for the frontend to carry out. Nothing here knows about terminals, audio or files, so it's
 //! tested by feeding in key sequences.
 
-// Indexing panics when it's out of range; see AGENTS.md.
-#![deny(clippy::indexing_slicing)]
 // Tests may unwrap and panic: that's how they fail.
 #![cfg_attr(
     test,

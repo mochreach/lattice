@@ -5,7 +5,8 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::unreachable
+    clippy::unreachable,
+    clippy::indexing_slicing
 )]
 
 use std::hint::black_box;

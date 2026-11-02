@@ -3,8 +3,6 @@
 //! Everything here is plain data and pure functions: no UI types, no audio types and no
 //! playback state. Playheads and pass counters belong to the sequencer.
 
-// Indexing panics when it's out of range; see AGENTS.md. (The other crates follow.)
-#![deny(clippy::indexing_slicing)]
 // Tests may unwrap and panic: that's how they fail.
 #![cfg_attr(
     test,

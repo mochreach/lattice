@@ -1,5 +1,3 @@
-// Indexing panics when it's out of range; see AGENTS.md.
-#![deny(clippy::indexing_slicing)]
 // Tests may unwrap and panic: that's how they fail.
 #![cfg_attr(
     test,
