@@ -471,7 +471,8 @@ track stays a real track, with its own rules, length and strip; the group adds:
   belong on the main keyboard. `:layout wicki` and `:layout fourths` replace the tracker piano
   with a grid over the four rows (`NoteLayout`): a key's pitch is `row * 5 + column * step`, a
   step of 2 (Wicki–Hayden, where the rows' leftward stagger makes up-left a fourth and up-right
-  a fifth) or 1 (fourths, as on a guitar). `[` `]` are left out so they still change octave.
+  a fifth) or 1 (fourths, as on a guitar). The octave is changed with `{` `}`, in any mode and on
+  any page, so `[` `]` are notes too, ending the piano's top row on G, with its B below C on `\`.
   `:layout scale` is the same grid in the steps of the pads' scale rather than semitones, from
   its root: a step to the right, and a row up the number of steps nearest a fourth (3 of seven
   notes, 2 of five or six). Setting `:scale` lays the keys out again.
@@ -756,6 +757,11 @@ master bus → master effects → + click → tanh
   side down along a quarter cosine. Instruments are stereo, so a constant-power law would only
   make centred tracks quieter.
 - **The send is post-fader,** so muting a track mutes its echoes too.
+- **Hush** (`C-k`, `Effect::Hush`) stops the song and silences everything at once, where
+  stopping lets notes ring out and echoes fade. Rather than every instrument and effect learning
+  to forget what it's playing, the frontend builds them all afresh off the audio thread
+  (`Tracks::hush`, `Mixer::hush`) and the next sync puts back their settings and routing, so a
+  new engine or effect can't be left out.
 - **Effect chains** (up to `MAX_EFFECTS`, 8) exist per track and on the send and master buses.
   `InsertEffect` and `RemoveEffect` work like tracks do: the slot is built off the audio thread
   and sent over, and removed ones come back over the garbage queue. `SetParam` targets an

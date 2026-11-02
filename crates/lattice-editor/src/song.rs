@@ -271,7 +271,7 @@ impl Editor {
             Action::Paste => self.add_entries(Place::After, self.song.yanked.clone()),
             Action::PasteInsert => self.add_entries(Place::Before, self.song.yanked.clone()),
             Action::Open => return self.open_bar(),
-            Action::TogglePlay => return self.play_song(),
+            Action::TogglePlay => return self.play_song(false),
             Action::LockSetting => self.toggle_loop(),
             Action::Change if self.song.column == 0 => {
                 // Renaming the entry's pattern.
@@ -409,16 +409,19 @@ impl Editor {
         self.keep_on_entry(at);
     }
 
-    /// Plays the song, or stops it: from the song page's cursor, or else from the entry there
-    /// if it plays the pattern being edited, the first that does if not, or the top.
-    pub(crate) fn play_song(&mut self) -> Vec<Effect> {
+    /// Plays the song, or stops it: from its start, or else from the song page's cursor, or
+    /// from the entry there if it plays the pattern being edited, the first that does if not,
+    /// or the top.
+    pub(crate) fn play_song(&mut self, start: bool) -> Vec<Effect> {
         if self.transport.is_some() {
             return vec![Effect::TogglePlay];
         }
         let entries = &self.arrangement.entries;
         let current = self.arrangement.current;
         let cursor = self.song_cursor();
-        let entry = if self.page == Page::Song
+        let entry = if start {
+            0
+        } else if self.page == Page::Song
             || entries.get(cursor).is_some_and(|e| e.pattern == current)
         {
             cursor
@@ -434,6 +437,12 @@ impl Editor {
         let mut effects = self.start_song(entry);
         effects.push(Effect::TogglePlay);
         effects
+    }
+
+    /// `C-k`: stops the song, and every sound with it.
+    pub(crate) fn hush(&mut self) -> Vec<Effect> {
+        self.message = Some("hushed".into());
+        vec![Effect::Hush]
     }
 
     /// Edits the cursor's entry's pattern, at the cursor's bar, on its track if it's on one.
@@ -880,12 +889,16 @@ mod tests {
         e.handle(Key::Enter);
         assert_eq!((e.page, e.arrangement.current), (Page::Pattern, 1));
 
-        // From the pattern page, ^space plays the song from the entry playing this pattern.
-        e.handle(Key::Char('['));
-        e.handle(Key::Char('p'));
-        assert_eq!(e.arrangement.current, 0);
+        // From the pattern page, A-space plays the song from the entry playing this pattern.
+        let effects = e.handle(Key::Alt(' '));
+        assert_eq!(effects.last(), Some(&Effect::TogglePlay));
+        assert_eq!(e.song_position, Some((1, 0)));
+
+        // And C-space from its start.
+        e.stopped();
         let effects = e.handle(Key::Ctrl(' '));
         assert_eq!(effects.last(), Some(&Effect::TogglePlay));
         assert_eq!(e.song_position, Some((0, 0)));
+        assert_eq!(e.arrangement.current, 0);
     }
 }

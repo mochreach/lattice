@@ -146,7 +146,10 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | Everywhere | |
 | --- | --- |
 | `space` | play / stop |
-| `^space` | play the song from the entry playing this pattern (or stop) |
+| `^space` | play the song from its start (or stop) |
+| `A-space` | play the song from the entry playing this pattern (or stop) |
+| `^k` | hush: stop the song and every sound at once, held notes, echoes, reverb tails and loops |
+| `{` `}` | keyboard octave down / up, in any mode and on any page |
 | `` ` `` (backtick) | hold for a fill: steps marked `F` play, and `F-` don't (see gestures) |
 | `R` | record on / off (starts insert mode): see below |
 | `tab` | show the pattern as written, or as it's playing this pass |
@@ -158,7 +161,8 @@ in order, repeating the last if there are more selections than values. So `%`, t
 One deliberate departure from Helix: `space` is play / stop, as in every DAW, rather than a menu.
 
 In **insert mode**, the bottom two letter rows are a piano: `z`–`m` from C in the current
-octave, `q`–`u` an octave up, and `[` `]` change the octave. `:layout` lays the notes out
+octave, with the B below it on `\` (left of `z` on a UK keyboard), `q`–`u` an octave up and
+`i`–`]` the octave over that, as far as G; `{` `}` change the octave. `:layout` lays the notes out
 isomorphically instead, over all four rows from `z` (C) to `=`, so a chord has the same shape
 wherever you play it: `wicki` (Wicki–Hayden: a tone to the right, a fourth up-left, a fifth
 up-right, three octaves across the keyboard) or `fourths` (a semitone to the right, a fourth a row
@@ -304,7 +308,7 @@ zooms in on it and the second hurries its flow. `enter` on the title opens all t
 settings, and again goes back to the face.
 
 `i` on the instrument page plays the cursor's track live on the computer keyboard, laid out as in
-insert mode (`[` `]` change octave, and the numpad's pads play too), to try a sound out without
+insert mode (`{` `}` change octave, as they do everywhere, and the numpad's pads play too), to try a sound out without
 entering any notes. The status line says `PLAY`. The arrows still move across the tracks and down
 the column, and `^a` `^x` still turn the setting or macro under the cursor, so a sound can be
 shaped while it's played; `esc` stops. With record armed (`R`, which starts playing too) and the

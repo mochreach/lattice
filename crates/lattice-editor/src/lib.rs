@@ -224,6 +224,9 @@ pub enum Effect {
     LoadPreset(String),
     /// Read this text file and give it to [`Editor::put_face_art`] for this track.
     LoadFaceArt(usize, PathBuf),
+    /// Stop the song if it's playing, and silence everything: every instrument and effect
+    /// starts afresh, so no note, echo or tail rings on.
+    Hush,
     Quit,
 }
 
@@ -834,7 +837,7 @@ impl Editor {
             Pending::Replace => Some(Infobox {
                 title: "replace".into(),
                 items: vec![
-                    ("z–m q–u".into(), "fill with this note".into()),
+                    ("z–]".into(), "fill with this note".into()),
                     ("esc".into(), "cancel".into()),
                 ],
             }),
@@ -1059,7 +1062,7 @@ impl Editor {
             return None;
         };
         let semitone = *self.keymap.piano.get(&c)?;
-        let pitch = (u16::from(self.octave) + 1) * 12 + u16::from(semitone);
+        let pitch = (i16::from(self.octave) + 1) * 12 + semitone;
         u8::try_from(pitch).ok().filter(|&p| p <= 127)
     }
 
@@ -1304,6 +1307,23 @@ impl Editor {
     }
 
     fn act(&mut self, action: Action, n: usize) -> Vec<Effect> {
+        // The same on every page.
+        match action {
+            Action::KeyboardOctaveUp => {
+                self.octave = (self.octave + 1).min(9);
+                self.message = Some(format!("octave {}", self.octave));
+                return vec![];
+            }
+            Action::KeyboardOctaveDown => {
+                self.octave = self.octave.saturating_sub(1);
+                self.message = Some(format!("octave {}", self.octave));
+                return vec![];
+            }
+            Action::PlaySong => return self.play_song(true),
+            Action::PlayFromHere => return self.play_song(false),
+            Action::Hush => return self.hush(),
+            _ => {}
+        }
         if self.page == Page::Mixer
             && let Some(effects) = self.mixer_act(action, n)
         {
@@ -1567,14 +1587,12 @@ impl Editor {
             Action::NoteOctaveDown => return self.transpose(-12 * n as i32),
             Action::Longer => return self.lengthen(n as i32),
             Action::Shorter => return self.lengthen(-(n as i32)),
-            Action::KeyboardOctaveUp => {
-                self.octave = (self.octave + 1).min(9);
-                self.message = Some(format!("octave {}", self.octave));
-            }
-            Action::KeyboardOctaveDown => {
-                self.octave = self.octave.saturating_sub(1);
-                self.message = Some(format!("octave {}", self.octave));
-            }
+            // Handled above, for every page.
+            Action::KeyboardOctaveUp
+            | Action::KeyboardOctaveDown
+            | Action::PlaySong
+            | Action::PlayFromHere
+            | Action::Hush => {}
             Action::NextPattern => return self.step_pattern(n as isize),
             Action::PrevPattern => return self.step_pattern(-(n as isize)),
             Action::ToggleMute => return self.run_command("mute"),
@@ -1620,7 +1638,6 @@ impl Editor {
             // Song page only.
             Action::OpenBelow | Action::OpenAbove | Action::Open => {}
             Action::TogglePlay => return vec![Effect::TogglePlay],
-            Action::PlaySong => return self.play_song(),
             Action::PlayFill => return self.play_fill(),
             Action::ToggleRecord => self.toggle_record(),
             Action::ToggleView => {
@@ -2543,12 +2560,32 @@ mod tests {
         assert_eq!(e.cursor().step, 0);
         keys(&mut e, "2]b");
         assert_eq!(e.cursor().step, 8);
-        assert_eq!(
-            e.octave, 4,
-            "brackets don't change the octave in normal mode"
-        );
-        keys(&mut e, "i]");
+        assert_eq!(e.octave, 4, "brackets don't change the octave");
+    }
+
+    #[test]
+    fn braces_change_the_octave_on_every_page_and_mode() {
+        let mut e = editor();
+        keys(&mut e, "}");
         assert_eq!(e.octave, 5);
+        keys(&mut e, "i}");
+        assert_eq!(e.octave, 6, "in insert mode too");
+        e.handle(Key::Esc);
+        keys(&mut e, "gi{");
+        assert_eq!(e.octave, 5, "on the instrument page");
+        keys(&mut e, "i{{");
+        assert_eq!(e.octave, 3, "and playing it");
+    }
+
+    #[test]
+    fn the_piano_reaches_down_to_b_and_up_past_the_top_row() {
+        let mut e = editor();
+        notes(&mut e, "\\zi]");
+        // At octave 4: the B under C-4, C-4, C-6 and the G over it.
+        assert_eq!(
+            pitches(&e, 0)[..4],
+            [Some(59), Some(60), Some(84), Some(91)]
+        );
     }
 
     #[test]

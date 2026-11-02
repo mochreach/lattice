@@ -236,11 +236,11 @@ const LESSONS: &[Lesson] = &[
     Lesson {
         title: "Entering notes",
         text: "{insert} starts insert mode at the selection, and {append} after it. There, the \
-               keyboard's bottom two rows are a piano: `z` is C, `s` C#, `x` D and so on, with \
-               the octave above from `q`. Each note moves the cursor down a step; \
-               {clear_advance} clears one instead. {keyboard_octave_up} and \
-               {keyboard_octave_down} change the keyboard's octave, and {escape} goes back to \
-               normal mode.\n\nGo to the top of the LEAD track, put four notes in it, then go \
+               keyboard's bottom two rows are a piano: `z` is C, `s` C#, `x` D and so on, \
+               with the B below on `\\`, and the octave above from `q`, on into the next \
+               from `i`. Each note moves the cursor down a step; {clear_advance} clears one \
+               instead. {keyboard_octave_up} and {keyboard_octave_down} change the keyboard's \
+               octave, in any mode and on any page, and {escape} goes back to normal mode.\n\nGo to the top of the LEAD track, put four notes in it, then go \
                back to normal mode.",
         teaches: &[
             Action::Insert,
@@ -265,9 +265,16 @@ const LESSONS: &[Lesson] = &[
     Lesson {
         title: "Playing",
         text: "{toggle_play} plays the pattern, looping, and stops it again. {play_song} plays \
-               the whole song, from the pattern you're on.\n\nPlay the pattern, listen to your \
-               notes, then stop it.",
-        teaches: &[Action::TogglePlay, Action::PlaySong],
+               the whole song from its start, and {play_from_here} from the pattern you're \
+               on. Stopping lets the notes ring out and the echoes fade; {hush} stops \
+               everything at once, every note, echo and tail.\n\nPlay the pattern, listen to \
+               your notes, then stop it.",
+        teaches: &[
+            Action::TogglePlay,
+            Action::PlaySong,
+            Action::PlayFromHere,
+            Action::Hush,
+        ],
         commands: &[],
         setup: nothing,
         watch: |e| e.transport.is_some(),

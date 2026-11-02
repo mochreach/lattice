@@ -482,8 +482,8 @@ mod tests {
             .map(|s| s.note.unwrap().pitch)
             .collect();
         assert_eq!(pitches, [69, 71, 72]);
-        // [ and ] still change octave.
-        assert!(e.handle(Key::Char('[')).is_empty());
+        // { and } still change octave.
+        assert!(e.handle(Key::Char('{')).is_empty());
         assert_eq!(e.octave, 3);
     }
 }

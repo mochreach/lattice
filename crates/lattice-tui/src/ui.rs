@@ -1399,7 +1399,7 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
     }
 
     let notes = match editor.keymap.layout {
-        NoteLayout::Piano => "z–m q–u notes".to_string(),
+        NoteLayout::Piano => "z–] notes".to_string(),
         NoteLayout::Scale => format!("{} notes", editor.scale_name()),
         layout => format!("{} notes", layout.name()),
     };
@@ -1458,7 +1458,7 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
         ),
         Mode::Insert if editor.page == Page::Instrument => (
             format!(
-                "{notes} play · [ ] octave · ←→ tracks · ↑↓ lines · C-a C-x adjust · R record · esc stop"
+                "{notes} play · {{ }} octave · ←→ tracks · ↑↓ lines · C-a C-x adjust · R record · esc stop"
             ),
             theme.dim,
         ),
@@ -1468,17 +1468,17 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
         ),
         Mode::Insert if editor.record => (
             format!(
-                "recording: {notes} at the playhead, while playing · [ ] octave · R off · esc done"
+                "recording: {notes} at the playhead, while playing · {{ }} octave · R off · esc done"
             ),
             theme.dim,
         ),
         Mode::Insert if editor.in_folded_group() => (
-            format!("1–9 pads · {notes} · [ ] octave · ⌫ clear · esc done"),
+            format!("1–9 pads · {notes} · {{ }} octave · ⌫ clear · esc done"),
             theme.dim,
         ),
         Mode::Insert => (
             format!(
-                "{notes} · pads {} · [ ] octave · ⌫ clear · esc done",
+                "{notes} · pads {} · {{ }} octave · ⌫ clear · esc done",
                 editor.scale_name()
             ),
             theme.dim,

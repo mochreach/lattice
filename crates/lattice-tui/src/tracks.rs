@@ -76,6 +76,26 @@ impl Tracks {
         self.sync_with(editor, |command| handle.send(command))
     }
 
+    /// Builds every track's instrument afresh, so nothing it was playing rings on; the next
+    /// sync sends their settings. Call it once the tracks are in line. Returns false if the
+    /// command queue filled up.
+    pub fn hush(&mut self, editor: &Editor, handle: &mut Handle) -> bool {
+        self.hush_with(editor, |command| handle.send(command))
+    }
+
+    fn hush_with(&mut self, editor: &Editor, mut send: impl FnMut(Command) -> bool) -> bool {
+        let tracks = self.engine.iter_mut().zip(&editor.grid.tracks);
+        for (index, ((_, sent), track)) in tracks.enumerate() {
+            let (instrument, _) = build(&track.instrument, self.sample_rate);
+            if !send(Command::SetInstrument { index, instrument }) {
+                return false;
+            }
+            *sent = Instrument::new(track.instrument.kind);
+            sent.file = track.instrument.file.clone();
+        }
+        true
+    }
+
     fn sync_with(&mut self, editor: &Editor, mut send: impl FnMut(Command) -> bool) -> bool {
         let wanted = editor.track_ids();
         // From the back, so the indices still to visit don't shift.

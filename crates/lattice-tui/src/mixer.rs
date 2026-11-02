@@ -44,6 +44,38 @@ impl Mixer {
         self.sync_with(editor, |command| handle.send(command))
     }
 
+    /// Takes every effect out, so the next sync puts them back afresh, with nothing they were
+    /// playing ringing on: no echo, no reverb's tail. Returns false if the command queue filled
+    /// up.
+    pub fn hush(&mut self, editor: &Editor, handle: &mut Handle) -> bool {
+        self.hush_with(editor, |command| handle.send(command))
+    }
+
+    fn hush_with(&mut self, editor: &Editor, mut send: impl FnMut(Command) -> bool) -> bool {
+        let ids = editor.track_ids();
+        let tracks = (self.tracks.iter_mut()).filter_map(|(id, sent)| {
+            let index = ids.iter().position(|i| i == id)?;
+            Some((Chain::Track(index), sent))
+        });
+        let groups =
+            (self.groups.iter_mut().enumerate()).map(|(g, (sent, _))| (Chain::Group(g), sent));
+        let buses = [
+            (Chain::Send, &mut self.send),
+            (Chain::Master, &mut self.master),
+        ];
+        for (chain, sent) in tracks.chain(groups).chain(buses) {
+            for index in (0..sent.effects.len()).rev() {
+                if !send(Command::RemoveEffect { chain, index }) {
+                    return false;
+                }
+                sent.effects.pop();
+            }
+            // Routed again once the effects are back.
+            sent.lanes = None;
+        }
+        true
+    }
+
     fn sync_with(&mut self, editor: &Editor, mut send: impl FnMut(Command) -> bool) -> bool {
         let ids = editor.track_ids();
         // A track that's gone takes its chain and route with it; if undo brings it back, it
@@ -224,6 +256,27 @@ mod tests {
             true
         }));
         sent
+    }
+
+    #[test]
+    fn hushing_takes_every_effect_out_for_the_next_sync_to_put_back() {
+        let editor = Editor::new(crate::demo::song().grid, 120.0).with_buses(crate::demo::buses());
+        let mut mixer = Mixer::new(48_000.0);
+        let first = sync(&mut mixer, &editor);
+        let inserts = first.iter().filter(|c| c.starts_with("insert")).count();
+        assert!(inserts > 0);
+
+        let mut removed = vec![];
+        assert!(mixer.hush_with(&editor, |command| {
+            removed.push(format!("{command:?}"));
+            true
+        }));
+        assert_eq!(removed.len(), inserts, "{removed:?}");
+        assert!(removed.iter().all(|c| c.starts_with("RemoveEffect")));
+        let again = sync(&mut mixer, &editor);
+        let reinserted = again.iter().filter(|c| c.starts_with("insert")).count();
+        assert_eq!(reinserted, inserts, "{again:?}");
+        assert!(sync(&mut mixer, &editor).is_empty(), "in line again");
     }
 
     #[test]

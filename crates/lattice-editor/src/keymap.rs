@@ -112,6 +112,7 @@ impl fmt::Display for Key {
             Key::Char('`') => f.write_str("backtick"),
             Key::Char(c) => write!(f, "{c}"),
             Key::Ctrl(' ') => f.write_str("C-space"),
+            Key::Alt(' ') => f.write_str("A-space"),
             Key::Ctrl(c) => write!(f, "C-{c}"),
             Key::Alt(c) => write!(f, "A-{c}"),
             Key::Esc => f.write_str("esc"),
@@ -257,8 +258,12 @@ pub enum Action {
     /// Keep the tracks the selections reach open, showing their fields; again, close them.
     ToggleOpen,
     TogglePlay,
-    /// Play the song from the entry playing this pattern, or the song page's cursor.
+    /// Play the song from its start.
     PlaySong,
+    /// Play the song from the entry playing this pattern, or the song page's cursor.
+    PlayFromHere,
+    /// Stop the song and every sound: held notes, echoes, reverb tails and loops.
+    Hush,
     /// Play a fill while it's held, or until it's pressed again where the terminal doesn't
     /// report key releases.
     PlayFill,
@@ -362,6 +367,8 @@ impl Action {
         Action::ToggleOpen,
         Action::TogglePlay,
         Action::PlaySong,
+        Action::PlayFromHere,
+        Action::Hush,
         Action::PlayFill,
         Action::ToggleRecord,
         Action::ToggleView,
@@ -480,7 +487,9 @@ impl Action {
             Action::ToggleFold => "fold / unfold group",
             Action::ToggleOpen => "keep tracks open / close them",
             Action::TogglePlay => "play / stop",
-            Action::PlaySong => "play the song from here",
+            Action::PlaySong => "play the song from the start",
+            Action::PlayFromHere => "play the song from this pattern",
+            Action::Hush => "stop everything: the song, every note, echo and tail",
             Action::PlayFill => "hold for a fill: steps marked F play, and F- don't",
             Action::ToggleRecord => "record on / off",
             Action::ToggleView => "written or playing pattern",
@@ -544,8 +553,10 @@ impl Binding {
     }
 }
 
-/// The two-row piano layout used by most trackers: Z–M is the lower octave, Q–U the upper.
-const PIANO: [(char, u8); 29] = [
+/// The two-row piano layout used by most trackers: Z–M is the lower octave, Q–U the upper,
+/// with the B below on `\` (left of Z on a UK keyboard), and on up from I to `]`.
+const PIANO: [(char, i16); 38] = [
+    ('\\', -1),
     ('z', 0),
     ('s', 1),
     ('x', 2),
@@ -575,11 +586,18 @@ const PIANO: [(char, u8); 29] = [
     ('y', 21),
     ('7', 22),
     ('u', 23),
+    ('i', 24),
+    ('9', 25),
+    ('o', 26),
+    ('0', 27),
+    ('p', 28),
+    ('[', 29),
+    ('=', 30),
+    (']', 31),
 ];
 
-/// The rows of the main keyboard, bottom up, each starting at its left. `[` and `]` are left
-/// out, as they change octave.
-const ROWS: [&str; 4] = ["zxcvbnm,./", "asdfghjkl;'", "qwertyuiop", "1234567890-="];
+/// The rows of the main keyboard, bottom up, each starting at its left.
+const ROWS: [&str; 4] = ["zxcvbnm,./", "asdfghjkl;'", "qwertyuiop[]", "1234567890-="];
 
 /// Ways of laying notes out on the keyboard in insert mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -617,8 +635,8 @@ impl NoteLayout {
 
     /// Key → semitones above the keyboard octave's C. Only [`NoteLayout::Scale`] uses `scale`
     /// and its `root` (semitones above C).
-    pub fn keys(self, scale: &Scale, root: u8) -> HashMap<char, u8> {
-        let grid = |up: usize, across: usize, pitch: &dyn Fn(usize) -> u8| -> HashMap<char, u8> {
+    pub fn keys(self, scale: &Scale, root: u8) -> HashMap<char, i16> {
+        let grid = |up: usize, across: usize, pitch: &dyn Fn(usize) -> i16| -> HashMap<char, i16> {
             ROWS.iter()
                 .enumerate()
                 .flat_map(|(row, keys)| {
@@ -629,7 +647,7 @@ impl NoteLayout {
                 .map(|(c, n)| (c, pitch(n)))
                 .collect()
         };
-        let semitones = |n: usize| n as u8;
+        let semitones = |n: usize| n as i16;
         match self {
             NoteLayout::Piano => PIANO.into_iter().collect(),
             NoteLayout::Wicki => grid(5, 2, &semitones),
@@ -644,10 +662,10 @@ impl NoteLayout {
                 }
                 let up = (steps.len() * 5 + 5) / 12;
                 grid(up, 1, &|degree| {
-                    let octave = (degree / steps.len()) as u8;
+                    let octave = (degree / steps.len()) as i16;
                     // In range: the remainder is less than the length.
                     let step = steps.get(degree % steps.len()).copied().unwrap_or_default();
-                    root + step + 12 * octave
+                    i16::from(root) + i16::from(step) + 12 * octave
                 })
             }
         }
@@ -660,7 +678,7 @@ pub struct Keymap {
     pub normal: HashMap<Key, Binding>,
     pub insert: HashMap<Key, Action>,
     /// Insert mode and `r`: key → semitones above the keyboard octave's C, laid out as `layout`.
-    pub piano: HashMap<char, u8>,
+    pub piano: HashMap<char, i16>,
     pub layout: NoteLayout,
 }
 
@@ -682,7 +700,11 @@ impl Default for Keymap {
             (Esc, Escape),
             (Char(' '), TogglePlay),
             (Ctrl(' '), PlaySong),
+            (Alt(' '), PlayFromHere),
+            (Ctrl('k'), Hush),
             (Char('`'), PlayFill),
+            (Char('{'), KeyboardOctaveDown),
+            (Char('}'), KeyboardOctaveUp),
             (Tab, ToggleView),
             (Char('R'), ToggleRecord),
             (Ctrl('c'), Quit),
@@ -816,12 +838,7 @@ impl Default for Keymap {
 
         let insert = common
             .into_iter()
-            .chain([
-                (Backspace, ClearAdvance),
-                (Key::Delete, ClearAdvance),
-                (Char('['), KeyboardOctaveDown),
-                (Char(']'), KeyboardOctaveUp),
-            ])
+            .chain([(Backspace, ClearAdvance), (Key::Delete, ClearAdvance)])
             .collect();
 
         Self {
@@ -917,7 +934,7 @@ mod tests {
             [0, 1, 5, 10]
         );
         // Octave keys stay octave keys.
-        assert!(!wicki.contains_key(&'[') && !fourths.contains_key(&']'));
+        assert!(!wicki.contains_key(&'{') && !fourths.contains_key(&'}'));
     }
 
     #[test]

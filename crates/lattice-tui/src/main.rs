@@ -669,6 +669,20 @@ fn apply(
             }
             return Flow::Next;
         }
+        // Stopped, with every instrument and effect built again, then set as they were.
+        Effect::Hush => {
+            handle.send(Command::Stop);
+            let fresh = tracks.sync(editor, handle)
+                && mixer.sync(editor, handle)
+                && tracks.hush(editor, handle)
+                && mixer.hush(editor, handle)
+                && tracks.sync(editor, handle)
+                && mixer.sync(editor, handle);
+            if !fresh {
+                editor.message = Some("audio engine is busy; press C-k again to hush".into());
+            }
+            return Flow::Next;
+        }
         Effect::LoadFaceArt(t, path) => {
             match std::fs::read_to_string(&path) {
                 Ok(text) => editor.put_face_art(t, &path, &text),
