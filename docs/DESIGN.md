@@ -1072,7 +1072,10 @@ the wrong pattern (the editor keeps it, in the pattern it was made in).
 The song page edits `Arrangement::entries`, with its cursor in the editor like the mixer's: a bar
 counted from the song's start and a column, the entries or a track. The entry under it
 (`Editor::song_cursor`) is found from the bars each plays for (`Editor::entry_bars`), and a change
-to an entry's length keeps the cursor on it. The page draws only the bars in view, each track's
+to an entry's length keeps the cursor on it. A loop (`Editor::song_loop`, the first and last
+entries) is the editor's alone, not saved: `next_position` goes from its last entry back to its
+first, so the cue, the mutes and the playhead all follow, and adding or removing entries moves it
+with its own. The page draws only the bars in view, each track's
 lane from `Arrangement::lanes`, wrapping a lane shorter than its pattern as the engine does.
 Playing from it calls `Editor::start_song`, which goes to the entry's pattern at once and sets
 `song_position` before the frontend's play, so the cue the `Sequencer` sends next follows the

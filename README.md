@@ -369,7 +369,10 @@ entry's pattern to edit it, with the cursor at the bar it was on, and on its tra
 track's column. On a track's column, `tM` mutes the track in the cursor's entry
 alone, so it can sit out a section without a pattern of its own; its bars there show `─`. `c` on
 the entries renames the cursor's pattern, and on the song page `:bars` and `:pattern-name` change
-the cursor's pattern rather than the one being edited. `space` plays the song from the cursor's entry to the end, following
+the cursor's pattern rather than the one being edited. `L` loops the song round the cursor's
+entry, and on another entry stretches the loop to take it in; on an entry inside the loop, it
+stops looping. A bar down the left (`↻` `┃`) marks the bars it covers, and the song goes back to
+its start at its end. `space` plays the song from the cursor's entry to the end, following
 along in the header (`song 2/3`) and on the page, where the playhead moves along the strip and
 down the bars;
 `:export` renders it. Anywhere else, `^space` plays the song from the entry playing the pattern

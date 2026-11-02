@@ -680,6 +680,7 @@ impl Editor {
         self.arrangement = song.arrangement;
         self.cue = None;
         self.song_position = None;
+        self.song = Default::default();
         self.buses = song.buses;
         self.bpm = song.bpm;
         self.path = path;

@@ -67,6 +67,32 @@ impl Editor {
         self.song.bar = self.song.bar.clamp(start, start + bars.max(1) - 1);
     }
 
+    /// The first and last entries of the section the song loops round, if it does.
+    pub fn song_loop(&self) -> Option<(usize, usize)> {
+        self.song
+            .looped
+            .filter(|&(start, end)| start <= end && end < self.arrangement.entries.len())
+    }
+
+    /// Loops the song round the cursor's entry, or stretches the loop to take it in, or, on an
+    /// entry in the loop, stops looping.
+    fn toggle_loop(&mut self, at: usize) {
+        if self.arrangement.entries.is_empty() {
+            return;
+        }
+        let looped = match self.song_loop() {
+            Some((start, end)) if (start..=end).contains(&at) => None,
+            Some((start, end)) => Some((start.min(at), end.max(at))),
+            None => Some((at, at)),
+        };
+        self.song.looped = looped;
+        self.message = Some(match looped {
+            Some((start, end)) if start == end => format!("looping entry {}", start + 1),
+            Some((start, end)) => format!("looping entries {} to {}", start + 1, end + 1),
+            None => "not looping".into(),
+        });
+    }
+
     /// Handles `action` on the song page, or `None` to handle it as on any page.
     pub(crate) fn song_act(&mut self, action: Action, n: usize) -> Option<Vec<Effect>> {
         self.song.bar = self.song_bar();
@@ -113,6 +139,7 @@ impl Editor {
             Action::Open => return Some(self.open_bar()),
             Action::TogglePlay => return Some(self.play_song()),
             Action::TogglePatternMute => self.mute_in_entry(entry),
+            Action::LockSetting => self.toggle_loop(entry),
             Action::Change if self.song.column == 0 => {
                 // Renaming the entry's pattern.
                 self.open_prompt(PromptKind::Command);
@@ -262,6 +289,15 @@ impl Editor {
         self.checkpoint();
         self.arrangement.entries.insert(at, entry);
         self.song_to_entry(at);
+        // The loop keeps to the same entries, taking in one added inside it.
+        if let Some((start, end)) = &mut self.song.looped {
+            if at <= *start {
+                *start += 1;
+            }
+            if at <= *end {
+                *end += 1;
+            }
+        }
         // The song playing carries on from the same entry.
         if let Some((playing, _)) = &mut self.song_position
             && at <= *playing
@@ -288,6 +324,14 @@ impl Editor {
         {
             *playing -= 1;
         }
+        self.song.looped = match self.song.looped {
+            Some((start, end)) if (start, end) == (at, at) => None,
+            Some((start, end)) => Some((
+                start - usize::from(at < start),
+                end - usize::from(at <= end),
+            )),
+            None => None,
+        };
     }
 
     fn paste_entry(&mut self, place: Place) {
@@ -307,6 +351,8 @@ pub(crate) struct SongCursor {
     pub(crate) column: usize,
     /// The entry last copied.
     yanked: Option<Entry>,
+    /// The first and last entries of the section the song loops round.
+    pub(crate) looped: Option<(usize, usize)>,
 }
 
 #[cfg(test)]
@@ -481,6 +527,38 @@ mod tests {
         keys(&mut e, "gsk");
         e.handle(Key::Enter);
         assert_eq!(e.cursor().step, 0);
+    }
+
+    #[test]
+    fn the_song_loops_round_a_section() {
+        let mut e = editor();
+        keys(&mut e, "oo");
+        assert_eq!(e.song_cursor(), 2);
+        keys(&mut e, "kL");
+        assert_eq!(e.song_loop(), Some((1, 1)));
+        keys(&mut e, "jL");
+        assert_eq!(e.song_loop(), Some((1, 2)));
+
+        // It keeps to its entries as others come and go before it.
+        keys(&mut e, "ggO");
+        assert_eq!(e.song_loop(), Some((2, 3)));
+        keys(&mut e, "d");
+        assert_eq!(e.song_loop(), Some((1, 2)));
+
+        // Played, the end goes back to the start.
+        keys(&mut e, "w ");
+        assert_eq!(e.song_position, Some((1, 0)));
+        e.boundary(None);
+        assert_eq!(e.song_position, Some((2, 0)));
+        e.boundary(None);
+        assert_eq!(e.song_position, Some((1, 0)));
+        e.stopped();
+
+        // L inside the loop ends it, and the song runs on to the end.
+        keys(&mut e, "L");
+        assert_eq!(e.song_loop(), None);
+        keys(&mut e, "j ");
+        assert_eq!(e.next(), crate::Next::Stop);
     }
 
     #[test]

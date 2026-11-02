@@ -817,6 +817,20 @@ const LESSONS: &[Lesson] = &[
         solution: "gsltM",
     },
     Lesson {
+        title: "Looping a section",
+        text: "To work on one part of the song, loop it. On the song page, {lock_setting} loops \
+               the song round the cursor's entry; on another entry, it stretches the loop to take \
+               that in, and on an entry inside it, it stops looping. A bar down the left marks \
+               the bars it covers, and the song plays from the cursor as ever, going back to the \
+               loop's start at its end.\n\nLoop an entry.",
+        teaches: &[],
+        commands: &[],
+        setup: nothing,
+        watch: never,
+        done: |e, _| e.song_loop().is_some(),
+        solution: "gsL",
+    },
+    Lesson {
         title: "Playing the song",
         text: "On the song page, {toggle_play} plays the song from the cursor's entry. On the \
                pattern page, {play_song} plays it from the pattern you're on, and the page \

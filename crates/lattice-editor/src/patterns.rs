@@ -150,6 +150,7 @@ impl Editor {
         self.arrangement.remove(current);
         self.cue = None;
         self.song_position = None;
+        self.song.looped = None;
         self.message = Some(format!("removed pattern {gone}"));
         Ok(effects)
     }
@@ -201,10 +202,15 @@ impl Editor {
     }
 
     /// The section after the one playing, in the song: the same entry again, or the next.
+    /// The end of the loop goes back to its start.
     fn next_position(&self, (entry, repeat): (usize, u32)) -> Option<(usize, u32)> {
         let entries = &self.arrangement.entries;
         if repeat + 1 < entries.get(entry)?.repeats {
             Some((entry, repeat + 1))
+        } else if let Some((start, end)) = self.song_loop()
+            && entry == end
+        {
+            Some((start, 0))
         } else {
             (entry + 1 < entries.len()).then_some((entry + 1, 0))
         }

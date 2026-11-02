@@ -53,12 +53,23 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
             Some(start + u64::from(repeat) * steps + status.pattern_step().min(steps - 1))
         });
     let elapsed = playhead.map_or(String::new(), |at| format!("{} / ", time(at)));
+    let looped = editor.song_loop();
+    // The bars the loop covers, from its first entry's first to its last's last.
+    let loop_bars = looped.map(|(start, end)| {
+        let from = editor.entry_start(start);
+        from..from + entry_bars[start..=end].iter().sum::<usize>()
+    });
+    let looping = match looped {
+        Some((start, end)) if start == end => format!(" · looping entry {}", start + 1),
+        Some((start, end)) => format!(" · looping entries {} to {}", start + 1, end + 1),
+        None => String::new(),
+    };
     let lengths: Vec<u64> = entry_bars.iter().map(|&b| b as u64 * bar).collect();
 
     let mut lines = vec![
         Line::from(Span::styled(
             format!(
-                " {} entries · {} · {elapsed}{}",
+                " {} entries · {} · {elapsed}{}{looping}",
                 arrangement.entries.len(),
                 length(total),
                 time(total)
@@ -136,10 +147,19 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
             } else {
                 (" ", theme.dim)
             };
+            // The loop as a bar down the bars it covers, an arrow at the top going back to.
+            let in_loop = loop_bars.as_ref().filter(|bars| bars.contains(&at));
+            let loop_mark = match in_loop {
+                Some(bars) if at == bars.start => "↻",
+                Some(_) => "┃",
+                None => " ",
+            };
             let mut spans = vec![
                 Span::styled(marker, Style::new().fg(theme.playing)),
                 Span::styled(format!("{:>5} ", time(at as u64 * bar)), theme.dim),
-                Span::styled(format!("{:>4}  ", at + 1), number_style),
+                Span::styled(format!("{:>4}", at + 1), number_style),
+                Span::styled(loop_mark, Style::new().fg(theme.accent)),
+                Span::raw(" "),
             ];
 
             // The entry, as a bracket down its rows, named on its first.
