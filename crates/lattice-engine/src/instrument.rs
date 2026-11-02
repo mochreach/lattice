@@ -24,9 +24,9 @@ pub fn build(
         InstKind::Sampler => Box::new(Sampler::new(sample_rate, &instrument.values, sample)),
         InstKind::Chop => Box::new(Chop::new(sample_rate, &instrument.values, sample)),
         InstKind::Synth => Box::new(Synth::with_values(sample_rate, &instrument.values)),
-        InstKind::String => Box::new(Monochord::with_values(sample_rate, &instrument.values)),
-        InstKind::Modular => Box::new(Switched::with_values(sample_rate, &instrument.values)),
-        InstKind::Harpsichord => Box::new(Krell::with_values(sample_rate, &instrument.values)),
+        InstKind::Monochord => Box::new(Monochord::with_values(sample_rate, &instrument.values)),
+        InstKind::Switched => Box::new(Switched::with_values(sample_rate, &instrument.values)),
+        InstKind::Krell => Box::new(Krell::with_values(sample_rate, &instrument.values)),
         // Every other instrument is a drum; were one not, it'd play as a synth.
         kind => rhythmicon::build(kind, sample_rate, &instrument.values)
             .unwrap_or_else(|| Box::new(Synth::with_values(sample_rate, &instrument.values))),

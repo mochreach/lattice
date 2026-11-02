@@ -9,7 +9,7 @@
 )]
 
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
-use lattice_core::instrument::{harpsichord, kick, modular, string};
+use lattice_core::instrument::{kick, krell, monochord, switched};
 use lattice_core::{
     Condition, Fx, FxKind, Grid, InstKind, Instrument, Lane, Lock, Macro, MacroTarget, Rule, Step,
     Track, Transform,
@@ -154,17 +154,17 @@ fn rendering_never_allocates() {
         .map(|kind| lattice_engine::instrument::build(&Instrument::new(kind), 48_000.0, None))
         .collect();
     let mut strings = Some(lattice_engine::instrument::build(
-        &Instrument::new(InstKind::String),
+        &Instrument::new(InstKind::Monochord),
         48_000.0,
         None,
     ));
-    let mut modular = Some(lattice_engine::instrument::build(
-        &Instrument::new(InstKind::Modular),
+    let mut switched = Some(lattice_engine::instrument::build(
+        &Instrument::new(InstKind::Switched),
         48_000.0,
         None,
     ));
-    let mut harpsichord = Some(lattice_engine::instrument::build(
-        &Instrument::new(InstKind::Harpsichord),
+    let mut krell = Some(lattice_engine::instrument::build(
+        &Instrument::new(InstKind::Krell),
         48_000.0,
         None,
     ));
@@ -331,7 +331,7 @@ fn rendering_never_allocates() {
                 790 => {
                     handle.send(Command::SetParam {
                         target: Target::Instrument(0),
-                        id: string::BOW,
+                        id: monochord::BOW,
                         value: 0.5,
                     });
                     handle.send(Command::Preview {
@@ -370,11 +370,11 @@ fn rendering_never_allocates() {
                 803 => {
                     handle.send(Command::SetInstrument {
                         index: 0,
-                        instrument: modular.take().unwrap(),
+                        instrument: switched.take().unwrap(),
                     });
                     handle.send(Command::SetParam {
                         target: Target::Instrument(0),
-                        id: modular::GRIT,
+                        id: switched::GRIT,
                         value: 0.8,
                     });
                     handle.send(Command::Preview {
@@ -387,7 +387,7 @@ fn rendering_never_allocates() {
                 806 => {
                     handle.send(Command::SetParam {
                         target: Target::Instrument(0),
-                        id: modular::STACK,
+                        id: switched::STACK,
                         value: 3.0,
                     });
                     handle.send(Command::Release {
@@ -398,11 +398,11 @@ fn rendering_never_allocates() {
                 807 => {
                     handle.send(Command::SetInstrument {
                         index: 0,
-                        instrument: harpsichord.take().unwrap(),
+                        instrument: krell.take().unwrap(),
                     });
                     handle.send(Command::SetParam {
                         target: Target::Instrument(0),
-                        id: harpsichord::STOPS,
+                        id: krell::STOPS,
                         value: 4.0,
                     });
                     handle.send(Command::Preview {
@@ -415,7 +415,7 @@ fn rendering_never_allocates() {
                 808 => {
                     handle.send(Command::SetParam {
                         target: Target::Instrument(0),
-                        id: harpsichord::DRIFT,
+                        id: krell::DRIFT,
                         value: 1.0,
                     });
                     handle.send(Command::Release {

@@ -579,8 +579,8 @@ const LESSONS: &[Lesson] = &[
                it. {insert} plays the track on the piano keys, to try it out, without entering \
                notes; the arrows still move and {note_up} {note_down} still turn, so you can \
                shape it as you play, and {escape} stops. \
-               `:inst modular` changes it too (a big stack of saws through a screaming ladder \
-               filter), `:inst harpsichord` gives it an alien harpsichord, and \
+               `:inst switched` changes it too (a big stack of saws through a screaming ladder \
+               filter), `:inst krell` gives it an alien harpsichord, and \
                `:sample kick.wav` plays a sound file on it. \
                `:fx-add delay` adds an effect: `delay`, `reverb`, `filter`, `ensemble`, \
                `phaser`, `drive`, `comp` or `pitch`.\n\nAdd a reverb to the LEAD track.",
@@ -947,7 +947,7 @@ const LESSONS: &[Lesson] = &[
                8/24 of a step late, `X6` cuts it 6/24 in, `A37` goes round it and the notes 3 \
                and 7 semitones up, and `!` accents it. Some change its sound, for that note \
                alone: `<` plays a sampler's or chop's sound the other way round, `O8` starts it \
-               half way in, and `G6` slides a synth's or string's note in from the last one's \
+               half way in, and `G6` slides a synth's, switched's or monochord's note in from the last one's \
                pitch; where the instrument can't, they're dimmed and do nothing. Others move \
                the track's playhead: `J12` \
                carries on from step 12, `J?` from any step, the same each time the song plays; \

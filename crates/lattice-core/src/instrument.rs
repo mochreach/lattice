@@ -48,19 +48,19 @@ pub enum InstKind {
     Hat,
     Clap,
     Tom,
-    String,
+    Monochord,
     Sampler,
     Chop,
-    Modular,
-    Harpsichord,
+    Switched,
+    Krell,
 }
 
 impl InstKind {
     pub const ALL: [InstKind; 11] = [
         InstKind::Synth,
-        InstKind::Modular,
-        InstKind::String,
-        InstKind::Harpsichord,
+        InstKind::Switched,
+        InstKind::Monochord,
+        InstKind::Krell,
         InstKind::Sampler,
         InstKind::Chop,
         InstKind::Kick,
@@ -82,11 +82,11 @@ impl InstKind {
             InstKind::Hat => &hat::PARAMS,
             InstKind::Clap => &clap::PARAMS,
             InstKind::Tom => &tom::PARAMS,
-            InstKind::String => &string::PARAMS,
+            InstKind::Monochord => &monochord::PARAMS,
             InstKind::Sampler => &sampler::PARAMS,
             InstKind::Chop => &chop::PARAMS,
-            InstKind::Modular => &modular::PARAMS,
-            InstKind::Harpsichord => &harpsichord::PARAMS,
+            InstKind::Switched => &switched::PARAMS,
+            InstKind::Krell => &krell::PARAMS,
         }
     }
 }
@@ -100,11 +100,11 @@ impl Kind for InstKind {
             InstKind::Hat => "hat",
             InstKind::Clap => "clap",
             InstKind::Tom => "tom",
-            InstKind::String => "string",
+            InstKind::Monochord => "monochord",
             InstKind::Sampler => "sampler",
             InstKind::Chop => "chop",
-            InstKind::Modular => "modular",
-            InstKind::Harpsichord => "harpsichord",
+            InstKind::Switched => "switched",
+            InstKind::Krell => "krell",
         }
     }
 
@@ -151,7 +151,7 @@ pub mod synth {
 
 /// Switched, the modular: a stack of saws, each hard-synced to a master at its own pitch, through
 /// a four-pole ladder filter that screams as its resonance goes up, with one envelope for both.
-pub mod modular {
+pub mod switched {
     use super::*;
 
     /// What's stacked: one saw, a pair a little apart, a swarm of seven, organ stops (16', 8' and
@@ -325,7 +325,7 @@ pub mod tom {
 
 /// A string, plucked or bowed: a waveguide whose loop sets its pitch, and whose losses set how
 /// long and how brightly it rings.
-pub mod string {
+pub mod monochord {
     use super::*;
 
     /// The kind of string: warm nylon, a pair of bright steel strings a few cents apart, as on a
@@ -357,7 +357,7 @@ pub mod string {
 
 /// Krell's harpsichord: choirs of strings plucked by quills, damped as the key comes up, over a
 /// body that rings in sympathy.
-pub mod harpsichord {
+pub mod krell {
     use super::*;
 
     /// The choirs of strings each key plucks, as an organ's stops: one at pitch (8'), two, one

@@ -13,7 +13,7 @@
 use std::f32::consts::PI;
 
 use lattice_core::InstKind;
-use lattice_core::instrument::modular::{
+use lattice_core::instrument::switched::{
     CONTOUR, GAIN, GRIT, LADDER, SCREAM, SNAP, SPREAD, STACK, WIDTH,
 };
 use wide::f32x8;
@@ -258,7 +258,7 @@ impl Switched {
             silent: true,
             clock: 0,
         };
-        for info in InstKind::Modular.params() {
+        for info in InstKind::Switched.params() {
             let value = values
                 .get(info.id as usize)
                 .copied()
@@ -629,7 +629,7 @@ impl Processor for Switched {
                 EventKind::Choke => self.choke(),
                 EventKind::Shape(shape) => self.shape = shape,
                 EventKind::Param { id, value } => {
-                    if let Some(info) = InstKind::Modular.params().get(id as usize) {
+                    if let Some(info) = InstKind::Switched.params().get(id as usize) {
                         self.set(id, info.clamp(value));
                     }
                 }
@@ -638,7 +638,7 @@ impl Processor for Switched {
     }
 
     fn params(&self) -> &[ParamInfo] {
-        InstKind::Modular.params()
+        InstKind::Switched.params()
     }
 }
 
@@ -649,7 +649,7 @@ mod tests {
     const RATE: f32 = 48_000.0;
 
     fn modular(settings: &[(u32, f32)]) -> Switched {
-        let mut values = lattice_core::Instrument::new(InstKind::Modular).values;
+        let mut values = lattice_core::Instrument::new(InstKind::Switched).values;
         for &(id, value) in settings {
             values[id as usize] = value;
         }

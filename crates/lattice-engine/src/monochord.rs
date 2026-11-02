@@ -14,7 +14,7 @@
 //! plucking a string that's still ringing damps it first, as a finger would.
 
 use lattice_core::InstKind;
-use lattice_core::instrument::string::{BOW, DECAY, MODEL, PLUCK, POSITION, TONE};
+use lattice_core::instrument::monochord::{BOW, DECAY, MODEL, PLUCK, POSITION, TONE};
 
 use crate::dsp::decay_coef;
 use crate::param::ParamInfo;
@@ -214,7 +214,7 @@ impl Monochord {
             dc: [(0.0, 0.0); 2],
             dc_coef: 1.0 - one_pole(10.0, sample_rate),
         };
-        for info in InstKind::String.params() {
+        for info in InstKind::Monochord.params() {
             let value = values
                 .get(info.id as usize)
                 .copied()
@@ -478,7 +478,7 @@ impl Processor for Monochord {
                 EventKind::Choke => self.choke(),
                 EventKind::Shape(shape) => self.shape = shape,
                 EventKind::Param { id, value } => {
-                    if let Some(info) = InstKind::String.params().get(id as usize) {
+                    if let Some(info) = InstKind::Monochord.params().get(id as usize) {
                         self.set(id, info.clamp(value));
                     }
                 }
@@ -487,7 +487,7 @@ impl Processor for Monochord {
     }
 
     fn params(&self) -> &[ParamInfo] {
-        InstKind::String.params()
+        InstKind::Monochord.params()
     }
 }
 
@@ -498,7 +498,7 @@ mod tests {
     const RATE: f32 = 48_000.0;
 
     fn string(settings: &[(u32, f32)]) -> Monochord {
-        let mut values = lattice_core::Instrument::new(InstKind::String).values;
+        let mut values = lattice_core::Instrument::new(InstKind::Monochord).values;
         for &(id, value) in settings {
             values[id as usize] = value;
         }

@@ -159,7 +159,7 @@ few milliseconds, quick but not a click; the synth releases its voices. See chok
 ### Monochord, the string engine
 
 The second engine, named after the monochord, the single string over a movable bridge with which
-Pythagoras worked out the ratios of musical intervals. One instrument, `:inst string`, with eight
+Pythagoras worked out the ratios of musical intervals. One instrument, `:inst monochord`, with eight
 voices, each a string:
 
 - **The string** is a waveguide in two halves, as in the Synthesis ToolKit's `Bowed`: one delay
@@ -213,7 +213,7 @@ enough not to need SIMD lanes.
 ### Switched, the modular engine
 
 The third engine, named after Wendy Carlos's *Switched-On Bach*, the record that put the Moog
-modular in front of everyone. One instrument, `:inst modular`: a stack of saws through a ladder
+modular in front of everyone. One instrument, `:inst switched`: a stack of saws through a ladder
 filter, big, bright and in stereo. Eight voices in SIMD lanes, as in the test synth, with the
 envelopes, glides, the ladder's coefficients and the sync worked out every 16 samples.
 
@@ -264,7 +264,7 @@ voices benchmark plays eight voices of a swarm at around 400 times real time.
 
 The fourth engine, named after the vanished civilisation of *Forbidden Planet*, the film whose
 score, Louis and Bebe Barron's, was the first made all electronically: a harpsichord such a
-civilisation might have built. One instrument, `:inst harpsichord`. It shares Monochord's
+civilisation might have built. One instrument, `:inst krell`. It shares Monochord's
 waveguide (the delay line, the string of two lines and the pluck, in `waveguide.rs`), so the
 strings are Monochord's, plucked rather than bowed.
 
@@ -503,16 +503,18 @@ with the group's name over its tracks.
 
 **Names.** Each engine is named with an indirect nod to a pioneer of electronic music: a studio,
 a record or an idea rather than the person's name, so it doesn't read as an endorsement. The name
-should hint at the engine's character. The docs can say where each name comes from. Candidates:
+should hint at the engine's character, and players choose it by that name (`:inst krell`), as
+the names are part of Lattice's character, not jargon to hide. The docs can say where each name
+comes from. Candidates:
 
 | Name | Nod to | Engine idea |
 | --- | --- | --- |
 | Folly | Tower Folly, Daphne Oram's studio | drawn wavetables |
 | Maida | Maida Vale, home of the Radiophonic Workshop (Delia Derbyshire) | test oscillators and tape |
-| Switched | *Switched-On Bach* (Wendy Carlos) | big modular, ladder filter (built: `:inst modular`) |
+| Switched | *Switched-On Bach* (Wendy Carlos) | big modular, ladder filter (built: `:inst switched`) |
 | Nemo | Nemo Studios (Vangelis) | expressive brass and pads, shaped by pressure |
 | Oxygen | *Oxygène* (Jean-Michel Jarre) | string machine and phaser |
-| Krell | the vanished civilisation of *Forbidden Planet*, scored by Louis and Bebe Barron | alien harpsichord (built: `:inst harpsichord`) |
+| Krell | the vanished civilisation of *Forbidden Planet*, scored by Louis and Bebe Barron | alien harpsichord (built: `:inst krell`) |
 | Seven | *Seven Waves* (Suzanne Ciani) | west-coast: wavefolding, low-pass gates, plucks |
 | Oblique | Oblique Strategies (Brian Eno) | generative pads that evolve on their own |
 | Snowflake | *Snowflakes Are Dancing* (Isao Tomita) | orchestral imitation, whistles and choirs |

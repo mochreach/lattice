@@ -7,7 +7,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use lattice_core::fx::{comp, delay, drive, filter, reverb};
-use lattice_core::instrument::{clap, harpsichord, hat, kick, modular, snare, string, synth, tom};
+use lattice_core::instrument::{clap, hat, kick, krell, monochord, snare, switched, synth, tom};
 use lattice_core::{
     Arrangement, Bus, Buses, Change, Condition, DRUM_ROOT, Entry, Fx, FxKind, Grid, Group,
     InstKind, Instrument, Lane, Lock, Note, Pattern, Rule, Song, Step, Track, Transform,
@@ -313,16 +313,16 @@ fn tracks() -> Vec<Track> {
     let mut stab = track(
         "stab",
         instrument(
-            Modular,
+            Switched,
             &[
-                (modular::STACK, 1.0),
-                (modular::SPREAD, 0.3),
-                (modular::WIDTH, 0.7),
-                (modular::LADDER, 1_200.0),
-                (modular::SCREAM, 0.4),
-                (modular::CONTOUR, 0.45),
-                (modular::SNAP, 0.1),
-                (modular::GAIN, 0.55),
+                (switched::STACK, 1.0),
+                (switched::SPREAD, 0.3),
+                (switched::WIDTH, 0.7),
+                (switched::LADDER, 1_200.0),
+                (switched::SCREAM, 0.4),
+                (switched::CONTOUR, 0.45),
+                (switched::SNAP, 0.1),
+                (switched::GAIN, 0.55),
             ],
         ),
     );
@@ -335,17 +335,17 @@ fn tracks() -> Vec<Track> {
     let mut pad = track(
         "pad",
         instrument(
-            Harpsichord,
+            Krell,
             &[
-                (harpsichord::STOPS, 3.0),
-                (harpsichord::DRIFT, 0.3),
-                (harpsichord::QUILL, 0.6),
-                (harpsichord::DECAY, 8.0),
-                (harpsichord::DAMPER, 0.5),
-                (harpsichord::BODY, 0.6),
-                (harpsichord::HULL, 174.6),
-                (harpsichord::GLASS, 0.8),
-                (harpsichord::GAIN, 0.8),
+                (krell::STOPS, 3.0),
+                (krell::DRIFT, 0.3),
+                (krell::QUILL, 0.6),
+                (krell::DECAY, 8.0),
+                (krell::DAMPER, 0.5),
+                (krell::BODY, 0.6),
+                (krell::HULL, 174.6),
+                (krell::GLASS, 0.8),
+                (krell::GAIN, 0.8),
             ],
         ),
     );
@@ -366,11 +366,11 @@ fn tracks() -> Vec<Track> {
     let mut pluck = track(
         "pluck",
         instrument(
-            String,
+            Monochord,
             &[
-                (string::MODEL, 2.0),
-                (string::PLUCK, 0.8),
-                (string::DECAY, 1.5),
+                (monochord::MODEL, 2.0),
+                (monochord::PLUCK, 0.8),
+                (monochord::DECAY, 1.5),
             ],
         ),
     );
@@ -497,7 +497,7 @@ fn acid() -> Vec<Step> {
 /// them has a perfect fifth.
 fn stabs() -> Vec<Step> {
     let mut steps = notes(". . . C4_2 . . . . . . C4 . . . . .");
-    for (param, value) in [(modular::LADDER, 2_400.0), (modular::SCREAM, 0.75)] {
+    for (param, value) in [(switched::LADDER, 2_400.0), (switched::SCREAM, 0.75)] {
         let lock = Lock {
             fx: None,
             param: param as u8,

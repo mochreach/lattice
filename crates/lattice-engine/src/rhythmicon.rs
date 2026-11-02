@@ -141,9 +141,9 @@ pub fn build(kind: InstKind, sample_rate: f32, values: &[f32]) -> Option<Box<dyn
         InstKind::Clap => Box::new(Clap::with_values(sample_rate, values)),
         InstKind::Tom => Box::new(Tom::with_values(sample_rate, values)),
         InstKind::Synth
-        | InstKind::Modular
-        | InstKind::String
-        | InstKind::Harpsichord
+        | InstKind::Switched
+        | InstKind::Monochord
+        | InstKind::Krell
         | InstKind::Sampler
         | InstKind::Chop => return None,
     })

@@ -17,7 +17,7 @@
 //! tune with each other and ring on.
 
 use lattice_core::InstKind;
-use lattice_core::instrument::harpsichord::{
+use lattice_core::instrument::krell::{
     BODY, DAMPER, DECAY, DRIFT, GAIN, GLASS, HULL, QUILL, STOPS,
 };
 
@@ -280,7 +280,7 @@ impl Krell {
             dc: [(0.0, 0.0); 2],
             dc_coef: 1.0 - one_pole(10.0, sample_rate),
         };
-        for info in InstKind::Harpsichord.params() {
+        for info in InstKind::Krell.params() {
             let value = values
                 .get(info.id as usize)
                 .copied()
@@ -611,7 +611,7 @@ impl Processor for Krell {
                 // Its notes don't glide.
                 EventKind::Shape(_) => {}
                 EventKind::Param { id, value } => {
-                    if let Some(info) = InstKind::Harpsichord.params().get(id as usize) {
+                    if let Some(info) = InstKind::Krell.params().get(id as usize) {
                         self.set(id, info.clamp(value));
                     }
                 }
@@ -620,7 +620,7 @@ impl Processor for Krell {
     }
 
     fn params(&self) -> &[ParamInfo] {
-        InstKind::Harpsichord.params()
+        InstKind::Krell.params()
     }
 }
 
@@ -631,7 +631,7 @@ mod tests {
     const RATE: f32 = 48_000.0;
 
     fn harpsichord(settings: &[(u32, f32)]) -> Krell {
-        let mut values = lattice_core::Instrument::new(InstKind::Harpsichord).values;
+        let mut values = lattice_core::Instrument::new(InstKind::Krell).values;
         for &(id, value) in settings {
             values[id as usize] = value;
         }

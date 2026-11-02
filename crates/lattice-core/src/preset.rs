@@ -155,7 +155,7 @@ pub const PRESETS: &[&str] = &[
 /// A preset Lattice comes with, by name.
 pub fn preset(name: &str) -> Option<Preset> {
     use crate::fx::{comp, delay, drive, filter, pitch, reverb};
-    use crate::instrument::{clap, hat, kick, snare, string, synth, tom};
+    use crate::instrument::{clap, hat, kick, monochord, snare, synth, tom};
 
     let inst = |kind, values: &[(u32, f32)]| {
         let mut instrument = Instrument::new(kind);
@@ -190,15 +190,15 @@ pub fn preset(name: &str) -> Option<Preset> {
     let preset = match name {
         // A steel string, plucked bright near the bridge, in a large glassy room.
         "glasshouse" => Preset {
-            face: face("Glasshouse", &[string::PLUCK, string::DECAY]),
+            face: face("Glasshouse", &[monochord::PLUCK, monochord::DECAY]),
             instrument: inst(
-                InstKind::String,
+                InstKind::Monochord,
                 &[
-                    (string::MODEL, 1.0),
-                    (string::PLUCK, 0.75),
-                    (string::POSITION, 0.08),
-                    (string::DECAY, 5.0),
-                    (string::TONE, 0.8),
+                    (monochord::MODEL, 1.0),
+                    (monochord::PLUCK, 0.75),
+                    (monochord::POSITION, 0.08),
+                    (monochord::DECAY, 5.0),
+                    (monochord::TONE, 0.8),
                 ],
             ),
             effects: vec![fx(
@@ -219,7 +219,7 @@ pub fn preset(name: &str) -> Option<Preset> {
                 mac(
                     "bow",
                     0.0,
-                    &[(None, string::BOW, 0.8), (None, string::PLUCK, -0.4)],
+                    &[(None, monochord::BOW, 0.8), (None, monochord::PLUCK, -0.4)],
                 ),
             ],
         },
@@ -310,13 +310,13 @@ pub fn preset(name: &str) -> Option<Preset> {
         },
         // A sitar, in a dotted echo that thickens as the rain comes on.
         "monsoon" => Preset {
-            face: face("Monsoon", &[string::POSITION]),
+            face: face("Monsoon", &[monochord::POSITION]),
             instrument: inst(
-                InstKind::String,
+                InstKind::Monochord,
                 &[
-                    (string::MODEL, 2.0),
-                    (string::DECAY, 4.0),
-                    (string::TONE, 0.7),
+                    (monochord::MODEL, 2.0),
+                    (monochord::DECAY, 4.0),
+                    (monochord::TONE, 0.7),
                 ],
             ),
             effects: vec![
@@ -552,14 +552,14 @@ pub fn preset(name: &str) -> Option<Preset> {
         },
         // A soft nylon string, long and dark, in a far-off room.
         "dust-harp" => Preset {
-            face: face("Dust Harp", &[string::PLUCK, string::TONE]),
+            face: face("Dust Harp", &[monochord::PLUCK, monochord::TONE]),
             instrument: inst(
-                InstKind::String,
+                InstKind::Monochord,
                 &[
-                    (string::PLUCK, 0.3),
-                    (string::POSITION, 0.25),
-                    (string::DECAY, 8.0),
-                    (string::TONE, 0.4),
+                    (monochord::PLUCK, 0.3),
+                    (monochord::POSITION, 0.25),
+                    (monochord::DECAY, 8.0),
+                    (monochord::TONE, 0.4),
                 ],
             ),
             effects: vec![
@@ -579,7 +579,7 @@ pub fn preset(name: &str) -> Option<Preset> {
                 mac(
                     "settle",
                     0.0,
-                    &[(None, string::TONE, -0.3), (None, string::DECAY, 0.2)],
+                    &[(None, monochord::TONE, -0.3), (None, monochord::DECAY, 0.2)],
                 ),
                 mac(
                     "distance",
@@ -590,15 +590,15 @@ pub fn preset(name: &str) -> Option<Preset> {
         },
         // A bowed string, breathy and long, haunting the room an octave up.
         "cello-ghost" => Preset {
-            face: face("Cello Ghost", &[string::POSITION, string::BOW]),
+            face: face("Cello Ghost", &[monochord::POSITION, monochord::BOW]),
             instrument: inst(
-                InstKind::String,
+                InstKind::Monochord,
                 &[
-                    (string::PLUCK, 0.2),
-                    (string::POSITION, 0.12),
-                    (string::DECAY, 12.0),
-                    (string::TONE, 0.45),
-                    (string::BOW, 0.8),
+                    (monochord::PLUCK, 0.2),
+                    (monochord::POSITION, 0.12),
+                    (monochord::DECAY, 12.0),
+                    (monochord::TONE, 0.45),
+                    (monochord::BOW, 0.8),
                 ],
             ),
             effects: vec![
@@ -617,7 +617,7 @@ pub fn preset(name: &str) -> Option<Preset> {
                 mac(
                     "breath",
                     0.0,
-                    &[(None, string::BOW, 0.2), (None, string::TONE, 0.2)],
+                    &[(None, monochord::BOW, 0.2), (None, monochord::TONE, 0.2)],
                 ),
                 mac(
                     "haunt",
@@ -628,15 +628,15 @@ pub fn preset(name: &str) -> Option<Preset> {
         },
         // A steel string plucked hard at the bridge, twanging off a slapback echo.
         "tidewater" => Preset {
-            face: face("Tidewater", &[string::POSITION, string::DECAY]),
+            face: face("Tidewater", &[monochord::POSITION, monochord::DECAY]),
             instrument: inst(
-                InstKind::String,
+                InstKind::Monochord,
                 &[
-                    (string::MODEL, 1.0),
-                    (string::PLUCK, 0.9),
-                    (string::POSITION, 0.04),
-                    (string::DECAY, 2.0),
-                    (string::TONE, 0.9),
+                    (monochord::MODEL, 1.0),
+                    (monochord::PLUCK, 0.9),
+                    (monochord::POSITION, 0.04),
+                    (monochord::DECAY, 2.0),
+                    (monochord::TONE, 0.9),
                 ],
             ),
             effects: vec![fx(
@@ -652,7 +652,10 @@ pub fn preset(name: &str) -> Option<Preset> {
                 mac(
                     "twang",
                     0.0,
-                    &[(None, string::POSITION, -0.1), (None, string::PLUCK, 0.1)],
+                    &[
+                        (None, monochord::POSITION, -0.1),
+                        (None, monochord::PLUCK, 0.1),
+                    ],
                 ),
                 mac("slap", 0.3, &[(Some(0), delay::MIX, 0.4)]),
             ],

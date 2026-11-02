@@ -105,7 +105,10 @@ impl Gesture {
                 matches!(kind, InstKind::Sampler | InstKind::Chop)
             }
             Gesture::Glide(_) => {
-                matches!(kind, InstKind::Synth | InstKind::Modular | InstKind::String)
+                matches!(
+                    kind,
+                    InstKind::Synth | InstKind::Switched | InstKind::Monochord
+                )
             }
             _ => true,
         }
@@ -358,7 +361,7 @@ mod tests {
         assert_eq!("o8".parse(), Ok(Gesture::Offset(8)));
         assert!(!Gesture::Reverse.works_on(InstKind::Synth));
         assert!(Gesture::Reverse.works_on(InstKind::Chop));
-        assert!(Gesture::Glide(3).works_on(InstKind::String));
+        assert!(Gesture::Glide(3).works_on(InstKind::Monochord));
         assert!(!Gesture::Glide(3).works_on(InstKind::Kick));
         assert!("?100".parse::<Gesture>().is_err());
         assert!("5:4".parse::<Gesture>().unwrap_err().contains("1 to 4"));

@@ -324,9 +324,9 @@ mod tests {
             let drum = !matches!(
                 preset.instrument.kind,
                 lattice_core::InstKind::Synth
-                    | lattice_core::InstKind::Modular
-                    | lattice_core::InstKind::Harpsichord
-                    | lattice_core::InstKind::String
+                    | lattice_core::InstKind::Switched
+                    | lattice_core::InstKind::Krell
+                    | lattice_core::InstKind::Monochord
             );
             let mut export = export(16);
             let track = &mut export.grid.tracks[0];
