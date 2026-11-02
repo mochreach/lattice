@@ -102,7 +102,7 @@
                     42: (note: (pitch: 62)),
                     43: (note: (pitch: 63)),
                     44: (note: (pitch: 96), locks: [(param: 4, value: 1.0)]),
-                    45: (note: (pitch: 97)),
+                    45: (note: (pitch: 97), locks: [(param: 4, value: 0.0, change: reset)]),
                     46: (note: (pitch: 60)),
                     47: (note: (pitch: 60)),
                     48: (note: (pitch: 108)),

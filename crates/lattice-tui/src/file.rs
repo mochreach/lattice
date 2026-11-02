@@ -142,6 +142,27 @@ mod tests {
     }
 
     #[test]
+    fn the_mountain_king_example_opens_and_chops_its_own_render() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/mountain-king/mountain-king.lattice");
+        let (song, _) = open(&path, None).unwrap();
+        let tracks = &song.grid.tracks;
+        let hall = tracks.iter().find(|t| t.name == "hall").unwrap();
+        assert_eq!(hall.instrument.kind, InstKind::Chop);
+        let sample = crate::samples::load(hall.instrument.file.as_ref().unwrap()).unwrap();
+        let seconds = sample.len() as f64 / f64::from(sample.rate);
+        assert!(
+            (seconds - 4.0 * 4.0 * 60.0 / song.bpm).abs() < 0.001,
+            "{seconds}"
+        );
+        let troll = &tracks[0];
+        assert_eq!(troll.lock_columns().len(), 2);
+        assert_eq!(troll.macros.len(), 1);
+        assert_eq!(troll.effects.lanes().len(), 2);
+        assert_eq!(song.grid.groups.len(), 2);
+    }
+
+    #[test]
     fn sound_files_beside_the_song_are_saved_relative_to_it() {
         let folder = std::env::temp_dir().join(format!("lattice-file-{}", std::process::id()));
         std::fs::create_dir_all(&folder).unwrap();
