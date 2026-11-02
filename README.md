@@ -491,8 +491,8 @@ stops looping. A bar down the left (`↻` `┃`) marks the bars it covers, and t
 its start at its end. `space` plays the song from the cursor's entry to the end, following
 along in the header (`song 2/3`) and on the page, where the playhead moves along the strip and
 down the bars;
-`:export` renders it. Anywhere else, `^space` plays the song from the entry playing the pattern
-you're on.
+`:export` renders it. Anywhere else, `A-space` plays the song from the entry playing the pattern
+you're on, and `^space` from its start.
 
 **Instruments:** each track has one. `synth` is a plain test synth. `kick`, `snare`, `hat`, `clap` and `tom` are
 Rhythmicon, the drum engine: one drum per track, played at its tuning by C-4 and tuned up or down

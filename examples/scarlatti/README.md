@@ -24,16 +24,17 @@ muted each time:
 3. **A** again, the `lead` doubling Krell, leaning on the long notes that start its bars (`!`) and
    gliding into its octave leaps (`G6`), and the snare's backbeat in. From bar 24 to 30 its
    ladder opens, a lock sliding in its column: open the lead (`te`) to see it.
-4. **B**, first time, with the `arp` in place of the lead: a pair of saws two octaves over the
-   bass, every eighth going round the chord the left hand holds (`A` and its two intervals, its
-   third and fifth where it has them).
+4. **B**, first time, with the `arp` in place of the lead: a pair of saws an octave or two over the
+   bass, a note every eighth, rising and falling through the chord the left hand holds (its
+   root, third and fifth where it has them, and the octave).
 5. **B** again, everything at once. The lead's ladder opens over the chromatic climb from bar 52
    to 55. The last pattern, `fine`, is B4 again, a bar longer so the last chord can ring.
 
 The left hand is split across the `bass`, a single saw on Switched with its ladder low and
 screaming, the `tenor` (what's held over the bass, on organ stops) and the `alto` (the odd third
 note of a chord, on a swarm), each note going to the lowest of them that's free. The `pedal`, one
-plain saw, doubles the bass an octave down, as an organ's 16-foot stops do.
+plain saw, doubles the bass an octave down, as an organ's 16-foot stops do, its ladder open just
+enough to keep the saw's lowest harmonics, so it's heard on small speakers too.
 
 The effects, on `gf`:
 
