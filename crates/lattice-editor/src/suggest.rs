@@ -114,7 +114,9 @@ impl Editor {
             ("preset", 0) => (self.presets.iter())
                 .map(|name| {
                     let whose = match lattice_core::preset(name) {
-                        Some(preset) => preset.face.title,
+                        Some(preset) => {
+                            format!("{} · {}", preset.face.title, preset.instrument.kind.name())
+                        }
                         None => "saved".into(),
                     };
                     (name.clone(), whose)

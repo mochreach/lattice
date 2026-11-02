@@ -221,7 +221,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:fx-add EFFECT` | add an effect (`delay`, `reverb`, `filter`, `drive`, `comp` or `pitch`) after the mixer or fx page cursor, or at the end of this track's chain |
 | `:chain-save NAME` | save the strip's chain of effects (on the pattern page, the cursor's track's) as `~/.config/lattice/chains/NAME.toml`, to load on any strip of any song |
 | `:chain-load NAME` | put a saved chain on the strip, in place of its own (its effects' locks go with them); Lattice comes with `shimmer` |
-| `:preset NAME` | put a preset on the track (the instrument page's or the cursor's): its instrument, effects, macros and face, in place of the track's own; Lattice comes with `glasshouse`, `night-bus`, `rubber`, `foundry` and `monsoon` |
+| `:preset NAME` | put a preset on the track (the instrument page's or the cursor's): its instrument, effects, macros and face, in place of the track's own; Lattice comes with 22: type `:preset ` to see them |
 | `:preset-save NAME` | save the track's instrument, effects and macros, and its face, as `~/.config/lattice/presets/NAME.toml`, giving the track a face titled after `NAME` if it has none |
 | `:face TITLE` | title the track's face |
 | `:face-show [SETTING]`, `:face-hide [SETTING]` | put one of the instrument's settings on the track's face, beside its macros, or take it off; the one under the cursor if none's named |
@@ -317,10 +317,20 @@ the feedback send's level, the reverb's decay, or `pitch` at 7 for fifths.
 **Presets** make an instrument into one of its own: `:preset night-bus` puts an instrument, its
 settings, the effects after it and the macros that turn them on a track all at once, in place of
 the track's own, and `:preset-save cold-iron` saves a track's to put on any track of any song.
-Lattice comes with `glasshouse` (a bright steel string in a glassy room, with `bloom` for more of
-it and `bow` to bow it), `night-bus` (a dark saw pad in the shimmer, which `dawn` opens), `rubber`
-(a squelchy square bass), `foundry` (a hard, hot kick) and `monsoon` (a sitar in an echo, with
-`rain` to thicken it). A preset gives its track a **face**: a title (`:face Cold Iron`), and the
+Lattice comes with 22, each with its effects, two macros and a face:
+
+- synths: `night-bus` (a dark saw pad in the shimmer, which `dawn` opens), `paper-lanterns` (a slow
+  pad through a swaying band-pass), `cathedral` (a square organ in a stone nave), `sodium` (a bright
+  plucked lead trailing echoes), `wasp` (a driven square lead), `acid-rain` (a 303's squelch),
+  `rubber` (a squelchy square bass) and `sub-zero` (a low, round sub bass)
+- strings: `glasshouse` (a bright steel string in a glassy room), `dust-harp` (a soft, dark nylon
+  string, far off), `cello-ghost` (a bowed string, an octave's ghost above it), `tidewater` (a
+  twangy steel string off a slapback echo) and `monsoon` (a sitar in an echo, with `rain` to
+  thicken it)
+- drums: `foundry` (a hard, hot kick), `velvet-boom` (an 808's long boom), `tin-roof` (a 909
+  crack), `brushfire` (a snare like brushes), `cicada` (a ticking, swarming hat), `brass-bell` (the
+  hat's metal rung like a bell), `crowd-pleaser` (a clap from a crowd), `thunderhead` (a low,
+  rolling tom in a storm) and `hollow-log` (a knock on wood) A preset gives its track a **face**: a title (`:face Cold Iron`), and the
 controls it puts forward, its macros and whichever settings `:face-show cutoff` adds. The track
 keeps it, and the song saves it, until its instrument changes for another kind.
 

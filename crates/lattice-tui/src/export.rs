@@ -262,6 +262,37 @@ mod tests {
     }
 
     #[test]
+    fn every_preset_is_heard_and_none_clips() {
+        for name in lattice_core::PRESETS {
+            let preset = lattice_core::preset(name).unwrap();
+            let drum = !matches!(
+                preset.instrument.kind,
+                lattice_core::InstKind::Synth | lattice_core::InstKind::String
+            );
+            let mut export = export(16);
+            let track = &mut export.grid.tracks[0];
+            track.instrument = preset.instrument;
+            track.effects = preset.effects;
+            track.macros = preset.macros;
+            track.steps = vec![Step::default(); 16];
+            for (i, pitch) in [(0, 48), (4, 55), (8, 51), (12, 60)] {
+                let pitch = if drum { lattice_core::DRUM_ROOT } else { pitch };
+                track.steps[i].note = Some(Note {
+                    pitch,
+                    velocity: 100,
+                    length: 2,
+                });
+            }
+            export.parts[0].lanes[0].steps = track.steps.clone();
+            let audio = render(&export, Buses::default(), 120.0, 48_000.0).unwrap();
+            let peak = audio.iter().fold(0f32, |m, s| m.max(s.abs()));
+
+            assert!(peak > 0.05, "{name} is too quiet: {peak}");
+            assert!(peak < 1.5, "{name} clips: {peak}");
+        }
+    }
+
+    #[test]
     fn a_loop_is_exactly_its_steps_with_the_tail_from_the_start() {
         let rate = 8000.0;
         let plain = render(&export(4), Buses::default(), 120.0, rate).unwrap();
