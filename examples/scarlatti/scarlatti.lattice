@@ -43,7 +43,7 @@
             (
                 name: "bass",
                 length: 32,
-                instrument: (kind: Switched, params: {"stack": 1.0, "spread": 0.15, "width": 0.2, "grit": 0.15, "ladder": 260.0, "scream": 0.55, "contour": 0.5, "snap": 0.25, "gain": 0.5}),
+                instrument: (kind: Switched, params: {"stack": 3.0, "spread": 0.15, "width": 0.4, "grit": 0.15, "ladder": 260.0, "scream": 0.55, "contour": 0.5, "snap": 0.25, "gain": 0.5}),
                 effects: [(kind: Drive, params: {"drive": 0.35, "tone": 3000.0, "mix": 0.6})],
                 mix: (level: -9.0, send: -18.0),
             ),
