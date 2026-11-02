@@ -1592,7 +1592,7 @@ impl Editor {
     }
 
     /// Collapses to a single selection on this step, kept on the grid.
-    fn select_point(&mut self, track: usize, step: usize) {
+    pub(crate) fn select_point(&mut self, track: usize, step: usize) {
         let point = Cursor { track, step };
         self.set_selections(vec![self.clamped(point, point)], 0);
     }

@@ -110,15 +110,7 @@ impl Editor {
             }
             Action::Paste => self.paste_entry(Place::After),
             Action::PasteInsert => self.paste_entry(Place::Before),
-            Action::Open => {
-                // Edit the entry's pattern.
-                let Some(entry) = self.arrangement.entries.get(entry) else {
-                    return Some(vec![]);
-                };
-                let pattern = entry.pattern;
-                self.page = Page::Pattern;
-                return Some(self.go_to_pattern(pattern));
-            }
+            Action::Open => return Some(self.open_bar()),
             Action::TogglePlay => return Some(self.play_song()),
             Action::TogglePatternMute => self.mute_in_entry(entry),
             Action::Change if self.song.column == 0 => {
@@ -174,6 +166,28 @@ impl Editor {
         }
         let mut effects = self.start_song(entry);
         effects.push(Effect::TogglePlay);
+        effects
+    }
+
+    /// Edits the cursor's entry's pattern, at the cursor's bar, on its track if it's on one.
+    fn open_bar(&mut self) -> Vec<Effect> {
+        let at = self.song_cursor();
+        let Some(&entry) = self.arrangement.entries.get(at) else {
+            return vec![];
+        };
+        let bars = self.entry_bars()[at];
+        let pattern_bars = (bars / entry.repeats.max(1) as usize).max(1);
+        let into = (self.song_bar() - self.entry_start(at)) % pattern_bars;
+        let column = self.song_column();
+        self.page = Page::Pattern;
+        let effects = self.go_to_pattern(entry.pattern);
+        // Playing, the pattern's only cued, and the grid's still the one playing.
+        if self.arrangement.current == entry.pattern {
+            let track = column.checked_sub(1).unwrap_or(self.cursor().track);
+            let len = self.grid.tracks[track].steps.len().max(1);
+            let bar = BEATS_PER_BAR as usize * self.grid.steps_per_beat.max(1) as usize;
+            self.select_point(track, into * bar % len);
+        }
         effects
     }
 
@@ -447,6 +461,26 @@ mod tests {
         e.handle(Key::Enter);
         assert_eq!(e.entry_bars(), [2, 3]);
         assert_eq!((e.song_cursor(), e.song_bar()), (0, 0));
+    }
+
+    #[test]
+    fn enter_opens_the_pattern_at_the_cursors_bar() {
+        let mut e = editor();
+        // The first pattern two bars long, played twice.
+        e.handle(Key::Enter);
+        assert_eq!(e.arrangement.current, 0);
+        e.grid.tracks[0].steps.resize(32, Step::default());
+        keys(&mut e, "gs+");
+        assert_eq!(e.entry_bars(), [4]);
+
+        // The fourth bar is the pattern's second, from step 16.
+        keys(&mut e, "gel");
+        e.handle(Key::Enter);
+        assert_eq!(e.page, Page::Pattern);
+        assert_eq!(e.cursor(), crate::Cursor { track: 0, step: 16 });
+        keys(&mut e, "gsk");
+        e.handle(Key::Enter);
+        assert_eq!(e.cursor().step, 0);
     }
 
     #[test]
