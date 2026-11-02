@@ -1,6 +1,13 @@
 //! CPU budget: how much of one core each instrument needs. Run with `cargo bench`, and on every
 //! machine we care about (laptop, Raspberry Pi 4, Pi 3) to see where the limits are.
 
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unreachable
+)]
+
 use std::hint::black_box;
 use std::time::Instant;
 
@@ -44,6 +51,7 @@ fn main() {
         100.0 / report,
         100.0 / report / 8.0
     );
+    all::run();
 }
 
 /// Renders `SECONDS` of audio in `BLOCK`-sized buffers; returns how many times faster than real
@@ -62,4 +70,118 @@ fn budget(instrument: &mut dyn Processor, first_events: &[Event]) -> f64 {
     let elapsed = start.elapsed().as_secs_f64();
     let audio = (blocks * BLOCK) as f64 / f64::from(SAMPLE_RATE);
     audio / elapsed
+}
+
+/// Every instrument, holding eight notes; every effect, on noise; and the whole engine playing a
+/// track of each instrument, every step a note, through a shimmer's lanes and every effect.
+mod all {
+    use super::*;
+    use lattice_core::{Fx, FxKind, Grid, InstKind, Instrument, Kind, Step, Track, built_in_chain};
+    use lattice_engine::{Chain, Command, EffectSlot, Engine, Routing, fx, instrument};
+
+    pub fn run() {
+        for kind in InstKind::ALL {
+            let mut processor = instrument::build(&Instrument::new(kind), SAMPLE_RATE, None);
+            let notes: Vec<Event> = (0..8)
+                .map(|i| Event {
+                    offset: 0,
+                    kind: EventKind::NoteOn {
+                        pitch: 36 + 5 * i,
+                        velocity: 100,
+                    },
+                })
+                .collect();
+            let report = budget(processor.as_mut(), &notes);
+            println!("{:>10}: {report:>6.0}x real time", kind.name());
+        }
+        for kind in FxKind::ALL {
+            let mut processor = fx::build(&Fx::new(kind), SAMPLE_RATE);
+            println!(
+                "{:>10}: {:>6.0}x real time",
+                kind.name(),
+                effect_budget(processor.as_mut())
+            );
+        }
+        println!("    engine: {:>8.1}x real time", engine_budget());
+    }
+
+    fn effect_budget(effect: &mut dyn Processor) -> f64 {
+        let blocks = SECONDS * SAMPLE_RATE as usize / BLOCK;
+        let mut seed = 1u32;
+        let mut noise = || {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            (seed >> 8) as f32 / (1 << 24) as f32 - 0.5
+        };
+        let input: Vec<f32> = (0..BLOCK).map(|_| noise()).collect();
+        let (mut left, mut right) = (input.clone(), input.clone());
+        let start = Instant::now();
+        for _ in 0..blocks {
+            left.copy_from_slice(&input);
+            right.copy_from_slice(&input);
+            effect.process(&[], &mut left, &mut right);
+            black_box((&left, &right));
+        }
+        (blocks * BLOCK) as f64 / f64::from(SAMPLE_RATE) / start.elapsed().as_secs_f64()
+    }
+
+    fn engine_budget() -> f64 {
+        let tracks: Vec<Track> = (InstKind::ALL.iter().enumerate())
+            .map(|(i, kind)| Track {
+                name: kind.name().into(),
+                steps: vec![Step::note(36 + i as u8 * 3); 16],
+                instrument: Instrument::new(*kind),
+                ..Track::default()
+            })
+            .collect();
+        let instruments = (tracks.iter())
+            .map(|t| instrument::build(&t.instrument, SAMPLE_RATE, None))
+            .collect();
+        let grid = Grid {
+            name: "bench".into(),
+            steps_per_beat: 4,
+            tracks,
+            groups: vec![],
+        };
+        let (mut engine, mut handle) = Engine::new(SAMPLE_RATE, 140.0, &grid, instruments);
+        let shimmer = built_in_chain("shimmer").unwrap_or_default();
+        for t in 0..grid.tracks.len() {
+            let chain = Chain::Track(t);
+            for (index, fx) in shimmer.iter().enumerate() {
+                let effect = EffectSlot::with_values(fx::build(fx, SAMPLE_RATE), &fx.values);
+                handle.send(Command::InsertEffect {
+                    chain,
+                    index,
+                    effect,
+                });
+            }
+            let after = shimmer.len();
+            for (i, kind) in FxKind::ALL.into_iter().enumerate() {
+                let effect = EffectSlot::new(fx::build(&Fx::new(kind), SAMPLE_RATE));
+                handle.send(Command::InsertEffect {
+                    chain,
+                    index: after + i,
+                    effect,
+                });
+            }
+            let mut routed = shimmer.clone();
+            for kind in FxKind::ALL {
+                routed.push(Fx::new(kind));
+            }
+            handle.send(Command::SetRouting {
+                chain,
+                routing: Routing::new(&routed),
+            });
+        }
+        engine.play();
+        let mut left = vec![0.0; BLOCK];
+        let mut right = vec![0.0; BLOCK];
+        let blocks = SECONDS * SAMPLE_RATE as usize / BLOCK / 4;
+        engine.process(&mut left, &mut right);
+        let start = Instant::now();
+        for _ in 0..blocks {
+            engine.process(&mut left, &mut right);
+            black_box((&left, &right));
+        }
+        (blocks * BLOCK) as f64 / f64::from(SAMPLE_RATE) / start.elapsed().as_secs_f64()
+    }
 }
