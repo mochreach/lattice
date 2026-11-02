@@ -72,7 +72,7 @@
                 name: "kick",
                 length: 32,
                 steps: {24: (note: (pitch: 60, velocity: 110)), 28: (note: (pitch: 60, velocity: 120))},
-                instrument: (kind: Kick, params: {"model": 2.0, "tune": 49.0, "punch": 0.6, "decay": 0.5, "drive": 0.45}),
+                instrument: (kind: Kick, params: {"model": 2.0, "tune": 55.0, "punch": 0.6, "decay": 0.5, "drive": 0.45}),
                 mix: (level: -6.0),
             ),
             (
