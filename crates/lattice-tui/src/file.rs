@@ -177,18 +177,31 @@ mod tests {
         let names: Vec<_> = (song.arrangement.entries.iter())
             .map(|e| song.arrangement.patterns[e.pattern].name.as_str())
             .collect();
-        assert_eq!(names.len(), 14);
+        assert_eq!(names.len(), 15);
+        assert_eq!(names.first(), Some(&"launch"));
         assert_eq!(names.last(), Some(&"fine"));
         // The fills: a canon on the echo, held back until one plays.
-        let echo = song.grid.tracks.iter().find(|t| t.name == "echo").unwrap();
+        let echo = song
+            .grid
+            .tracks
+            .iter()
+            .position(|t| t.name == "echo")
+            .unwrap();
+        let a1 = song
+            .arrangement
+            .patterns
+            .iter()
+            .find(|p| p.name == "A1")
+            .unwrap();
         assert!(
-            echo.steps
+            a1.lanes[echo]
+                .steps
                 .iter()
                 .any(|s| s.gestures().any(|g| g == Gesture::Fill))
         );
-        // The brass's shimmer, an octave-up echo on a lane of its own.
-        let brass = song.grid.tracks.iter().find(|t| t.name == "brass").unwrap();
-        assert_eq!(brass.effects.lanes().len(), 2);
+        // The lead's shimmer, an octave-up echo on a lane of its own.
+        let lead = song.grid.tracks.iter().find(|t| t.name == "lead").unwrap();
+        assert_eq!(lead.effects.lanes().len(), 2);
     }
 
     #[test]

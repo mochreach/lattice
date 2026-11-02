@@ -40,9 +40,10 @@ one song, [`examples/mountain-king`](examples/mountain-king) is Grieg's *In the 
 Mountain King*: groups, a branching effects chain, a macro, faces, choke, rules, mutes in the
 arrangement, locks that slide, a section chopped from its own render, and the conductor speeding
 it up. [`examples/scarlatti`](examples/scarlatti) is a Switched-On Scarlatti, his Sonata in G,
-K. 455, on synthesisers, drive, delays and a big hall: gestures (trills, glides, a run split between two tracks, chance), a
-canon and timpani rolls that play only in a fill, and repeats orchestrated differently by
-mutes in the arrangement.
+K. 455, shot into space on Krell, the alien harpsichord, with Switched screaming along over a
+drum machine: the ensemble and phaser, a ladder sliding open, gestures (trills, glides, an
+arpeggiator, a run split between two tracks, chance), a canon, rolls and timpani that play only
+in a fill, and repeats orchestrated differently by mutes in the arrangement.
 
 New to it? `:tutor` (or `lattice --tutor`) teaches the keys a lesson at a time, on a song of its
 own, as Helix's tutor does. Once you've done what a lesson asks, a box says so and `space` goes
