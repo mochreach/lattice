@@ -415,6 +415,7 @@ impl Editor {
             | Action::CommandLine
             | Action::TogglePlay
             | Action::PlaySong
+            | Action::PlayFill
             | Action::Escape
             | Action::Quit
             | Action::ToggleMute

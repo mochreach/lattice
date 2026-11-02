@@ -450,6 +450,16 @@ fn clap_on_two_and_four() -> Vec<Step> {
 fn hats() -> Vec<Step> {
     gestured(hits("x..mx..mx..mx.gm"), &[(14, "R3")])
 }
+/// A roll that plays only during a fill, while the fill key's held.
+fn fill() -> Vec<Step> {
+    let steps = hits("........m.m.xxXX");
+    let marked = [8, 10, 12, 13, 14, 15].map(|at| (at, "F"));
+    gestured(steps, &marked)
+}
+/// Its last hit on half the passes, and its seventh only the third time in every four.
+fn ride() -> Vec<Step> {
+    gestured(hits("x.m.x.m.x.m.x.mm"), &[(15, "?50"), (6, "3:4")])
+}
 fn open_hats() -> Vec<Step> {
     hits("..x...x...x...x.")
 }
@@ -590,11 +600,17 @@ fn sections() -> Vec<(&'static str, u32, Vec<Lane>)> {
             8,
             section(vec![
                 (KICK, hits("X...x...X...x..g"), vec![]),
-                (CLAP, clap_on_two_and_four(), vec![]),
+                // The second clap gives way to a fill.
+                (
+                    CLAP,
+                    gestured(clap_on_two_and_four(), &[(12, "F-")]),
+                    vec![],
+                ),
+                (SNARE, fill(), vec![]),
                 (HAT, hats(), vec![]),
                 (OPEN, open_hats(), vec![]),
                 perc(),
-                (RIDE, hits("x.m.x.m.x.m.x.mm"), vec![]),
+                (RIDE, ride(), vec![]),
                 (BASS, bass(), changes()),
                 (
                     ACID,

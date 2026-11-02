@@ -841,6 +841,19 @@ mod tests {
             e.message.as_deref(),
             Some("G6: glide, from the last pitch over 6/24 of a step")
         );
+        // Conditions: `F` might be `F-`, so it waits for enter, or the next.
+        keys(&mut e, "\x1bggfGi?501:4f");
+        e.handle(Key::Enter);
+        keys(&mut e, "F-");
+        let typed: Vec<_> = track_gestures(&e, 1)[..3].to_vec();
+        assert_eq!(
+            typed,
+            [Some("?50".into()), Some("1:4".into()), Some("F".into())]
+        );
+        assert_eq!(
+            e.message.as_deref(),
+            Some("F-: no fill, plays except while ` is held")
+        );
     }
 
     #[test]

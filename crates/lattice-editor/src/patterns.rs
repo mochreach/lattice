@@ -354,6 +354,7 @@ impl Editor {
         self.cue = None;
         self.conducted.clear();
         self.song_position = None;
+        self.fill = false;
     }
 }
 

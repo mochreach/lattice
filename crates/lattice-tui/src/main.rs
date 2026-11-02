@@ -584,6 +584,7 @@ fn apply(
         },
         Effect::Release { track, pitch } => Command::Release { track, pitch },
         Effect::Unconduct(track) => Command::Unconduct(track),
+        Effect::Fill(on) => Command::Fill(on),
         Effect::Save(path) => {
             let mut song = editor.song();
             let saved = file::collect(&path, &mut song, &lattice_editor::scratch())

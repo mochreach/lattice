@@ -191,6 +191,7 @@ impl Editor {
             Action::CommandLine
             | Action::TogglePlay
             | Action::PlaySong
+            | Action::PlayFill
             | Action::Quit
             | Action::GotoMixer
             | Action::GotoPattern

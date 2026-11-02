@@ -355,6 +355,11 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         } else {
             Span::raw("")
         },
+        if editor.fill {
+            Span::styled(" ◆ FILL ", theme.block(theme.accent))
+        } else {
+            Span::raw("")
+        },
         match editor.armed().and_then(|t| editor.grid.tracks.get(t)) {
             Some(track) if status.recording() => Span::styled(
                 format!(" ● LOOP {} ", track.name.to_uppercase()),

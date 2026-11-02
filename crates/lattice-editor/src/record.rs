@@ -7,6 +7,7 @@
 
 use lattice_core::Note;
 
+use crate::keymap::{Action, Binding};
 use crate::{Editor, Effect, Key, Mode, Page, changed};
 
 /// Where playback is, as the frontend last saw it.
@@ -153,9 +154,30 @@ impl Editor {
         Some(effects)
     }
 
-    /// A key has come up: the notes it's previewing end, and the notes it recorded last as long
-    /// as it was held.
+    /// The fill key's gone down: a fill plays until it comes up, or, where the terminal doesn't
+    /// say when it does, until it's pressed again.
+    pub(crate) fn play_fill(&mut self) -> Vec<Effect> {
+        if self.fill && !self.releases {
+            self.fill = false;
+            self.message = Some("fill over".into());
+        } else if !self.fill {
+            self.fill = true;
+            if !self.releases {
+                self.message = Some(
+                    "fill: until ` again (this terminal doesn't report keys coming up)".into(),
+                );
+            }
+        }
+        vec![Effect::Fill(self.fill)]
+    }
+
+    /// A key has come up: the notes it's previewing end, the notes it recorded last as long
+    /// as it was held, and a fill held on it ends.
     pub fn release(&mut self, key: Key) -> Vec<Effect> {
+        if self.fill && self.keymap.normal.get(&key) == Some(&Binding::Action(Action::PlayFill)) {
+            self.fill = false;
+            return vec![Effect::Fill(false)];
+        }
         // The numpad's `0` coming up ends note repeat.
         let repeats = key == Key::Pad(0);
         if repeats {
@@ -382,5 +404,27 @@ mod tests {
         at(&mut e, 1, 0, 0.8);
         e.release(Key::Char('x'));
         assert_eq!(pitches(&e, 0), [(0, 62, 2)]);
+    }
+
+    #[test]
+    fn a_fill_lasts_while_its_key_is_held_or_until_its_pressed_again() {
+        let mut e = editor();
+        let fill = Key::Char('`');
+        e.releases = true;
+        assert_eq!(e.handle(fill), [Effect::Fill(true)]);
+        assert!(e.fill);
+        // Another key coming up doesn't end it; its own does.
+        assert!(!e.release(Key::Char('a')).contains(&Effect::Fill(false)));
+        assert_eq!(e.release(fill), [Effect::Fill(false)]);
+        assert!(!e.fill);
+
+        // Without releases, it's pressed again to end it, and stopping ends it too.
+        e.releases = false;
+        e.handle(fill);
+        assert!(e.fill && e.message.as_ref().unwrap().contains("` again"));
+        assert_eq!(e.handle(fill), [Effect::Fill(false)]);
+        e.handle(fill);
+        e.stopped();
+        assert!(!e.fill);
     }
 }

@@ -41,6 +41,7 @@ impl Key {
                 _ => match s {
                     "space" => Some(' '),
                     "minus" => Some('-'),
+                    "backtick" => Some('`'),
                     _ => None,
                 },
             }
@@ -107,6 +108,8 @@ impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Key::Char(' ') => f.write_str("space"),
+            // Named, as the tutor and help mark keys out between backticks.
+            Key::Char('`') => f.write_str("backtick"),
             Key::Char(c) => write!(f, "{c}"),
             Key::Ctrl(' ') => f.write_str("C-space"),
             Key::Ctrl(c) => write!(f, "C-{c}"),
@@ -256,6 +259,9 @@ pub enum Action {
     TogglePlay,
     /// Play the song from the entry playing this pattern, or the song page's cursor.
     PlaySong,
+    /// Play a fill while it's held, or until it's pressed again where the terminal doesn't
+    /// report key releases.
+    PlayFill,
     /// Arm or disarm recording at the playhead.
     ToggleRecord,
     ToggleView,
@@ -356,6 +362,7 @@ impl Action {
         Action::ToggleOpen,
         Action::TogglePlay,
         Action::PlaySong,
+        Action::PlayFill,
         Action::ToggleRecord,
         Action::ToggleView,
         Action::Quit,
@@ -474,6 +481,7 @@ impl Action {
             Action::ToggleOpen => "keep tracks open / close them",
             Action::TogglePlay => "play / stop",
             Action::PlaySong => "play the song from here",
+            Action::PlayFill => "hold for a fill: steps marked F play, and F- don't",
             Action::ToggleRecord => "record on / off",
             Action::ToggleView => "written or playing pattern",
             Action::Quit => "quit",
@@ -674,6 +682,7 @@ impl Default for Keymap {
             (Esc, Escape),
             (Char(' '), TogglePlay),
             (Ctrl(' '), PlaySong),
+            (Char('`'), PlayFill),
             (Tab, ToggleView),
             (Char('R'), ToggleRecord),
             (Ctrl('c'), Quit),

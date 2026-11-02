@@ -132,6 +132,9 @@ pub enum Command {
     /// The player's muted or soloed the track at this index themselves: their mute and solo
     /// take over from the conductor's again.
     Unconduct(usize),
+    /// The fill key's down, or up: steps marked `F` play while it's down, and `F-` while it's
+    /// up.
+    Fill(bool),
     /// End a previewed or repeated note.
     Release {
         track: usize,
@@ -1148,6 +1151,8 @@ struct Preview {
 pub struct Engine {
     clock: Clock,
     playing: bool,
+    /// A fill's being played, for the steps whose conditions ask.
+    fill: bool,
     steps_per_beat: u64,
     step_index: u64,
     /// Count-in steps still to play before step 0.
@@ -1250,6 +1255,7 @@ impl Engine {
         let engine = Self {
             clock: Clock::new(f64::from(sample_rate), bpm, grid.steps_per_beat),
             playing: false,
+            fill: false,
             steps_per_beat: u64::from(grid.steps_per_beat.max(1)),
             step_index: 0,
             count_in: 0,
@@ -1348,6 +1354,7 @@ impl Engine {
         self.conductor_at = 0;
         self.swaps = 0;
         self.playing = false;
+        self.fill = false;
         self.stopping = false;
         // The conductor's tempo lasts while the song plays.
         self.conducted_tempo = false;
@@ -1499,6 +1506,7 @@ impl Engine {
                     };
                     self.preview(track, preview, now);
                 }
+                Command::Fill(on) => self.fill = on,
                 Command::Unconduct(track) => {
                     if let Some(t) = self.tracks.get_mut(track) {
                         t.conducted_mute = None;
@@ -2091,6 +2099,7 @@ impl Engine {
         // engine.
         let (at, latency) = (self.frames + u64::from(offset), self.latency());
         let muted = self.mutes >> index & 1 == 1;
+        let fill = self.fill;
         let song_step = self.clock.samples_per_step();
         let Some(t) = self.tracks.get_mut(index) else {
             return false;
@@ -2117,6 +2126,12 @@ impl Engine {
         let Some(&realised) = t.steps.get(t.playhead) else {
             t.playhead = 0;
             return false;
+        };
+        // A step whose conditions don't hold this time goes by as if it were empty: its note,
+        // locks and gestures, the playhead's among them.
+        let realised = match holds(&realised, t.pass, t.playhead, index, fill) {
+            true => realised,
+            false => Step::default(),
         };
         // The playhead's gestures, once as it arrives rather than each time a wait plays the
         // step again: a speed sets this step's own length.
@@ -2462,13 +2477,29 @@ fn arpeggiate(
 /// The step a `J?` jumps to, out of `len`: the same for the same pass, step and track, so the
 /// song plays the same each time.
 fn wander(pass: u32, step: usize, track: usize, len: usize) -> usize {
+    (scatter(pass, step, track, 0) % len.max(1) as u64) as usize
+}
+
+/// Whether a step's conditions hold on pass `pass` of track `track`, with a fill or without.
+/// A chance comes out the same for the same pass, step and track, as a `J?` does.
+fn holds(step: &Step, pass: u32, at: usize, track: usize, fill: bool) -> bool {
+    step.gestures().all(|g| match g {
+        Gesture::Chance(n) => scatter(pass, at, track, 1) % 100 < u64::from(n),
+        Gesture::Every(k, n) => pass % u32::from(n.max(1)) + 1 == u32::from(k),
+        Gesture::Fill => fill,
+        Gesture::NoFill => !fill,
+        _ => true,
+    })
+}
+
+/// A number that looks random, from a pass, step and track, and `salt` for what it's for.
+fn scatter(pass: u32, step: usize, track: usize, salt: u64) -> u64 {
     // SplitMix64's finaliser, to scatter neighbouring passes and steps.
-    let mut x = u64::from(pass) << 32 ^ (step as u64) << 8 ^ track as u64;
+    let mut x = u64::from(pass) << 32 ^ (step as u64) << 8 ^ track as u64 ^ salt << 60;
     x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
     x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
     x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    x ^= x >> 31;
-    (x % len.max(1) as u64) as usize
+    x ^ x >> 31
 }
 
 fn note_on(offset: u32, pitch: u8, velocity: u8) -> Event {
@@ -3006,6 +3037,47 @@ mod tests {
         let (mut engine, _) = Engine::new(48_000.0, 120.0, &grid, vec![instrument]);
         engine.play();
         engine
+    }
+
+    #[test]
+    fn conditions_decide_which_passes_and_fills_a_step_plays_in() {
+        let gestures = [(0, "1:2"), (1, "F"), (2, "F-"), (2, "J0")];
+        let (mut engine, notes) = gesturing(&[60, 62, 64, 65], &gestures);
+        let ons = |notes: &Notes| -> Vec<(u64, u8)> {
+            let notes = notes.lock().unwrap();
+            notes.iter().filter(|n| n.1).map(|n| (n.0, n.2)).collect()
+        };
+        // Two passes without a fill: the first only once, and the `J0` looping it.
+        render(&mut engine, 256, 36_000);
+        assert_eq!(ons(&notes), [(0, 60), (12_000, 64), (30_000, 64)]);
+        // With one, the fill's step, and on round the loop with the `J0` gone.
+        notes.lock().unwrap().clear();
+        engine.fill = true;
+        render(&mut engine, 256, 24_000);
+        assert_eq!(ons(&notes), [(36_000, 60), (42_000, 62), (54_000, 65)]);
+        // Stopping ends the fill.
+        engine.stop();
+        assert!(!engine.fill);
+    }
+
+    #[test]
+    fn a_chance_plays_its_share_of_passes_the_same_each_time() {
+        let mut step = Step::note(60);
+        step.gestures[0] = Some(Gesture::Chance(30));
+        let played = |track| {
+            (0..1_000)
+                .filter(|&p| holds(&step, p, 3, track, false))
+                .count()
+        };
+        assert!((250..350).contains(&played(0)), "{}", played(0));
+        assert_eq!(played(0), played(0));
+        assert_ne!(played(0), played(1), "each track its own");
+        // Both conditions must hold.
+        step.gestures[1] = Some(Gesture::Fill);
+        assert_eq!(
+            (0..1_000).filter(|&p| holds(&step, p, 3, 0, false)).count(),
+            0
+        );
     }
 
     #[test]

@@ -143,6 +143,7 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | --- | --- |
 | `space` | play / stop |
 | `^space` | play the song from the entry playing this pattern (or stop) |
+| `` ` `` (backtick) | hold for a fill: steps marked `F` play, and `F-` don't (see gestures) |
 | `R` | record on / off (starts insert mode): see below |
 | `tab` | show the pattern as written, or as it's playing this pass |
 | `:` | command line |
@@ -394,6 +395,22 @@ can't do one, the field shows it dimmed, the status line says so, and it does no
 | `O8` | on a `sampler` or `chop` track, starts the note 8/16 of the way into its sound, or its piece (0–15) |
 | `G6` | on a `synth` or `string` track, slides the note from the last one's pitch over 6/24 of a step (1–23) |
 
+Conditions decide whether the step plays at all, its note, locks and other gestures with it:
+
+| Gesture | |
+|---|---|
+| `?50` | plays on 50% of passes (1–99), the same ones each time the song plays |
+| `1:4` | plays on the first of every 4 passes; `2:4` the second, `3:3` the third of three (up to 9) |
+| `F` | plays only during a fill |
+| `F-` | plays only when there's no fill |
+
+A **fill** plays while the backtick key's held down with the song playing, and the header shows
+`FILL`. It starts and ends at once, on any step, so `F` steps can be a roll, or a jump (`F` with
+`J12`) somewhere else in the track, and `F-` the steps it takes over from. Terminals that don't
+report keys coming up (Lattice asks for the kitty protocol) can't tell it's held: there,
+backtick starts a fill and pressing it again ends it. Stopping ends one too. `F` might become
+`F-`, so it goes in with enter.
+
 Playhead gestures move the track's own playhead, so each track can loop, wait or turn round on its
 own, and are shown in the accent colour:
 
@@ -410,7 +427,8 @@ The status line says what the gestures under the cursor do, `^a` `^x` change the
 track's playhead still goes where its gestures send it, so it's in place when it comes back. In
 the demo, the hats ratchet into each bar, the second clap is pushed late, the acid's octave is
 gated, it slides down to its E♭ (`G8`) and its A♭ goes round its chord, and the pluck turns round
-on its G, going back and forth, and glides into its F.
+on its G, going back and forth, and glides into its F. In the peak, hold backtick for a snare
+roll, the second clap giving way to it, while the ride drops its last hit on half the passes.
 
 The **conductor** is a lane of each pattern for what belongs to the whole song: left of the
 first track, beside the step numbers, two fields on each step. `h` from the first track's notes

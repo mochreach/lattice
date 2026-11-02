@@ -194,6 +194,8 @@ pub enum Effect {
     /// The player's muted or soloed this track themselves, so the conductor's mute and solo
     /// on it are over.
     Unconduct(usize),
+    /// A fill starts, or ends.
+    Fill(bool),
     /// The key holding this note has come up: end it.
     Release {
         track: usize,
@@ -456,6 +458,8 @@ pub struct Editor {
     held: Vec<Held>,
     /// Whether the frontend reports key releases, so previews are held until their key comes up.
     pub releases: bool,
+    /// A fill's playing: while the fill key's held, or until it's pressed again.
+    pub fill: bool,
     /// Previewed notes, by the key that's holding each, and whether each is repeating.
     sounding: Vec<(Key, TrackId, u8, bool)>,
     /// Whether the numpad's `0` is held, so pads repeat.
@@ -579,6 +583,7 @@ impl Editor {
             take: None,
             held: Vec::new(),
             releases: false,
+            fill: false,
             sounding: Vec::new(),
             repeat: false,
             repeat_every: 1,
@@ -1614,6 +1619,7 @@ impl Editor {
             Action::OpenBelow | Action::OpenAbove | Action::Open => {}
             Action::TogglePlay => return vec![Effect::TogglePlay],
             Action::PlaySong => return self.play_song(),
+            Action::PlayFill => return self.play_fill(),
             Action::ToggleRecord => self.toggle_record(),
             Action::ToggleView => {
                 self.view = match self.view {

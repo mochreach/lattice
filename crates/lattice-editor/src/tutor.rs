@@ -969,6 +969,29 @@ const LESSONS: &[Lesson] = &[
         solution: "gpghggfgiR2<esc>",
     },
     Lesson {
+        title: "Chance and fills",
+        text: "Some gestures decide whether a step plays at all, gestures and locks with it. \
+               `?50` plays it on half the passes, the same ones each time the song plays, and \
+               `1:4` on the first of every four (`2:4` the second, `3:3` the third of three). \
+               `F` plays it only during a fill, and `F-` only outside one: while the song \
+               plays, hold {play_fill} for a fill, and the header shows FILL. A fill starts \
+               at once, on any step, so the `F` steps can be a snare roll or a jump (`F` with \
+               `J12`) and the `F-` ones the beat it takes over from. Where the terminal \
+               doesn't say when keys come up, {play_fill} starts a fill and again ends it.\n\n\
+               `F` might be `F-`, so it goes in with enter.\n\n\
+               Put a chance on a step of the KICK track, in its second gesture field.",
+        teaches: &[Action::PlayFill],
+        commands: &[],
+        setup: nothing,
+        watch: never,
+        done: |e, _| {
+            (track(e, "KICK")).is_some_and(|t| {
+                (t.steps.iter()).any(|s| s.gestures().any(|g| matches!(g, Gesture::Chance(_))))
+            })
+        },
+        solution: "gpghggfGi?50<esc>",
+    },
+    Lesson {
         title: "The conductor",
         text: "Left of the first track is the conductor: two fields on each step for what \
                belongs to the whole song, not one track. From the first track's notes \

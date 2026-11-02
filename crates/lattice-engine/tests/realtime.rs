@@ -30,7 +30,7 @@ fn rendering_never_allocates() {
         pattern_mute: false,
         columns: vec![],
         name: "lead".into(),
-        steps: (0..9)
+        steps: (0..11)
             .map(|i| {
                 let mut step = if i % 2 == 0 {
                     Step::note(60 + i)
@@ -55,14 +55,16 @@ fn rendering_never_allocates() {
                 // Every gesture, notes played later in a step and playheads moved.
                 let gestures = [
                     ["R9", "D3"],
-                    ["r4", "X12"],
+                    ["r4", "?50"],
                     ["<", "O8"],
                     ["*4", "W2"],
                     ["G6", "R2"],
-                    ["A37", "!"],
+                    ["A37", "1:2"],
                     ["B", "J?"],
                     ["/3", "J0"],
-                    ["X6", "*2"],
+                    ["X12", "*2"],
+                    ["!", "F-"],
+                    ["F", "R2"],
                 ];
                 if let Some(pair) = gestures.get(i as usize) {
                     step.gestures = pair.map(|g| g.parse().ok());
@@ -165,6 +167,7 @@ fn rendering_never_allocates() {
     // Commands are handled inside the no-allocation zone too.
     handle.send(Command::Play { count_in: 0 });
     handle.send(Command::SetBpm(140.0));
+    handle.send(Command::Fill(true));
     handle.send(Command::SetMacro {
         track: 0,
         index: 0,

@@ -890,6 +890,8 @@ smallest shift that's felt, and 24 divides into halves, thirds, quarters, sixths
   piece, and `G6` slides a synth's or string's note from the last one's pitch over 6/24 of a
   step. `Gesture::works_on` says which instruments can; elsewhere the field's dimmed and the
   gesture does nothing.
+- **Conditions** decide whether the step plays at all: `?50` on half its passes, `1:4` on the
+  first of every four, `F` only during a fill and `F-` only outside one.
 - **Playhead gestures** move the track's playhead: `J12` carries on from step 12 after this one,
   and `J?` from a step picked from the pass, the step and the track, so the song plays the same
   each time; `W2` plays the step twice more before going on; `B` turns the track backwards, or
@@ -910,6 +912,16 @@ left due before the next step is played first, and the rest before the block end
 (`Engine::play_due`), each at its exact offset. A retrigger or arpeggio only acts on a note still
 held, so a cut, or the note ending, stops it. `tests/realtime.rs` plays every gesture, so none
 of this allocates.
+
+**Conditions** are checked by the engine as each step plays (`holds`), not when a pass is
+realised, as a fill can start on any step. A step whose conditions don't hold plays as an empty
+one: no note, no locks, no gestures, the playhead's among them, so `F` with `J12` jumps only
+during a fill. A chance is decided by hashing the pass, step and track (`scatter`, which `J?`
+shares), so it's the same each time the song plays and differs between tracks; `k:n` holds on
+passes where `pass % n + 1 == k`. The fill is the engine's own flag, set by `Command::Fill` and
+dropped on stop. The editor sends it from `Action::PlayFill`, bound to backtick: on the key's
+press and release where the frontend reports releases (`Editor::releases`), and on alternate
+presses where it doesn't.
 
 Sound gestures reach the instrument as a **shape** (`processor::Shape`: reversed, sixteenths
 in, frames of glide), an `EventKind::Shape` sent just ahead of the note-on it shapes, and only
