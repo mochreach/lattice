@@ -244,6 +244,8 @@ pub enum Action {
     ToggleGroup,
     /// Fold or unfold the groups the selections reach.
     ToggleFold,
+    /// Keep the tracks the selections reach open, showing their fields; again, close them.
+    ToggleOpen,
     TogglePlay,
     /// Play the song from the entry playing this pattern, or the song page's cursor.
     PlaySong,
@@ -340,6 +342,7 @@ impl Action {
         Action::MoveTrackRight,
         Action::ToggleGroup,
         Action::ToggleFold,
+        Action::ToggleOpen,
         Action::TogglePlay,
         Action::PlaySong,
         Action::ToggleRecord,
@@ -451,6 +454,7 @@ impl Action {
             Action::MoveTrackRight => "move track right",
             Action::ToggleGroup => "group / ungroup tracks",
             Action::ToggleFold => "fold / unfold group",
+            Action::ToggleOpen => "keep tracks open / close them",
             Action::TogglePlay => "play / stop",
             Action::PlaySong => "play the song from here",
             Action::ToggleRecord => "record on / off",
@@ -709,6 +713,7 @@ impl Default for Keymap {
                 (Char('l'), MoveTrackRight),
                 (Char('g'), ToggleGroup),
                 (Char('z'), ToggleFold),
+                (Char('e'), ToggleOpen),
             ],
         );
 

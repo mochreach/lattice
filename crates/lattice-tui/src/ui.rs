@@ -3,10 +3,10 @@
 use std::time::Instant;
 
 use lattice_core::instrument::chop;
-use lattice_core::{Group, InstKind, MAX_GROUPS, MAX_TRACKS, Step, Track, realise};
+use lattice_core::{Change, Group, InstKind, MAX_GROUPS, MAX_TRACKS, Step, Track, realise};
 use lattice_editor::{
-    BEATS_PER_BAR, Completion, Cursor, Editor, Infobox, Mode, NoteLayout, PadMode, Page,
-    PromptKind, Selection, TutorView, View, word_start,
+    BEATS_PER_BAR, ColumnLabel, Completion, Cursor, Editor, Infobox, Mode, NoteLayout, PadMode,
+    Page, PromptKind, Selection, TutorView, View, word_start,
 };
 use lattice_engine::{Chain, Status};
 use ratatui::Frame;
@@ -405,8 +405,21 @@ const FOLDED: usize = 2;
 /// Width of a chop track's column: its piece, and a waveform.
 const CHOP: usize = 15;
 
-/// The width of track `index`'s column.
+/// Width of an open track's field: its velocity, or a lock column's value, and a gap.
+const FIELD: usize = 4;
+
+/// The width of track `index`'s column: its notes, and its fields if it's open.
 fn column_width(editor: &Editor, index: usize) -> usize {
+    let notes = note_width(editor, index);
+    match notes {
+        FOLDED => FOLDED,
+        _ if editor.is_open(index) => notes + FIELD * (1 + editor.lock_columns(index).len()),
+        _ => notes,
+    }
+}
+
+/// The width of track `index`'s notes.
+fn note_width(editor: &Editor, index: usize) -> usize {
     let folded = editor
         .grid
         .group_of(index)
@@ -437,14 +450,16 @@ fn fitting(widths: &[usize], room: usize) -> usize {
 struct Column<'a> {
     index: usize,
     track: &'a Track,
-    /// [`CELL`], or [`FOLDED`] in a folded group.
+    /// Its notes' and its fields'.
     width: usize,
+    /// [`CELL`], [`CHOP`], or [`FOLDED`] in a folded group.
+    note_width: usize,
+    /// Open, its lock columns, and what each row shows in each.
+    fields: Option<Vec<(ColumnLabel, Vec<Field>)>>,
     /// Written or realised, depending on the view.
     shown: Vec<Step>,
     /// Rows covered by an earlier note's length.
     tails: Vec<bool>,
-    /// Rows an earlier step's locks still hold over: until the next note or lock.
-    held: Vec<bool>,
     playhead: Option<usize>,
     pass: Option<u32>,
     colour: Color,
@@ -453,6 +468,37 @@ struct Column<'a> {
     meter: f32,
     /// On a chop track, what each row plays.
     pieces: Option<Vec<Option<Piece>>>,
+}
+
+/// What a row of an open track's lock column shows.
+#[derive(Debug, Clone, PartialEq)]
+enum Field {
+    /// The step's lock, as its column writes it.
+    Lock(String),
+    /// An earlier lock's value, carried on.
+    Held,
+    Empty,
+}
+
+/// What each of `shown`'s rows shows in `label`'s column. Before its first lock, the last one's
+/// carried round, as it is when the track loops.
+fn fields(track: &Track, shown: &[Step], label: &ColumnLabel) -> Vec<Field> {
+    let mut holding = (shown.iter().rev())
+        .find_map(|step| step.locks.iter().find(|l| l.column() == label.column))
+        .is_some_and(|lock| lock.change != Change::Reset);
+    (shown.iter())
+        .map(|step| {
+            let lock = step.locks.iter().find(|l| l.column() == label.column);
+            match lock {
+                Some(lock) => {
+                    holding = lock.change != Change::Reset;
+                    Field::Lock(lattice_editor::lock_text(track, lock))
+                }
+                None if holding => Field::Held,
+                None => Field::Empty,
+            }
+        })
+        .collect()
 }
 
 /// What a row of a chop track plays.
@@ -525,12 +571,12 @@ impl<'a> Column<'a> {
     /// On a chop track, works out what each row plays.
     fn chop(&mut self, waves: &mut Waves) {
         let instrument = &self.track.instrument;
-        if instrument.kind != InstKind::Chop || self.width != CHOP {
+        if instrument.kind != InstKind::Chop || self.note_width != CHOP {
             return;
         }
         let peaks = instrument.file.as_deref().and_then(|f| waves.get(f));
         // Room for the piece's number and direction, and a lock's mark.
-        let width = self.width - 5;
+        let width = self.note_width - 5;
         self.pieces = Some(pieces(self.track, &self.shown, peaks.as_deref(), width));
     }
 
@@ -547,7 +593,7 @@ impl<'a> Column<'a> {
     fn new(
         index: usize,
         track: &'a Track,
-        width: usize,
+        (width, note_width): (usize, usize),
         editor: &Editor,
         status: &Status,
         theme: &Theme,
@@ -571,12 +617,21 @@ impl<'a> Column<'a> {
                 }
             }
         }
+        let fields = (note_width != FOLDED && editor.is_open(index)).then(|| {
+            (editor.lock_columns(index).into_iter())
+                .map(|label| {
+                    let rows = fields(track, &shown, &label);
+                    (label, rows)
+                })
+                .collect()
+        });
         Self {
             index,
             track,
             width,
+            note_width,
+            fields,
             pieces: None,
-            held: held(&shown),
             shown,
             tails,
             playhead: position.map(|(step, _)| step),
@@ -598,6 +653,7 @@ fn draw_grid(
 ) {
     let tracks = editor.grid.tracks.len();
     let widths: Vec<usize> = (0..tracks).map(|i| column_width(editor, i)).collect();
+    let note_widths: Vec<usize> = (0..tracks).map(|i| note_width(editor, i)).collect();
     // One column spare for the arrow that shows there are more tracks.
     let room = (area.width as usize).saturating_sub(GUTTER + 1);
     scroll_tracks(view, editor.cursor().track, &widths, room);
@@ -606,14 +662,14 @@ fn draw_grid(
         .grid
         .tracks
         .iter()
-        .zip(&widths)
+        .zip(widths.iter().zip(&note_widths))
         .enumerate()
         .skip(view.first_track)
         .take(fits)
-        .map(|(i, (t, &width))| {
+        .map(|(i, (t, (&width, &notes)))| {
             // There's a meter for every track the engine can have.
             let meter = view.meters.get(i).copied().unwrap_or(0.0);
-            let mut column = Column::new(i, t, width, editor, status, theme, meter);
+            let mut column = Column::new(i, t, (width, notes), editor, status, theme, meter);
             column.chop(&mut view.waves);
             column
         })
@@ -824,21 +880,40 @@ fn header_lines(
             .flat_map(|c| spaced(bars::meter(c.meter, c.width, c.colour, theme)))
             .collect(),
     ));
+    // Open tracks name their fields, with the key `f` goes to each by underlined.
+    lines.push(line(
+        columns
+            .iter()
+            .flat_map(|c| {
+                let Some(fields) = &c.fields else {
+                    return blank(c);
+                };
+                let mut spans = vec![
+                    Span::raw(" ".repeat(c.note_width)),
+                    Span::styled(fit(" vel", FIELD), theme.dim),
+                ];
+                for (label, _) in fields {
+                    spans.push(Span::raw(" "));
+                    let name: String = label.name.chars().take(FIELD - 1).collect();
+                    let name = fit(&name, FIELD - 1);
+                    match name.split_once(label.key) {
+                        Some((before, after)) => spans.extend([
+                            Span::styled(before.to_string(), theme.dim),
+                            Span::styled(
+                                label.key.to_string(),
+                                theme.dim.add_modifier(Modifier::UNDERLINED),
+                            ),
+                            Span::styled(after.to_string(), theme.dim),
+                        ]),
+                        None => spans.push(Span::styled(name, theme.dim)),
+                    }
+                }
+                spans.push(Span::raw(" "));
+                spans
+            })
+            .collect(),
+    ));
     lines
-}
-
-/// The rows a lock holds over after its own step, up to the next step with a note or lock.
-fn held(steps: &[Step]) -> Vec<bool> {
-    let mut holding = false;
-    (steps.iter())
-        .map(|step| {
-            let held = holding && !step.triggers();
-            if step.triggers() {
-                holding = !step.locks.is_empty();
-            }
-            held
-        })
-        .collect()
 }
 
 /// The box saying a lesson's done, in the middle of the page, until space goes on.
@@ -937,7 +1012,7 @@ fn grid_row(
         _ => Style::new(),
     };
     let mut spans = vec![Span::styled(
-        format!(" {row:02X} "),
+        format!("{:>3} ", format!("{row:02}")),
         gutter_style.patch(band),
     )];
 
@@ -955,14 +1030,13 @@ fn grid_row(
             continue;
         };
 
-        // Pieces, tails and held rows are each as long as the steps shown.
+        // Pieces and tails are each as long as the steps shown.
         let tail = c.tails.get(row).copied().unwrap_or(false);
-        let held = c.held.get(row).copied().unwrap_or(false);
         let piece = c.pieces.as_ref().map(|rows| match rows.get(row) {
             Some(Some(p)) => {
                 let text = if p.first {
                     let direction = if p.reverse { '◂' } else { ' ' };
-                    format!(" {:02X}{direction}{}", p.piece, p.wave)
+                    format!(" {:02}{direction}{}", p.piece, p.wave)
                 } else {
                     format!("    {}", p.wave)
                 };
@@ -1006,11 +1080,10 @@ fn grid_row(
                 None => (" ···".into(), theme.faint),
             },
         };
-        // A step that locks settings is marked at its end, and the steps it holds over too.
+        // Closed, a step that locks settings is marked at its end; open, its columns show them.
         let mark = match () {
-            _ if c.width == FOLDED => None,
+            _ if c.width == FOLDED || c.fields.is_some() => None,
             _ if !step.locks.is_empty() => Some("◆"),
-            _ if held => Some("╎"),
             _ => None,
         };
         // In the live view, highlight what the rules have changed.
@@ -1041,18 +1114,38 @@ fn grid_row(
             style = style.bg(theme.selection);
         }
 
+        // In the track's colour, unless the cell is highlighted.
+        // The cursor's on the note, so the fields beside it stay as they are.
+        let on_note = at(primary);
+        let highlight = |own: Style| match () {
+            _ if style == plain => own.patch(band),
+            _ if on_note => own.patch(band),
+            _ => style,
+        };
         match mark {
             Some(mark) => {
-                spans.push(Span::styled(fit(&text, c.width - 1), style));
-                // In the track's colour, unless the cell is highlighted.
-                let mark_style = if style == plain {
-                    c.style().patch(band)
-                } else {
-                    style
-                };
-                spans.push(Span::styled(mark, mark_style));
+                spans.push(Span::styled(fit(&text, c.note_width - 1), style));
+                spans.push(Span::styled(mark, highlight(c.style())));
             }
-            None => spans.push(Span::styled(fit(&text, c.width), style)),
+            None => spans.push(Span::styled(fit(&text, c.note_width), style)),
+        }
+        if let Some(fields) = &c.fields {
+            // Velocity, 00 to 99 as the columns are, 99 the loudest.
+            let velocity = step
+                .note
+                .map(|n| format!(" {:02}", (u32::from(n.velocity) * 99).div_ceil(127)));
+            spans.push(Span::styled(
+                fit(&velocity.unwrap_or_default(), FIELD),
+                highlight(c.style()),
+            ));
+            for (_, rows) in fields {
+                let (text, own) = match rows.get(row) {
+                    Some(Field::Lock(text)) => (format!(" {text}"), c.style()),
+                    Some(Field::Held) => ("   ╵".into(), c.style().add_modifier(Modifier::DIM)),
+                    _ => ("  ··".into(), theme.faint),
+                };
+                spans.push(Span::styled(fit(&text, FIELD), highlight(own)));
+            }
         }
         spans.push(Span::styled(" ", band));
     }
@@ -1273,27 +1366,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn locks_hold_until_the_next_note_or_lock() {
-        let lock = lattice_core::Lock {
+    fn lock_columns_carry_values_on_until_the_next() {
+        let column = lattice_core::LockColumn {
             fx: None,
-            param: 0,
-            value: 1.0,
-            ..Default::default()
+            param: lattice_core::instrument::synth::CUTOFF as u8,
         };
-        let mut locked = Step::note(60);
-        locked.locks.set(lock);
-        let mut trigless = Step::default();
-        trigless.locks.set(lock);
-        let steps = [
-            locked,
-            Step::default(),
-            Step::default(),
-            Step::note(62),
-            Step::default(),
-            trigless,
-            Step::default(),
-        ];
-        assert_eq!(held(&steps), [false, true, true, false, false, false, true]);
+        let label = ColumnLabel {
+            column,
+            name: "cutoff".into(),
+            key: 'c',
+        };
+        let track = Track::default();
+        let at = |change| {
+            let mut step = Step::default();
+            step.locks.set(column.lock(20_000.0, change));
+            step
+        };
+        let mut steps = vec![Step::default(); 6];
+        steps[1] = at(Change::Set);
+        steps[3] = at(Change::Reset);
+        assert_eq!(
+            fields(&track, &steps, &label),
+            [
+                Field::Empty,
+                Field::Lock(" 99".into()),
+                Field::Held,
+                Field::Lock(" --".into()),
+                Field::Empty,
+                Field::Empty,
+            ]
+        );
+        // Carried round from the last.
+        steps[5] = at(Change::Slide);
+        assert_eq!(fields(&track, &steps, &label)[0], Field::Held);
+        assert_eq!(fields(&track, &steps, &label)[5], Field::Lock("~99".into()));
     }
 
     #[test]

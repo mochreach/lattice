@@ -204,13 +204,13 @@ pub const COMMANDS: &[Spec] = &[
         name: "lock",
         alias: None,
         params: &[text("PARAM VALUE", "setting and value")],
-        describe: "lock a setting on the selected steps; FROM..TO sweeps across them",
+        describe: "lock a setting on the selected steps; FROM..TO sweeps, ~V slides, -- puts back; alone, adds its column",
     },
     Spec {
         name: "unlock",
         alias: None,
         params: &[optional_text("[PARAM]", "setting")],
-        describe: "clear a setting's locks from the selected steps, or all of them",
+        describe: "clear a setting's locks from the selected steps, or all; along a track, its column too",
     },
     Spec {
         name: "macro",

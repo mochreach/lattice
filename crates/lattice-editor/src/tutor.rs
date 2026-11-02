@@ -635,12 +635,20 @@ const LESSONS: &[Lesson] = &[
     },
     Lesson {
         title: "Locks",
-        text: "A step can lock its track's settings: they change on that step, and hold until \
-               the next note. `:lock cutoff 2000` locks the selected steps, `:lock cutoff \
-               300..4000` sweeps across them, and `:unlock` clears them. On the mixer, \
-               {lock_setting}, then a change, then {lock_setting} again locks what you \
-               changed.\n\nLock the LEAD track's cutoff on step 00.",
-        teaches: &[Action::LockSetting],
+        text: "A step can lock its track's settings: each changes on that step, and holds \
+               until the setting's next lock. `:lock cutoff 2000` locks the selected steps, \
+               `:lock cutoff ~4000` slides there, arriving on the step, `:lock cutoff --` puts \
+               it back to the mixer's, `:lock cutoff 300..4000` sweeps across them, and \
+               `:unlock` clears them. On the mixer, {lock_setting}, then a change, then \
+               {lock_setting} again locks what you changed.\n\n\
+               The track under the cursor opens out, showing each note's velocity and a \
+               column for each setting it locks, up to four: 00 to 99 across the setting's \
+               range, `~` sliding, `--` put back, and `╵` where a value carries on. Other \
+               tracks mark a step with locks `◆`. {toggle_open} keeps the selected tracks open \
+               too, and again closes them. `:lock cutoff` alone adds a column, and `:unlock` \
+               along the whole track takes one away.\n\n\
+               Lock the LEAD track's cutoff on step 00.",
+        teaches: &[Action::LockSetting, Action::ToggleOpen],
         commands: &["lock", "unlock"],
         setup: nothing,
         watch: never,

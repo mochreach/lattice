@@ -245,7 +245,7 @@ the recording (each piece cut short) and pieces running into the next if slower.
 piece plays back from its end. `direction` is a setting like any other, so a lock on a step turns
 just that piece round.
 
-The pattern page draws a chop track wider, with each row's piece number (in hex, like the rows,
+The pattern page draws a chop track wider, with each row's piece number (in decimal, like the rows,
 so an untouched loop reads straight down), `◂` if it's reversed, and the waveform of the audio the
 row plays, in braille: four dots down a row, each the loudest of a quarter of the step, spread
 out from the middle. The frontend keeps each file's peaks (`wave.rs`), worked out from the copy
@@ -747,15 +747,28 @@ the line, and `w` `b` stop only on names, sends and the out.
 
 Settings change over time by step, with parameter locks as on Elektron machines. A `Step` holds up
 to `MAX_LOCKS` (4) `Lock`s: an effect's place in the track's chain (or `None` for the
-instrument), a parameter id and a value in the parameter's own units. They're kept in a fixed
+instrument), a parameter id, a value in the parameter's own units, and a `Change`: `Set`,
+`Slide` or `Reset`. They're kept in a fixed
 array (`Locks`), not a `Vec`, so steps stay `Copy` and the engine realises a pass without
 allocating. Rules move locks with their steps, as they're part of the step; a transpose leaves
 them alone.
 
-A lock holds from its step until the next step that has a note or a lock (`Step::triggers`).
-Then the setting goes back to the mixer's, unless that step locks it again, in which case it
-isn't reset in between. So a locked note keeps its sound for as long as it rings, and a lock on
-an empty step changes the setting on its own. Stopping, and a change of pattern, end every lock.
+A lock holds from its step until that setting's next lock, as a tracker's columns do: the other
+locks on the track don't touch it, and notes don't end it. A `Reset` lock (written `--`) puts the
+setting back to the mixer's. A `Slide` (written `~`) arrives at its value on its step: when a
+setting's lock plays, `TrackPlayer::start_ramps` looks ahead along the pass (round the end, if
+need be) for the setting's next lock, and if it slides, starts a `Ramp` from the setting's value
+now, along its curve, over the steps between. Each block moves the ramps on before sequencing,
+sending the setting where it's got to, so a slide moves in block-sized steps that the
+parameters' smoothing joins up; the ramp's own step then sets the value exactly. Stopping, and a
+change of pattern, end every lock and slide.
+
+A track keeps the settings its steps lock as its `columns`: at most `MAX_LOCKS`, so a step always
+has room for one lock per column. `:lock`, `L` and recording add a column for a setting that
+hasn't one, or say there's no room; `:lock NAME` with no value adds just the column, and
+`:unlock` over a whole track takes it away. `Track::lock_columns` adds any setting a step locks
+that isn't a column yet, as a pasted step's might be. The columns follow their effects as the
+locks do.
 
 The engine keeps each setting's base value, the mixer's, for when a lock ends. A `TrackPlayer`
 keeps one for its instrument and an `EffectSlot` one for its effect, each a `[f32; MAX_PARAMS]`.
@@ -785,10 +798,16 @@ lock on the step playing (rounded down: it's the step being heard), in each pass
 recorded notes are. The setting itself is left alone. Nudges go on from the last lock recorded
 (`live_lock`), not the setting, so holding `^a` sweeps. The step has already played, so the
 editor also sends `Effect::Lock`, and the engine's `Command::Lock` holds it from now as the step
-would have, until the next note or lock. Arming record on the mixer page doesn't start insert
-mode, and a change during the count-in does nothing. The grid marks a locked step with `◆` at its
-end, and the steps it holds over (to the next note or lock) with `╎`; the status line lists the
-cursor's locks in place of the key hints. The engine publishes each track's locks in force every
+would have, until the setting's next lock. Arming record on the mixer page doesn't start insert
+mode, and a change during the count-in does nothing.
+
+The track under the cursor opens out on the grid, as do the tracks `te` keeps open
+(`Editor::is_open`): after its notes, each note's velocity and a field for each lock column. A
+value shows from 00 to 99 across the setting's range on its own curve (`lock_text`), `~` before
+it for a slide, `--` for a reset, and `╵` on the rows it carries on over, counting round from the
+track's last lock, as the loop plays it. A header row names the fields, underlining the letter
+`f` will go to each by (`Editor::lock_columns`). Closed tracks mark a step with locks `◆` at its
+end. The status line lists the cursor's locks in place of the key hints. The engine publishes each track's locks in force every
 block (`Status::locks`, one atomic per lock: a present bit, the effect, the setting and the
 value's bits), and the mixer page shows those values while they hold, so its knobs move with the
 pattern.

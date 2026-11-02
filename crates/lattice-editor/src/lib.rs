@@ -33,6 +33,7 @@ mod help;
 mod inst_page;
 mod keymap;
 mod locks;
+pub use locks::{ColumnLabel, lock_text};
 mod looper;
 mod macros;
 mod mixer;
@@ -406,6 +407,8 @@ pub struct Editor {
     pub help: Help,
     /// After a first `L` on the mixer page, the settings to lock the changes to.
     locking: Option<locks::Locking>,
+    /// Tracks `te` keeps open, showing their fields, as well as the cursor's.
+    open: Vec<TrackId>,
     /// The lock last recorded from the mixer, and its track, to nudge on from.
     live_lock: Option<(TrackId, Lock)>,
     /// The lesson, while the tutor's running.
@@ -538,6 +541,7 @@ impl Editor {
             song: Default::default(),
             help: Help::default(),
             locking: None,
+            open: vec![],
             live_lock: None,
             tutor: None,
             octave: 4,
@@ -1487,6 +1491,7 @@ impl Editor {
             Action::MoveTrackRight => return self.run_command("track-move 1"),
             Action::ToggleGroup => return self.toggle_group(),
             Action::ToggleFold => return self.toggle_fold(),
+            Action::ToggleOpen => self.toggle_open(),
             Action::GotoMixer => {
                 // From the pattern, onto the cursor's track.
                 if self.page == Page::Pattern {
@@ -2032,6 +2037,30 @@ impl Editor {
     }
 
     /// Where the track with `id` is now, if it's still there.
+    /// `te`: keeps the tracks the selections reach open, showing their fields after the cursor
+    /// leaves; again, closes them.
+    fn toggle_open(&mut self) {
+        if !self.open.is_empty() {
+            self.open.clear();
+            return;
+        }
+        let tracks: Vec<usize> = (self.selections.iter())
+            .flat_map(|s| self.columns(s.region()).map(|(t, _)| t))
+            .collect();
+        self.open = tracks
+            .iter()
+            .filter_map(|&t| self.ids.get(t).copied())
+            .collect();
+        self.open.sort_unstable();
+        self.open.dedup();
+    }
+
+    /// Whether track `t` shows its fields: velocity and lock columns beside its notes. The
+    /// cursor's track always does.
+    pub fn is_open(&self, t: usize) -> bool {
+        t == self.cursor().track || self.ids.get(t).is_some_and(|id| self.open.contains(id))
+    }
+
     pub(crate) fn track_index(&self, id: TrackId) -> Option<usize> {
         self.ids.iter().position(|&i| i == id)
     }

@@ -103,6 +103,7 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `tp` `tP` | paste copied tracks after / before this one, with their notes, rules, mix and instrument |
 | `tg` | group the tracks the selections reach (from the first to the last), or ungroup the group they're in; a group's tracks mix into its bus, a strip on the mixer page with a level and effects |
 | `tz` | fold or unfold the groups the selections reach: each track narrows to a column of hits (`●` `•` `∙` by velocity), like a drum machine's steps |
+| `te` | keep the tracks the selections reach open, showing their velocity and lock columns as the cursor's track does; again, close them |
 | `;` `A-;` | collapse the selection, flip which end the cursor is |
 | `~` | reverse the selected steps; on a chop track each piece plays backwards too |
 | `*` | repeat the selection's first step through the rest of it, or with a count (`2*`) the first that many |
@@ -227,11 +228,11 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:face TITLE` | title the track's face |
 | `:face-show [SETTING]`, `:face-hide [SETTING]` | put one of the instrument's settings on the track's face, beside its macros, or take it off; the one under the cursor if none's named |
 | `:fx-send LANE [DB]` | on the fx page, add a send after the cursor into lane `LANE` (`B`, say); the next letter after the last lane adds one. Into its own lane or one to its left it's feedback, at -6 dB unless given, and at most 0 dB |
-| `:lock PARAM VALUE` | lock a setting of the track's instrument or effects on every step the selections reach: `:lock cutoff 800`, `:lock filter.mix 0.5` (or `2.mix`, the second effect's). `:lock cutoff 200..4000` sweeps it across each selection. Locked steps are marked `◆`, and the cursor's locks are shown in the status line |
+| `:lock PARAM VALUE` | lock a setting of the track's instrument or effects on every step the selections reach: `:lock cutoff 800`, `:lock filter.mix 0.5` (or `2.mix`, the second effect's). `:lock cutoff 200..4000` sweeps it across each selection, `:lock cutoff ~4000` slides there, arriving on the step, and `:lock cutoff --` puts it back to the mixer's. With no value, `:lock cutoff` gives the track a column for it. The cursor's locks are shown in the status line |
 | `:macro NAME` | add a macro to the track: one knob, from 0 to 1, that turns several of its settings |
 | `:map NAME [DEPTH]` | on the mixer or fx page, have macro `NAME` (or its number, `1`) turn the setting under the cursor, by `DEPTH` of its range (-1 to 1, 0.5 if left out) at full turn, adding the macro if it's new |
 | `:unmap NAME` | stop macro `NAME` turning the setting under the cursor |
-| `:unlock [PARAM]` | clear a setting's locks, or all of them, from the steps the selections reach |
+| `:unlock [PARAM]` | clear a setting's locks, or all of them, from the steps the selections reach; along a whole track, its column goes too |
 | `:choke N` | choke group (1–8, 0 for none) for every track the selections reach: within a track group, a hit cuts off the other tracks with the same number, as a closed hat stops an open one |
 | `:mute`, `:solo` | toggle mute or solo for every track the selections reach (also `tm`, `ts`) |
 | `:w [PATH]`, `:wq [PATH]` | save the song (to a `.lattice` file), save and quit |
@@ -342,11 +343,14 @@ Lattice comes with 22, each with its effects, two macros and a face:
 controls it puts forward, its macros and whichever settings `:face-show cutoff` adds. The track
 keeps it, and the song saves it, until its instrument changes for another kind.
 
-**Locks** automate settings by step, as on Elektron machines: a step can lock up to four of its
-track's instrument or effect settings with `:lock`. A lock holds from its step until the next step
-with a note or a lock, and then the setting goes back to the mixer's. A locked step is marked `◆`, and the
-steps it holds over `╎`; while it plays, the mixer page shows a held lock's value, in the accent
-colour and marked `◆`, in place of the track's own. Or select the steps, go to
+**Locks** automate settings by step, as on Elektron machines and in trackers' columns: a track
+can lock up to four of its instrument's or effects' settings with `:lock`, each in a column of its
+own. A lock holds from its step until that setting's next lock; `--` puts the setting back to the
+mixer's, and `~` slides to a value, arriving on its step. The track under the cursor opens out to
+show its columns beside its notes and their velocity: each value from 00 to 99 across the
+setting's range, and `╵` where one carries on. Other tracks mark a step with locks `◆`, and `te`
+keeps tracks open. While a lock plays, the mixer page shows its value, in the accent colour and
+marked `◆`, in place of the track's own. Or select the steps, go to
 the mixer (`gm`), press `L`, and change the track's settings by ear; `L` again locks each setting
 that changed onto the selected steps and puts the track's own settings back (`esc`, or leaving the
 mixer, cancels). To perform them instead, arm record (`R`) on the mixer page and play: each
@@ -354,7 +358,7 @@ setting you change is locked on the step that's playing, and heard at once, so a
 `^a` goes in step by step. Each pass is one undo, as with recorded notes. A lock on a step with no
 note changes the setting on its own, so a few locks down an empty stretch move an effect along.
 In the demo, the second stab in each bar is brighter and rings, from its locked cutoff and
-resonance.
+resonance, and the first puts them back.
 
 The **song page** (`gs`) is the arrangement: the patterns in the order they play, each entry
 repeated some number of times. A strip across the top shows the whole song, each entry as wide as

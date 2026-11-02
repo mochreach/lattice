@@ -105,6 +105,43 @@ fn add_columns<'a>(
     Ok(())
 }
 
+/// The setting `fx` and `param` name on `track`, if it's still there.
+fn setting(track: &Track, fx: Option<u8>, param: u8) -> Option<Setting> {
+    let params = match fx {
+        Some(MACRO) => {
+            return (usize::from(param) < track.macros.len())
+                .then(|| Setting::of_macro(usize::from(param)));
+        }
+        None => track.instrument.kind.params(),
+        Some(fx) => track.effects.get(usize::from(fx))?.kind.params(),
+    };
+    Some(Setting::new(fx, params.get(usize::from(param))?))
+}
+
+/// A track's lock column, as the grid heads it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColumnLabel {
+    pub column: LockColumn,
+    /// The setting's own name, without its effect's: `cutoff`, `mix`, a macro's.
+    pub name: String,
+    /// The key that goes to it after `f`: a letter of its name no other field has.
+    pub key: char,
+}
+
+/// A lock's value as its column shows it, three wide: `45` across the setting's range from 00 to
+/// 99, `~90` sliding there, or `--` put back.
+pub fn lock_text(track: &Track, lock: &Lock) -> String {
+    let Some(setting) = setting(track, lock.fx, lock.param) else {
+        return " ??".into();
+    };
+    let value = (setting.info.fraction(lock.value).clamp(0.0, 1.0) * 99.0).round() as u8;
+    match lock.change {
+        Change::Set => format!(" {value:02}"),
+        Change::Slide => format!("~{value:02}"),
+        Change::Reset => " --".into(),
+    }
+}
+
 /// The setting called `name` on `track`: a parameter of its instrument, or of its first effect
 /// that has one. `EFFECT.PARAM` picks the effect, by name or by number from 1.
 fn find(track: &Track, name: &str) -> Option<Setting> {
@@ -553,6 +590,32 @@ impl Editor {
             }
             _ => true,
         })
+    }
+
+    /// Track `t`'s lock columns, named, each with its key. `n`, `v` and `g` go to the note,
+    /// velocity and gestures, so a column takes the first letter of its name that's free, or a
+    /// number.
+    pub fn lock_columns(&self, t: usize) -> Vec<ColumnLabel> {
+        let Some(track) = self.grid.tracks.get(t) else {
+            return vec![];
+        };
+        let mut taken = vec!['n', 'v', 'g', 'G'];
+        (track.lock_columns().into_iter().enumerate())
+            .map(|(i, column)| {
+                let name = match setting(track, column.fx, column.param) {
+                    Some(s) if s.fx == Some(MACRO) => s.name(track),
+                    Some(s) => s.info.name.to_string(),
+                    None => "?".into(),
+                };
+                let key = (name.chars())
+                    .filter(char::is_ascii_alphabetic)
+                    .find(|c| !taken.contains(c))
+                    .or_else(|| char::from_digit(i as u32 + 1, 10))
+                    .unwrap_or('?');
+                taken.push(key);
+                ColumnLabel { column, name, key }
+            })
+            .collect()
     }
 
     /// The locks on a step, as `cutoff 800Hz`, for showing.
