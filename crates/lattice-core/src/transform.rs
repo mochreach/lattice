@@ -149,6 +149,7 @@ mod tests {
 
     fn track(rules: Vec<Rule>) -> Track {
         Track {
+            face: None,
             pattern_mute: false,
             name: "test".into(),
             steps: vec![

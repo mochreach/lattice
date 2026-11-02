@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use anyhow::Context;
-use lattice_core::{FxChain, PRESETS, SavedChain};
+use lattice_core::{CHAINS, FxChain, SavedChain};
 
 use crate::config;
 
@@ -60,7 +60,7 @@ pub fn names() -> Vec<String> {
         })
         .collect();
     saved.sort();
-    PRESETS.iter().map(|p| p.to_string()).chain(saved).collect()
+    CHAINS.iter().map(|p| p.to_string()).chain(saved).collect()
 }
 
 #[cfg(test)]
@@ -69,8 +69,8 @@ mod tests {
 
     #[test]
     fn a_branching_chain_goes_through_toml() {
-        for name in PRESETS {
-            let chain = lattice_core::preset(name).unwrap();
+        for name in CHAINS {
+            let chain = lattice_core::built_in_chain(name).unwrap();
             let text = to_toml(chain.clone()).unwrap();
             assert_eq!(from_toml(&text).unwrap(), chain, "{text}");
         }

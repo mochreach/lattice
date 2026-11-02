@@ -224,6 +224,7 @@ mod tests {
 
     fn export(steps: u64) -> Export {
         let mut track = Track {
+            face: None,
             pattern_mute: false,
             name: "t".into(),
             steps: vec![Step::default(); 4],

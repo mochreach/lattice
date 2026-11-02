@@ -8,6 +8,7 @@ use crate::fx::{Buses, Fx};
 use crate::group::Group;
 use crate::instrument::Instrument;
 use crate::macros::Macro;
+use crate::preset::Face;
 use crate::transform::Rule;
 
 /// Longest a track can be. The engine preallocates for this so edits never allocate on the audio
@@ -214,6 +215,8 @@ pub struct Track {
     pub choke: u8,
     /// Knobs that each turn several of its settings.
     pub macros: Vec<Macro>,
+    /// The face of the preset it was given, until its instrument changes for another kind.
+    pub face: Option<Face>,
 }
 
 /// The highest choke group.
@@ -309,6 +312,8 @@ struct SparseTrack {
     choke: u8,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     macros: Vec<Macro>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    face: Option<Face>,
 }
 
 fn is_zero_u8(n: &u8) -> bool {
@@ -335,6 +340,7 @@ impl From<Track> for SparseTrack {
             lanes,
             choke: track.choke,
             macros: track.macros,
+            face: track.face,
         }
     }
 }
@@ -371,6 +377,7 @@ impl TryFrom<SparseTrack> for Track {
             effects,
             choke: sparse.choke,
             macros: sparse.macros,
+            face: sparse.face,
         })
     }
 }

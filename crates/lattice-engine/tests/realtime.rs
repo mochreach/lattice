@@ -18,6 +18,7 @@ static ALLOCATOR: AllocDisabler = AllocDisabler;
 #[test]
 fn rendering_never_allocates() {
     let track = Track {
+        face: None,
         pattern_mute: false,
         name: "lead".into(),
         steps: (0..7)

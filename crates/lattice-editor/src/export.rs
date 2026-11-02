@@ -198,6 +198,7 @@ mod tests {
 
     fn track(len: usize, rules: Vec<Rule>) -> Track {
         Track {
+            face: None,
             pattern_mute: false,
             name: "t".into(),
             steps: vec![Step::default(); len],

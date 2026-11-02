@@ -1,9 +1,9 @@
 //! Chains saved on their own, to put on any strip of any song: `:chain-save NAME` saves the
 //! strip's chain, and `:chain-load NAME` puts a saved one on the strip, in place of its own.
-//! Lattice comes with some ([`lattice_core::PRESETS`]); the rest are files the frontend reads and
+//! Lattice comes with some ([`lattice_core::CHAINS`]); the rest are files the frontend reads and
 //! writes, asked to with [`Effect::SaveChain`] and [`Effect::LoadChain`].
 
-use lattice_core::{FxChain, PRESETS, preset};
+use lattice_core::{CHAINS, FxChain, built_in_chain};
 
 use crate::mixer::{Page, Strip};
 use crate::{Editor, Effect};
@@ -20,7 +20,7 @@ impl Editor {
 
     pub(crate) fn save_chain(&mut self, name: &str) -> Result<Vec<Effect>, String> {
         let name = chain_name(name)?;
-        if PRESETS.contains(&name.as_str()) {
+        if CHAINS.contains(&name.as_str()) {
             return Err(format!(
                 "{name} is one Lattice comes with: save it under another name"
             ));
@@ -34,7 +34,7 @@ impl Editor {
 
     pub(crate) fn load_chain(&mut self, name: &str) -> Result<Vec<Effect>, String> {
         let name = chain_name(name)?;
-        Ok(match preset(&name) {
+        Ok(match built_in_chain(&name) {
             Some(chain) => self.put_chain(&name, chain),
             None => vec![Effect::LoadChain(name)],
         })
@@ -113,7 +113,7 @@ mod tests {
         ));
         assert!(e.grid.tracks[0].steps[0].locks.is_empty());
 
-        // Saving asks the frontend to write it; a preset's name is taken.
+        // Saving asks the frontend to write it; a built_in_chain's name is taken.
         assert!(matches!(
             &e.run_command("chain-save wash")[..],
             [Effect::SaveChain(name, _)] if name == "wash"

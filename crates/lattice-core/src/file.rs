@@ -116,6 +116,11 @@ fn check_track(track: &Track) -> Result<(), String> {
             track.name
         ));
     }
+    if let Some(face) = &track.face
+        && let Err(e) = face.check(track.instrument.kind)
+    {
+        return Err(format!("track {:?}'s face: {e}", track.name));
+    }
     if let Err(e) = track.effects.check() {
         return Err(format!("track {:?}'s effects: {e}", track.name));
     }
@@ -143,6 +148,7 @@ mod tests {
 
     fn song() -> Song {
         let mut bass = Track {
+            face: None,
             pattern_mute: false,
             name: "bass".into(),
             steps: vec![Step::default(); 16],
@@ -192,6 +198,7 @@ mod tests {
         bass.instrument = Instrument::new(InstKind::Kick);
         bass.instrument.values[kick::PUNCH as usize] = 0.8;
         let empty = Track {
+            face: None,
             pattern_mute: false,
             name: "empty".into(),
             steps: vec![Step::default(); 6],

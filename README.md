@@ -221,6 +221,10 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:fx-add EFFECT` | add an effect (`delay`, `reverb`, `filter`, `drive`, `comp` or `pitch`) after the mixer or fx page cursor, or at the end of this track's chain |
 | `:chain-save NAME` | save the strip's chain of effects (on the pattern page, the cursor's track's) as `~/.config/lattice/chains/NAME.toml`, to load on any strip of any song |
 | `:chain-load NAME` | put a saved chain on the strip, in place of its own (its effects' locks go with them); Lattice comes with `shimmer` |
+| `:preset NAME` | put a preset on the track (the instrument page's or the cursor's): its instrument, effects, macros and face, in place of the track's own; Lattice comes with `glasshouse`, `night-bus`, `rubber`, `foundry` and `monsoon` |
+| `:preset-save NAME` | save the track's instrument, effects and macros, and its face, as `~/.config/lattice/presets/NAME.toml`, giving the track a face titled after `NAME` if it has none |
+| `:face TITLE` | title the track's face |
+| `:face-show [SETTING]`, `:face-hide [SETTING]` | put one of the instrument's settings on the track's face, beside its macros, or take it off; the one under the cursor if none's named |
 | `:fx-send LANE [DB]` | on the fx page, add a send after the cursor into lane `LANE` (`B`, say); the next letter after the last lane adds one. Into its own lane or one to its left it's feedback, at -6 dB unless given, and at most 0 dB |
 | `:lock PARAM VALUE` | lock a setting of the track's instrument or effects on every step the selections reach: `:lock cutoff 800`, `:lock filter.mix 0.5` (or `2.mix`, the second effect's). `:lock cutoff 200..4000` sweeps it across each selection. Locked steps are marked `◆`, and the cursor's locks are shown in the status line |
 | `:macro NAME` | add a macro to the track: one knob, from 0 to 1, that turns several of its settings |
@@ -303,6 +307,16 @@ one, `shimmer`: a long reverb in lane A that sends into lane B, which high-passe
 up an octave with the `pitch` effect, then feeds it back into the reverb, so every trip round adds
 an octave above, rising as it fades, as on Eno and Lanois's records. Put it on a slow pad, and try
 the feedback send's level, the reverb's decay, or `pitch` at 7 for fifths.
+
+**Presets** make an instrument into one of its own: `:preset night-bus` puts an instrument, its
+settings, the effects after it and the macros that turn them on a track all at once, in place of
+the track's own, and `:preset-save cold-iron` saves a track's to put on any track of any song.
+Lattice comes with `glasshouse` (a bright steel string in a glassy room, with `bloom` for more of
+it and `bow` to bow it), `night-bus` (a dark saw pad in the shimmer, which `dawn` opens), `rubber`
+(a squelchy square bass), `foundry` (a hard, hot kick) and `monsoon` (a sitar in an echo, with
+`rain` to thicken it). A preset gives its track a **face**: a title (`:face Cold Iron`), and the
+controls it puts forward, its macros and whichever settings `:face-show cutoff` adds. The track
+keeps it, and the song saves it, until its instrument changes for another kind.
 
 **Locks** automate settings by step, as on Elektron machines: a step can lock up to four of its
 track's instrument or effect settings with `:lock`. A lock holds from its step until the next step

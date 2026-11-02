@@ -378,10 +378,10 @@ impl TryFrom<SavedChain> for FxChain {
 }
 
 /// The chains Lattice comes with.
-pub const PRESETS: &[&str] = &["shimmer"];
+pub const CHAINS: &[&str] = &["shimmer"];
 
 /// A chain Lattice comes with, by name.
-pub fn preset(name: &str) -> Option<FxChain> {
+pub fn built_in_chain(name: &str) -> Option<FxChain> {
     match name {
         "shimmer" => Some(shimmer()),
         _ => None,
@@ -529,9 +529,9 @@ mod tests {
     }
 
     #[test]
-    fn the_presets_are_chains() {
-        for name in PRESETS {
-            let chain = preset(name).unwrap();
+    fn the_built_in_chains_are_chains() {
+        for name in CHAINS {
+            let chain = built_in_chain(name).unwrap();
             assert_eq!(chain.check(), Ok(()), "{name}");
             let saved = SavedChain::from(chain.clone());
             assert_eq!(FxChain::try_from(saved), Ok(chain));

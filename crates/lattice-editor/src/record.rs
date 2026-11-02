@@ -201,6 +201,7 @@ mod tests {
 
     fn editor() -> Editor {
         let track = |len| Track {
+            face: None,
             pattern_mute: false,
             name: "t".into(),
             steps: vec![Step::default(); len],

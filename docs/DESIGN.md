@@ -851,6 +851,20 @@ mixer's on the track's instrument and the setting under the cursor, so nudging, 
 chain opens the fx page. The TUI scrolls the columns sideways to keep the cursor's track in view.
 A preset's face will open at the top of its column.
 
+### Presets and faces
+
+A preset (`lattice_core::Preset`, `lattice-core/src/preset.rs`) is an instrument, its chain and its
+macros, with a `Face`: a title and the instrument settings it puts forward, by id. Faces only name
+the instrument's own settings, not its effects', so removing or moving effects never leaves one
+pointing at the wrong thing; an effect's setting goes on a face by mapping a macro to it. A track
+keeps the face of the preset it was given (`Track::face`, saved with the song), until `:inst` or
+`:sample` changes its instrument for another kind. `:preset` replaces the track's instrument, chain
+and macros; locks on the old chain and macros go, and on the old instrument's settings unless it's
+the same kind. Lattice's own presets are built in code (`lattice_core::preset`), like the shimmer
+chain; others are TOML files in `~/.config/lattice/presets`, read and written by the TUI when the
+editor asks with `Effect::LoadPreset` and `Effect::SavePreset`, as for chains. The built-in chains
+are `lattice_core::CHAINS` and `built_in_chain`, so `PRESETS` and `preset` mean these.
+
 ### The command line's suggestions and history
 
 `Editor::completions` suggests for the word being typed (`lattice-editor/src/suggest.rs`): the

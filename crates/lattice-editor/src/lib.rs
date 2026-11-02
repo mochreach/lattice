@@ -27,6 +27,7 @@ mod mixer;
 mod pads;
 mod pattern;
 mod patterns;
+mod presets;
 mod rearrange;
 mod record;
 mod song;
@@ -51,7 +52,7 @@ pub use tutor::TutorView;
 use std::path::{Path, PathBuf};
 
 use lattice_core::{
-    Arrangement, Buses, FxChain, Grid, Lock, MAX_STEPS, MAX_TRACKS, Note, Song, Step, Track,
+    Arrangement, Buses, FxChain, Grid, Lock, MAX_STEPS, MAX_TRACKS, Note, Preset, Song, Step, Track,
 };
 
 use crate::pattern::Pattern;
@@ -196,6 +197,11 @@ pub enum Effect {
     SaveChain(String, Box<FxChain>),
     /// Read the chain saved under this name, and give it to [`Editor::put_chain`].
     LoadChain(String),
+    /// Save this preset under this name, for `:preset` to put on any track.
+    SavePreset(String, Box<Preset>),
+    /// Read the preset saved under this name, and give it to [`Editor::put_preset`], for the
+    /// track the preset commands work on.
+    LoadPreset(String),
     Quit,
 }
 
@@ -367,6 +373,8 @@ pub struct Editor {
     pub history: Vec<String>,
     /// The chains `:chain-load` can load, by name, as the frontend found them.
     pub chains: Vec<String>,
+    /// The presets `:preset` can load, by name, as the frontend found them.
+    pub presets: Vec<String>,
     /// The audio devices, as the frontend found them.
     pub inputs: Devices,
     pub outputs: Devices,
@@ -483,7 +491,8 @@ impl Editor {
             armed: None,
             latency: 0,
             history: vec![],
-            chains: lattice_core::PRESETS
+            chains: lattice_core::CHAINS.iter().map(|p| p.to_string()).collect(),
+            presets: lattice_core::PRESETS
                 .iter()
                 .map(|p| p.to_string())
                 .collect(),
@@ -1976,6 +1985,7 @@ mod tests {
 
     fn editor() -> Editor {
         let track = |name: &str, len| Track {
+            face: None,
             pattern_mute: false,
             name: name.into(),
             steps: vec![Step::default(); len],

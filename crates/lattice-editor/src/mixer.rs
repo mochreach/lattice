@@ -605,6 +605,7 @@ impl Editor {
         let mut effects = vec![Effect::MixerChanged];
         for t in tracks {
             self.grid.tracks[t].instrument = Instrument::new(kind);
+            self.grid.tracks[t].face = None;
             // The old instrument's settings mean nothing to the new one.
             if self.retain_locks(t, |lock| lock.fx.is_some())
                 | self.retain_targets(t, |target| target.fx.is_some())
@@ -626,11 +627,12 @@ impl Editor {
         let tracks = self.mix_targets()?;
         self.checkpoint();
         for &t in &tracks {
-            let instrument = &mut self.grid.tracks[t].instrument;
-            if instrument.kind != InstKind::Sampler {
-                *instrument = Instrument::new(InstKind::Sampler);
+            let track = &mut self.grid.tracks[t];
+            if track.instrument.kind != InstKind::Sampler {
+                track.instrument = Instrument::new(InstKind::Sampler);
+                track.face = None;
             }
-            instrument.file = Some(path.clone());
+            track.instrument.file = Some(path.clone());
         }
         let name = path
             .file_name()

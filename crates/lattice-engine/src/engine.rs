@@ -1793,6 +1793,7 @@ mod tests {
 
     fn lead() -> Track {
         Track {
+            face: None,
             pattern_mute: false,
             name: "lead".into(),
             steps: [60, 0, 63, 67, 0, 70, 72]

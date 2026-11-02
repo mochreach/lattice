@@ -326,7 +326,7 @@ mod tests {
     #[test]
     fn the_shimmer_rings_on_and_dies_away() {
         const RATE: f32 = 48_000.0;
-        let chain = lattice_core::preset("shimmer").unwrap();
+        let chain = lattice_core::built_in_chain("shimmer").unwrap();
         let mut effects: Vec<_> = (chain.iter())
             .map(|fx| crate::fx::build(fx, RATE))
             .collect();

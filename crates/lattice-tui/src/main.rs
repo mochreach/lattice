@@ -17,6 +17,7 @@ mod log;
 mod looper;
 mod mixer;
 mod mixer_page;
+mod presets;
 mod samples;
 mod sequencer;
 mod song_page;
@@ -115,6 +116,7 @@ fn main() -> Result<()> {
     editor.show_keys = args.iter().any(|a| a == "--show-keys");
     editor.history = history::load();
     editor.chains = chains::names();
+    editor.presets = presets::names();
 
     let mut theme = Theme::detect();
     if let Some(path) = named.clone().or_else(config::default_path)
@@ -571,6 +573,28 @@ fn apply(
                     }
                 }
                 Err(e) => editor.message = Some(format!("{e:#}")),
+            }
+            return Flow::Next;
+        }
+        Effect::SavePreset(name, preset) => {
+            editor.message = Some(match presets::save(&name, *preset) {
+                Ok(saved) => saved,
+                Err(e) => format!("{e:#}"),
+            });
+            editor.presets = presets::names();
+            return Flow::Next;
+        }
+        Effect::LoadPreset(name) => {
+            match (presets::load(&name), editor.preset_track()) {
+                (Ok(preset), Ok(t)) => {
+                    for effect in editor.put_preset(t, &name, preset) {
+                        apply(
+                            effect, editor, tracks, mixer, exports, sequencer, machine, handle,
+                        );
+                    }
+                }
+                (Err(e), _) => editor.message = Some(format!("{e:#}")),
+                (_, Err(e)) => editor.message = Some(e),
             }
             return Flow::Next;
         }

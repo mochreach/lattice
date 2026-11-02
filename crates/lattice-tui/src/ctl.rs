@@ -168,7 +168,11 @@ pub fn refuse_key(editor: &Editor, key: Key, allow_save: bool) -> Option<String>
 pub fn refuse_effect(effect: &Effect, allow_save: bool) -> Option<&'static str> {
     let writes = matches!(
         effect,
-        Effect::Save(_) | Effect::Open(_) | Effect::Quit | Effect::SaveChain(..)
+        Effect::Save(_)
+            | Effect::Open(_)
+            | Effect::Quit
+            | Effect::SaveChain(..)
+            | Effect::SavePreset(..)
     );
     (writes && !allow_save)
         .then_some("saving, opening and quitting need Lattice started with --allow-agent-save")

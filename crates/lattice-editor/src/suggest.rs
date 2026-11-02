@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use lattice_core::{FxKind, InstKind, Kind, MAX_LANES, MAX_STEPS, PRESETS};
+use lattice_core::{CHAINS, FxKind, InstKind, Kind, MAX_LANES, MAX_STEPS};
 
 use crate::Editor;
 use crate::command::{self, fuzzy};
@@ -103,13 +103,26 @@ impl Editor {
             ),
             ("chain-load", 0) => (self.chains.iter())
                 .map(|name| {
-                    let whose = if PRESETS.contains(&name.as_str()) {
+                    let whose = if CHAINS.contains(&name.as_str()) {
                         "Lattice's"
                     } else {
                         "saved"
                     };
                     (name.clone(), whose.into())
                 })
+                .collect(),
+            ("preset", 0) => (self.presets.iter())
+                .map(|name| {
+                    let whose = match lattice_core::preset(name) {
+                        Some(preset) => preset.face.title,
+                        None => "saved".into(),
+                    };
+                    (name.clone(), whose)
+                })
+                .collect(),
+            ("face-show" | "face-hide", 0) => (track.instrument.params().iter())
+                .zip(&track.instrument.values)
+                .map(|(p, &value)| (p.name.to_string(), p.format(value)))
                 .collect(),
             ("lock" | "unlock", 0) => suggest_settings(track),
             ("lock", 1) => words(&suggest_choices(track, before[0])),

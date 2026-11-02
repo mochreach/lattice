@@ -74,7 +74,7 @@ impl Editor {
 
     /// The track's setting under the mixer cursor, or the fx page's, as the effect it's on (or
     /// `None` for the instrument) and its id.
-    fn setting_under_cursor(&self) -> Option<(usize, Option<u8>, u8)> {
+    pub(crate) fn setting_under_cursor(&self) -> Option<(usize, Option<u8>, u8)> {
         if !matches!(self.page, Page::Mixer | Page::Fx | Page::Instrument) {
             return None;
         }

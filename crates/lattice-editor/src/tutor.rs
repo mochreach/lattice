@@ -632,6 +632,31 @@ const LESSONS: &[Lesson] = &[
         solution: "gpglgf:fx-add filter<ret>jj:map bloom<ret>hk10<C-a>gp",
     },
     Lesson {
+        title: "Presets",
+        text: "A preset is an instrument made into one of its own: its settings, the effects \
+               after it and the macros that turn them, put on a track at once by `:preset \
+               night-bus`, in place of the track's own. Lattice comes with some; \
+               `:preset-save cold-iron` saves the track's as another, to put on any track of \
+               any song. A preset gives its track a face: a title, `:face Cold Iron` to change \
+               it, and the controls it puts forward, its macros and whichever settings \
+               `:face-show cutoff` adds (`:face-hide cutoff` takes one back). Changing the \
+               instrument for another kind takes the face away.\n\n\
+               Put `night-bus` on the LEAD track, and show its resonance on its face.",
+        teaches: &[],
+        commands: &["preset", "preset-save", "face", "face-show", "face-hide"],
+        setup: nothing,
+        watch: never,
+        done: |e, _| {
+            let lead = track(e, "LEAD");
+            let resonance = (lead.instrument.params().iter()).position(|p| p.name == "resonance");
+            (lead.face.as_ref()).is_some_and(|face| {
+                face.title == "Night Bus"
+                    && resonance.is_some_and(|r| face.controls.contains(&(r as u8)))
+            })
+        },
+        solution: "gpgl:preset night-bus<ret>:face-show resonance<ret>",
+    },
+    Lesson {
         title: "Chopping",
         text: "A chop track plays one sound file cut into pieces, a piece a step, drawn as a \
                waveform down the track, so you can rearrange the sound like notes. \
