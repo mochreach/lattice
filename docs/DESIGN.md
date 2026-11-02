@@ -849,7 +849,15 @@ the first line of each part. Like the fx page, it's a view of the mixer's cursor
 mixer's on the track's instrument and the setting under the cursor, so nudging, `:set`, `:map`,
 `L` and recorded locks go through the mixer's code. Macros are set directly, and `enter` on the
 chain opens the fx page. The TUI scrolls the columns sideways to keep the cursor's track in view.
-A preset's face will open at the top of its column.
+A track with a face (see below) shows it instead, unless `enter` on its title opened it
+(`Editor::inst_opened`, by `TrackId`): its macros come first, then the settings the face puts
+forward, so `InstLine::Param` holds a setting's id rather than its place in the list, and `w` `b`
+stop wherever the kind of line changes. The TUI draws each shown face's art (`lattice-tui/src/face.rs`)
+in a band under the tracks' names: a fractal from the splash, picked by hashing the title,
+mirrored about the middle. It reads the track's meter for how far it's lit, the macros' values
+(locked ones while playing) for zoom and flow, and the engine's `Status::last_note`, the pitch,
+velocity and a count of notes started, packed into one atomic per track, for the colour and the
+ring a new note sends out. Colours come from `Theme::hues`, a wheel of the terminal's six.
 
 ### Presets and faces
 

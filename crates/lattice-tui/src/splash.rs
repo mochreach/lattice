@@ -25,7 +25,7 @@ const LOGO: &str = " LATTICE ";
 
 /// Which points of the lattice are lit.
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum Pattern {
+pub(crate) enum Pattern {
     /// Pascal's triangle mod a prime: mod 2 is Sierpiński's triangle, larger primes leave more,
     /// larger holes.
     Pascal(u32),
@@ -35,7 +35,7 @@ enum Pattern {
     Xor(u32),
 }
 
-const PATTERNS: [Pattern; 6] = [
+pub(crate) const PATTERNS: [Pattern; 6] = [
     Pattern::Pascal(2),
     Pattern::Pascal(3),
     Pattern::Pascal(5),
@@ -45,7 +45,7 @@ const PATTERNS: [Pattern; 6] = [
 ];
 
 impl Pattern {
-    fn lit(self, mut x: u32, mut y: u32) -> bool {
+    pub(crate) fn lit(self, mut x: u32, mut y: u32) -> bool {
         match self {
             // By Lucas's theorem, (x + y choose x) isn't a multiple of p when adding x and y in
             // base p carries nothing.
@@ -176,7 +176,7 @@ impl Splash {
 }
 
 /// Each dot of a braille cell, as (across, down), in the order Unicode gives them bits.
-const DOTS: [(u32, u32); 8] = [
+pub(crate) const DOTS: [(u32, u32); 8] = [
     (0, 0),
     (0, 1),
     (0, 2),
@@ -192,18 +192,18 @@ fn smoothstep(x: f32) -> f32 {
 }
 
 /// Xorshift: plenty for picking an animation.
-struct Rng(u64);
+pub(crate) struct Rng(u64);
 
 impl Rng {
     /// Mixed with splitmix64 first, so nearby seeds, as clock readings are, go far apart.
-    fn new(seed: u64) -> Self {
+    pub(crate) fn new(seed: u64) -> Self {
         let mut z = seed.wrapping_add(0x9e37_79b9_7f4a_7c15);
         z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
         z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
         Self((z ^ (z >> 31)) | 1)
     }
 
-    fn below(&mut self, n: usize) -> usize {
+    pub(crate) fn below(&mut self, n: usize) -> usize {
         self.0 ^= self.0 << 13;
         self.0 ^= self.0 >> 7;
         self.0 ^= self.0 << 17;

@@ -2,6 +2,10 @@
 //! bottom like the fx page's lanes. A column starts with the instrument's name, then has its
 //! settings a line each, the track's macros, and last its chain of effects.
 //!
+//! A track with a preset's face shows that instead: its title, its macros, the settings it puts
+//! forward and its chain. `enter` on the title opens all its settings, and again goes back to
+//! the face.
+//!
 //! `h` `l` move from track to track on the same line, `j` `k` down and up a column, and `w` `b`
 //! from part to part. `C-a` `C-x` turn the setting or macro under the cursor, and `c` sets it,
 //! or on the name, changes the instrument. Settings go through the mixer's cursor, which the
@@ -32,26 +36,41 @@ pub enum InstLine {
     Chain,
 }
 
-impl InstLine {
-    /// Whether `w` and `b` stop on it: the first line of each part.
-    fn starts_part(self) -> bool {
-        matches!(
-            self,
-            InstLine::Kind | InstLine::Param(0) | InstLine::Macro(0) | InstLine::Chain
-        )
-    }
-}
-
 impl Editor {
     /// Track `t`'s column on the instrument page, top to bottom.
     pub fn inst_lines(&self, t: usize) -> Vec<InstLine> {
         let track = &self.grid.tracks[t];
-        let params = track.instrument.params().len();
+        let macros = (0..track.macros.len()).map(InstLine::Macro);
         let mut lines = vec![InstLine::Kind];
-        lines.extend((0..params).map(InstLine::Param));
-        lines.extend((0..track.macros.len()).map(InstLine::Macro));
+        match &track.face {
+            Some(face) if self.shows_face(t) => {
+                lines.extend(macros);
+                lines.extend(face.controls.iter().map(|&c| InstLine::Param(c.into())));
+            }
+            _ => {
+                lines.extend((0..track.instrument.params().len()).map(InstLine::Param));
+                lines.extend(macros);
+            }
+        }
         lines.push(InstLine::Chain);
         lines
+    }
+
+    /// Whether track `t`'s column shows its face, rather than all its settings.
+    pub fn shows_face(&self, t: usize) -> bool {
+        self.grid.tracks[t].face.is_some() && !self.inst_opened.contains(&self.ids[t])
+    }
+
+    /// `enter` on the title: opens all of a face's settings, or goes back to the face.
+    fn toggle_face(&mut self, t: usize) {
+        if self.grid.tracks[t].face.is_none() {
+            self.message = Some("no face: :preset or :face gives it one".into());
+            return;
+        }
+        let id = self.ids[t];
+        if !self.inst_opened.remove(&id) {
+            self.inst_opened.insert(id);
+        }
     }
 
     /// The instrument page's cursor, kept within the tracks and the column it's in.
@@ -101,12 +120,16 @@ impl Editor {
     fn inst_part(&self, n: usize, forward: bool) -> usize {
         let cursor = self.inst_cursor();
         let lines = self.inst_lines(cursor.track);
+        // A part starts where the kind of line changes.
+        let starts = |l: usize| {
+            l == 0 || std::mem::discriminant(&lines[l]) != std::mem::discriminant(&lines[l - 1])
+        };
         let mut line = cursor.line;
         for _ in 0..n {
             let next = if forward {
-                (line + 1..lines.len()).find(|&l| lines[l].starts_part())
+                (line + 1..lines.len()).find(|&l| starts(l))
             } else {
-                (0..line).rev().find(|&l| lines[l].starts_part())
+                (0..line).rev().find(|&l| starts(l))
             };
             match next {
                 Some(l) => line = l,
@@ -169,8 +192,11 @@ impl Editor {
                     prompt.line = line.into();
                 }
             }
-            Action::Open if self.inst_line() == InstLine::Chain => self.goto_fx(),
-            Action::Open => {}
+            Action::Open => match self.inst_line() {
+                InstLine::Chain => self.goto_fx(),
+                InstLine::Kind => self.toggle_face(cursor.track),
+                _ => {}
+            },
             Action::Delete | Action::Clear => {
                 return Some(match self.inst_line() {
                     InstLine::Macro(m) => self.remove_macro(cursor.track, m),
@@ -278,5 +304,35 @@ mod tests {
         assert_eq!(e.page, Page::Fx);
         keys(&mut e, "gi");
         assert_eq!(e.inst_cursor().track, 0, "back on the same track");
+    }
+
+    #[test]
+    fn a_face_shows_what_it_puts_forward_until_opened() {
+        let mut e = editor();
+        keys(&mut e, "gi:preset rubber\n");
+        assert!(e.shows_face(0));
+        let face = [
+            InstLine::Kind,
+            InstLine::Macro(0),
+            InstLine::Macro(1),
+            InstLine::Param(2),
+            InstLine::Chain,
+        ];
+        assert_eq!(e.inst_lines(0), face);
+        assert_eq!(e.inst_line(), InstLine::Macro(0), "onto the first macro");
+        keys(&mut e, "w");
+        assert_eq!(e.inst_line(), InstLine::Param(2), "w stops on the settings");
+        keys(&mut e, "A");
+        let decay = e.grid.tracks[0].instrument.values[2];
+        assert!(decay > 0.25, "turned as any setting");
+
+        // enter on the title opens them all, and again goes back.
+        keys(&mut e, "gg\n");
+        assert!(!e.shows_face(0));
+        assert_eq!(e.inst_lines(0).len(), 1 + 9 + 2 + 1);
+        keys(&mut e, "\n");
+        assert_eq!(e.inst_lines(0), face);
+        keys(&mut e, "l\n");
+        assert!(e.message.as_deref().unwrap().contains("no face"));
     }
 }

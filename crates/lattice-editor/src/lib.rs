@@ -439,6 +439,8 @@ pub struct Editor {
     /// One per track in `grid`, in the same order.
     ids: Vec<TrackId>,
     next_id: u32,
+    /// Tracks with faces whose instrument page column shows all their settings instead.
+    inst_opened: std::collections::BTreeSet<TrackId>,
     count: Option<usize>,
     pending: Option<Pending>,
     /// One clip per selection copied.
@@ -473,6 +475,7 @@ impl Editor {
         let tracks = grid.tracks.len() as u32;
         Self {
             ids: (0..tracks).map(TrackId).collect(),
+            inst_opened: Default::default(),
             next_id: tracks,
             saved: Saved {
                 grid: grid.clone(),

@@ -278,7 +278,13 @@ name, its settings, a line each with a bar, the track's macros, and last its eff
 across the tracks on the same line, `j` `k` down a column, and `w` `b` from part to part. `^a` `^x`
 turn the setting or macro under the cursor and `c` sets it, or on the instrument's name, changes
 the instrument; `:map`, `L` and recording locks work as on the mixer, and `enter` on the effects
-opens them on the fx page.
+opens them on the fx page. A track with a preset's face shows that instead: its title, with what
+it's played on, its macros and the settings it puts forward, under art drawn from the title, one
+of the opening's fractals mirrored to look back at you. It's a faint outline at rest; playing lights it
+from the middle out as loud as the track is, each note sends a ring out, and the note's pitch
+picks its colour, round the colour wheel as it goes round the circle of fifths. The first macro
+zooms in on it and the second hurries its flow. `enter` on the title opens all the instrument's
+settings, and again goes back to the face.
 
 The **fx page** (`gf`) shows one strip's effects the way the pattern shows notes: the sound goes
 down through them, each effect's settings on the lines under its name, and they can branch into up to four **lanes**, side by side. A **send** row,

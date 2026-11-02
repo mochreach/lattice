@@ -34,6 +34,8 @@ pub struct Theme {
     pub beat_row: Option<Color>,
     /// Track colours, used in turn.
     pub tracks: Vec<Color>,
+    /// Round the colour wheel, for faces' art to follow the notes by.
+    pub hues: Vec<Color>,
 }
 
 impl Theme {
@@ -58,6 +60,14 @@ impl Theme {
                 Color::Cyan,
                 Color::Yellow,
                 Color::Red,
+            ],
+            hues: vec![
+                Color::Red,
+                Color::Yellow,
+                Color::Green,
+                Color::Cyan,
+                Color::Blue,
+                Color::Magenta,
             ],
         }
     }

@@ -640,7 +640,10 @@ const LESSONS: &[Lesson] = &[
                any song. A preset gives its track a face: a title, `:face Cold Iron` to change \
                it, and the controls it puts forward, its macros and whichever settings \
                `:face-show cutoff` adds (`:face-hide cutoff` takes one back). Changing the \
-               instrument for another kind takes the face away.\n\n\
+               instrument for another kind takes the face away. The instrument page \
+               ({goto_instrument}) shows a face in place of the instrument's settings, its art \
+               lit by what the track plays; {open} on its title opens all the settings, and \
+               again goes back.\n\n\
                Put `night-bus` on the LEAD track, and show its resonance on its face.",
         teaches: &[],
         commands: &["preset", "preset-save", "face", "face-show", "face-hide"],

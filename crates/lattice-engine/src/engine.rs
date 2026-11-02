@@ -420,6 +420,8 @@ pub struct Status {
     /// The same for the send and master buses, after their levels.
     bus_peaks: [AtomicU32; 2],
     group_peaks: [AtomicU32; MAX_GROUPS],
+    /// Per track index: the last note it started, packed by [`pack_note`], 0 for none yet.
+    notes: [AtomicU32; MAX_TRACKS],
     /// Patterns started since play began, after the first: looped or changed.
     boundaries: AtomicU64,
     /// How many of those changed pattern.
@@ -441,6 +443,12 @@ fn pack_lock(lock: &Lock) -> u64 {
         | u64::from(lock.fx.unwrap_or(u8::MAX)) << 40
         | u64::from(lock.param) << 32
         | u64::from(lock.value.to_bits())
+}
+
+/// A note in one atomic: a present bit, how many notes the track's started, the velocity and the
+/// pitch.
+fn pack_note(count: u32, pitch: u8, velocity: u8) -> u32 {
+    1 << 31 | (count & 0x7fff) << 16 | u32::from(velocity) << 8 | u32::from(pitch)
 }
 
 fn unpack_lock(packed: u64) -> Option<Lock> {
@@ -468,6 +476,7 @@ impl Status {
             peaks: std::array::from_fn(|_| AtomicU32::new(0)),
             bus_peaks: std::array::from_fn(|_| AtomicU32::new(0)),
             group_peaks: std::array::from_fn(|_| AtomicU32::new(0)),
+            notes: std::array::from_fn(|_| AtomicU32::new(0)),
             locks: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU64::new(0))),
             recording: AtomicBool::new(false),
             leaked: AtomicU64::new(0),
@@ -549,6 +558,23 @@ impl Status {
         for slot in &self.locks[track] {
             slot.store(packed.next().unwrap_or(0), Ordering::Relaxed);
         }
+    }
+
+    /// The last note `track` started: its pitch, its velocity, and how many it's started, which
+    /// changes with each new one.
+    pub fn last_note(&self, track: usize) -> Option<(u8, u8, u16)> {
+        let packed = self.notes.get(track)?.load(Ordering::Relaxed);
+        (packed >> 31 == 1).then_some((
+            packed as u8,
+            (packed >> 8) as u8,
+            ((packed >> 16) & 0x7fff) as u16,
+        ))
+    }
+
+    fn started_note(&self, track: usize, pitch: u8, velocity: u8) {
+        let slot = &self.notes[track];
+        let count = (slot.load(Ordering::Relaxed) >> 16) + 1;
+        slot.store(pack_note(count, pitch, velocity), Ordering::Relaxed);
     }
 
     fn add_peak(&self, track: usize, peak: f32) {
@@ -1357,6 +1383,8 @@ impl Engine {
         t.previews.push(preview);
         if now {
             push(&mut t.events, note_on(0, preview.pitch, preview.velocity));
+            self.status
+                .started_note(track, preview.pitch, preview.velocity);
             self.choke_others(track, 0, &[]);
         }
     }
@@ -1633,6 +1661,7 @@ impl Engine {
                     t.held.remove(i);
                 }
                 push(&mut t.events, note_on(offset, note.pitch, note.velocity));
+                self.status.started_note(index, note.pitch, note.velocity);
                 hits[index] = true;
                 t.held.push(Held {
                     pitch: note.pitch,

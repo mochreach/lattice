@@ -50,6 +50,10 @@ pub struct ViewState {
     /// The instrument page's first line and leftmost track shown, when they don't all fit.
     pub(crate) inst_top: usize,
     pub(crate) inst_left: usize,
+    /// Where faces' art takes its time from.
+    pub(crate) face_clock: crate::face::Clock,
+    /// Each track's count of notes started, as last seen, and when it last changed.
+    pub(crate) notes: [Option<(u16, Instant)>; MAX_TRACKS],
     /// The keys just pressed, shown when the editor's `show_keys` is on.
     pub keys: KeyLog,
     /// The waveforms of the files chop tracks play.
@@ -1117,7 +1121,7 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             theme.dim,
         ),
         Mode::Normal if editor.page == Page::Instrument => (
-            "hl tracks · jk lines · w b parts · C-a C-x adjust · c set · :map macro · L lock · ret effects · gp pattern".into(),
+            "hl tracks · jk lines · w b parts · C-a C-x adjust · c set · :map macro · L lock · ret face, effects · gp pattern".into(),
             theme.dim,
         ),
         Mode::Normal if editor.page == Page::Mixer => (

@@ -6,6 +6,7 @@ mod ctl;
 mod demo;
 mod devices;
 mod export;
+mod face;
 mod file;
 mod fx_page;
 mod help_page;

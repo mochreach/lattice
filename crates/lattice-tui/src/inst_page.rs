@@ -1,6 +1,9 @@
 //! Drawing the instrument page: every track's instrument side by side, a column each read top to
 //! bottom, like the fx page's lanes. Each column has the instrument's name, its settings a line
-//! each with a bar, the track's macros, and its chain of effects.
+//! each with a bar, the track's macros, and its chain of effects. A track with a face shows its
+//! title, its macros and the settings it puts forward instead, under its art (see [`face`]).
+
+use std::time::{Duration, Instant};
 
 use lattice_core::macros::{self, MACRO_INFO};
 use lattice_core::{Kind, Locks};
@@ -13,6 +16,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::bars;
+use crate::face::{self, Feel};
 use crate::mixer_page::flag;
 use crate::theme::Theme;
 use crate::ui::{ViewState, fit};
@@ -26,6 +30,10 @@ const MAX_COLUMN: usize = 34;
 const PARAM_LABEL: usize = 11;
 /// Lines above the columns (the rule, a gap and the tracks' names).
 const ABOVE: usize = 3;
+/// Most and fewest rows of art, and the lines left for the columns below it at least.
+const MAX_ART: usize = 8;
+const MIN_ART: usize = 3;
+const BELOW_ART: usize = 6;
 
 pub fn draw(
     frame: &mut Frame,
@@ -86,8 +94,17 @@ pub fn draw(
     }
     lines.push(Line::from(spans));
 
+    // The faces' art, under their names, as tall as leaves room for the lines.
+    let height = (area.height as usize).saturating_sub(ABOVE);
+    let faces = columns.iter().any(|&t| editor.shows_face(t));
+    let art = match (height.saturating_sub(BELOW_ART) / 2).min(MAX_ART) {
+        rows if faces && rows >= MIN_ART => rows,
+        _ => 0,
+    };
+    lines.extend((0..art).map(|_| Line::raw("")));
+
     // As many lines as fit, scrolled to keep the cursor's in view.
-    let room = (area.height as usize).saturating_sub(ABOVE).max(1);
+    let room = height.saturating_sub(art).max(1);
     if cursor.line < view.inst_top {
         view.inst_top = cursor.line;
     } else if cursor.line >= view.inst_top + room {
@@ -115,6 +132,57 @@ pub fn draw(
         lines.push(Line::from(spans));
     }
     frame.render_widget(Paragraph::new(lines), area);
+
+    if art == 0 {
+        return;
+    }
+    let now = Instant::now();
+    let time = view.face_clock.seconds();
+    for (k, &t) in columns.iter().enumerate() {
+        let track = &editor.grid.tracks[t];
+        let Some(face) = track.face.as_ref().filter(|_| editor.shows_face(t)) else {
+            continue;
+        };
+        // A new note's when the count of them changes.
+        let note = status.last_note(t);
+        let seen = &mut view.notes[t];
+        if let Some((_, _, count)) = note
+            && seen.is_none_or(|(c, _)| c != count)
+        {
+            // Not on first sight, only for the notes after.
+            let when = if seen.is_some() {
+                now
+            } else {
+                now - Duration::from_secs(1)
+            };
+            *seen = Some((count, when));
+        }
+        let since_note = seen.map_or(f32::MAX, |(_, when)| (now - when).as_secs_f32());
+        let locks = status.locks(t);
+        let macro_value = |m: usize| {
+            let lock = locks
+                .iter()
+                .find(|l| l.is_macro() && usize::from(l.param) == m);
+            lock.map(|l| l.value)
+                .or_else(|| track.macros.get(m).map(|m| m.value))
+                .unwrap_or(0.0)
+        };
+        let feel = Feel {
+            level: view.meters[t],
+            note: note.map(|(pitch, velocity, _)| (pitch, velocity)),
+            since_note,
+            macros: [macro_value(0), macro_value(1)],
+        };
+        let x = area.x + (LABEL + k * column_width) as u16 + 1;
+        let rect = Rect::new(
+            x,
+            area.y + ABOVE as u16,
+            column_width as u16 - 3,
+            art as u16,
+        )
+        .intersection(area);
+        face::draw(frame.buffer_mut(), rect, &face.title, &feel, theme, time);
+    }
 }
 
 /// Track `t`'s `line`, a column wide less a space.
@@ -157,13 +225,23 @@ fn cell(
     let locked = Style::new().fg(theme.accent).add_modifier(Modifier::BOLD);
     match line {
         InstLine::Kind => {
-            let name = track.instrument.kind.name();
-            let rule = "─".repeat(w.saturating_sub(name.chars().count() + 2));
+            let kind = track.instrument.kind.name();
+            // A face's title, and faintly what it's played on.
+            let (name, under) = match &track.face {
+                Some(face) => {
+                    let title = fit(&face.title, w.saturating_sub(kind.len() + 4));
+                    (title.trim_end().to_string(), format!(" {kind}"))
+                }
+                None => (kind.to_string(), String::new()),
+            };
+            let used = name.chars().count() + under.chars().count() + 2;
+            let rule = "─".repeat(w.saturating_sub(used));
             vec![
                 Span::styled(
                     format!(" {name}"),
                     block(Style::new().fg(colour).add_modifier(Modifier::BOLD)),
                 ),
+                Span::styled(under, theme.faint),
                 Span::styled(format!(" {rule}"), Style::new().fg(colour)),
             ]
         }
