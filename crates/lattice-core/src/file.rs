@@ -151,6 +151,7 @@ mod tests {
         let mut bass = Track {
             face: None,
             pattern_mute: false,
+            columns: vec![],
             name: "bass".into(),
             steps: vec![Step::default(); 16],
             mix: Default::default(),
@@ -188,6 +189,17 @@ mod tests {
             ..Mix::default()
         };
         bass.steps[0] = Step::note(36);
+        let cutoff = crate::LockColumn {
+            fx: Some(0),
+            param: 1,
+        };
+        bass.columns = vec![cutoff];
+        bass.steps[2]
+            .locks
+            .set(cutoff.lock(0.5, crate::Change::Slide));
+        bass.steps[5]
+            .locks
+            .set(cutoff.lock(0.0, crate::Change::Reset));
         bass.steps[3].note = Some(Note {
             pitch: 43,
             velocity: 80,
@@ -201,6 +213,7 @@ mod tests {
         let empty = Track {
             face: None,
             pattern_mute: false,
+            columns: vec![],
             name: "empty".into(),
             steps: vec![Step::default(); 6],
             mix: Default::default(),
@@ -287,6 +300,8 @@ mod tests {
             "{text}"
         );
         assert!(text.contains("(transform: Reverse),"), "{text}");
+        assert!(text.contains("change: slide"), "{text}");
+        assert!(text.contains("change: reset"), "{text}");
         assert!(!text.contains("None"), "{text}");
         assert!(text.contains("level: -3.5,\n"), "{text}");
         assert!(text.contains("mute: true,\n"), "{text}");

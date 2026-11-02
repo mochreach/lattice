@@ -85,6 +85,7 @@ impl Lock {
             fx: Some(MACRO),
             param: index as u8,
             value,
+            ..Default::default()
         }
     }
 

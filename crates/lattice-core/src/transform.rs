@@ -151,6 +151,7 @@ mod tests {
         Track {
             face: None,
             pattern_mute: false,
+            columns: vec![],
             name: "test".into(),
             steps: vec![
                 Step::note(60),

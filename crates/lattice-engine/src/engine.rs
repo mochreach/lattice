@@ -14,8 +14,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 use lattice_core::{
-    Grid, Lane, Lock, Locks, MAX_LOCKS, MAX_PARAMS, MAX_STEPS, Mix, ParamInfo, Step, Track,
-    db_to_gain, realise_into,
+    Change, Grid, Lane, Lock, Locks, MACRO, MAX_LOCKS, MAX_PARAMS, MAX_STEPS, Mix, ParamInfo, Step,
+    Track, db_to_gain, realise_into,
 };
 pub use lattice_core::{MAX_EFFECTS, MAX_GROUPS, MAX_TRACKS};
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
@@ -465,6 +465,7 @@ fn unpack_lock(packed: u64) -> Option<Lock> {
         fx: Some((packed >> 40) as u8).filter(|&fx| fx != u8::MAX),
         param: (packed >> 32) as u8,
         value: f32::from_bits(packed as u32),
+        ..Default::default()
     })
 }
 
@@ -689,8 +690,22 @@ pub struct TrackPlayer {
     position: u64,
     /// The instrument's settings, to go back to when a step's lock ends.
     base: [f32; MAX_PARAMS],
-    /// The locks in force, from the last step with a note or a lock.
+    /// The locks in force: each setting's latest, until its next.
     locked: Locks,
+    /// Settings sliding to a later step's lock, one per setting.
+    ramps: [Option<Ramp>; MAX_LOCKS],
+}
+
+/// A setting sliding from one value to the next, along its curve, for a slide lock.
+#[derive(Debug, Clone, Copy)]
+struct Ramp {
+    /// The setting, and the value it's sliding to.
+    to: Lock,
+    /// Where it started, as a share of the setting's range.
+    from: f32,
+    /// How far along it is, and how far it goes, in frames.
+    done: f64,
+    length: f64,
 }
 
 impl TrackPlayer {
@@ -704,6 +719,7 @@ impl TrackPlayer {
         Box::new(Self {
             base,
             locked: Locks::default(),
+            ramps: [None; MAX_LOCKS],
             track,
             instrument,
             effects: effects(),
@@ -724,8 +740,32 @@ impl TrackPlayer {
 }
 
 impl TrackPlayer {
+    /// Plays a step's locks at `offset`: each sets its setting, or slides it, from here until
+    /// the setting's next lock, or puts it back. The other settings hold.
+    fn lock(&mut self, step: Locks, offset: u32) {
+        let mut next = self.locked;
+        for lock in step.iter() {
+            self.ramps.iter_mut().for_each(|r| {
+                if r.is_some_and(|r| r.to.same_param(lock)) {
+                    *r = None;
+                }
+            });
+            match lock.change {
+                Change::Reset => next.retain(|l| !l.same_param(lock)),
+                // A track has at most as many columns as a step has room, so there's room.
+                Change::Set | Change::Slide => {
+                    next.set(Lock {
+                        change: Change::Set,
+                        ..*lock
+                    });
+                }
+            }
+        }
+        self.apply_locks(next, offset);
+    }
+
     /// Ends the locks in force that `next` doesn't set again, then sets `next`'s, at `offset`.
-    fn lock(&mut self, next: Locks, offset: u32) {
+    fn apply_locks(&mut self, next: Locks, offset: u32) {
         let ending = self.locked;
         self.locked = next;
         let settings = |l: &&Lock| !l.is_macro();
@@ -735,10 +775,89 @@ impl TrackPlayer {
             }
         }
         for lock in next.iter().filter(settings) {
-            self.param_event(lock.fx, lock.param, lock.value, offset);
+            if ending.find(lock).is_none_or(|l| l.value != lock.value) {
+                self.param_event(lock.fx, lock.param, lock.value, offset);
+            }
         }
         if !macro_locks(&ending).eq(macro_locks(&next)) {
             self.settle_macros(offset);
+        }
+    }
+
+    /// Ends every lock and slide: the settings go back to their own.
+    fn unlock(&mut self) {
+        self.ramps = [None; MAX_LOCKS];
+        self.apply_locks(Locks::default(), 0);
+    }
+
+    /// After step `at`'s locks have played, starts a slide for each of its settings whose next
+    /// lock, `steps` on and coming round the track if need be, slides, arriving on that step.
+    fn start_ramps(&mut self, at: usize, step: Locks, frames_per_step: f64) {
+        let len = self.steps.len();
+        for lock in step.iter() {
+            let ahead = (1..=len).find_map(|d| {
+                let next = self.steps.get((at + d) % len)?.locks;
+                next.find(lock).map(|next| (d, *next))
+            });
+            let Some((steps, to)) = ahead.filter(|(_, to)| to.change == Change::Slide) else {
+                continue;
+            };
+            let (Some(info), Some(now)) = (
+                self.info(lock.fx, lock.param),
+                self.settled(lock.fx, lock.param),
+            ) else {
+                continue;
+            };
+            let ramp = Ramp {
+                to,
+                from: info.fraction(now),
+                done: 0.0,
+                length: steps as f64 * frames_per_step,
+            };
+            if let Some(slot) = self.ramps.iter_mut().find(|r| r.is_none()) {
+                *slot = Some(ramp);
+            }
+        }
+    }
+
+    /// Moves each slide on by a block of `len` frames, sending its setting where it's got to.
+    fn slide(&mut self, len: usize) {
+        for i in 0..self.ramps.len() {
+            let Some(Some(mut ramp)) = self.ramps.get(i).copied() else {
+                continue;
+            };
+            let Some(info) = self.info(ramp.to.fx, ramp.to.param) else {
+                continue;
+            };
+            ramp.done += len as f64;
+            let along = (ramp.done / ramp.length).min(1.0) as f32;
+            let to = info.fraction(ramp.to.value);
+            let value = info.at(ramp.from + (to - ramp.from) * along);
+            let mut next = self.locked;
+            next.set(Lock {
+                value,
+                change: Change::Set,
+                ..ramp.to
+            });
+            self.locked = next;
+            if ramp.to.is_macro() {
+                self.settle_macros(0);
+            } else {
+                self.param_event(ramp.to.fx, ramp.to.param, value, 0);
+            }
+            if let Some(slot) = self.ramps.get_mut(i) {
+                *slot = (along < 1.0).then_some(ramp);
+            }
+        }
+    }
+
+    /// What's known of a setting of the instrument, an effect, or a macro.
+    fn info(&self, fx: Option<u8>, id: u8) -> Option<&ParamInfo> {
+        match fx {
+            Some(MACRO) => Some(&macros::MACRO_INFO),
+            None => self.instrument.params().get(usize::from(id)),
+            Some(fx) => (self.effects.get(usize::from(fx)))
+                .and_then(|slot| slot.processor.params().get(usize::from(id))),
         }
     }
 
@@ -747,7 +866,12 @@ impl TrackPlayer {
     fn unlock_effects(&mut self) {
         let mut next = self.locked;
         next.retain(|l| l.fx.is_none() || l.is_macro());
-        self.lock(next, 0);
+        self.ramps.iter_mut().for_each(|r| {
+            if r.is_some_and(|r| r.to.fx.is_some() && !r.to.is_macro()) {
+                *r = None;
+            }
+        });
+        self.apply_locks(next, 0);
     }
 
     /// Macro `index`'s value: a step's lock's, or its own.
@@ -1027,7 +1151,7 @@ impl Engine {
             for h in t.held.drain(..) {
                 push(&mut t.events, note_off(0, h.pitch));
             }
-            t.lock(Locks::default(), 0);
+            t.unlock();
             t.playhead = 0;
             t.pass = 0;
             t.position = u64::MAX;
@@ -1247,9 +1371,9 @@ impl Engine {
                     if self.playing
                         && let Some(t) = self.tracks.get_mut(track)
                     {
-                        let mut next = t.locked;
-                        if next.set(lock) {
-                            t.lock(next, 0);
+                        let mut step = Locks::default();
+                        if step.set(lock) {
+                            t.lock(step, 0);
                         }
                     }
                 }
@@ -1486,6 +1610,13 @@ impl Engine {
         let len = left.len();
         self.read_input(len);
 
+        // Slides move on a block at a time, from where the last block left them.
+        if self.playing {
+            for t in &mut self.tracks {
+                t.slide(len);
+            }
+        }
+
         // Sequence: turn every step starting in this block into events. The clock runs while
         // stopped too, so repeated previews keep time.
         let mut pos = 0;
@@ -1667,6 +1798,7 @@ impl Engine {
         // engine.
         let (at, latency) = (self.frames + u64::from(offset), self.latency());
         let mutes = self.mutes;
+        let frames_per_step = self.clock.samples_per_step();
         for (index, t) in self.tracks.iter_mut().enumerate() {
             // Note-offs first, so a voice can be reused by this step's note.
             t.held.retain_mut(|h| {
@@ -1696,9 +1828,10 @@ impl Engine {
                 true => Step::default(),
                 false => realised,
             };
-            if step.triggers() {
+            if !step.locks.is_empty() {
                 // Before the note, so it plays with the step's settings.
                 t.lock(step.locks, offset);
+                t.start_ramps(t.playhead, step.locks, frames_per_step);
             }
             if let Some(note) = step.note {
                 // Retriggering a held pitch, or out of room: end the old note first.
@@ -1768,7 +1901,7 @@ impl Engine {
             }
         }
         for t in &mut self.tracks {
-            t.lock(Locks::default(), 0);
+            t.unlock();
             t.playhead = 0;
             t.pass = 0;
         }
@@ -1885,6 +2018,7 @@ mod tests {
         Track {
             face: None,
             pattern_mute: false,
+            columns: vec![],
             name: "lead".into(),
             steps: [60, 0, 63, 67, 0, 70, 72]
                 .map(|p| {
@@ -2735,7 +2869,7 @@ mod tests {
             value: 2.0,
         });
         render_stereo(&mut engine, 10);
-        // A step locks the macro at a quarter until the next note.
+        // A step locks the macro at a quarter, and it holds, through the next note.
         handle.send(Command::Play { count_in: 0 });
         render_stereo(&mut engine, 400);
         let log = log.lock().unwrap();
@@ -2743,11 +2877,11 @@ mod tests {
             .map(|(_, what)| what.as_str())
             .filter(|w| w.starts_with("1="))
             .collect();
-        assert_eq!(log, ["1=4", "1=6", "1=3", "1=6"]);
+        assert_eq!(log, ["1=4", "1=6", "1=3"]);
     }
 
     #[test]
-    fn a_lock_sent_while_playing_holds_until_the_next_note() {
+    fn a_lock_sent_while_playing_holds_until_stopped() {
         let mut track = Track {
             steps: vec![
                 Step::note(60),
@@ -2773,6 +2907,7 @@ mod tests {
             fx: None,
             param: 2,
             value: 8.0,
+            ..Default::default()
         };
         // Stopped, it's ignored.
         handle.send(Command::Lock { track: 0, lock });
@@ -2781,28 +2916,37 @@ mod tests {
         render_stereo(&mut engine, 150);
         handle.send(Command::Lock { track: 0, lock });
         render_stereo(&mut engine, 300);
+        handle.send(Command::Stop);
+        render_stereo(&mut engine, 10);
         let log = log.lock().unwrap();
         let what: Vec<&str> = log.iter().map(|(_, w)| w.as_str()).collect();
-        assert_eq!(what, ["note", "2=8", "2=2", "note"]);
-        // Heard from when it was sent, until step 3's note, after the 10 samples stopped.
+        assert_eq!(what, ["note", "2=8", "note", "2=2"]);
+        // Heard from when it was sent, through step 3's note, until stopped.
         assert!((160..385).contains(&log[1].0), "{log:?}");
         assert_eq!(log[2].0, 385);
+        assert_eq!(log[3].0, 460);
     }
 
     #[test]
-    fn locks_hold_until_the_next_note_or_lock() {
+    fn locks_hold_until_the_settings_next_lock() {
         let lock = |param, value| Lock {
             fx: None,
             param,
             value,
+            ..Default::default()
         };
         let mut locked = Step::note(60);
         locked.locks.set(lock(2, 5.0));
         locked.locks.set(lock(3, 1.0));
         let mut trigless = Step::default();
         trigless.locks.set(lock(2, 7.0));
+        let mut reset = Step::note(62);
+        reset.locks.set(Lock {
+            change: Change::Reset,
+            ..lock(3, 0.0)
+        });
         let mut track = Track {
-            steps: vec![locked, Step::default(), Step::note(62), trigless],
+            steps: vec![locked, Step::default(), reset, trigless],
             rules: vec![],
             ..lead()
         };
@@ -2849,11 +2993,10 @@ mod tests {
                 (0, "note"),
                 // Unlocked, it goes through at once.
                 (200, "1=4"),
-                // Step 2's note ends the locks, back to the latest settings.
-                (250, "2=9"),
+                // Step 2 puts one setting back to the mixer's, and the other holds.
                 (250, "3=3"),
                 (250, "note"),
-                // Step 3 locks with no note; step 0 locks it again, so it isn't reset between.
+                // Step 3 locks with no note; step 0 locks both again.
                 (375, "2=7"),
                 (500, "2=5"),
                 (500, "3=1"),
@@ -2863,6 +3006,52 @@ mod tests {
                 (600, "3=3"),
             ]
         );
+    }
+
+    #[test]
+    fn a_slide_arrives_on_its_step() {
+        let lock = |value, change| Lock {
+            fx: None,
+            param: 2,
+            value,
+            change,
+        };
+        let mut from = Step::note(60);
+        from.locks.set(lock(0.0, Change::Set));
+        let mut to = Step::default();
+        to.locks.set(lock(8.0, Change::Slide));
+        let mut track = Track {
+            steps: vec![from, Step::default(), to, Step::default()],
+            rules: vec![],
+            ..lead()
+        };
+        track.instrument.values = vec![0.0, 0.0, 2.0, 3.0];
+        let grid = Grid {
+            name: "slide".into(),
+            steps_per_beat: 4,
+            tracks: vec![track],
+            groups: vec![],
+        };
+        let settings = Settings::default();
+        let log = settings.log.clone();
+        let (mut engine, _handle) = Engine::new(1_000.0, 120.0, &grid, vec![Box::new(settings)]);
+        engine.click_enabled = false;
+        engine.play();
+        // 125 samples a step, in blocks of 25: the slide takes the two steps to step 2.
+        for _ in 0..12 {
+            render_stereo(&mut engine, 25);
+        }
+        let log = log.lock().unwrap();
+        let values: Vec<(usize, f32)> = (log.iter())
+            .filter_map(|(at, w)| Some((*at, w.strip_prefix("2=")?.parse().ok()?)))
+            .collect();
+        assert_eq!(values.first(), Some(&(0, 0.0)));
+        assert!(values.windows(2).all(|w| w[0].1 < w[1].1), "{values:?}");
+        assert!(values.len() > 5, "{values:?}");
+        let arrived = values.iter().find(|(_, v)| *v == 8.0).unwrap();
+        assert!((225..=250).contains(&arrived.0), "{values:?}");
+        // Then it holds.
+        assert_eq!(values.last().unwrap().1, 8.0);
     }
 
     #[test]

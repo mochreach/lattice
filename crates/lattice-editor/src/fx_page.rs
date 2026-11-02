@@ -620,6 +620,7 @@ mod tests {
             fx: Some(1),
             param: 0,
             value: 0.5,
+            ..Default::default()
         };
         e.grid.tracks[0].steps[2].locks.set(lock);
         let effects = keys(&mut e, "d");

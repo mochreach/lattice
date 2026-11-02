@@ -830,6 +830,7 @@ mod tests {
             fx: None,
             param: 0,
             value: 1.0,
+            ..Default::default()
         });
         // Any file will do: it's read when the instrument's built.
         let file = std::env::temp_dir().join(format!("lattice-chop-{}.wav", std::process::id()));

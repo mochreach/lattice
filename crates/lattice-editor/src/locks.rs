@@ -3,7 +3,8 @@
 
 use lattice_core::macros::MACRO_INFO;
 use lattice_core::{
-    Curve, Fx, Grid, Instrument, Kind, Lock, MACRO, MAX_LOCKS, ParamInfo, Step, Track,
+    Change, Curve, Fx, Grid, Instrument, Kind, Lock, LockColumn, MACRO, MAX_LOCKS, ParamInfo, Step,
+    Track,
 };
 
 use crate::{Editor, Effect, Row, Strip, TrackId, changed};
@@ -74,12 +75,34 @@ impl Setting {
     }
 
     fn lock(&self, value: f32) -> Lock {
-        Lock {
+        self.column().lock(value, Change::Set)
+    }
+
+    fn column(&self) -> LockColumn {
+        LockColumn {
             fx: self.fx,
             param: self.param,
-            value,
         }
     }
+}
+
+/// Gives `track` a column for each of `locks`' settings, unless it has them all and there's no
+/// room: then says so, and leaves it be.
+fn add_columns<'a>(
+    track: &mut Track,
+    locks: impl IntoIterator<Item = &'a Lock>,
+) -> Result<(), String> {
+    let mut with = track.clone();
+    for lock in locks {
+        if !with.add_column(lock.column()) {
+            return Err(format!(
+                "{} has its {MAX_LOCKS} lock columns already: :unlock one along the whole track",
+                track.name
+            ));
+        }
+    }
+    track.columns = with.columns;
+    Ok(())
 }
 
 /// The setting called `name` on `track`: a parameter of its instrument, or of its first effect
@@ -154,12 +177,24 @@ fn value(info: &ParamInfo, word: &str) -> Result<f32, String> {
 
 impl Editor {
     /// `:lock PARAM VALUE`, or `:lock PARAM FROM..TO` to sweep across each selection, evenly
-    /// on the setting's own curve.
+    /// on the setting's own curve. `~VALUE` slides there from the setting's lock before, and
+    /// `--` puts it back to the mixer's. With no value, it gives the tracks a column for the
+    /// setting, to fill in on the grid.
     pub(crate) fn lock(&mut self, args: &str) -> Result<Vec<Effect>, String> {
-        let (name, values) = args
-            .split_once(' ')
-            .map(|(n, v)| (n, v.trim()))
-            .ok_or("lock which setting, at what? :lock cutoff 800")?;
+        let (name, values) = match args.trim().split_once(' ') {
+            Some((n, v)) => (n, v.trim()),
+            None => (args.trim(), ""),
+        };
+        if name.is_empty() {
+            return Err("lock which setting, at what? :lock cutoff 800".into());
+        }
+        let (change, values) = match values {
+            "--" => (Change::Reset, ""),
+            v => match v.strip_prefix('~') {
+                Some(v) => (Change::Slide, v),
+                None => (Change::Set, v),
+            },
+        };
         let (from, to) = values.split_once("..").unwrap_or((values, values));
         let columns: Vec<_> = self
             .selections
@@ -167,15 +202,25 @@ impl Editor {
             .flat_map(|s| self.columns(s.region()))
             .collect();
 
-        // Every track has to have it, and every step room for it, before anything changes.
+        // Every track has to have it, and room for its column, before anything changes.
         let mut edits = vec![];
+        let mut tracks = vec![];
         for (t, steps) in &columns {
             let track = self.grid.tracks.get(*t).ok_or("no such track")?;
             let setting = find(track, name).ok_or_else(|| {
                 let names: Vec<String> = settings(track).iter().map(|s| s.name(track)).collect();
                 format!("{} has no {name}: try {}", track.name, names.join(", "))
             })?;
-            let (from, to) = (value(setting.info, from)?, value(setting.info, to)?);
+            let mut with = track.clone();
+            add_columns(&mut with, [&setting.lock(0.0)])?;
+            tracks.push((*t, with.columns));
+            if values.is_empty() && change != Change::Reset {
+                continue;
+            }
+            let (from, to) = match change {
+                Change::Reset => (setting.info.min, setting.info.min),
+                _ => (value(setting.info, from)?, value(setting.info, to)?),
+            };
             let (a, b) = (setting.info.fraction(from), setting.info.fraction(to));
             for (i, step) in steps.clone().enumerate() {
                 let along = i as f32 / (steps.len().max(2) - 1) as f32;
@@ -184,22 +229,22 @@ impl Editor {
                 } else {
                     setting.info.at(a + (b - a) * along)
                 };
-                let lock = setting.lock(value);
-                let locks = &track.steps.get(step).ok_or("no such step")?.locks;
-                if locks.find(&lock).is_none() && locks.len() == MAX_LOCKS {
-                    return Err(format!("a step holds at most {MAX_LOCKS} locks"));
-                }
-                edits.push((*t, step, lock));
+                edits.push((*t, step, setting.column().lock(value, change)));
             }
         }
         self.checkpoint();
-        // Each step was found above.
+        for (t, columns) in tracks {
+            if let Some(track) = self.grid.tracks.get_mut(t) {
+                track.columns = columns;
+            }
+        }
+        // Each step was found above, and its track has a column for every lock, so room.
         for &(t, step, lock) in &edits {
             if let Some(step) = step_mut(&mut self.grid, t, step) {
                 step.locks.set(lock);
             }
         }
-        Ok(changed(edits.into_iter().map(|(t, ..)| t)))
+        Ok(changed(columns.into_iter().map(|(t, _)| t)))
     }
 
     /// `L` on the mixer page. The first press remembers the track's settings; change them, and
@@ -315,17 +360,8 @@ impl Editor {
         let (Some(&first), Some(&last)) = (steps.first(), steps.last()) else {
             return Err("no steps selected in this track".into());
         };
-        for &step in &steps {
-            let locks = &track.steps.get(step).ok_or("no such step")?.locks;
-            let adding = new.iter().filter(|(_, l)| locks.find(l).is_none()).count();
-            if locks.len() + adding > MAX_LOCKS {
-                return Err(format!(
-                    "a step holds at most {MAX_LOCKS} locks: {} has {}, and this adds {adding}",
-                    step,
-                    locks.len()
-                ));
-            }
-        }
+        let mut with = track.clone();
+        add_columns(&mut with, new.iter().map(|(_, lock)| lock))?;
         let names: Vec<String> = (new.iter())
             .map(|(setting, lock)| {
                 format!(
@@ -345,6 +381,9 @@ impl Editor {
         // Back as they were, then locked, as one undo.
         let mut effects = self.cancel_locking();
         self.checkpoint();
+        if let Some(track) = self.grid.tracks.get_mut(t) {
+            track.columns = with.columns;
+        }
         for &step in &steps {
             for (_, lock) in &new {
                 if let Some(step) = step_mut(&mut self.grid, t, step) {
@@ -382,6 +421,7 @@ impl Editor {
             fx: shown.slot.map(|s| s as u8),
             param: info.id as u8,
             value: info.clamp(value),
+            ..Default::default()
         };
         self.record_lock_of(t, lock)
     }
@@ -399,15 +439,9 @@ impl Editor {
         }
         let at = at.floor() as u64;
         let (step, pass) = ((at % len as u64) as usize, at / len as u64);
-        // The step playing is within the track, as `len` is its length.
-        let Some(locks) = (self.grid.tracks.get(t))
-            .and_then(|track| track.steps.get(step))
-            .map(|s| s.locks)
-        else {
-            return Some(vec![]);
-        };
-        if locks.find(&lock).is_none() && locks.len() == MAX_LOCKS {
-            self.message = Some(format!("step {step} already holds {MAX_LOCKS} locks"));
+        let mut with = self.grid.tracks.get(t)?.clone();
+        if let Err(message) = add_columns(&mut with, [&lock]) {
+            self.message = Some(message);
             return Some(vec![]);
         }
         if self.take != Some(pass) {
@@ -417,6 +451,8 @@ impl Editor {
         let Some(track) = self.grid.tracks.get_mut(t) else {
             return Some(vec![]);
         };
+        track.columns = with.columns;
+        // The step playing is within the track, as `len` is its length.
         if let Some(step) = track.steps.get_mut(step) {
             step.locks.set(lock);
         }
@@ -433,7 +469,7 @@ impl Editor {
     }
 
     /// `:unlock [PARAM]`: one setting's locks, or all of them, from every step the selections
-    /// reach.
+    /// reach. Along a whole track, its column goes too.
     pub(crate) fn unlock(&mut self, name: &str) -> Result<Vec<Effect>, String> {
         let columns: Vec<_> = self
             .selections
@@ -462,6 +498,13 @@ impl Editor {
                     None => step.locks.clear(),
                 }
             }
+            if steps.start == 0 && steps.end >= track.steps.len() {
+                track.columns = track.lock_columns();
+                match wanted {
+                    Some((fx, param)) => track.columns.retain(|c| (c.fx, c.param) != (fx, param)),
+                    None => track.columns.clear(),
+                }
+            }
         }
         Ok(changed(columns.into_iter().map(|(t, _)| t)))
     }
@@ -484,6 +527,15 @@ impl Editor {
             let before = step.locks;
             step.locks.retain(&mut keep);
             changed |= step.locks != before;
+        }
+        if let Some(track) = self.grid.tracks.get_mut(t) {
+            track.columns.retain_mut(|column| {
+                let mut lock = column.lock(0.0, Change::Set);
+                let kept = keep(&mut lock);
+                changed |= !kept || lock.column() != *column;
+                *column = lock.column();
+                kept
+            });
         }
         changed
     }
@@ -518,11 +570,16 @@ impl Editor {
     }
 }
 
-/// A lock, as `cutoff 800Hz`, for showing.
+/// A lock, as `cutoff 800Hz`, `cutoff ~800Hz` sliding, or `cutoff --` put back, for showing.
 fn describe(track: &Track, lock: &Lock) -> String {
+    let format = |info: &ParamInfo| match lock.change {
+        Change::Set => info.format(lock.value),
+        Change::Slide => format!("~{}", info.format(lock.value)),
+        Change::Reset => "--".into(),
+    };
     if lock.is_macro() {
         let setting = Setting::of_macro(usize::from(lock.param));
-        return format!("{} {}", setting.name(track), MACRO_INFO.format(lock.value));
+        return format!("{} {}", setting.name(track), format(&MACRO_INFO));
     }
     let params = match lock.fx {
         None => Some(track.instrument.kind.params()),
@@ -531,7 +588,7 @@ fn describe(track: &Track, lock: &Lock) -> String {
     match params.and_then(|p| p.get(usize::from(lock.param))) {
         Some(info) => {
             let setting = Setting::new(lock.fx, info);
-            format!("{} {}", setting.name(track), info.format(lock.value))
+            format!("{} {}", setting.name(track), format(info))
         }
         // Its effect has gone: it does nothing until one's back in its place.
         None => format!("fx{}.{}?", lock.fx.map_or(0, |f| f + 1), lock.param),
@@ -776,7 +833,7 @@ mod tests {
             run(&mut e, "lock filter.type notch").unwrap_err(),
             "type is one of low, band, high"
         );
-        assert!(run(&mut e, "lock cutoff").is_err());
+        assert!(run(&mut e, "lock").is_err());
         for line in [
             "lock cutoff 100",
             "lock attack 0.01",
@@ -787,9 +844,37 @@ mod tests {
         }
         assert_eq!(
             run(&mut e, "lock decay 0.1").unwrap_err(),
-            "a step holds at most 4 locks"
+            "acid has its 4 lock columns already: :unlock one along the whole track"
         );
         assert_eq!(locks(&e, 0).len(), 4, "and nothing changed");
+    }
+
+    #[test]
+    fn lock_adds_columns_slides_and_puts_back() {
+        let mut e = editor();
+        let columns = |e: &Editor| e.grid.tracks[0].columns.len();
+        // With no value, just the column.
+        run(&mut e, "lock cutoff").unwrap();
+        assert_eq!(columns(&e), 1);
+        assert!(locks(&e, 0).is_empty());
+        run(&mut e, "lock decay ~0.2").unwrap();
+        e.handle(crate::Key::Char('j'));
+        run(&mut e, "lock cutoff --").unwrap();
+        assert_eq!(locks(&e, 0), ["decay ~0.2s"]);
+        assert_eq!(locks(&e, 1), ["cutoff --"]);
+        assert_eq!(columns(&e), 2);
+        // Unlocked along the whole track, the column goes; on a step, it stays.
+        run(&mut e, "unlock cutoff").unwrap();
+        assert_eq!(columns(&e), 2);
+        e.handle(crate::Key::Char('%'));
+        run(&mut e, "unlock cutoff").unwrap();
+        assert_eq!(columns(&e), 1);
+        assert_eq!(locks(&e, 0), ["decay ~0.2s"]);
+        // Its effect gone, so is its column.
+        run(&mut e, "lock delay.mix").unwrap();
+        e.grid.tracks[0].effects.remove(0);
+        e.shift_locks(0, 0, false);
+        assert_eq!(columns(&e), 1);
     }
 
     #[test]

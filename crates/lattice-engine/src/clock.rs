@@ -38,6 +38,11 @@ impl Clock {
         self.samples_per_step = samples_per_step(self.sample_rate, bpm, self.steps_per_beat);
     }
 
+    /// How long a step is now, in frames.
+    pub fn samples_per_step(&self) -> f64 {
+        self.samples_per_step
+    }
+
     /// Starts counting again from step 0, due immediately.
     pub fn restart(&mut self) {
         self.next_step = 0;

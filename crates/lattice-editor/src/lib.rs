@@ -2150,6 +2150,7 @@ mod tests {
         let track = |name: &str, len| Track {
             face: None,
             pattern_mute: false,
+            columns: vec![],
             name: name.into(),
             steps: vec![Step::default(); len],
             mix: Default::default(),

@@ -98,22 +98,72 @@ pub const MAX_LOCKS: usize = 4;
 /// allocating.
 pub const MAX_PARAMS: usize = 16;
 
-/// A setting held from one step: a parameter of the track's instrument, or of one of its
-/// effects, at a value in the parameter's own units. It lasts until the next step with a note or
-/// a lock, then the setting goes back to what the mixer says.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+/// A setting changed from one step: a parameter of the track's instrument, or of one of its
+/// effects, at a value in the parameter's own units. It holds until the setting's next lock, as a
+/// tracker's columns do, or until playing stops.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct Lock {
     /// The effect, by its place in the track's chain, or `None` for the instrument.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fx: Option<u8>,
     pub param: u8,
     pub value: f32,
+    #[serde(default, skip_serializing_if = "Change::is_set")]
+    pub change: Change,
+}
+
+/// How a [`Lock`] changes its setting.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Change {
+    /// To the lock's value, on its step.
+    #[default]
+    Set,
+    /// To the lock's value gradually, from the setting's lock before, arriving on its step.
+    Slide,
+    /// Back to the setting's own value, from the mixer; the value is unused. Written `--`.
+    Reset,
+}
+
+impl Change {
+    fn is_set(&self) -> bool {
+        *self == Self::Set
+    }
 }
 
 impl Lock {
     /// Whether it's of the same setting as `other`, whatever the value.
     pub fn same_param(&self, other: &Lock) -> bool {
         self.fx == other.fx && self.param == other.param
+    }
+
+    /// The setting it's of.
+    pub fn column(&self) -> LockColumn {
+        LockColumn {
+            fx: self.fx,
+            param: self.param,
+        }
+    }
+}
+
+/// A setting a track shows as a column of locks down its steps: a parameter of its instrument
+/// (`fx` is `None`) or of one of its effects, or a macro (`fx` is [`crate::MACRO`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LockColumn {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fx: Option<u8>,
+    pub param: u8,
+}
+
+impl LockColumn {
+    /// A lock of this setting.
+    pub fn lock(&self, value: f32, change: Change) -> Lock {
+        Lock {
+            fx: self.fx,
+            param: self.param,
+            value,
+            change,
+        }
     }
 }
 
@@ -222,6 +272,36 @@ pub struct Track {
     pub macros: Vec<Macro>,
     /// The face of the preset it was given, until its instrument changes for another kind.
     pub face: Option<Face>,
+    /// The settings its steps lock, in the order they're shown, at most [`MAX_LOCKS`]. Shared
+    /// by every pattern. See [`Track::lock_columns`].
+    pub columns: Vec<LockColumn>,
+}
+
+impl Track {
+    /// The settings its steps lock, as columns: [`Track::columns`], then any locked on its steps
+    /// that aren't among them, such as a file's written without, in the order they come.
+    pub fn lock_columns(&self) -> Vec<LockColumn> {
+        let mut columns = self.columns.clone();
+        for lock in self.steps.iter().flat_map(|s| s.locks.iter()) {
+            if !columns.contains(&lock.column()) {
+                columns.push(lock.column());
+            }
+        }
+        columns
+    }
+
+    /// Adds `column` to the track's columns, if it isn't there. False if there's no room.
+    pub fn add_column(&mut self, column: LockColumn) -> bool {
+        let mut columns = self.lock_columns();
+        if !columns.contains(&column) {
+            if columns.len() >= MAX_LOCKS {
+                return false;
+            }
+            columns.push(column);
+        }
+        self.columns = columns;
+        true
+    }
 }
 
 /// The highest choke group.
@@ -319,6 +399,8 @@ struct SparseTrack {
     macros: Vec<Macro>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     face: Option<Face>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    columns: Vec<LockColumn>,
 }
 
 fn is_zero_u8(n: &u8) -> bool {
@@ -346,6 +428,7 @@ impl From<Track> for SparseTrack {
             choke: track.choke,
             macros: track.macros,
             face: track.face,
+            columns: track.columns,
         }
     }
 }
@@ -383,6 +466,7 @@ impl TryFrom<SparseTrack> for Track {
             choke: sparse.choke,
             macros: sparse.macros,
             face: sparse.face,
+            columns: sparse.columns,
         })
     }
 }

@@ -1278,6 +1278,7 @@ mod tests {
             fx: None,
             param: 0,
             value: 1.0,
+            ..Default::default()
         };
         let mut locked = Step::note(60);
         locked.locks.set(lock);

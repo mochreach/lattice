@@ -228,6 +228,7 @@ mod tests {
         let mut track = Track {
             face: None,
             pattern_mute: false,
+            columns: vec![],
             name: "t".into(),
             steps: vec![Step::default(); 4],
             mix: Default::default(),

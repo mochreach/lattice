@@ -4,7 +4,7 @@
 //! they cover plays backwards.
 
 use lattice_core::instrument::{InstKind, Instrument, chop};
-use lattice_core::{Lock, Step};
+use lattice_core::{Change, Lock, Step};
 
 use crate::{Editor, Effect, changed};
 
@@ -93,6 +93,42 @@ pub(crate) fn reverse(steps: &mut [Step], instrument: &Instrument) {
         *to = turned;
     }
     steps.copy_from_slice(&reversed);
+    if instrument.kind == InstKind::Chop {
+        hold_directions(steps);
+    }
+}
+
+/// As a lock holds until the next, puts the direction back on each note after a turned one that
+/// isn't turned itself, so it plays as it did. Round from the end, as the steps loop.
+fn hold_directions(steps: &mut [Step]) {
+    let direction = |step: &Step| {
+        (step.locks.iter())
+            .find(|l| l.param as u32 == chop::DIRECTION && l.fx.is_none())
+            .copied()
+    };
+    let mut turned = steps
+        .iter()
+        .rev()
+        .find_map(direction)
+        .is_some_and(|l| l.change != Change::Reset);
+    for step in steps.iter_mut() {
+        match direction(step) {
+            Some(lock) => turned = lock.change != Change::Reset,
+            // With no room, it plays the way the lock before says.
+            None if turned
+                && step.note.is_some()
+                && step.locks.set(Lock {
+                    fx: None,
+                    param: chop::DIRECTION as u8,
+                    value: 0.0,
+                    change: Change::Reset,
+                }) =>
+            {
+                turned = false;
+            }
+            None => {}
+        }
+    }
 }
 
 /// Plays a chop step's piece the other way, by locking its direction, and starts it from the
@@ -105,9 +141,12 @@ fn turn_piece(step: &mut Step, span: usize, instrument: &Instrument) {
         fx: None,
         param: chop::DIRECTION as u8,
         value: 0.0,
+        ..Default::default()
     };
     let base = instrument.get(chop::DIRECTION) >= 0.5;
-    let reverse = !step.locks.find(&lock).map_or(base, |l| l.value >= 0.5);
+    let reverse = !(step.locks.find(&lock))
+        .filter(|l| l.change != Change::Reset)
+        .map_or(base, |l| l.value >= 0.5);
     if reverse == base {
         step.locks.retain(|l| !l.same_param(&lock));
     } else if !step.locks.set(Lock {
@@ -185,6 +224,24 @@ mod tests {
         reverse(&mut steps, &chopper);
         assert_eq!(pitches(&steps)[1], Some((chop::pitch(1), 2)));
         assert!(steps.iter().all(|s| s.locks.is_empty()));
+
+        // A piece already turned plays forwards, and the turned ones before it don't hold over it.
+        let mut steps: Vec<Step> = (0..3).map(|i| note(chop::pitch(i), 1)).collect();
+        let back = Lock {
+            fx: None,
+            param: chop::DIRECTION as u8,
+            value: 1.0,
+            ..Default::default()
+        };
+        steps[0].locks.set(back);
+        reverse(&mut steps, &chopper);
+        let changes: Vec<Option<Change>> = (steps.iter())
+            .map(|s| s.locks.find(&back).map(|l| l.change))
+            .collect();
+        assert_eq!(
+            changes,
+            [Some(Change::Set), Some(Change::Set), Some(Change::Reset)]
+        );
     }
 
     #[test]
@@ -193,6 +250,7 @@ mod tests {
             fx: None,
             param: 1,
             value: 0.5,
+            ..Default::default()
         };
         let mut steps = vec![note(60, 2), Step::default()];
         steps[1].locks.set(lock);

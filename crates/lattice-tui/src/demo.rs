@@ -8,8 +8,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use lattice_core::fx::{comp, delay, drive, filter, reverb};
 use lattice_core::instrument::{clap, hat, kick, snare, string, synth, tom};
 use lattice_core::{
-    Arrangement, Bus, Buses, Condition, DRUM_ROOT, Entry, Fx, FxKind, Grid, Group, InstKind,
-    Instrument, Lane, Lock, Note, Pattern, Rule, Song, Step, Track, Transform,
+    Arrangement, Bus, Buses, Change, Condition, DRUM_ROOT, Entry, Fx, FxKind, Grid, Group,
+    InstKind, Instrument, Lane, Lock, Note, Pattern, Rule, Song, Step, Track, Transform,
 };
 
 pub const BPM: f64 = 130.0;
@@ -453,8 +453,9 @@ fn bass() -> Vec<Step> {
 fn acid() -> Vec<Step> {
     notes("F2! F2 F3 . Eb3 F2! . C3 F2 Ab2! F3? C3")
 }
-/// The second, answering stab brighter and ringing, from settings locked on its step. On the
-/// fifth, which the changes keep in key, as every chord in them has a perfect fifth.
+/// The second, answering stab brighter and ringing, from settings locked on its step, and the
+/// first put back to the mixer's. On the fifth, which the changes keep in key, as every chord in
+/// them has a perfect fifth.
 fn stabs() -> Vec<Step> {
     let mut steps = notes(". . . C4_2 . . . . . . C4 . . . . .");
     for (param, value) in [(synth::CUTOFF, 3_200.0), (synth::RESONANCE, 0.7)] {
@@ -462,8 +463,15 @@ fn stabs() -> Vec<Step> {
             fx: None,
             param: param as u8,
             value,
+            ..Default::default()
         };
-        if !steps.get_mut(10).is_some_and(|s| s.locks.set(lock)) {
+        let reset = Lock {
+            change: Change::Reset,
+            ..lock
+        };
+        if !steps.get_mut(10).is_some_and(|s| s.locks.set(lock))
+            || !steps.get_mut(3).is_some_and(|s| s.locks.set(reset))
+        {
             misread();
         }
     }

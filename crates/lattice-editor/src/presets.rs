@@ -222,6 +222,7 @@ mod tests {
             fx,
             param,
             value: 0.5,
+            ..Default::default()
         };
         e.grid.tracks[0].steps[0].locks.set(lock(None, 5));
         e.grid.tracks[0].steps[1].locks.set(lock(Some(0), 0));

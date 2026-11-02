@@ -28,6 +28,7 @@ fn rendering_never_allocates() {
     let track = Track {
         face: None,
         pattern_mute: false,
+        columns: vec![],
         name: "lead".into(),
         steps: (0..7)
             .map(|i| {
@@ -43,6 +44,7 @@ fn rendering_never_allocates() {
                             fx,
                             param: 1,
                             value: 0.3,
+                            ..Default::default()
                         });
                     }
                 }

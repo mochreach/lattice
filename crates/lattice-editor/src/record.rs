@@ -220,6 +220,7 @@ mod tests {
         let track = |len| Track {
             face: None,
             pattern_mute: false,
+            columns: vec![],
             name: "t".into(),
             steps: vec![Step::default(); len],
             mix: Default::default(),

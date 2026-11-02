@@ -103,6 +103,7 @@ mod tests {
             fx: Some(0),
             param: 0,
             value: 0.5,
+            ..Default::default()
         });
         let effects = e.run_command("chain-load shimmer");
         assert_eq!(
