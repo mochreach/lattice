@@ -16,6 +16,7 @@
 )]
 
 pub mod arrangement;
+pub mod art;
 pub mod chain;
 pub mod conductor;
 pub mod device;

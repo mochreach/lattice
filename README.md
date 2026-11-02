@@ -362,9 +362,11 @@ forward, its macros and whichever settings `:face-show cutoff` adds. The track k
 song saves it, until its instrument changes for another kind. Its art, lit by what the track
 plays, is a fractal its title picks, unless it's drawn by hand: a preset's file can give it up to
 8 frames of 8 rows of 31 characters, `art = ["⢠⣶⣦ ⣿", …]`, each frame after an empty row (`""`),
-as `great-machine` draws the Great Machine of the Krell from *Forbidden Planet*. The art moves on
-a frame with each beat, and with each note the track starts, and slowly when the song's
-stopped.
+as `great-machine` draws the Great Machine of the Krell from *Forbidden Planet*. A track with no
+face shows its engine's own: the Rhythmicon's disc spinning in front of its lamp, the monochord's
+string ringing, Switched's patch cables swaying, an oscilloscope's wave for the synth, a tape
+machine's reels for the sampler and Chop's slices lighting their pads. The art moves on a frame
+with each beat, and with each note the track starts, and slowly when the song's stopped.
 
 **Locks** automate settings by step, as on Elektron machines and in trackers' columns: a track
 can lock up to four of its instrument's or effects' settings with `:lock`, each in a column of its

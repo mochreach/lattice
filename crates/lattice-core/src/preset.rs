@@ -157,9 +157,6 @@ impl TryFrom<SavedPreset> for Preset {
     }
 }
 
-/// The Great Machine of the Krell, from *Forbidden Planet* (1956), in braille.
-const GREAT_MACHINE: &str = include_str!("art/great-machine.txt");
-
 /// The presets Lattice comes with.
 pub const PRESETS: &[&str] = &[
     // Synths.
@@ -941,7 +938,7 @@ pub fn preset(name: &str) -> Option<Preset> {
         // over a glass body, echoing down the Great Machine's halls. Its face is the machine.
         "great-machine" => Preset {
             face: Face {
-                art: GREAT_MACHINE.lines().map(String::from).collect(),
+                art: crate::art::engine_face(InstKind::Krell).art,
                 ..face(
                     "The Great Machine",
                     &[krell::STOPS, krell::DRIFT, krell::GLASS],
@@ -1062,12 +1059,8 @@ mod tests {
                 .is_err()
         );
         assert!(art(&["a\tb"]).check(InstKind::Synth).is_err());
-        // The Great Machine fills it.
+        // The Great Machine wears Krell's.
         let machine = preset("great-machine").unwrap().face;
-        assert!(machine.frames().count() > 1, "it moves");
-        for frame in machine.frames() {
-            assert_eq!(frame.len(), ART_ROWS);
-            assert!(frame.iter().all(|r| r.chars().count() == ART_WIDTH));
-        }
+        assert_eq!(machine.art, crate::art::engine_face(InstKind::Krell).art);
     }
 }

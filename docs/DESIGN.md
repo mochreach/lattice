@@ -1138,8 +1138,9 @@ A track with a face (see below) shows it instead, unless `enter` on its title op
 (`Editor::inst_opened`, by `TrackId`): its macros come first, then the settings the face puts
 forward, so `InstLine::Param` holds a setting's id rather than its place in the list, and `w` `b`
 stop wherever the kind of line changes. The TUI draws each shown face's art (`lattice-tui/src/face.rs`)
-in a band under the tracks' names: the face's own, drawn by hand, its middle on the band's and
-cut down to it, or else a fractal from the splash, picked by hashing the title, mirrored about the
+in a band under the tracks' names, for every track: a track with no face shown has its engine's
+(`lattice_core::art::engine_face`, the drawings in `lattice-core/src/art`). A face's art is its
+own, drawn by hand, its middle on the band's and cut down to it, or else a fractal from the splash, picked by hashing the title, mirrored about the
 middle. Hand-drawn art can have frames (`Face::frames`, split at empty rows), and moves on one
 whenever a new beat starts (from `Status::pattern_step` and `boundaries`, or every
 `face::IDLE_BEAT` when stopped) or the track starts a note, once for both together, so a drum on

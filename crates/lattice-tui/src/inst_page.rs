@@ -5,6 +5,7 @@
 
 use std::time::{Duration, Instant};
 
+use lattice_core::art;
 use lattice_core::macros::{self, MACRO_INFO};
 use lattice_core::{Kind, Locks, Track};
 use lattice_editor::{Editor, InstLine, Strip};
@@ -100,11 +101,10 @@ pub fn draw(
     }
     lines.push(Line::from(spans));
 
-    // The faces' art, under their names, as tall as leaves room for the lines.
+    // The faces' art, or the engines', under their names, as tall as leaves room for the lines.
     let height = (area.height as usize).saturating_sub(ABOVE);
-    let faces = columns.iter().any(|&(t, _)| editor.shows_face(t));
     let art = match (height.saturating_sub(BELOW_ART) / 2).min(MAX_ART) {
-        rows if faces && rows >= MIN_ART => rows,
+        rows if rows >= MIN_ART => rows,
         _ => 0,
     };
     lines.extend((0..art).map(|_| Line::raw("")));
@@ -152,8 +152,14 @@ pub fn draw(
         (time / face::IDLE_BEAT) as u64
     };
     for (k, &(t, track)) in columns.iter().enumerate() {
-        let Some(face) = track.face.as_ref().filter(|_| editor.shows_face(t)) else {
-            continue;
+        // Its face, if it's showing it, or else its engine's.
+        let engine_face;
+        let face = match track.face.as_ref().filter(|_| editor.shows_face(t)) {
+            Some(face) => face,
+            None => {
+                engine_face = art::engine_face(track.instrument.kind);
+                &engine_face
+            }
         };
         // A new note's when the count of them changes.
         let note = status.last_note(t);
