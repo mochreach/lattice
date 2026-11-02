@@ -121,7 +121,7 @@ impl Pitch {
     clippy::indexing_slicing,
     reason = "`at` and `before` are wrapped to the line's length, and the line's never empty"
 )]
-fn read(line: &[f32], write: usize, delay: f32) -> f32 {
+pub(crate) fn read(line: &[f32], write: usize, delay: f32) -> f32 {
     let len = line.len();
     let back = delay.floor();
     let frac = delay - back;

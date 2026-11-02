@@ -582,8 +582,8 @@ const LESSONS: &[Lesson] = &[
                `:inst modular` changes it too (a big stack of saws through a screaming ladder \
                filter), `:inst harpsichord` gives it an alien harpsichord, and \
                `:sample kick.wav` plays a sound file on it. \
-               `:fx-add delay` adds an effect: `delay`, `reverb`, `filter`, `drive`, `comp` or \
-               `pitch`.\n\nAdd a reverb to the LEAD track.",
+               `:fx-add delay` adds an effect: `delay`, `reverb`, `filter`, `ensemble`, \
+               `phaser`, `drive`, `comp` or `pitch`.\n\nAdd a reverb to the LEAD track.",
         teaches: &[Action::GotoInstrument],
         commands: &["inst", "sample", "fx-add"],
         setup: nothing,

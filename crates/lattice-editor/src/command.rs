@@ -259,7 +259,7 @@ pub const COMMANDS: &[Spec] = &[
         name: "fx-add",
         alias: None,
         params: &[text("EFFECT", "effect")],
-        describe: "add an effect (delay, reverb, filter, drive, comp, pitch) after the one under the cursor",
+        describe: "add an effect (delay, reverb, filter, ensemble, phaser, drive, comp, pitch) after the one under the cursor",
     },
     Spec {
         name: "fx-send",
@@ -1587,7 +1587,7 @@ mod tests {
         assert_eq!(problem("name ").unwrap().message, "expected a name");
         assert_eq!(
             problem("fx-add ").unwrap().message,
-            "expected an effect: delay, reverb, filter, drive, comp, pitch"
+            "expected an effect: delay, reverb, filter, ensemble, phaser, drive, comp, pitch"
         );
         assert_eq!(problem("fo").unwrap().message, "unknown command");
         assert_eq!(problem("rev every 2 1"), None);

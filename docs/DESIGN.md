@@ -792,6 +792,15 @@ There are six effects so far, each usable on any track or bus:
   one and neither's jump back is heard. Pitch is whole semitones, ±2 octaves, with `fine` in
   cents. It smears transients, being overlapping grains, which suits its job: the octave in a
   shimmer's feedback.
+- **`ensemble`:** a string machine's chorus. Three heads read a short line 7 ms behind, each
+  swung by a slow LFO (`rate`, 0.1 to 3 Hz, by up to 3 ms) and a fast one nine times quicker (by
+  0.4 ms), the heads a third of a cycle apart, so one player sounds like a section. The right
+  side's heads sit a sixth of a cycle from the left's, so a mono sound comes out wide. `depth`
+  scales the swings; linear interpolation, as the pitch shifter's.
+- **`phaser`:** 4, 6, 8 or 12 first-order all-pass stages, their corner swept geometrically
+  about 630 Hz by up to three octaves either way (`depth`) at `rate`, with `feedback` up to 0.9
+  from the chain's output to its input. Mixed half and half, each pair of stages makes a notch.
+  The right side's LFO is a quarter of a cycle on, so the sweep moves across the stereo field.
 
 In the demo, the acid line's filter opens and closes over four bars, and the send bus's echoes
 go on into a plate mixed at 35%.

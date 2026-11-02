@@ -20,13 +20,17 @@ pub enum FxKind {
     Reverb,
     Filter,
     Pitch,
+    Ensemble,
+    Phaser,
 }
 
 impl FxKind {
-    pub const ALL: [FxKind; 6] = [
+    pub const ALL: [FxKind; 8] = [
         FxKind::Delay,
         FxKind::Reverb,
         FxKind::Filter,
+        FxKind::Ensemble,
+        FxKind::Phaser,
         FxKind::Drive,
         FxKind::Comp,
         FxKind::Pitch,
@@ -44,6 +48,8 @@ impl FxKind {
             FxKind::Reverb => &reverb::PARAMS,
             FxKind::Filter => &filter::PARAMS,
             FxKind::Pitch => &pitch::PARAMS,
+            FxKind::Ensemble => &ensemble::PARAMS,
+            FxKind::Phaser => &phaser::PARAMS,
         }
     }
 }
@@ -57,6 +63,8 @@ impl Kind for FxKind {
             FxKind::Reverb => "reverb",
             FxKind::Filter => "filter",
             FxKind::Pitch => "pitch",
+            FxKind::Ensemble => "ensemble",
+            FxKind::Phaser => "phaser",
         }
     }
 
@@ -251,6 +259,57 @@ pub mod pitch {
         param(FINE, "fine", (-50.0, 50.0, 0.0), "ct", Curve::Linear),
         param(WINDOW, "window", (0.02, MAX_WINDOW, 0.08), "s", Curve::Log),
         param(MIX, "mix", (0.0, 1.0, 1.0), "", Curve::Linear),
+    ];
+}
+
+/// A string machine's ensemble: three copies of the sound, each a few milliseconds late and
+/// wavering, at its own point in a slow and a fast LFO, so one player sounds like many, spread
+/// across the stereo field.
+pub mod ensemble {
+    use super::*;
+
+    /// How fast the slow LFO goes; the fast one, the shimmer, goes nine times as fast.
+    pub const RATE: u32 = 0;
+    /// How far the copies waver.
+    pub const DEPTH: u32 = 1;
+    pub const MIX: u32 = 2;
+
+    pub(super) const PARAMS: [ParamInfo; 3] = [
+        param(RATE, "rate", (0.1, 3.0, 0.6), "Hz", Curve::Log),
+        param(DEPTH, "depth", (0.0, 1.0, 0.5), "", Curve::Linear),
+        param(MIX, "mix", (0.0, 1.0, 0.6), "", Curve::Linear),
+    ];
+}
+
+/// A phaser: the sound through a chain of all-pass stages, swept up and down by an LFO and mixed
+/// back with itself, so notches sweep through it.
+pub mod phaser {
+    use super::*;
+
+    /// How many stages: each pair makes a notch.
+    pub const STAGES: u32 = 0;
+    /// How fast the LFO sweeps.
+    pub const RATE: u32 = 1;
+    /// How far it sweeps, up to six octaves.
+    pub const DEPTH: u32 = 2;
+    /// How much of the stages' output goes back round, sharpening the notches into peaks.
+    pub const FEEDBACK: u32 = 3;
+    pub const MIX: u32 = 4;
+
+    pub const STAGE_COUNTS: &[&str] = &["4", "6", "8", "12"];
+
+    pub(super) const PARAMS: [ParamInfo; 5] = [
+        param(
+            STAGES,
+            "stages",
+            (0.0, 3.0, 0.0),
+            "",
+            Curve::Choice(STAGE_COUNTS),
+        ),
+        param(RATE, "rate", (0.02, 10.0, 0.3), "Hz", Curve::Log),
+        param(DEPTH, "depth", (0.0, 1.0, 0.7), "", Curve::Linear),
+        param(FEEDBACK, "feedback", (0.0, 0.9, 0.5), "", Curve::Linear),
+        param(MIX, "mix", (0.0, 1.0, 0.5), "", Curve::Linear),
     ];
 }
 

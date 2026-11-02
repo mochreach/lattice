@@ -140,10 +140,15 @@ fn rendering_never_allocates() {
     let mut track_drive = Some(EffectSlot::new(Box::new(Drive::new(48_000.0))));
     let mut track_comp = Some(EffectSlot::new(Box::new(Comp::new(48_000.0))));
     let mut group_comp = Some(EffectSlot::new(Box::new(Comp::new(48_000.0))));
-    let mut more_effects: Vec<_> = [FxKind::Reverb, FxKind::Filter]
-        .into_iter()
-        .map(|kind| EffectSlot::new(lattice_engine::fx::build(&Fx::new(kind), 48_000.0)))
-        .collect();
+    let mut more_effects: Vec<_> = [
+        FxKind::Reverb,
+        FxKind::Filter,
+        FxKind::Ensemble,
+        FxKind::Phaser,
+    ]
+    .into_iter()
+    .map(|kind| EffectSlot::new(lattice_engine::fx::build(&Fx::new(kind), 48_000.0)))
+    .collect();
     let mut drums: Vec<_> = [InstKind::Hat, InstKind::Snare, InstKind::Kick]
         .into_iter()
         .map(|kind| lattice_engine::instrument::build(&Instrument::new(kind), 48_000.0, None))
@@ -297,7 +302,7 @@ fn rendering_never_allocates() {
                         level: -3.0,
                     });
                 }
-                730 | 740 => {
+                730 | 735 | 740 | 745 => {
                     handle.send(Command::InsertEffect {
                         chain: Chain::Master,
                         index: 0,
