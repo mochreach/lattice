@@ -943,7 +943,11 @@ const LESSONS: &[Lesson] = &[
                one. Some act on the step's note, or on the one still sounding if the step has \
                none: `R3` plays it three times in the step, `r3` fading away, `D8` starts it \
                8/24 of a step late, `X6` cuts it 6/24 in, `A37` goes round it and the notes 3 \
-               and 7 semitones up, and `!` accents it. Others move the track's playhead: `J12` \
+               and 7 semitones up, and `!` accents it. Some change its sound, for that note \
+               alone: `<` plays a sampler's or chop's sound the other way round, `O8` starts it \
+               half way in, and `G6` slides a synth's or string's note in from the last one's \
+               pitch; where the instrument can't, they're dimmed and do nothing. Others move \
+               the track's playhead: `J12` \
                carries on from step 12, `J?` from any step, the same each time the song plays; \
                `W2` plays the step twice more before going on, `B` turns the track backwards, \
                or forwards again, and `*2` `/2` play it twice or half as fast, until the next \

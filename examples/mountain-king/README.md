@@ -17,8 +17,8 @@ in, as it does in the original: the conductor, left of the first track, takes it
 3. **hall**, twice, at the song's own tempo (`T--`), which its render needs to line up: the
    march, rendered and chopped into 64 pieces on a `chop` track, a step
    each, then played out of order. Bar 2's E stutters up a fourth, a fifth and an octave (locks
-   on `tune`), bar 3 opens backwards (pieces 7 down to 0, with a `direction` lock, put back with
-   `--` at step 40), and bar 4 rolls on the long A while `tune` slides down an octave, put back
+   on `tune`), bar 3 opens backwards (pieces 7 down to 0, each turned round by a `<`
+   gesture), and bar 4 rolls on the long A while `tune` slides down an octave, put back
    at the top. The second time round, a rule, `rot+32/2+1`, swaps the edit's halves.
 4. **frenzy**, three times: the theme twice as fast, the bassoon an octave under it and the pizz
    two over, getting louder. The troll's `cutoff` and its macro, `fury`, start low and slide

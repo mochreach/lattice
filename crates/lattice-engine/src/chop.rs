@@ -8,7 +8,7 @@ use lattice_core::InstKind;
 use lattice_core::instrument::chop::*;
 
 use crate::param::{ParamInfo, Smoothed};
-use crate::processor::{Event, EventKind, Processor, Segment, segments};
+use crate::processor::{Event, EventKind, Processor, Segment, Shape, segments};
 use crate::sampler::{Play, Player, Sample};
 
 /// How many parameters it has.
@@ -21,6 +21,8 @@ pub struct Chop {
     player: Player,
     values: [f32; COUNT],
     gain: Smoothed,
+    /// How the next note plays.
+    shape: Shape,
 }
 
 impl Chop {
@@ -36,6 +38,7 @@ impl Chop {
             player: Player::new(sample_rate, sample),
             gain: Smoothed::new(0.0, sample_rate),
             values: all,
+            shape: Shape::default(),
         };
         chop.gain.reset(chop.value(GAIN));
         chop
@@ -65,18 +68,20 @@ impl Chop {
         let width = (to - from) / pieces as f64;
         let start = from + width * piece(pitch, pieces) as f64;
         let rate = f64::from(2f32.powf(self.value(TUNE) / 12.0)) * self.player.speed();
+        let shape = std::mem::take(&mut self.shape);
+        let into = width * shape.along();
         // Played on past the piece's end while the note lasts, to the region's; backwards from
-        // its end towards the region's start.
-        let play = if self.value(DIRECTION) >= 0.5 {
+        // its end towards the region's start. An offset starts it that far into the piece.
+        let play = if (self.value(DIRECTION) >= 0.5) != shape.reverse {
             Play {
                 from,
-                to: start + width,
+                to: start + width - into,
                 rate: -rate,
                 ..self.play(pitch, velocity)
             }
         } else {
             Play {
-                from: start,
+                from: start + into,
                 to,
                 rate,
                 ..self.play(pitch, velocity)
@@ -113,6 +118,7 @@ impl Processor for Chop {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
                 EventKind::NoteOff { pitch } => self.player.release(pitch),
                 EventKind::Choke => self.player.choke(),
+                EventKind::Shape(shape) => self.shape = shape,
                 EventKind::Param { id, value } => {
                     let info = InstKind::Chop.params().get(id as usize);
                     if let (Some(info), Some(slot)) = (info, self.values.get_mut(id as usize)) {
@@ -197,6 +203,30 @@ mod tests {
     fn reversed_it_plays_its_piece_backwards_from_its_end() {
         let out = play(&mut chop(&[(DIRECTION, 1.0)]), DRUM_ROOT + 1, 25, 30);
         assert!((out[5] - 0.44).abs() < 0.01, "{}", out[5]);
+    }
+
+    #[test]
+    fn a_notes_shape_turns_its_piece_round_or_starts_it_in() {
+        let mut c = chop(&[]);
+        let shape = Shape {
+            offset: 8,
+            ..Shape::default()
+        };
+        // Half way into the second piece, from 37.5.
+        c.process(&[event(EventKind::Shape(shape))], &mut [], &mut []);
+        let out = play(&mut c, DRUM_ROOT + 1, 25, 30);
+        assert!((out[5] - 0.425).abs() < 0.01, "{}", out[5]);
+        // Back from half way.
+        let back = Shape {
+            reverse: true,
+            ..shape
+        };
+        c.process(&[event(EventKind::Shape(back))], &mut [], &mut []);
+        let out = play(&mut c, DRUM_ROOT + 1, 25, 30);
+        assert!((out[5] - 0.325).abs() < 0.01, "{}", out[5]);
+        // And the next as it is.
+        let out = play(&mut c, DRUM_ROOT + 1, 25, 30);
+        assert!((out[5] - 0.3).abs() < 0.01, "{}", out[5]);
     }
 
     #[test]

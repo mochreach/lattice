@@ -14,7 +14,7 @@ use wide::f32x8;
 
 use crate::dsp::{AdsrParams, Wave, decay_coef};
 use crate::param::ParamInfo;
-use crate::processor::{Event, EventKind, Processor, Segment, segments};
+use crate::processor::{Event, EventKind, Processor, Segment, Shape, segments};
 
 const VOICES: usize = 8;
 /// Samples between control-rate updates (envelope stages, filter coefficients).
@@ -110,6 +110,15 @@ pub struct Synth {
     stage: [Stage; VOICES],
     pitch: [u8; VOICES],
     started: [u64; VOICES],
+    /// A voice gliding: control periods to go, the step its pitch takes each, and where it
+    /// ends up, as phase increments.
+    glide_left: [u32; VOICES],
+    glide_ratio: [f32; VOICES],
+    glide_to: [f32; VOICES],
+    /// The pitch last played, which a glide starts from.
+    last: Option<u8>,
+    /// How the next note plays.
+    shape: Shape,
     notes_started: u64,
     /// Every voice is idle, so rendering can be skipped until the next note.
     silent: bool,
@@ -144,6 +153,11 @@ impl Synth {
             stage: [Stage::Idle; VOICES],
             pitch: [0; VOICES],
             started: [0; VOICES],
+            glide_left: [0; VOICES],
+            glide_ratio: [1.0; VOICES],
+            glide_to: [0.0; VOICES],
+            last: None,
+            shape: Shape::default(),
             notes_started: 0,
             silent: true,
             clock: 0,
@@ -193,12 +207,36 @@ impl Synth {
         ) else {
             return;
         };
+        let (Some(left), Some(ratio), Some(to)) = (
+            self.glide_left.get_mut(i),
+            self.glide_ratio.get_mut(i),
+            self.glide_to.get_mut(i),
+        ) else {
+            return;
+        };
+        *to = midi_to_hz(pitch) / self.sample_rate;
+        // Gliding, it starts at the last pitch and steps evenly, in pitch, to its own.
+        let shape = std::mem::take(&mut self.shape);
+        let from = match self.last {
+            Some(last) if shape.glide > 0 => {
+                let periods = shape.glide.div_ceil(CONTROL_PERIOD as u32).max(1);
+                let from = midi_to_hz(last) / self.sample_rate;
+                *left = periods;
+                *ratio = (*to / from).powf(1.0 / periods as f32);
+                from
+            }
+            _ => {
+                *left = 0;
+                *to
+            }
+        };
+        self.last = Some(pitch);
 
         self.notes_started += 1;
         *stage = Stage::Attack;
         *voice_pitch = pitch;
         *started = self.notes_started;
-        set_lane(&mut self.inc, i, midi_to_hz(pitch) / self.sample_rate);
+        set_lane(&mut self.inc, i, from);
         set_lane(&mut self.velocity, i, f32::from(velocity) / 127.0);
         set_lane(&mut self.env_target, i, ATTACK_TARGET);
         set_lane(&mut self.env_coef, i, self.attack_coef);
@@ -254,6 +292,18 @@ impl Synth {
         self.env_target = f32x8::new(target);
         self.env_coef = f32x8::new(coef);
         self.silent = self.stage.iter().all(|&s| s == Stage::Idle);
+
+        if self.glide_left.iter().any(|&left| left > 0) {
+            let mut inc = self.inc.to_array();
+            let glides = self.glide_left.iter_mut().zip(&self.glide_ratio);
+            for ((inc, (left, ratio)), to) in inc.iter_mut().zip(glides).zip(&self.glide_to) {
+                if *left > 0 {
+                    *left -= 1;
+                    *inc = if *left == 0 { *to } else { *inc * ratio };
+                }
+            }
+            self.inc = f32x8::new(inc);
+        }
 
         // TPT state-variable filter coefficients for each voice's current cutoff.
         // Kept over the bottom, as `clamp` panics otherwise, at an absurdly low rate.
@@ -319,6 +369,7 @@ impl Processor for Synth {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
                 EventKind::NoteOff { pitch } => self.note_off(pitch),
                 EventKind::Choke => self.choke(),
+                EventKind::Shape(shape) => self.shape = shape,
                 EventKind::Param { id, value } => {
                     if let Some(info) = InstKind::Synth.params().get(id as usize) {
                         self.patch.set(id, info.clamp(value));
@@ -422,6 +473,37 @@ mod tests {
         }
         assert!(synth.silent);
         assert!(l.iter().all(|&x| x == 0.0));
+    }
+
+    #[test]
+    fn a_glide_slides_from_the_last_pitch_to_its_own() {
+        let mut synth = Synth::new(patch(), 48_000.0);
+        let (mut l, mut r) = (vec![0.0; 2_400], vec![0.0; 2_400]);
+        let on = |pitch| {
+            ev(
+                0,
+                EventKind::NoteOn {
+                    pitch,
+                    velocity: 100,
+                },
+            )
+        };
+        let glide = Shape {
+            glide: 4_800,
+            ..Shape::default()
+        };
+        synth.process(&[on(57)], &mut l, &mut r);
+        synth.process(&[ev(0, EventKind::Shape(glide)), on(69)], &mut l, &mut r);
+        let lane = synth.pitch.iter().position(|&p| p == 69).unwrap();
+        let hz = |synth: &Synth| synth.inc.to_array()[lane] * 48_000.0;
+        // From A3 to A4, half way after half the time, in pitch.
+        assert!((hz(&synth) - 311.1).abs() < 2.0, "{}", hz(&synth));
+        synth.process(&[], &mut l, &mut r);
+        assert!((hz(&synth) - 440.0).abs() < 0.01, "{}", hz(&synth));
+        // The next note starts at its own pitch.
+        synth.process(&[on(57)], &mut l, &mut r);
+        let lane = synth.pitch.iter().rposition(|&p| p == 57).unwrap();
+        assert!((synth.inc.to_array()[lane] * 48_000.0 - 220.0).abs() < 0.01);
     }
 
     #[test]

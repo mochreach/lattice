@@ -1,12 +1,14 @@
 //! A track's gestures: things that happen once on a step, written in the step's two gesture
 //! fields. Note gestures act on the step's note, or the one still sounding: retrigger it, delay
-//! it, cut it, arpeggiate it or accent it. Playhead gestures act on the track's playback: jump,
+//! it, cut it, arpeggiate it or accent it, and on some instruments reverse it, start it part way
+//! in or glide to it. Playhead gestures act on the track's playback: jump,
 //! wait, turn backwards, or change speed. Times are in 24ths of a step.
 
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::instrument::InstKind;
 use crate::song::MAX_STEPS;
 
 /// The 24ths of a step a delay or cut is timed in.
@@ -24,8 +26,11 @@ pub const MAX_SPEED: u8 = 4;
 /// The longest a step waits, in steps' time.
 pub const MAX_WAIT: u8 = 99;
 
+/// The sixteenths of a sound file, or a chop's piece, an offset starts a note in.
+pub const OFFSETS: u8 = 16;
+
 /// Something a track does once, on a step. Written as it's typed: `R3`, `r3`, `D8`, `X6`, `A37`,
-/// `!`, `J12`, `J?`, `W2`, `B`, `*2`, `/2`. Steps are numbered from 0, as they're shown.
+/// `!`, `<`, `O8`, `G6`, `J12`, `J?`, `W2`, `B`, `*2`, `/2`. Steps are numbered from 0, as they're shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Gesture {
     /// `R3`: plays the note 3 times, evenly, within the step.
@@ -40,6 +45,13 @@ pub enum Gesture {
     Arpeggio(u8, u8),
     /// `!`: plays the note at full velocity.
     Accent,
+    /// `<`: plays a sampler's or chop's note the other way round: backwards, or forwards if
+    /// its direction is reverse.
+    Reverse,
+    /// `O8`: starts a sampler's or chop's note 8 sixteenths into its sound, or its piece.
+    Offset(u8),
+    /// `G6`: slides a synth's or string's note from the last one's pitch over 6 24ths of a step.
+    Glide(u8),
     /// `J12`: after this step, carries on from step 12.
     Jump(u8),
     /// `J?`: after this step, carries on from any step, the same one each time the song plays.
@@ -69,6 +81,17 @@ impl Gesture {
         )
     }
 
+    /// Whether it does anything on an instrument of `kind`: `<` on a synth doesn't.
+    pub fn works_on(self, kind: InstKind) -> bool {
+        match self {
+            Gesture::Reverse | Gesture::Offset(_) => {
+                matches!(kind, InstKind::Sampler | InstKind::Chop)
+            }
+            Gesture::Glide(_) => matches!(kind, InstKind::Synth | InstKind::String),
+            _ => true,
+        }
+    }
+
     /// Whether more could be typed after `text` to make another gesture: a `D2` might become
     /// `D23`, and `J1` `J12`, but `R3`, `D3`, `!` and `J?` are done.
     pub fn could_go_on(text: &str) -> bool {
@@ -88,6 +111,9 @@ impl Gesture {
             Gesture::Cut(n) => format!("cut, {n}/24 into the step"),
             Gesture::Arpeggio(a, b) => format!("arpeggio, the note, +{a} and +{b}"),
             Gesture::Accent => "accent, full velocity".into(),
+            Gesture::Reverse => "reverse, played the other way round".into(),
+            Gesture::Offset(n) => format!("offset, from {n}/16 of the way in"),
+            Gesture::Glide(n) => format!("glide, from the last pitch over {n}/24 of a step"),
             Gesture::Jump(n) => format!("jump, on from step {n}"),
             Gesture::Wander => "jump to any step".into(),
             Gesture::Wait(n) => format!("wait, {n} more steps' time here"),
@@ -107,7 +133,10 @@ impl Gesture {
         };
         match self {
             Gesture::Retrigger(n) | Gesture::Fade(n) => within(n, 2, MAX_HITS, "retriggers"),
-            Gesture::Delay(n) | Gesture::Cut(n) => within(n, 1, TICKS - 1, "24ths of a step"),
+            Gesture::Delay(n) | Gesture::Cut(n) | Gesture::Glide(n) => {
+                within(n, 1, TICKS - 1, "24ths of a step")
+            }
+            Gesture::Offset(n) => within(n, 0, OFFSETS - 1, "sixteenths"),
             Gesture::Arpeggio(a, b) => {
                 within(a, 0, 9, "arpeggio steps")?;
                 within(b, 0, 9, "arpeggio steps")
@@ -131,6 +160,9 @@ impl fmt::Display for Gesture {
             Gesture::Cut(n) => write!(f, "X{n}"),
             Gesture::Arpeggio(a, b) => write!(f, "A{a}{b}"),
             Gesture::Accent => write!(f, "!"),
+            Gesture::Reverse => write!(f, "<"),
+            Gesture::Offset(n) => write!(f, "O{n}"),
+            Gesture::Glide(n) => write!(f, "G{n}"),
             Gesture::Jump(n) => write!(f, "J{n}"),
             Gesture::Wander => write!(f, "J?"),
             Gesture::Wait(n) => write!(f, "W{n}"),
@@ -148,7 +180,9 @@ impl std::str::FromStr for Gesture {
     /// which fades where `R` doesn't.
     fn from_str(text: &str) -> Result<Self, String> {
         let unknown = || {
-            format!("{text:?} isn't a gesture: R3, r3, D8, X6, A37, !, J12, J?, W2, B, *2 or /2")
+            format!(
+                "{text:?} isn't a gesture: R3, r3, D8, X6, A37, !, <, O8, G6, J12, J?, W2, B, *2 or /2"
+            )
         };
         let mut chars = text.chars();
         let first = chars.next().ok_or_else(unknown)?;
@@ -183,6 +217,9 @@ impl std::str::FromStr for Gesture {
                 }
             }
             '!' if rest.is_empty() => Gesture::Accent,
+            '<' if rest.is_empty() => Gesture::Reverse,
+            'O' => Gesture::Offset(number("O8")?),
+            'G' => Gesture::Glide(number("G6")?),
             'J' if rest == "?" => Gesture::Wander,
             'J' => Gesture::Jump(number("J12")?),
             'W' => Gesture::Wait(number("W2")?),
@@ -257,7 +294,8 @@ mod tests {
     #[test]
     fn gestures_read_as_they_are_written() {
         let all = [
-            "R3", "r9", "D8", "X23", "A37", "A05", "!", "J12", "J?", "W2", "B", "*2", "/4", "*1",
+            "R3", "r9", "D8", "X23", "A37", "A05", "!", "<", "O0", "O15", "G6", "J12", "J?", "W2",
+            "B", "*2", "/4", "*1",
         ];
         for text in all {
             let gesture: Gesture = text.parse().unwrap();
@@ -275,17 +313,25 @@ mod tests {
         assert!("Q1".parse::<Gesture>().is_err());
         assert!("D-1".parse::<Gesture>().is_err());
         assert!("J00".parse::<Gesture>().is_err());
+        assert!("O16".parse::<Gesture>().unwrap_err().contains("0 to 15"));
+        assert!("G0".parse::<Gesture>().is_err());
+        assert_eq!("o8".parse(), Ok(Gesture::Offset(8)));
+        assert!(!Gesture::Reverse.works_on(InstKind::Synth));
+        assert!(Gesture::Reverse.works_on(InstKind::Chop));
+        assert!(Gesture::Glide(3).works_on(InstKind::String));
+        assert!(!Gesture::Glide(3).works_on(InstKind::Kick));
     }
 
     #[test]
     fn typing_goes_on_until_a_gesture_is_whole() {
         for text in [
-            "R", "D", "D2", "X1", "A", "A3", "J", "J1", "J25", "W", "W9", "*",
+            "R", "D", "D2", "X1", "A", "A3", "J", "J1", "J25", "W", "W9", "*", "O", "O1", "G2",
         ] {
             assert!(Gesture::could_go_on(text), "{text}");
         }
         for text in [
-            "R3", "D3", "D23", "A37", "!", "J0", "J?", "J26", "J255", "W99", "B", "*2",
+            "R3", "D3", "D23", "A37", "!", "J0", "J?", "J26", "J255", "W99", "B", "*2", "<", "O2",
+            "O15", "G3",
         ] {
             assert!(!Gesture::could_go_on(text), "{text}");
         }

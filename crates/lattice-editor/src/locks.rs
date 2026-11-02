@@ -647,9 +647,19 @@ impl Editor {
 
     /// The gestures on a step, as `R3: retrigger, 3 hits`, for showing.
     pub fn describe_gestures(&self, track: usize, step: usize) -> Vec<String> {
-        (self.grid.tracks.get(track))
-            .and_then(|t| t.steps.get(step))
-            .map_or_else(Vec::new, |s| s.gestures().map(|g| g.describe()).collect())
+        let Some(track) = self.grid.tracks.get(track) else {
+            return vec![];
+        };
+        let Some(step) = track.steps.get(step) else {
+            return vec![];
+        };
+        let kind = track.instrument.kind;
+        (step.gestures())
+            .map(|g| match g.works_on(kind) {
+                true => g.describe(),
+                false => format!("{} (nothing on a {})", g.describe(), kind.name()),
+            })
+            .collect()
     }
 
     /// The locks on a step, as `cutoff 800Hz`, for showing.

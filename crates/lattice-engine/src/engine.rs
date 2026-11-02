@@ -25,7 +25,7 @@ use crate::clock::Clock;
 use crate::denormal;
 use crate::looper::{Looper, Take};
 use crate::param::Smoothed;
-use crate::processor::{Event, EventKind, Processor, frames};
+use crate::processor::{Event, EventKind, Processor, Shape, frames};
 use crate::routing::Routing;
 use crate::sampler::Sample;
 use lattice_core::macros;
@@ -723,6 +723,8 @@ struct Held {
     steps_left: u16,
     /// An arpeggio it goes round each step: its root, and the two steps above it.
     arpeggio: Option<(u8, u8, u8)>,
+    /// How it plays, each time it's played again too.
+    shape: Shape,
 }
 
 /// Something a track's gestures play later in a step, at a frame counted from the engine's
@@ -871,14 +873,14 @@ impl TrackPlayer {
     fn play_later(&mut self, what: Later, offset: u32) {
         match what {
             Later::Start { pitch, velocity } => {
-                if self.held.iter().any(|h| h.pitch == pitch) {
-                    push(&mut self.events, note_on(offset, pitch, velocity));
+                if let Some(h) = self.held.iter().find(|h| h.pitch == pitch) {
+                    start(&mut self.events, offset, pitch, velocity, h.shape);
                 }
             }
             Later::Change { from, to, velocity } => {
                 if let Some(h) = self.held.iter_mut().find(|h| h.pitch == from) {
                     push(&mut self.events, note_off(offset, from));
-                    push(&mut self.events, note_on(offset, to, velocity));
+                    start(&mut self.events, offset, to, velocity, h.shape);
                     h.pitch = to;
                 }
             }
@@ -2162,6 +2164,15 @@ impl Engine {
             _ => None,
         });
         let starts = delay.map_or(at, ticks);
+        let mut shape = Shape::default();
+        for gesture in step.gestures() {
+            match gesture {
+                Gesture::Reverse => shape.reverse = true,
+                Gesture::Offset(n) => shape.offset = n,
+                Gesture::Glide(n) => shape.glide = (ticks(n) - at) as u32,
+                _ => {}
+            }
+        }
         let mut hit = false;
         if let Some(mut note) = step.note {
             if step.gestures().any(|g| g == Gesture::Accent) {
@@ -2185,7 +2196,7 @@ impl Engine {
                         velocity: note.velocity,
                     },
                 ),
-                None => push(&mut t.events, note_on(offset, note.pitch, note.velocity)),
+                None => start(&mut t.events, offset, note.pitch, note.velocity, shape),
             }
             self.status.started_note(index, note.pitch, note.velocity);
             hit = true;
@@ -2194,6 +2205,7 @@ impl Engine {
                 velocity: note.velocity,
                 steps_left: note.length.max(1),
                 arpeggio: None,
+                shape,
             });
         }
         // The note gestures act on the step's note, or else the latest still sounding, from
@@ -2464,6 +2476,20 @@ fn note_on(offset: u32, pitch: u8, velocity: u8) -> Event {
         offset,
         kind: EventKind::NoteOn { pitch, velocity },
     }
+}
+
+/// Starts a note, played as `shape` says.
+fn start(events: &mut Vec<Event>, offset: u32, pitch: u8, velocity: u8, shape: Shape) {
+    if shape != Shape::default() {
+        push(
+            events,
+            Event {
+                offset,
+                kind: EventKind::Shape(shape),
+            },
+        );
+    }
+    push(events, note_on(offset, pitch, velocity));
 }
 
 fn note_off(offset: u32, pitch: u8) -> Event {
@@ -2952,6 +2978,16 @@ mod tests {
     /// A track of `pitches` with these gestures, playing at 120 BPM and 48 kHz: 6,000 frames a
     /// step, and 250 a 24th.
     fn gesturing(pitches: &[u8], gestures: &[(usize, &str)]) -> (Engine, Notes) {
+        let (instrument, notes) = logger();
+        (playing(pitches, gestures, instrument), notes)
+    }
+
+    /// The same, played on `instrument`.
+    fn playing(
+        pitches: &[u8],
+        gestures: &[(usize, &str)],
+        instrument: Box<dyn Processor>,
+    ) -> Engine {
         let mut steps: Vec<Step> = pitches.iter().map(|&p| Step::note(p)).collect();
         for &(at, gesture) in gestures {
             let fields = &mut steps[at].gestures;
@@ -2967,10 +3003,68 @@ mod tests {
             }],
             groups: vec![],
         };
-        let (instrument, notes) = logger();
         let (mut engine, _) = Engine::new(48_000.0, 120.0, &grid, vec![instrument]);
         engine.play();
-        (engine, notes)
+        engine
+    }
+
+    #[test]
+    fn sound_gestures_shape_each_note_they_play() {
+        type Log = std::sync::Arc<std::sync::Mutex<Vec<(u64, EventKind)>>>;
+        struct Shapes(u64, Log);
+        impl Processor for Shapes {
+            fn process(&mut self, events: &[Event], left: &mut [f32], _: &mut [f32]) {
+                for e in events {
+                    if matches!(e.kind, EventKind::Shape(_) | EventKind::NoteOn { .. }) {
+                        let at = self.0 + u64::from(e.offset);
+                        self.1.lock().unwrap().push((at, e.kind));
+                    }
+                }
+                self.0 += left.len() as u64;
+            }
+        }
+        let log = Log::default();
+        let gestures = [(0, "<"), (0, "R2"), (1, "O8"), (2, "G12"), (2, "D6")];
+        let mut engine = playing(
+            &[60, 62, 64, 65],
+            &gestures,
+            Box::new(Shapes(0, log.clone())),
+        );
+        render(&mut engine, 256, 24_000);
+        let shape = |at, reverse, offset, glide| {
+            let shape = Shape {
+                reverse,
+                offset,
+                glide,
+            };
+            (at, EventKind::Shape(shape))
+        };
+        let on = |at, pitch| {
+            (
+                at,
+                EventKind::NoteOn {
+                    pitch,
+                    velocity: 100,
+                },
+            )
+        };
+        assert_eq!(
+            *log.lock().unwrap(),
+            [
+                // Each hit of a retrigger is turned round, as the note is.
+                shape(0, true, 0, 0),
+                on(0, 60),
+                shape(3_000, true, 0, 0),
+                on(3_000, 60),
+                shape(6_000, false, 8, 0),
+                on(6_000, 62),
+                // Delayed, and gliding over half a step.
+                shape(13_500, false, 0, 3_000),
+                on(13_500, 64),
+                // The next plays as it is.
+                on(18_000, 65),
+            ]
+        );
     }
 
     #[test]

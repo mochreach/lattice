@@ -18,7 +18,7 @@ use lattice_core::instrument::string::{BOW, DECAY, MODEL, PLUCK, POSITION, TONE}
 
 use crate::dsp::decay_coef;
 use crate::param::ParamInfo;
-use crate::processor::{Event, EventKind, Processor, Segment, segments};
+use crate::processor::{Event, EventKind, Processor, Segment, Shape, segments};
 use crate::rhythmicon::{Noise, SIXTY_DB, one_pole};
 
 const VOICES: usize = 8;
@@ -26,6 +26,8 @@ const VOICES: usize = 8;
 const LOWEST_HZ: f32 = 20.0;
 /// Samples between checks for strings that have fallen silent.
 const CONTROL_PERIOD: u32 = 64;
+/// Samples between a gliding string's steps in pitch, often enough not to be heard as steps.
+const GLIDE_PERIOD: u32 = 16;
 /// Below this, a string has finished and stops rendering.
 const SILENCE: f32 = 1e-4;
 /// How long a choked string takes to fade, in seconds to fall by 1/e.
@@ -259,6 +261,11 @@ struct Voice {
     /// Strings sounding, from the model when it was plucked.
     strings: usize,
     pitch: u8,
+    /// The pitch it's tuned to, gliding towards the note's.
+    hz: f32,
+    /// Gliding: `GLIDE_PERIOD`s to go, and the step in pitch each takes.
+    glide_left: u32,
+    glide_ratio: f32,
     sounding: bool,
     /// The note is held, so the bow, if any, keeps going.
     held: bool,
@@ -301,6 +308,10 @@ pub struct Monochord {
     click_coef: f32,
     fade_coef: f32,
     plucks: u64,
+    /// The pitch last played, which a glide starts from.
+    last: Option<u8>,
+    /// How the next note plays.
+    shape: Shape,
     clock: u32,
     /// The output's DC blocker, one per side, as `(last input, last output)`.
     dc: [(f32, f32); 2],
@@ -317,6 +328,9 @@ impl Monochord {
             courses: [Course::new(len), Course::new(len)],
             strings: 1,
             pitch: 0,
+            hz: LOWEST_HZ,
+            glide_left: 0,
+            glide_ratio: 1.0,
             sounding: false,
             held: false,
             velocity: 0.0,
@@ -349,6 +363,8 @@ impl Monochord {
             click_coef: decay_coef(CLICK_TIME, sample_rate),
             fade_coef: decay_coef(CHOKE, sample_rate),
             plucks: 0,
+            last: None,
+            shape: Shape::default(),
             clock: 0,
             dc: [(0.0, 0.0); 2],
             dc_coef: 1.0 - one_pole(10.0, sample_rate),
@@ -393,7 +409,7 @@ impl Monochord {
         voice.damping = damping;
         // Lost per sample, so every string fades over the decay whatever its period.
         let loss = (-SIXTY_DB / (decay * sample_rate)).exp();
-        let hz = midi_to_hz(voice.pitch).max(LOWEST_HZ);
+        let hz = voice.hz.max(LOWEST_HZ);
         voice.tilt_coef = one_pole(hz * BOW_TILT, sample_rate);
         for (c, course) in voice.courses.iter_mut().enumerate() {
             let cents = if c == 0 { 0.0 } else { model.detune };
@@ -420,6 +436,19 @@ impl Monochord {
         let model = self.model;
         self.plucks += 1;
         voice.pitch = pitch;
+        // Gliding, it's plucked at the last pitch and slides evenly, in pitch, to its own.
+        let to = midi_to_hz(pitch);
+        let shape = std::mem::take(&mut self.shape);
+        (voice.hz, voice.glide_left) = match self.last {
+            Some(last) if shape.glide > 0 => {
+                let steps = shape.glide.div_ceil(GLIDE_PERIOD).max(1);
+                let from = midi_to_hz(last);
+                voice.glide_ratio = (to / from).powf(1.0 / steps as f32);
+                (from, steps)
+            }
+            _ => (to, 0),
+        };
+        self.last = Some(pitch);
         voice.velocity = f32::from(velocity) / 127.0;
         voice.strings = model.courses;
         voice.buzz = model.buzz;
@@ -531,6 +560,20 @@ impl Monochord {
         }
     }
 
+    /// Every `GLIDE_PERIOD` samples: gliding strings take their next step in pitch, ending on
+    /// their note's.
+    fn glide(&mut self) {
+        let (model, tone, decay, rate) = (self.model, self.tone, self.decay, self.sample_rate);
+        for voice in self.voices.iter_mut().filter(|v| v.glide_left > 0) {
+            voice.glide_left -= 1;
+            voice.hz = match voice.glide_left {
+                0 => midi_to_hz(voice.pitch),
+                _ => voice.hz * voice.glide_ratio,
+            };
+            Self::tune(voice, model, tone, decay, rate);
+        }
+    }
+
     /// Every `CONTROL_PERIOD` samples: strings that have fallen silent stop.
     fn update_control(&mut self) {
         for voice in &mut self.voices {
@@ -555,6 +598,9 @@ impl Monochord {
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             if self.clock.is_multiple_of(CONTROL_PERIOD) {
                 self.update_control();
+            }
+            if self.clock.is_multiple_of(GLIDE_PERIOD) {
+                self.glide();
             }
             self.clock = self.clock.wrapping_add(1);
             let (mut out_l, mut out_r) = (0.0, 0.0);
@@ -625,6 +671,7 @@ impl Processor for Monochord {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
                 EventKind::NoteOff { pitch } => self.note_off(pitch),
                 EventKind::Choke => self.choke(),
+                EventKind::Shape(shape) => self.shape = shape,
                 EventKind::Param { id, value } => {
                     if let Some(info) = InstKind::String.params().get(id as usize) {
                         self.set(id, info.clamp(value));
@@ -688,6 +735,28 @@ mod tests {
 
     fn cents(a: f32, b: f32) -> f32 {
         1200.0 * (a / b).log2()
+    }
+
+    #[test]
+    fn a_glide_slides_from_the_last_pitch_to_its_own() {
+        let mut m = string(&[]);
+        play(&mut m, &[on(57)], 0.1);
+        let glide = Event {
+            offset: 0,
+            kind: EventKind::Shape(Shape {
+                glide: (0.2 * RATE) as u32,
+                ..Shape::default()
+            }),
+        };
+        // Plucked at A3, it's at A4 once the glide's over, and on its way between.
+        let start = play(&mut m, &[glide, on(69)], 0.02);
+        assert!(cents(pitch(&start, 225.0), 225.0).abs() < 30.0);
+        let middle = play(&mut m, &[], 0.1);
+        let between = pitch(&middle[2_400..], 330.0);
+        assert!((260.0..400.0).contains(&between), "{between}");
+        play(&mut m, &[], 0.1);
+        let end = play(&mut m, &[], 0.05);
+        assert!(cents(pitch(&end, 440.0), 440.0).abs() < 10.0);
     }
 
     fn rms(x: &[f32]) -> f32 {

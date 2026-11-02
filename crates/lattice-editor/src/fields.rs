@@ -503,6 +503,16 @@ impl Editor {
             Ok(gesture) => {
                 let effects = self.put_field(field, gesture.value());
                 self.message = gesture.said();
+                let kind = (self.grid.tracks.get(self.cursor().track)).map(|t| t.instrument.kind);
+                if let (Value::Gesture(g), Some(kind)) = (gesture.value(), kind)
+                    && !g.works_on(kind)
+                    && let Some(message) = &mut self.message
+                {
+                    message.push_str(&format!(
+                        " (nothing on a {})",
+                        lattice_core::Kind::name(kind)
+                    ));
+                }
                 effects
             }
             Err(e) => {
@@ -815,6 +825,21 @@ mod tests {
         assert_eq!(
             (track_gestures(&e, 0)[0].as_deref(), &e.mode),
             (Some("D2"), &Mode::Normal)
+        );
+        // The sound's gestures, saying when they do nothing on the track's instrument.
+        keys(&mut e, "ggfgi<");
+        assert_eq!(
+            e.message.as_deref(),
+            Some("<: reverse, played the other way round (nothing on a synth)")
+        );
+        keys(&mut e, "o12G6");
+        assert_eq!(
+            track_gestures(&e, 0)[..3],
+            [Some("<".into()), Some("O12".into()), Some("G6".into())]
+        );
+        assert_eq!(
+            e.message.as_deref(),
+            Some("G6: glide, from the last pitch over 6/24 of a step")
         );
     }
 

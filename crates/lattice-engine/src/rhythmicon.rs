@@ -109,7 +109,8 @@ impl<V: Voice> Processor for Drum<V> {
                     self.fade = 1.0;
                     self.choked = false;
                 }
-                EventKind::NoteOff { .. } => {}
+                // A drum rings out whatever, and has no file to reverse or pitch to glide.
+                EventKind::NoteOff { .. } | EventKind::Shape(_) => {}
                 EventKind::Choke => self.choked = self.sounding,
                 EventKind::Param { id, value } => {
                     if let Some(info) = V::KIND.params().get(id as usize) {

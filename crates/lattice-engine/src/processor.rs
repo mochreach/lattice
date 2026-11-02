@@ -34,6 +34,27 @@ pub enum EventKind {
         id: u32,
         value: f32,
     },
+    /// How the next note-on plays, from a step's gestures: for that note alone.
+    Shape(Shape),
+}
+
+/// How a note plays, beyond its pitch and velocity: what a step's `<`, `O` and `G` gestures
+/// ask of it. Instruments that can't do something leave it out.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Shape {
+    /// Played the other way round from the instrument's direction, by one playing a file.
+    pub reverse: bool,
+    /// Started this many sixteenths into its sound file, or its piece.
+    pub offset: u8,
+    /// Slid from the last note's pitch over this many frames, by a synth or string.
+    pub glide: u32,
+}
+
+impl Shape {
+    /// Its sixteenths in, as a share of the way.
+    pub fn along(self) -> f64 {
+        f64::from(self.offset) / f64::from(lattice_core::gesture::OFFSETS)
+    }
 }
 
 pub trait Processor: Send {

@@ -30,7 +30,7 @@ fn rendering_never_allocates() {
         pattern_mute: false,
         columns: vec![],
         name: "lead".into(),
-        steps: (0..7)
+        steps: (0..9)
             .map(|i| {
                 let mut step = if i % 2 == 0 {
                     Step::note(60 + i)
@@ -56,8 +56,10 @@ fn rendering_never_allocates() {
                 let gestures = [
                     ["R9", "D3"],
                     ["r4", "X12"],
-                    ["A37", "!"],
+                    ["<", "O8"],
                     ["*4", "W2"],
+                    ["G6", "R2"],
+                    ["A37", "!"],
                     ["B", "J?"],
                     ["/3", "J0"],
                     ["X6", "*2"],

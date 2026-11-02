@@ -7,7 +7,7 @@ use lattice_core::instrument::sampler::*;
 use lattice_core::{DRUM_ROOT, InstKind};
 
 use crate::param::{ParamInfo, Smoothed};
-use crate::processor::{Event, EventKind, Processor, Segment, segments};
+use crate::processor::{Event, EventKind, Processor, Segment, Shape, segments};
 
 /// How many parameters it has.
 const COUNT: usize = InstKind::Sampler.params().len();
@@ -262,6 +262,8 @@ pub struct Sampler {
     player: Player,
     values: [f32; COUNT],
     gain: Smoothed,
+    /// How the next note plays.
+    shape: Shape,
 }
 
 impl Sampler {
@@ -277,6 +279,7 @@ impl Sampler {
             player: Player::new(sample_rate, sample),
             gain: Smoothed::new(0.0, sample_rate),
             values: all,
+            shape: Shape::default(),
         };
         sampler.gain.reset(sampler.value(GAIN));
         sampler
@@ -314,8 +317,14 @@ impl Sampler {
             offset as f32
         } + self.value(TUNE);
         let mut rate = f64::from(2f32.powf(semitones / 12.0)) * self.player.speed();
-        if self.value(DIRECTION) >= 0.5 {
+        let shape = std::mem::take(&mut self.shape);
+        // Started part way in, at the far end of what it plays.
+        let into = (to - from) * shape.along();
+        if (self.value(DIRECTION) >= 0.5) != shape.reverse {
             rate = -rate;
+            to -= into;
+        } else {
+            from += into;
         }
         self.player.start(Play {
             pitch,
@@ -350,6 +359,7 @@ impl Processor for Sampler {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
                 EventKind::NoteOff { pitch } => self.note_off(pitch),
                 EventKind::Choke => self.player.choke(),
+                EventKind::Shape(shape) => self.shape = shape,
                 EventKind::Param { id, value } => {
                     let info = InstKind::Sampler.params().get(id as usize);
                     if let (Some(info), Some(slot)) = (info, self.values.get_mut(id as usize)) {
@@ -433,6 +443,45 @@ mod tests {
         let out = play(&mut s, DRUM_ROOT, 60);
         assert!((out[10] - 0.89).abs() < 0.01, "{}", out[10]);
         assert_eq!(out[55], 0.0, "stops at the start");
+    }
+
+    #[test]
+    fn a_notes_shape_turns_it_round_or_starts_it_in_for_that_note_alone() {
+        let shaped = |s: &mut Sampler, shape: Shape| {
+            let event = Event {
+                offset: 0,
+                kind: EventKind::Shape(shape),
+            };
+            s.process(&[event], &mut [], &mut []);
+        };
+        let mut s = sampler(&[], ramp(100));
+        // A quarter of the way in, forwards.
+        let offset = Shape {
+            offset: 4,
+            ..Shape::default()
+        };
+        shaped(&mut s, offset);
+        let out = play(&mut s, DRUM_ROOT, 100);
+        assert!((out[10] - 0.35).abs() < 0.01, "{}", out[10]);
+        assert_eq!(out[80], 0.0, "and stops at the end");
+        // The next, the first having ended, starts at the top again.
+        let out = play(&mut s, DRUM_ROOT, 20);
+        assert!((out[10] - 0.1).abs() < 0.01, "{}", out[10]);
+
+        // Backwards, from a quarter of the way back from the end; or forwards, the instrument
+        // being set to reverse.
+        let back = Shape {
+            reverse: true,
+            ..offset
+        };
+        let mut s = sampler(&[], ramp(100));
+        shaped(&mut s, back);
+        let out = play(&mut s, DRUM_ROOT, 100);
+        assert!((out[10] - 0.64).abs() < 0.01, "{}", out[10]);
+        let mut s = sampler(&[(DIRECTION, 1.0)], ramp(100));
+        shaped(&mut s, back);
+        let out = play(&mut s, DRUM_ROOT, 20);
+        assert!((out[10] - 0.35).abs() < 0.01, "{}", out[10]);
     }
 
     #[test]

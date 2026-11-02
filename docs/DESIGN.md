@@ -242,8 +242,8 @@ locks all work on pieces as they do on notes. A note plays its piece from the pi
 the file's speed until the note ends, then releases, playing on into the next piece if it's held
 longer: so a loop follows the tempo without stretching, with small gaps if the song's faster than
 the recording (each piece cut short) and pieces running into the next if slower. Reversed, a
-piece plays back from its end. `direction` is a setting like any other, so a lock on a step turns
-just that piece round.
+piece plays back from its end. `direction` is a setting like any other, and a `<` gesture on a
+step turns just that piece round, the other way from it.
 
 The pattern page draws a chop track wider, with each row's piece number (in decimal, like the rows,
 so an untouched loop reads straight down), `◂` if it's reversed, and the waveform of the audio the
@@ -256,8 +256,8 @@ reverses them, `*` repeats the first (or the first `count`) through the rest, an
 rotate them, Helix's keys for case, search and rotating contents, none of which a grid has a use
 for. They work on any track, but reversing is what a chop track needs most: a note that started
 `k` steps in now ends `k` from the end, cut at the selection's end if held past it, and on a chop
-track each note is turned round as well, locking `direction` the other way (or dropping the lock
-when that's the track's own) and moving the note to the last piece it covered, so a held note
+track each note is turned round as well, with a `<` gesture (or by dropping the one it had), and
+moved to the last piece it covered, so a held note
 plays the same audio backwards. Twice round, it's as it was.
 
 `:chop` with no path takes the last export at once, though it may still be rendering; when an
@@ -885,6 +885,11 @@ smallest shift that's felt, and 24 divides into halves, thirds, quarters, sixths
   retriggers it 3 times within the step, `r3` fading; `D8` starts it 8/24 late; `X6` cuts it
   6/24 in; `A37` goes round it and 3 and 7 semitones up, a sixth of a step each, for as long as
   it's held; `!` plays it at full velocity.
+- **Sound gestures** change how that one note sounds: `<` plays a sampler's or chop's note the
+  other way round from its `direction`, `O8` starts it 8/16 of the way into its sound, or its
+  piece, and `G6` slides a synth's or string's note from the last one's pitch over 6/24 of a
+  step. `Gesture::works_on` says which instruments can; elsewhere the field's dimmed and the
+  gesture does nothing.
 - **Playhead gestures** move the track's playhead: `J12` carries on from step 12 after this one,
   and `J?` from a step picked from the pass, the step and the track, so the song plays the same
   each time; `W2` plays the step twice more before going on; `B` turns the track backwards, or
@@ -905,6 +910,17 @@ left due before the next step is played first, and the rest before the block end
 (`Engine::play_due`), each at its exact offset. A retrigger or arpeggio only acts on a note still
 held, so a cut, or the note ending, stops it. `tests/realtime.rs` plays every gesture, so none
 of this allocates.
+
+Sound gestures reach the instrument as a **shape** (`processor::Shape`: reversed, sixteenths
+in, frames of glide), an `EventKind::Shape` sent just ahead of the note-on it shapes, and only
+when it isn't the plain one. The instrument keeps it for its next note-on and then forgets it, so
+it's the one note's alone, however the song's stopped or started, and the pads' notes play as
+they are. The held note carries its shape, so a retrigger's hits and an arpeggio's notes are
+shaped as it is: `<` with `R3` plays three hits backwards, and `G3` with `A37` slides round the
+chord. A glide is worked out in frames from the step's length when it plays. The synth glides
+each voice's phase increment in even steps of pitch at its control rate; the string is plucked
+at the last pitch and retuned every 16 samples (`GLIDE_PERIOD`) on its way, as a finger slides
+along it.
 
 A track's steps are played by `Engine::play_track_step`, once per song step at the song's
 speed. The playhead's gestures are read as it arrives at a step (not again while a `W` waits),

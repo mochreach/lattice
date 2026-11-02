@@ -9,8 +9,8 @@ one for each stage (`gs` shows them):
 2. **sample**: the same four bars, rendered to `amen.wav` and played back on a `chop` track cut
    into 64 pieces, each step playing its own. It sounds as programmed, but it's now audio.
 3. **chopped**: an edit of the sample, made by moving pieces around as notes: a snare roll at the
-   end of bar 2 (pieces 28 and 12 in turn), bar 1's opening and a reversed snare (`◂`, a lock
-   on `direction`, put back with `--` on the next step) in bar 3, and a stutter cutting off the
+   end of bar 2 (pieces 28 and 12 in turn), bar 1's opening and a reversed snare (`◂`, the `<`
+   gesture) in bar 3, and a stutter cutting off the
    crash in bar 4. A rule, `rot+8/2+1`, shifts the whole edit half a bar later every other time
    round.
 

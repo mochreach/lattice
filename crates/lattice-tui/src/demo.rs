@@ -467,10 +467,11 @@ fn bass() -> Vec<Step> {
     notes(". F1 F1 F2? . F1 F1 F2? . F1 F1 F2? . F1 Ab1 C2")
 }
 /// Twelve steps against sixteen, so it lands differently on the beat each bar; its octave
-/// gated short, and its Ab going round its major chord.
+/// gated short, sliding down from it to the Eb as a 303 does, and its Ab going round its major
+/// chord.
 fn acid() -> Vec<Step> {
     let steps = notes("F2! F2 F3 . Eb3 F2! . C3 F2 Ab2! F3? C3");
-    gestured(steps, &[(2, "X8"), (9, "A47")])
+    gestured(steps, &[(2, "X8"), (4, "G8"), (9, "A47")])
 }
 /// The second, answering stab brighter and ringing, from settings locked on its step, and the
 /// first put back to the mixer's. On the fifth, which the changes keep in key, as every chord in
@@ -501,10 +502,10 @@ fn pad() -> Vec<Step> {
     notes("C4_16 . . . . . . . . . . . . . . . | F3_16 . . . . . . . . . . . . . . .")
 }
 /// Seven steps, turned a step back every other pass, and turning round on its G, so it goes
-/// back and forth.
+/// back and forth; its F slides there from the note before.
 fn pluck() -> (Vec<Step>, Vec<Rule>) {
     (
-        gestured(notes("C5 . Eb5 . G5? F5 ."), &[(4, "B")]),
+        gestured(notes("C5 . Eb5 . G5? F5 ."), &[(4, "B"), (5, "G4")]),
         vec![rule(Transform::Drift(-1), every(2, 0))],
     )
 }

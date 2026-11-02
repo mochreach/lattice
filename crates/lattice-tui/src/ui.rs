@@ -4,7 +4,8 @@ use std::time::Instant;
 
 use lattice_core::instrument::chop;
 use lattice_core::{
-    Change, Conductor, Group, InstKind, MAX_GROUPS, MAX_TRACKS, SongGesture, Step, Track, realise,
+    Change, Conductor, Gesture, Group, InstKind, MAX_GROUPS, MAX_TRACKS, SongGesture, Step, Track,
+    realise,
 };
 use lattice_editor::{
     BEATS_PER_BAR, ColumnLabel, Completion, Cursor, Editor, Infobox, Mode, NoteLayout, PadMode,
@@ -616,11 +617,11 @@ fn pieces(
             continue;
         };
         let piece = chop::piece(note.pitch, count);
-        // A step's lock turns its piece round, or back.
+        // A step's `<` turns its piece round, or back, as a lock on its direction does.
         let direction = (step.locks.iter())
             .find(|l| l.fx.is_none() && u32::from(l.param) == chop::DIRECTION)
             .map_or(instrument.get(chop::DIRECTION), |l| l.value);
-        let reverse = direction >= 0.5;
+        let reverse = (direction >= 0.5) != step.gestures().any(|g| g == Gesture::Reverse);
         let held = rows.iter_mut().skip(i).take(usize::from(note.length));
         for (j, row) in held.enumerate() {
             let (from, to) = if reverse {
@@ -1293,9 +1294,14 @@ fn grid_row(
                 fit(&velocity.unwrap_or_default(), FIELD),
                 cursor(StepField::Velocity, c.style()),
             ));
-            // Gestures: on the note in the track's colour, on the playhead in the accent.
+            // Gestures: on the note in the track's colour, on the playhead in the accent, and
+            // dimmed where the instrument can't play them.
+            let kind = c.track.instrument.kind;
             for (g, gesture) in step.gestures.iter().enumerate() {
                 let (text, own) = match gesture {
+                    Some(gesture) if !gesture.works_on(kind) => {
+                        (format!(" {gesture}"), c.style().add_modifier(Modifier::DIM))
+                    }
                     Some(gesture) if gesture.is_playhead() => {
                         (format!(" {gesture}"), Style::new().fg(theme.accent))
                     }

@@ -385,6 +385,15 @@ note, or on the one still sounding when the step has none, timed in 24ths of a s
 | `A37` | plays the note, then 3 and 7 semitones up, in turn, a sixth of a step each, for as long as it's held |
 | `!` | plays the note at full velocity |
 
+Sound gestures change how one note sounds, for that note alone. Where the track's instrument
+can't do one, the field shows it dimmed, the status line says so, and it does nothing:
+
+| Gesture | |
+|---|---|
+| `<` | on a `sampler` or `chop` track, plays the note's sound, or its piece, the other way round from its `direction`: backwards, usually |
+| `O8` | on a `sampler` or `chop` track, starts the note 8/16 of the way into its sound, or its piece (0–15) |
+| `G6` | on a `synth` or `string` track, slides the note from the last one's pitch over 6/24 of a step (1–23) |
+
 Playhead gestures move the track's own playhead, so each track can loop, wait or turn round on its
 own, and are shown in the accent colour:
 
@@ -400,7 +409,8 @@ The status line says what the gestures under the cursor do, `^a` `^x` change the
 `d` `y` `p` work on them as in any field. Closed tracks mark a step with gestures `◆`. A muted
 track's playhead still goes where its gestures send it, so it's in place when it comes back. In
 the demo, the hats ratchet into each bar, the second clap is pushed late, the acid's octave is
-gated and its A♭ goes round its chord, and the pluck turns round on its G, going back and forth.
+gated, it slides down to its E♭ (`G8`) and its A♭ goes round its chord, and the pluck turns round
+on its G, going back and forth, and glides into its F.
 
 The **conductor** is a lane of each pattern for what belongs to the whole song: left of the
 first track, beside the step numbers, two fields on each step. `h` from the first track's notes
@@ -452,12 +462,13 @@ as a waveguide: models `nylon`, `steel` (pairs of strings a few cents apart, spr
 and `sitar` (buzzing against its bridge), with pluck (soft thumb to hard, clicking pick), position (along
 the string), decay, tone and bow (a real bowed string while the note is held, light to heavy;
 it takes over from the pluck as it's turned up, and long notes suit it). Strings ring on after a
-note ends, as a harp's do; a note-off only lifts the bow. `sampler` plays a WAV file (`:sample kick.wav`; 8 to 32-bit, or float, mono or
+note ends, as a harp's do; a note-off only lifts the bow. A `G` gesture glides a synth's or a
+string's note in from the last one's pitch, a string plucked there and slid along. `sampler` plays a WAV file (`:sample kick.wav`; 8 to 32-bit, or float, mono or
 stereo, any rate). C-4 plays it as recorded and other notes pitch it, or with `slices` above 1 it's
 chopped into equal slices, C-4 playing the first and each note up the next, at the file's pitch. Its
 `mode` is `one-shot` (to the end, whatever the note's length), `gate` (until the note ends) or
 `loop` (round the region until the note ends); `start` and `end` set the region, `direction`
-plays it backwards, and `tune`, `attack`, `release` and `gain` do what they say. So
+plays it backwards (and the `<` and `O` gestures turn one note round or start it part way in), and `tune`, `attack`, `release` and `gain` do what they say. So
 `:export-sel`, then `:sample` on another track, turns a bar into a sample to play.
 
 `chop` is for loops: `:export-loop` on a selection, then `:chop` on an empty track, or `:chop
@@ -467,9 +478,9 @@ down the column in braille, and the pieces are notes like any other: `y` and `p`
 silences one, `C-a` and `C-x` move a step to the next or last piece, and rules such as `:rot` and
 `:rev` rearrange the loop each pass. A note plays its piece at the file's speed until the note ends,
 playing on into the next if it's longer, so the loop follows the tempo without stretching. `~`
-reverses the selected steps, turning each piece round too (marked `◂`), so the slice plays
+reverses the selected steps, turning each piece round too with a `<` gesture (marked `◂`), so the slice plays
 backwards; `*` repeats the first step, or the first few, through the selection, for a stutter; `A-(`
-and `A-)` rotate the selection. `:lock direction reverse` turns a single step's piece round;
+and `A-)` rotate the selection. A `<` gesture turns a single step's piece round, and `O8` starts it half way in;
 `pieces`, `start`, `end`, `tune`, `release` and `gain` are on the mixer.
 
 The **looper** records the audio input into a chop track. `:arm` a track (the header shows `○`, and

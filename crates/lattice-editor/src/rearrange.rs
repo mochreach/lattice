@@ -1,10 +1,10 @@
 //! Rearranging the selected steps, on each track they reach, as Helix rearranges text: `~` turns
 //! them back to front, `*` repeats the first through the rest, and `A-(` and `A-)` rotate them.
-//! On a chop track, turning the steps round turns each piece round too, so the slice of sample
-//! they cover plays backwards.
+//! On a chop track, turning the steps round turns each piece round too, with the `<` gesture, so
+//! the slice of sample they cover plays backwards.
 
 use lattice_core::instrument::{InstKind, Instrument, chop};
-use lattice_core::{Change, Lock, Step};
+use lattice_core::{Gesture, Step};
 
 use crate::{Editor, Effect, changed};
 
@@ -76,8 +76,10 @@ pub(crate) fn reverse(steps: &mut [Step], instrument: &Instrument) {
         // Held past the selection, it's cut at its end, as what's selected is turned round alone.
         let span = usize::from(note.length).clamp(1, n - i);
         note.length = span as u16;
-        let mut turned = Step::with_note(note);
-        turned.locks = step.locks;
+        let mut turned = Step {
+            note: Some(note),
+            ..*step
+        };
         if instrument.kind == InstKind::Chop {
             turn_piece(&mut turned, span, instrument);
         }
@@ -93,69 +95,30 @@ pub(crate) fn reverse(steps: &mut [Step], instrument: &Instrument) {
         *to = turned;
     }
     steps.copy_from_slice(&reversed);
-    if instrument.kind == InstKind::Chop {
-        hold_directions(steps);
-    }
 }
 
-/// As a lock holds until the next, puts the direction back on each note after a turned one that
-/// isn't turned itself, so it plays as it did. Round from the end, as the steps loop.
-fn hold_directions(steps: &mut [Step]) {
-    let direction = |step: &Step| {
-        (step.locks.iter())
-            .find(|l| l.param as u32 == chop::DIRECTION && l.fx.is_none())
-            .copied()
-    };
-    let mut turned = steps
-        .iter()
-        .rev()
-        .find_map(direction)
-        .is_some_and(|l| l.change != Change::Reset);
-    for step in steps.iter_mut() {
-        match direction(step) {
-            Some(lock) => turned = lock.change != Change::Reset,
-            // With no room, it plays the way the lock before says.
-            None if turned
-                && step.note.is_some()
-                && step.locks.set(Lock {
-                    fx: None,
-                    param: chop::DIRECTION as u8,
-                    value: 0.0,
-                    change: Change::Reset,
-                }) =>
-            {
-                turned = false;
-            }
-            None => {}
-        }
-    }
-}
-
-/// Plays a chop step's piece the other way, by locking its direction, and starts it from the
-/// piece it now reaches first, so a note held over `span` pieces covers the same ones.
+/// Plays a chop step's piece the other way, with a `<` gesture or without one, and starts it
+/// from the piece it now reaches first, so a note held over `span` pieces covers the same ones.
 fn turn_piece(step: &mut Step, span: usize, instrument: &Instrument) {
     let Some(note) = &mut step.note else {
         return;
     };
-    let lock = Lock {
-        fx: None,
-        param: chop::DIRECTION as u8,
-        value: 0.0,
-        ..Default::default()
+    let fields = &mut step.gestures;
+    let turned = match fields.iter_mut().find(|g| **g == Some(Gesture::Reverse)) {
+        Some(field) => {
+            *field = None;
+            false
+        }
+        None => {
+            // With no room for it, it plays as it did.
+            let Some(free) = fields.iter_mut().find(|g| g.is_none()) else {
+                return;
+            };
+            *free = Some(Gesture::Reverse);
+            true
+        }
     };
-    let base = instrument.get(chop::DIRECTION) >= 0.5;
-    let reverse = !(step.locks.find(&lock))
-        .filter(|l| l.change != Change::Reset)
-        .map_or(base, |l| l.value >= 0.5);
-    if reverse == base {
-        step.locks.retain(|l| !l.same_param(&lock));
-    } else if !step.locks.set(Lock {
-        value: if reverse { 1.0 } else { 0.0 },
-        ..lock
-    }) {
-        // No room for the lock, so it plays as it did.
-        return;
-    }
+    let reverse = (instrument.get(chop::DIRECTION) >= 0.5) != turned;
     let pieces = instrument.get(chop::PIECES).round().max(1.0) as usize;
     let piece = chop::piece(note.pitch, pieces) as isize;
     let along = span as isize - 1;
@@ -166,7 +129,7 @@ fn turn_piece(step: &mut Step, span: usize, instrument: &Instrument) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lattice_core::Note;
+    use lattice_core::{Lock, Note};
 
     fn note(pitch: u8, length: u16) -> Step {
         Step::with_note(Note {
@@ -213,34 +176,25 @@ mod tests {
                 Some((chop::pitch(0), 1)),
             ]
         );
-        let reversed = |s: &Step| {
-            s.locks
-                .iter()
-                .any(|l| l.param as u32 == chop::DIRECTION && l.value == 1.0)
-        };
+        let reversed = |s: &Step| s.gestures().any(|g| g == Gesture::Reverse);
         assert!(steps.iter().filter(|s| s.note.is_some()).all(reversed));
 
-        // Twice round, it's as it was, with no locks left.
+        // Twice round, it's as it was, with no gestures left.
         reverse(&mut steps, &chopper);
         assert_eq!(pitches(&steps)[1], Some((chop::pitch(1), 2)));
-        assert!(steps.iter().all(|s| s.locks.is_empty()));
+        assert!(steps.iter().all(|s| s.gestures().next().is_none()));
 
-        // A piece already turned plays forwards, and the turned ones before it don't hold over it.
+        // A piece already turned plays forwards, keeping its other gestures, and one with no
+        // room for a `<` plays as it did.
         let mut steps: Vec<Step> = (0..3).map(|i| note(chop::pitch(i), 1)).collect();
-        let back = Lock {
-            fx: None,
-            param: chop::DIRECTION as u8,
-            value: 1.0,
-            ..Default::default()
-        };
-        steps[0].locks.set(back);
+        steps[0].gestures = [Some(Gesture::Reverse), Some(Gesture::Accent)];
+        steps[2].gestures = [Some(Gesture::Accent), Some(Gesture::Retrigger(2))];
         reverse(&mut steps, &chopper);
-        let changes: Vec<Option<Change>> = (steps.iter())
-            .map(|s| s.locks.find(&back).map(|l| l.change))
-            .collect();
+        assert_eq!(steps[2].gestures, [None, Some(Gesture::Accent)]);
+        assert_eq!(steps[1].gestures, [Some(Gesture::Reverse), None]);
         assert_eq!(
-            changes,
-            [Some(Change::Set), Some(Change::Set), Some(Change::Reset)]
+            steps[0].gestures,
+            [Some(Gesture::Accent), Some(Gesture::Retrigger(2))]
         );
     }
 
