@@ -42,7 +42,12 @@ impl Click {
 impl Processor for Click {
     fn process(&mut self, events: &[Event], left: &mut [f32], right: &mut [f32]) {
         segments(events, left.len(), |segment| match segment {
-            Segment::Render(range) => self.render(&mut left[range.clone()], &mut right[range]),
+            Segment::Render(range) => {
+                // `segments` keeps each range within the block.
+                if let (Some(l), Some(r)) = (left.get_mut(range.clone()), right.get_mut(range)) {
+                    self.render(l, r);
+                }
+            }
             Segment::Event(event) => {
                 if let EventKind::NoteOn { pitch, velocity } = event.kind {
                     let hz = 440.0 * 2f32.powf((f32::from(pitch) - 69.0) / 12.0);

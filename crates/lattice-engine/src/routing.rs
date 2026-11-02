@@ -12,6 +12,7 @@
 use lattice_core::{FxChain, FxRow, MAX_EFFECTS, MAX_LANES, MAX_SENDS, db_to_gain};
 
 use crate::engine::MAX_BLOCK;
+use crate::processor::frames;
 
 /// The most rows in a chain: an effect or a send each.
 const MAX_OPS: usize = MAX_EFFECTS + MAX_SENDS;
@@ -53,9 +54,11 @@ pub struct Routing {
 
 impl std::fmt::Debug for Routing {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let last = self.lanes.checked_sub(1).and_then(|k| self.ends.get(k));
+        let ops = last.and_then(|&end| self.ops.get(..end));
         f.debug_struct("Routing")
-            .field("ops", &&self.ops[..self.ends[self.lanes - 1]])
-            .field("ends", &&self.ends[..self.lanes])
+            .field("ops", &ops)
+            .field("ends", &self.ends.get(..self.lanes))
             .finish_non_exhaustive()
     }
 }
@@ -71,9 +74,10 @@ impl Routing {
         let mut ends = [0; MAX_LANES];
         let mut out = [0.0; MAX_LANES];
         let mut n = 0;
-        for (k, lane) in chain.lanes().iter().enumerate().take(MAX_LANES) {
-            for row in lane.rows.iter().take(MAX_OPS - n) {
-                ops[n] = match *row {
+        for ((lane, end), out) in chain.lanes().iter().zip(&mut ends).zip(&mut out) {
+            // Rows past the room for them are left out.
+            for (op, row) in ops.iter_mut().skip(n).zip(&lane.rows) {
+                *op = match *row {
                     FxRow::Fx => Op::Fx,
                     FxRow::Send { to, level } => Op::Send {
                         to,
@@ -82,8 +86,8 @@ impl Routing {
                 };
                 n += 1;
             }
-            ends[k] = n;
-            out[k] = db_to_gain(lane.out);
+            *end = n;
+            *out = db_to_gain(lane.out);
         }
         let silence = || Box::new([[[0.0; MAX_BLOCK]; 2]; MAX_LANES]);
         let gains = ops.map(|op| match op {
@@ -137,81 +141,128 @@ impl Routing {
         right: &mut [f32],
         mut effect: impl FnMut(usize, &mut [f32], &mut [f32]),
     ) {
-        let n = left.len().min(MAX_BLOCK);
-        let (left, right) = (&mut left[..n], &mut right[..n]);
-        let at = self.at;
+        let n = left.len().min(right.len()).min(MAX_BLOCK);
+        let (left, right) = (frames(left, n), frames(right, n));
+        let Self {
+            ops,
+            ends,
+            lanes,
+            out,
+            send_now,
+            out_now,
+            lane,
+            sent_back,
+            feedback,
+            at,
+            mixed,
+        } = self;
+        let lanes = *lanes;
+        // Where the ring of feedback starts. `n` and this are at most `MAX_BLOCK`, the length of
+        // every buffer here, so the splits below are in range.
+        let at = *at % MAX_BLOCK;
+        let ins = [&*left, &*right];
+
         // Each lane starts from its input and what's come back to it.
-        for k in 0..self.lanes {
-            let [l, r] = &mut self.lane[k];
-            if k == 0 {
-                l[..n].copy_from_slice(left);
-                r[..n].copy_from_slice(right);
-            } else {
-                l[..n].fill(0.0);
-                r[..n].fill(0.0);
-            }
-            for (side, buffer) in [l, r].into_iter().enumerate() {
-                let back = &self.feedback[k][side];
-                for (i, x) in buffer[..n].iter_mut().enumerate() {
-                    *x += back[(at + i) % MAX_BLOCK];
+        let starts = lane
+            .iter_mut()
+            .zip(sent_back.iter_mut())
+            .zip(feedback.iter());
+        for (k, ((sides, sent), back)) in starts.enumerate().take(lanes) {
+            let sides = sides.iter_mut().zip(sent.iter_mut()).zip(back).zip(ins);
+            for (((buffer, sent), back), input) in sides {
+                let buffer = frames(buffer, n);
+                if k == 0 {
+                    for (x, &y) in buffer.iter_mut().zip(input) {
+                        *x = y;
+                    }
+                } else {
+                    buffer.fill(0.0);
                 }
-                self.sent_back[k][side][..n].fill(0.0);
+                // The ring read from `at`: to its end, then round from its start.
+                let (front, rest) = back.split_at(at);
+                let (first, second) = buffer.split_at_mut(rest.len().min(buffer.len()));
+                mix_into(first, rest);
+                mix_into(second, front);
+                frames(sent, n).fill(0.0);
             }
         }
-        for side in self.mixed.iter_mut() {
-            side[..n].fill(0.0);
+        for side in mixed.iter_mut() {
+            frames(side, n).fill(0.0);
         }
 
         let mut next = 0;
         let mut start = 0;
-        for k in 0..self.lanes {
-            for op in start..self.ends[k] {
-                match self.ops[op] {
+        let outs = ends.iter().zip(out.iter()).zip(out_now.iter_mut());
+        for (k, ((&end, &level), now)) in outs.enumerate().take(lanes) {
+            let rows = ops.get(start..end).into_iter().flatten();
+            let gains = send_now.get_mut(start..end).into_iter().flatten();
+            start = end;
+            for (&op, gain_now) in rows.zip(gains) {
+                match op {
                     Op::Fx => {
-                        let [l, r] = &mut self.lane[k];
-                        effect(next, &mut l[..n], &mut r[..n]);
+                        if let Some([l, r]) = lane.get_mut(k) {
+                            effect(next, frames(l, n), frames(r, n));
+                        }
                         next += 1;
                     }
                     Op::Send { to, gain } => {
-                        let from = self.send_now[op];
-                        self.send_now[op] = gain;
-                        let into = if to > k {
-                            let (before, after) = self.lane.split_at_mut(to);
-                            add(&before[k], &mut after[0], n, from, gain);
-                            continue;
-                        } else {
-                            &mut self.sent_back[to]
-                        };
-                        add(&self.lane[k], into, n, from, gain);
+                        let from = std::mem::replace(gain_now, gain);
+                        if to > k {
+                            // Straight into a lane further right, which hasn't run yet.
+                            if let Some((before, after)) = lane.split_at_mut_checked(to)
+                                && let (Some(src), Some(dst)) = (before.get(k), after.first_mut())
+                            {
+                                add(src, dst, n, from, gain);
+                            }
+                        } else if let (Some(src), Some(dst)) = (lane.get(k), sent_back.get_mut(to))
+                        {
+                            add(src, dst, n, from, gain);
+                        }
                     }
                 }
             }
-            start = self.ends[k];
-            let from = self.out_now[k];
-            self.out_now[k] = self.out[k];
-            add(&self.lane[k], &mut self.mixed, n, from, self.out[k]);
+            let from = std::mem::replace(now, level);
+            if let Some(src) = lane.get(k) {
+                add(src, mixed, n, from, level);
+            }
         }
 
         // What was sent back is heard a block's frames from now.
-        for k in 0..self.lanes {
-            for side in 0..2 {
-                let back = &mut self.feedback[k][side];
-                for (i, &x) in self.sent_back[k][side][..n].iter().enumerate() {
-                    back[(at + i) % MAX_BLOCK] = x.clamp(-FEEDBACK_LIMIT, FEEDBACK_LIMIT);
+        for (sent, back) in sent_back.iter().zip(feedback.iter_mut()).take(lanes) {
+            for (sent, back) in sent.iter().zip(back.iter_mut()) {
+                // Written to the ring as it's read: from `at` to its end, then from its start.
+                let (sent, _) = sent.split_at(n);
+                let (front, rest) = back.split_at_mut(at);
+                let (first, second) = sent.split_at(rest.len().min(sent.len()));
+                for (b, &x) in rest
+                    .iter_mut()
+                    .zip(first)
+                    .chain(front.iter_mut().zip(second))
+                {
+                    *b = x.clamp(-FEEDBACK_LIMIT, FEEDBACK_LIMIT);
                 }
             }
         }
         self.at = (at + n) % MAX_BLOCK;
-        left.copy_from_slice(&self.mixed[0][..n]);
-        right.copy_from_slice(&self.mixed[1][..n]);
+        for (output, mixed) in [left, right].into_iter().zip(self.mixed.iter()) {
+            for (o, &m) in output.iter_mut().zip(mixed) {
+                *o = m;
+            }
+        }
+    }
+}
+
+fn mix_into(out: &mut [f32], src: &[f32]) {
+    for (o, &s) in out.iter_mut().zip(src) {
+        *o += s;
     }
 }
 
 /// Adds the first `n` frames of `from` into `into`, the gain gliding from `start` to `end`.
 fn add(from: &[Buffer; 2], into: &mut [Buffer; 2], n: usize, start: f32, end: f32) {
     let step = (end - start) / n.max(1) as f32;
-    for side in 0..2 {
-        let pairs = into[side][..n].iter_mut().zip(&from[side][..n]);
+    for (into, from) in into.iter_mut().zip(from) {
+        let pairs = frames(into, n).iter_mut().zip(from);
         for (i, (y, &x)) in pairs.enumerate() {
             *y += x * (start + step * (i + 1) as f32);
         }

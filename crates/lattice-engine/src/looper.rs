@@ -59,9 +59,12 @@ impl Take {
             let room = self.left.capacity() - self.left.len();
             let range = (from - now) as usize..(to - now) as usize;
             let range = range.start..range.end.min(range.start + room);
-            // Within capacity, so it never reallocates.
-            self.left.extend_from_slice(&left[range.clone()]);
-            self.right.extend_from_slice(&right[range]);
+            // Within capacity, so it never reallocates. The range is within `left`; a `right`
+            // too short for it would leave the sides out of step, so neither is recorded.
+            if let (Some(l), Some(r)) = (left.get(range.clone()), right.get(range)) {
+                self.left.extend_from_slice(l);
+                self.right.extend_from_slice(r);
+            }
             if self.left.len() == self.left.capacity() {
                 self.complete = true;
                 return true;

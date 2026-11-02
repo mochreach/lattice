@@ -25,7 +25,7 @@ use crate::clock::Clock;
 use crate::denormal;
 use crate::looper::{Looper, Take};
 use crate::param::Smoothed;
-use crate::processor::{Event, EventKind, Processor};
+use crate::processor::{Event, EventKind, Processor, frames};
 use crate::routing::Routing;
 use crate::sampler::Sample;
 use lattice_core::macros;
@@ -361,16 +361,19 @@ impl Strip {
         // Constant gains for the whole block unless something is gliding: pan needs a cosine.
         let mut gains = self.gains();
         let mut peak = 0.0f32;
-        for i in 0..tl.len() {
+        let frames = (tl.iter().zip(tr))
+            .zip(ml.iter_mut().zip(mr.iter_mut()))
+            .zip(sl.iter_mut().zip(sr.iter_mut()));
+        for (((&tl, &tr), (ml, mr)), (sl, sr)) in frames {
             if !settled {
                 gains = self.gains();
             }
             let [gl, gr, send] = gains;
-            let (l, r) = (tl[i] * gl, tr[i] * gr);
-            ml[i] += l;
-            mr[i] += r;
-            sl[i] += l * send;
-            sr[i] += r * send;
+            let (l, r) = (tl * gl, tr * gr);
+            *ml += l;
+            *mr += r;
+            *sl += l * send;
+            *sr += r * send;
             peak = peak.max(l.abs()).max(r.abs());
         }
         peak
@@ -561,7 +564,7 @@ impl Status {
 
     fn set_locks(&self, track: usize, locks: &Locks) {
         let mut packed = locks.iter().map(pack_lock);
-        for slot in &self.locks[track] {
+        for slot in self.locks.get(track).into_iter().flatten() {
             slot.store(packed.next().unwrap_or(0), Ordering::Relaxed);
         }
     }
@@ -578,17 +581,23 @@ impl Status {
     }
 
     fn started_note(&self, track: usize, pitch: u8, velocity: u8) {
-        let slot = &self.notes[track];
+        let Some(slot) = self.notes.get(track) else {
+            return;
+        };
         let count = (slot.load(Ordering::Relaxed) >> 16) + 1;
         slot.store(pack_note(count, pitch, velocity), Ordering::Relaxed);
     }
 
     fn add_peak(&self, track: usize, peak: f32) {
-        self.peaks[track].fetch_max(peak.to_bits(), Ordering::Relaxed);
+        if let Some(slot) = self.peaks.get(track) {
+            slot.fetch_max(peak.to_bits(), Ordering::Relaxed);
+        }
     }
 
     fn set_position(&self, track: usize, packed: u64) {
-        self.positions[track].store(packed, Ordering::Relaxed);
+        if let Some(slot) = self.positions.get(track) {
+            slot.store(packed, Ordering::Relaxed);
+        }
     }
 
     fn set_stopped(&self) {
@@ -779,10 +788,16 @@ impl TrackPlayer {
 
     /// Sends every setting the macros turn what it is now.
     fn settle_macros(&mut self, offset: u32) {
+        // By index, as settling needs the player mutably; each target is copied out first.
+        let target = |p: &Self, m: usize, t: usize| {
+            let targets = &p.track.macros.get(m)?.targets;
+            targets.get(t).copied()
+        };
         for m in 0..self.track.macros.len() {
-            for t in 0..self.track.macros[m].targets.len() {
-                let target = self.track.macros[m].targets[t];
+            let mut t = 0;
+            while let Some(target) = target(self, m, t) {
                 self.settle(target.fx, target.param, offset);
+                t += 1;
             }
         }
     }
@@ -904,31 +919,26 @@ pub struct Engine {
 impl Engine {
     /// `instruments[i]` plays `grid.tracks[i]`. Starts stopped. Allocates, so build it off the
     /// audio thread, then move the engine into the audio callback and keep the handle.
+    ///
+    /// The song keeps to the engine's limits, but rather than panic if it didn't: it plays as
+    /// many tracks as there are instruments, up to [`MAX_TRACKS`], and only the first
+    /// [`MAX_STEPS`] steps of a longer track, as more wouldn't fit the room kept for them.
     pub fn new(
         sample_rate: f32,
         bpm: f64,
         grid: &Grid,
         instruments: Vec<Box<dyn Processor>>,
     ) -> (Self, Handle) {
-        assert_eq!(
-            grid.tracks.len(),
-            instruments.len(),
-            "one instrument per track"
-        );
-        assert!(grid.tracks.len() <= MAX_TRACKS, "too many tracks");
-        assert!(grid.tracks.iter().all(|t| t.steps.len() <= MAX_STEPS));
-
         // Room for every track up front, so inserting one never reallocates.
         let mut tracks = Vec::with_capacity(MAX_TRACKS);
-        tracks.extend(
-            grid.tracks
-                .iter()
-                .zip(instruments)
-                .map(|(track, instrument)| {
-                    TrackPlayer::new(track.clone(), instrument, sample_rate)
-                }),
-        );
-        let any_solo = grid.tracks.iter().any(|t| t.mix.solo);
+        tracks.extend(grid.tracks.iter().zip(instruments).take(MAX_TRACKS).map(
+            |(track, instrument)| {
+                let mut track = track.clone();
+                track.steps.truncate(MAX_STEPS);
+                TrackPlayer::new(track, instrument, sample_rate)
+            },
+        ));
+        let any_solo = tracks.iter().any(|t| t.track.mix.solo);
         for t in &mut tracks {
             t.strip.reset(&t.track.mix, any_solo);
         }
@@ -1388,8 +1398,10 @@ impl Engine {
         // Retriggering a pitch, or out of room: end the old one first.
         let same = t.previews.iter().position(|p| p.pitch == preview.pitch);
         let full = (t.previews.len() == MAX_PREVIEWS).then_some(0);
-        if let Some(i) = same.or(full) {
-            push(&mut t.events, note_off(0, t.previews[i].pitch));
+        if let Some(i) = same.or(full)
+            && let Some(old) = t.previews.get(i)
+        {
+            push(&mut t.events, note_off(0, old.pitch));
             t.previews.remove(i);
         }
         t.previews.push(preview);
@@ -1404,7 +1416,9 @@ impl Engine {
     /// Plays again the repeated previews due on step `step`.
     fn repeat_previews(&mut self, step: u64, offset: u32) {
         for index in 0..self.tracks.len() {
-            let t = &mut self.tracks[index];
+            let Some(t) = self.tracks.get_mut(index) else {
+                break;
+            };
             let mut hit = false;
             for p in &t.previews {
                 if p.every > 0 && step.is_multiple_of(u64::from(p.every)) {
@@ -1431,7 +1445,10 @@ impl Engine {
 
     /// Reads a block of the input, or silence where there's none yet.
     fn read_input(&mut self, len: usize) {
-        let (left, right) = (&mut self.input_left[..len], &mut self.input_right[..len]);
+        let (left, right) = (
+            frames(&mut self.input_left, len),
+            frames(&mut self.input_right, len),
+        );
         left.fill(0.0);
         right.fill(0.0);
         let Some(input) = &mut self.input else {
@@ -1507,54 +1524,61 @@ impl Engine {
         // Render and mix.
         left.fill(0.0);
         right.fill(0.0);
-        let (sl, sr) = (&mut self.send_left[..len], &mut self.send_right[..len]);
+        let (sl, sr) = (
+            frames(&mut self.send_left, len),
+            frames(&mut self.send_right, len),
+        );
         sl.fill(0.0);
         sr.fill(0.0);
         // Which group buses have tracks in them this block.
         let mut fed = [false; MAX_GROUPS];
         for t in &self.tracks {
-            if let Some(g) = t.group {
-                fed[g] = true;
+            if let Some(fed) = t.group.and_then(|g| fed.get_mut(g)) {
+                *fed = true;
             }
         }
         for (group, _) in self.groups.iter_mut().zip(fed).filter(|(_, fed)| *fed) {
-            group.left[..len].fill(0.0);
-            group.right[..len].fill(0.0);
+            frames(&mut group.left, len).fill(0.0);
+            frames(&mut group.right, len).fill(0.0);
         }
         let any_solo = self.tracks.iter().any(|t| t.track.mix.solo);
         for (index, t) in self.tracks.iter_mut().enumerate() {
             sort_by_offset(&mut t.events);
-            let (tl, tr) = (&mut t.left[..len], &mut t.right[..len]);
+            let (tl, tr) = (frames(&mut t.left, len), frames(&mut t.right, len));
             tl.fill(0.0);
             tr.fill(0.0);
             t.instrument.process(&t.events, tl, tr);
             t.events.clear();
             run_chain(&mut t.effects, &mut t.routing, tl, tr);
             t.strip.set(&t.track.mix, any_solo);
-            let out = match t.group {
-                Some(g) => {
-                    let group = &mut self.groups[g];
-                    [&mut group.left[..len], &mut group.right[..len]]
-                }
+            // Groups are checked to be in range as they're set, so a track goes to the master
+            // only when it's in none.
+            let out = match t.group.and_then(|g| self.groups.get_mut(g)) {
+                Some(group) => [frames(&mut group.left, len), frames(&mut group.right, len)],
                 None => [&mut *left, &mut *right],
             };
             let peak = t.strip.apply([tl, tr], out, [sl, sr]);
             self.status.add_peak(index, peak);
             self.status.set_locks(index, &t.locked);
         }
-        for (g, group) in self.groups.iter_mut().enumerate() {
+        let buses = self
+            .groups
+            .iter_mut()
+            .zip(fed)
+            .zip(&self.status.group_peaks);
+        for ((group, fed), peaks) in buses {
             // A bus with no tracks still runs its effects, so their tails ring out.
-            if !fed[g] && group.effects.is_empty() && group.routing.is_none() {
+            if !fed && group.effects.is_empty() && group.routing.is_none() {
                 continue;
             }
-            let (gl, gr) = (&mut group.left[..len], &mut group.right[..len]);
-            if !fed[g] {
+            let (gl, gr) = (frames(&mut group.left, len), frames(&mut group.right, len));
+            if !fed {
                 gl.fill(0.0);
                 gr.fill(0.0);
             }
             run_chain(&mut group.effects, &mut group.routing, gl, gr);
             let peak = apply_gain(&mut group.gain, gl, gr);
-            self.status.group_peaks[g].fetch_max(peak.to_bits(), Ordering::Relaxed);
+            peaks.fetch_max(peak.to_bits(), Ordering::Relaxed);
             mix_into(left, gl);
             mix_into(right, gr);
         }
@@ -1571,7 +1595,10 @@ impl Engine {
         );
         let peak = apply_gain(&mut self.master_gain, left, right);
         self.status.bus_peaks[1].fetch_max(peak.to_bits(), Ordering::Relaxed);
-        let (cl, cr) = (&mut self.click_left[..len], &mut self.click_right[..len]);
+        let (cl, cr) = (
+            frames(&mut self.click_left, len),
+            frames(&mut self.click_right, len),
+        );
         self.click.process(&self.click_events, cl, cr);
         self.click_events.clear();
         mix_into(left, cl);
@@ -1581,7 +1608,10 @@ impl Engine {
         }
 
         let (takes, garbage) = (&mut self.takes, &mut self.garbage);
-        let (il, ir) = (&self.input_left[..len], &self.input_right[..len]);
+        let (il, ir) = (
+            frames(&mut self.input_left, len),
+            frames(&mut self.input_right, len),
+        );
         self.looper
             .write(self.frames, il, ir, |t| send_take(takes, garbage, t));
         self.frames += len as u64;
@@ -1657,9 +1687,14 @@ impl Engine {
             t.position = u64::from(t.pass) << 32 | t.playhead as u64;
             self.status.set_position(index, t.position);
             // Muted in this pattern or by the song, its steps go by unplayed.
+            // The playhead is kept within the steps, being reset whenever they change.
+            let Some(&realised) = t.steps.get(t.playhead) else {
+                t.playhead = 0;
+                continue;
+            };
             let step = match t.track.pattern_mute || mutes >> index & 1 == 1 {
                 true => Step::default(),
-                false => t.steps[t.playhead],
+                false => realised,
             };
             if step.triggers() {
                 // Before the note, so it plays with the step's settings.
@@ -1669,13 +1704,17 @@ impl Engine {
                 // Retriggering a held pitch, or out of room: end the old note first.
                 let existing = t.held.iter().position(|h| h.pitch == note.pitch);
                 let full = (t.held.len() == MAX_HELD).then_some(0);
-                if let Some(i) = existing.or(full) {
-                    push(&mut t.events, note_off(offset, t.held[i].pitch));
+                if let Some(i) = existing.or(full)
+                    && let Some(old) = t.held.get(i)
+                {
+                    push(&mut t.events, note_off(offset, old.pitch));
                     t.held.remove(i);
                 }
                 push(&mut t.events, note_on(offset, note.pitch, note.velocity));
                 self.status.started_note(index, note.pitch, note.velocity);
-                hits[index] = true;
+                if let Some(hit) = hits.get_mut(index) {
+                    *hit = true;
+                }
                 t.held.push(Held {
                     pitch: note.pitch,
                     steps_left: note.length.max(1),
@@ -1688,8 +1727,8 @@ impl Engine {
                 t.pass += 1;
             }
         }
-        for index in 0..self.tracks.len() {
-            if hits[index] {
+        for (index, &hit) in hits.iter().enumerate() {
+            if hit {
                 self.choke_others(index, offset, &hits);
             }
         }
@@ -1742,7 +1781,9 @@ impl Engine {
     /// Chokes every other track in `index`'s group with its choke number, except those that hit
     /// at the same time (`hits`), which both play.
     fn choke_others(&mut self, index: usize, offset: u32, hits: &[bool]) {
-        let t = &self.tracks[index];
+        let Some(t) = self.tracks.get(index) else {
+            return;
+        };
         let (Some(group), choke) = (t.group, t.track.choke) else {
             return;
         };
@@ -1789,10 +1830,16 @@ fn push(events: &mut Vec<Event>, event: Event) {
 /// `sort_by_key` it never allocates.
 fn sort_by_offset(events: &mut [Event]) {
     for i in 1..events.len() {
-        let mut j = i;
-        while j > 0 && events[j - 1].offset > events[j].offset {
-            events.swap(j - 1, j);
-            j -= 1;
+        let Some(sorted) = events.get_mut(..=i) else {
+            break;
+        };
+        let Some((last, before)) = sorted.split_last() else {
+            continue;
+        };
+        // After any at the same offset, so it stays behind them.
+        let at = before.partition_point(|e| e.offset <= last.offset);
+        if let Some(moving) = sorted.get_mut(at..) {
+            moving.rotate_right(1);
         }
     }
 }

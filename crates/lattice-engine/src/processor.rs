@@ -86,6 +86,15 @@ pub fn segments(events: &[Event], len: usize, mut f: impl FnMut(Segment<'_>)) {
     }
 }
 
+/// The first `len` frames of `buffer`, or all of it if it's shorter. The engine's buffers each
+/// hold a whole block, so for a block's length that's its frames; were one ever shorter, what
+/// works on it zipped with the others stops at its end rather than panicking.
+pub(crate) fn frames(buffer: &mut [f32], len: usize) -> &mut [f32] {
+    // Clamped to its length, so the split is in range.
+    let len = len.min(buffer.len());
+    buffer.split_at_mut(len).0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
