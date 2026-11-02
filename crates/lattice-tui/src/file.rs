@@ -121,7 +121,7 @@ fn check(song: &Song, steps_per_beat: Option<u32>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lattice_core::{InstKind, Instrument};
+    use lattice_core::{Gesture, InstKind, Instrument};
 
     #[test]
     fn the_amen_example_opens_and_plays_its_sample() {
@@ -166,6 +166,26 @@ mod tests {
             .unwrap();
         assert_eq!(frenzy.conductor.steps.len(), 192);
         assert_eq!(frenzy.conductor.gestures().count(), 4);
+    }
+
+    #[test]
+    fn the_scarlatti_example_opens_with_both_halves_repeated() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/scarlatti/scarlatti.lattice");
+        let (song, _) = open(&path, None).unwrap();
+        assert_eq!(song.grid.steps_per_beat, 2);
+        let names: Vec<_> = (song.arrangement.entries.iter())
+            .map(|e| song.arrangement.patterns[e.pattern].name.as_str())
+            .collect();
+        assert_eq!(names.len(), 14);
+        assert_eq!(names.last(), Some(&"fine"));
+        // The fills: a canon on the echo, held back until one plays.
+        let echo = song.grid.tracks.iter().find(|t| t.name == "echo").unwrap();
+        assert!(
+            echo.steps
+                .iter()
+                .any(|s| s.gestures().any(|g| g == Gesture::Fill))
+        );
     }
 
     #[test]
