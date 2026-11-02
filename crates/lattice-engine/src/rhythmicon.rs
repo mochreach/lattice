@@ -143,6 +143,7 @@ pub fn build(kind: InstKind, sample_rate: f32, values: &[f32]) -> Option<Box<dyn
         InstKind::Synth
         | InstKind::Modular
         | InstKind::String
+        | InstKind::Harpsichord
         | InstKind::Sampler
         | InstKind::Chop => return None,
     })

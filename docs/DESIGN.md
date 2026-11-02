@@ -260,6 +260,59 @@ envelopes, glides, the ladder's coefficients and the sync worked out every 16 sa
 A `G` gesture glides its notes, as on the synth. It costs about five times the test synth: the
 voices benchmark plays eight voices of a swarm at around 400 times real time.
 
+### Krell, the harpsichord engine
+
+The fourth engine, named after the vanished civilisation of *Forbidden Planet*, the film whose
+score, Louis and Bebe Barron's, was the first made all electronically: a harpsichord such a
+civilisation might have built. One instrument, `:inst harpsichord`. It shares Monochord's
+waveguide (the delay line, the string of two lines and the pluck, in `waveguide.rs`), so the
+strings are Monochord's, plucked rather than bowed.
+
+- **The stops** choose the choirs each key plucks, as a harpsichord's do: `8'` (one string at
+  pitch), `8' 8'` (a second, plucked further from its end, so rounder), `8' 4'` (an octave up),
+  `16' 8' 4'` (an octave down too) and `16' to 2'` (all five, two octaves up). Each choir has its
+  own level, place in stereo (equal power) and pluck point, from 8% to 20% of the string, and
+  more stops are louder by the square root of their levels' squares. Eight voices, so up to 40
+  strings.
+- **The quill** plucks near the end of the string: a period of noise, low-passed from just above
+  the note to the top by a hardness of 0.55 to 1 (a quill's always bright), notched where it
+  plucks, and a click as the quill snaps off, as loud as the quill squared. Velocity changes the
+  level by up to 30%, as a harpsichord's quills pluck much the same however a key's struck. The
+  loop's damping goes from 0.2 (leather) to 0.03 (metal), so the ring stays bright.
+- **Drift** sets each choir off from the note, by up to 30 cents and each its own way (the
+  second 8' sharp, the 16' and 2' flat, the 4' a little sharp), wavering about that by 35% at
+  its own slow rate (0.11 to 0.29 Hz), so the choirs beat and their beating moves. Retuning a
+  ringing string changes only its bridge side's delay (`Course::stretch`), so it doesn't jump.
+- **The dampers**: while the key's held a string rings by its decay. When it comes up, the loss
+  moves towards a 40 ms decay and the damping towards 0.5, both as far as `damper` takes them,
+  and the quill slides back past the string with a quieter click. At 0 the strings ring on, as a
+  harp's do.
+- **The body** is eight two-pole resonators, which every string plays into, its even modes on
+  the left and its odd ones on the right, each a little on the other side. Its lowest mode is at
+  `hull`; `glass` moves the rest from wood (the hull's harmonics, ringing 0.4 s) to plates
+  (1, 1.59, 2.14, 2.83, 3.51, 4.37, 5.29 and 6.24 times it, ringing 6 s), higher modes ringing
+  for less. Each mode's input is 0.05 times the square root of what it loses each sample, times
+  2 sin ω: between a fixed gain, with which a mode in tune with a string would ring up without
+  end, and one that matches its loss, with which it would barely stir. So each quill's click sets
+  it ringing faintly, and notes in tune with it ring it up, about twice as loud as the strings at
+  full `body`, and on after them. Modes past 0.45 of the sample rate are left silent. Choking the
+  track fades the body with the strings.
+
+| Control | Range | |
+| --- | --- | --- |
+| stops | `8'` `8' 8'` `8' 4'` `16' 8' 4'` `16' to 2'` | the choirs each key plucks |
+| drift | 0–1 | how far the choirs drift apart and waver, up to 30 cents |
+| quill | 0–1 | soft leather to a metal plectrum |
+| decay | 0.2–20 s | while the key's held, for the lowest notes; high ones die sooner |
+| damper | 0–1 | how fast the strings stop when the key comes up |
+| body | 0–1 | how loudly the body rings in sympathy |
+| hull | 40 Hz–2 kHz | the body's lowest mode |
+| glass | 0–1 | the body from wood to glass and metal plates |
+| gain | 0–1 | |
+
+Its notes don't glide. The voices benchmark plays eight voices of two choirs at around 650 times
+real time, a third quicker than the string, as it doesn't bow.
+
 ### Sampler
 
 Plays a WAV file: a region of it (`start`, `end`), pitched from C-4, or cut into up to 16
@@ -459,6 +512,7 @@ should hint at the engine's character. The docs can say where each name comes fr
 | Switched | *Switched-On Bach* (Wendy Carlos) | big modular, ladder filter (built: `:inst modular`) |
 | Nemo | Nemo Studios (Vangelis) | expressive brass and pads, shaped by pressure |
 | Oxygen | *Oxygène* (Jean-Michel Jarre) | string machine and phaser |
+| Krell | the vanished civilisation of *Forbidden Planet*, scored by Louis and Bebe Barron | alien harpsichord (built: `:inst harpsichord`) |
 | Seven | *Seven Waves* (Suzanne Ciani) | west-coast: wavefolding, low-pass gates, plucks |
 | Oblique | Oblique Strategies (Brian Eno) | generative pads that evolve on their own |
 | Snowflake | *Snowflakes Are Dancing* (Isao Tomita) | orchestral imitation, whistles and choirs |

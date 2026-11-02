@@ -579,7 +579,9 @@ const LESSONS: &[Lesson] = &[
                it. {insert} plays the track on the piano keys, to try it out, without entering \
                notes; the arrows still move and {note_up} {note_down} still turn, so you can \
                shape it as you play, and {escape} stops. \
-               `:inst modular` changes it too (a big stack of saws through a screaming ladder filter), and `:sample kick.wav` plays a sound file on it. \
+               `:inst modular` changes it too (a big stack of saws through a screaming ladder \
+               filter), `:inst harpsichord` gives it an alien harpsichord, and \
+               `:sample kick.wav` plays a sound file on it. \
                `:fx-add delay` adds an effect: `delay`, `reverb`, `filter`, `drive`, `comp` or \
                `pitch`.\n\nAdd a reverb to the LEAD track.",
         teaches: &[Action::GotoInstrument],

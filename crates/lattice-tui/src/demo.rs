@@ -7,7 +7,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use lattice_core::fx::{comp, delay, drive, filter, reverb};
-use lattice_core::instrument::{clap, hat, kick, modular, snare, string, synth, tom};
+use lattice_core::instrument::{clap, harpsichord, hat, kick, modular, snare, string, synth, tom};
 use lattice_core::{
     Arrangement, Bus, Buses, Change, Condition, DRUM_ROOT, Entry, Fx, FxKind, Grid, Group,
     InstKind, Instrument, Lane, Lock, Note, Pattern, Rule, Song, Step, Track, Transform,
@@ -330,17 +330,22 @@ fn tracks() -> Vec<Track> {
     stab.mix.pan = -0.25;
     stab.mix.send = -3.0;
 
-    // A bowed steel string, held for a bar at a time, with its own echo.
+    // The harpsichord, struck once a bar at three pitches, drifting apart, over a glass body
+    // tuned to F that rings on, with its own echo.
     let mut pad = track(
         "pad",
         instrument(
-            String,
+            Harpsichord,
             &[
-                (string::MODEL, 1.0),
-                (string::PLUCK, 0.2),
-                (string::DECAY, 8.0),
-                (string::TONE, 0.5),
-                (string::BOW, 0.45),
+                (harpsichord::STOPS, 3.0),
+                (harpsichord::DRIFT, 0.3),
+                (harpsichord::QUILL, 0.6),
+                (harpsichord::DECAY, 8.0),
+                (harpsichord::DAMPER, 0.5),
+                (harpsichord::BODY, 0.6),
+                (harpsichord::HULL, 174.6),
+                (harpsichord::GLASS, 0.8),
+                (harpsichord::GAIN, 0.8),
             ],
         ),
     );

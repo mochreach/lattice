@@ -28,6 +28,7 @@ pub mod engine;
 pub mod filter;
 pub mod fx;
 pub mod instrument;
+pub mod krell;
 pub mod looper;
 pub mod monochord;
 pub mod param;
@@ -39,6 +40,7 @@ pub mod routing;
 pub mod sampler;
 pub mod switched;
 pub mod synth;
+mod waveguide;
 
 pub use chop::Chop;
 pub use clock::Clock;

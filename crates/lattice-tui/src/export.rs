@@ -325,6 +325,7 @@ mod tests {
                 preset.instrument.kind,
                 lattice_core::InstKind::Synth
                     | lattice_core::InstKind::Modular
+                    | lattice_core::InstKind::Harpsichord
                     | lattice_core::InstKind::String
             );
             let mut export = export(16);

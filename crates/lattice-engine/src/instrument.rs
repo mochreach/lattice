@@ -5,6 +5,7 @@ use std::sync::Arc;
 use lattice_core::{InstKind, Instrument};
 
 use crate::chop::Chop;
+use crate::krell::Krell;
 use crate::monochord::Monochord;
 use crate::processor::Processor;
 use crate::rhythmicon;
@@ -25,6 +26,7 @@ pub fn build(
         InstKind::Synth => Box::new(Synth::with_values(sample_rate, &instrument.values)),
         InstKind::String => Box::new(Monochord::with_values(sample_rate, &instrument.values)),
         InstKind::Modular => Box::new(Switched::with_values(sample_rate, &instrument.values)),
+        InstKind::Harpsichord => Box::new(Krell::with_values(sample_rate, &instrument.values)),
         // Every other instrument is a drum; were one not, it'd play as a synth.
         kind => rhythmicon::build(kind, sample_rate, &instrument.values)
             .unwrap_or_else(|| Box::new(Synth::with_values(sample_rate, &instrument.values))),

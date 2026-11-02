@@ -15,6 +15,11 @@
 //!
 //! The modular is Switched, after Wendy Carlos's *Switched-On Bach*: a stack of saws, hard-synced
 //! for grit, through a screaming ladder filter, in stereo.
+//!
+//! The harpsichord is Krell, after the vanished civilisation of *Forbidden Planet*, whose film
+//! had the first all-electronic score, Louis and Bebe Barron's: choirs of quill-plucked strings
+//! at 16', 8', 4' and 2', which can drift apart, over a body of plates and glass that rings in
+//! sympathy.
 
 use serde::{Deserialize, Serialize};
 
@@ -47,13 +52,15 @@ pub enum InstKind {
     Sampler,
     Chop,
     Modular,
+    Harpsichord,
 }
 
 impl InstKind {
-    pub const ALL: [InstKind; 10] = [
+    pub const ALL: [InstKind; 11] = [
         InstKind::Synth,
         InstKind::Modular,
         InstKind::String,
+        InstKind::Harpsichord,
         InstKind::Sampler,
         InstKind::Chop,
         InstKind::Kick,
@@ -79,6 +86,7 @@ impl InstKind {
             InstKind::Sampler => &sampler::PARAMS,
             InstKind::Chop => &chop::PARAMS,
             InstKind::Modular => &modular::PARAMS,
+            InstKind::Harpsichord => &harpsichord::PARAMS,
         }
     }
 }
@@ -96,6 +104,7 @@ impl Kind for InstKind {
             InstKind::Sampler => "sampler",
             InstKind::Chop => "chop",
             InstKind::Modular => "modular",
+            InstKind::Harpsichord => "harpsichord",
         }
     }
 
@@ -343,6 +352,54 @@ pub mod string {
         param(DECAY, "decay", (0.2, 20.0, 3.0), "s", Curve::Log),
         param(TONE, "tone", (0.0, 1.0, 0.6), "", Curve::Linear),
         param(BOW, "bow", (0.0, 1.0, 0.0), "", Curve::Linear),
+    ];
+}
+
+/// Krell's harpsichord: choirs of strings plucked by quills, damped as the key comes up, over a
+/// body that rings in sympathy.
+pub mod harpsichord {
+    use super::*;
+
+    /// The choirs of strings each key plucks, as an organ's stops: one at pitch (8'), two, one
+    /// at pitch and one an octave up (4'), an octave down (16') with those, or all five, up to
+    /// two octaves up (2'). Each sits somewhere different in the stereo field.
+    pub const STOPS: u32 = 0;
+    /// How far the choirs drift out of tune with each other, and waver, up to a third of a
+    /// semitone: a little is a real harpsichord's shimmer, a lot something stranger.
+    pub const DRIFT: u32 = 1;
+    /// What plucks the strings, from soft leather to a hard metal plectrum, brighter and clicking.
+    pub const QUILL: u32 = 2;
+    /// Time for the lowest notes to fade by 60 dB while the key's held; high notes die sooner.
+    pub const DECAY: u32 = 3;
+    /// How quickly the dampers stop a string when its key comes up, from not at all to at once.
+    pub const DAMPER: u32 = 4;
+    /// How loudly the body rings in sympathy with the strings.
+    pub const BODY: u32 = 5;
+    /// The body's lowest mode: tuned to the song's key, it rings with the notes in it.
+    pub const HULL: u32 = 6;
+    /// The body, from wood, its modes in tune and soon still, to glass and metal plates, out of
+    /// tune with each other and ringing on.
+    pub const GLASS: u32 = 7;
+    pub const GAIN: u32 = 8;
+
+    pub const STOPS_NAMES: &[&str] = &["8'", "8' 8'", "8' 4'", "16' 8' 4'", "16' to 2'"];
+
+    pub(super) const PARAMS: [ParamInfo; 9] = [
+        param(
+            STOPS,
+            "stops",
+            (0.0, 4.0, 1.0),
+            "",
+            Curve::Choice(STOPS_NAMES),
+        ),
+        param(DRIFT, "drift", (0.0, 1.0, 0.15), "", Curve::Linear),
+        param(QUILL, "quill", (0.0, 1.0, 0.7), "", Curve::Linear),
+        param(DECAY, "decay", (0.2, 20.0, 4.0), "s", Curve::Log),
+        param(DAMPER, "damper", (0.0, 1.0, 0.8), "", Curve::Linear),
+        param(BODY, "body", (0.0, 1.0, 0.3), "", Curve::Linear),
+        param(HULL, "hull", (40.0, 2_000.0, 196.0), "Hz", Curve::Log),
+        param(GLASS, "glass", (0.0, 1.0, 0.5), "", Curve::Linear),
+        param(GAIN, "gain", (0.0, 1.0, 0.5), "", Curve::Linear),
     ];
 }
 
