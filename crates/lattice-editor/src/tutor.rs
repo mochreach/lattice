@@ -804,9 +804,12 @@ const LESSONS: &[Lesson] = &[
     Lesson {
         title: "Sitting out an entry",
         text: "A track can sit out one entry and play in the rest. On the song page, on a \
-               track's column, {toggle_pattern_mute} mutes it in the cursor's entry alone: its \
-               bars there show a line across, and the song plays them silent.\n\nMute a track \
-               in an entry.",
+               track's column, `m` mutes it in the cursor's entry alone: its bars there show a \
+               line across, and the song plays them silent. `s` solos it instead, muting the \
+               others there. {select_mode} selects bars and tracks to do several at once, and \
+               {select_rows} the whole entry, again for the next; `m` and `s` act on them all, \
+               as do {delete}, {yank}, {paste} and {lock_setting}.\n\nMute a track in an \
+               entry.",
         teaches: &[],
         commands: &[],
         setup: nothing,
@@ -814,7 +817,7 @@ const LESSONS: &[Lesson] = &[
         done: |e, t| {
             (e.arrangement.entries.iter().zip(&t.entries)).any(|(now, was)| now.mutes != was.mutes)
         },
-        solution: "gsltM",
+        solution: "gslm",
     },
     Lesson {
         title: "Looping a section",

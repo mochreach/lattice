@@ -366,8 +366,12 @@ keep the cursor's in view), `^a` `^x` change the entry's pattern, `+` `-` how ma
 repeats, `o` `O` add an entry after or before, `d` removes one (`y`
 copies, `p` `P` paste after and before, so `d` then `p` moves an entry), and `ret` goes to the
 entry's pattern to edit it, with the cursor at the bar it was on, and on its track if it was on a
-track's column. On a track's column, `tM` mutes the track in the cursor's entry
-alone, so it can sit out a section without a pattern of its own; its bars there show `─`. `c` on
+track's column. On a track's column, `m` mutes the track in the cursor's entry alone, so it can
+sit out a section without a pattern of its own; its bars there show `─`. `s` solos it there
+instead, muting the rest, and either again undoes it. `v` selects bars and tracks from the
+cursor, as on the grid, and `x` the cursor's entry (again, the next too); then `m` `s` act on
+every track and entry selected, and `d` `y` `p` `L` `^a` `^x` `+` `-` on every entry. The track
+menu (`t`) isn't used here. `c` on
 the entries renames the cursor's pattern, and on the song page `:bars` and `:pattern-name` change
 the cursor's pattern rather than the one being edited. `L` loops the song round the cursor's
 entry, and on another entry stretches the loop to take it in; on an entry inside the loop, it

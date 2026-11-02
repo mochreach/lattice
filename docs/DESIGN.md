@@ -1072,7 +1072,10 @@ the wrong pattern (the editor keeps it, in the pattern it was made in).
 The song page edits `Arrangement::entries`, with its cursor in the editor like the mixer's: a bar
 counted from the song's start and a column, the entries or a track. The entry under it
 (`Editor::song_cursor`) is found from the bars each plays for (`Editor::entry_bars`), and a change
-to an entry's length keeps the cursor on it. A loop (`Editor::song_loop`, the first and last
+to an entry's length keeps the cursor on it. In select mode an anchor marks where the selection
+began (`Editor::song_selection`, bars and columns); edits act on every entry it reaches, mutes on
+every track too. `m` `s` and `t` are the page's own (`Editor::song_key`), caught before the
+keymap, as the track menu has nothing to do here. A loop (`Editor::song_loop`, the first and last
 entries) is the editor's alone, not saved: `next_position` goes from its last entry back to its
 first, so the cue, the mutes and the playhead all follow, and adding or removing entries moves it
 with its own. The page draws only the bars in view, each track's

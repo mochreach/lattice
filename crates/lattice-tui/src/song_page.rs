@@ -5,7 +5,7 @@
 //! choose from.
 
 use lattice_core::{BEATS_PER_BAR, Lane};
-use lattice_editor::Editor;
+use lattice_editor::{Editor, Mode};
 use lattice_engine::Status;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -122,6 +122,19 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
         ));
     }
     let playing_bar = playhead.map(|at| (at / bar) as usize);
+    // The selection shaded, and in select mode the cursor's cell picked out within it.
+    let (selected_bars, selected_columns) = editor.song_selection();
+    let selecting = editor.mode == Mode::Select;
+    let picked = |style: Style, at: usize, col: usize| {
+        let style = match selected_bars.contains(&at) && selected_columns.contains(&col) {
+            true => style.bg(theme.selection),
+            false => style,
+        };
+        match selecting && at == cursor && col == column {
+            true => style.add_modifier(Modifier::REVERSED),
+            false => style,
+        }
+    };
     let mut lanes: Vec<Option<Vec<Lane>>> = vec![None; arrangement.patterns.len()];
     let mut start = 0;
     for (i, entry) in arrangement.entries.iter().enumerate() {
@@ -177,10 +190,7 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
                 _ if in_pattern == 0 => format!("{}/{}", repeat + 1, entry.repeats),
                 _ => String::new(),
             };
-            let mut style = Style::new().fg(colour);
-            if here && column == 0 {
-                style = style.bg(theme.selection);
-            }
+            let style = picked(Style::new().fg(colour), at, 0);
             spans.push(Span::styled(
                 format!("{edge} {}", fit(&label, ENTRY - 3)),
                 style,
@@ -194,16 +204,12 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
                     Some(lane) => busy_bar(lane, in_pattern as u64 * bar, bar, cells),
                     None => String::new(),
                 };
-                let selected = here && column == t + 1;
                 for c in busy.chars() {
-                    let mut style = match c {
+                    let style = match c {
                         '·' | '─' => theme.faint,
                         _ => Style::new().fg(theme.track(t)),
                     };
-                    if selected {
-                        style = style.bg(theme.selection);
-                    }
-                    spans.push(Span::styled(c.to_string(), style));
+                    spans.push(Span::styled(c.to_string(), picked(style, at, t + 1)));
                 }
                 spans.push(Span::raw("  "));
             }

@@ -913,6 +913,12 @@ impl Editor {
             self.count = Some((self.count.unwrap_or(0) * 10 + digit).min(9_999));
             return vec![];
         }
+        if self.page == Page::Song
+            && let Some(effects) = self.song_key(key)
+        {
+            self.count = None;
+            return effects;
+        }
         match self.keymap.normal.get(&key).cloned() {
             // Keep the count for the menu's action.
             Some(Binding::Menu(_)) => {

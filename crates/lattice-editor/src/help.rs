@@ -36,11 +36,15 @@ const PAGES: &[(&str, &str)] = &[
     ),
     (
         "song (gs)",
-        "j k entries · h l pattern · + - repeats · o O add · d delete",
+        "j k bars · w b entries · h l tracks · C-a C-x pattern · + - repeats · o O add",
     ),
     (
         "",
-        "y p P copy and paste · ret edit the pattern · space play from here",
+        "v select · x the entry, again the next · m mute · s solo, in the entries selected",
+    ),
+    (
+        "",
+        "d y p P delete, copy, paste · L loop · c rename · ret edit at this bar · space play",
     ),
 ];
 
