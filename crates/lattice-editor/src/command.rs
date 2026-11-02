@@ -298,6 +298,12 @@ pub const COMMANDS: &[Spec] = &[
         describe: "title the track's face, as the instrument page shows it",
     },
     Spec {
+        name: "face-art",
+        alias: None,
+        params: &[optional_text("[PATH]", "path")],
+        describe: "draw the track's face from a text file, up to 8 frames of 8 rows of 31 characters, each after an empty line; none takes the art away",
+    },
+    Spec {
         name: "face-show",
         alias: None,
         params: &[optional_text("[SETTING]", "setting")],
@@ -1356,6 +1362,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         "preset" => editor.load_preset(command.text(0)?),
         "preset-save" => editor.save_preset(command.text(0)?),
         "face" => editor.set_face(command.text(0)?),
+        "face-art" => editor.face_art(command.text(0)?),
         "face-show" => editor.show_on_face(command.text(0)?, true),
         "face-hide" => editor.show_on_face(command.text(0)?, false),
         "inst" => editor.set_instrument(command.text(0)?),

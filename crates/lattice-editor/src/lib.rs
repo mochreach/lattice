@@ -222,6 +222,8 @@ pub enum Effect {
     /// Read the preset saved under this name, and give it to [`Editor::put_preset`], for the
     /// track the preset commands work on.
     LoadPreset(String),
+    /// Read this text file and give it to [`Editor::put_face_art`] for this track.
+    LoadFaceArt(usize, PathBuf),
     Quit,
 }
 

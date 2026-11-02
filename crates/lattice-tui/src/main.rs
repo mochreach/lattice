@@ -669,6 +669,13 @@ fn apply(
             }
             return Flow::Next;
         }
+        Effect::LoadFaceArt(t, path) => {
+            match std::fs::read_to_string(&path) {
+                Ok(text) => editor.put_face_art(t, &path, &text),
+                Err(e) => editor.message = Some(format!("can't read {}: {e}", path.display())),
+            }
+            return Flow::Next;
+        }
         Effect::Quit => return Flow::Quit,
     };
     if !handle.send(command) {

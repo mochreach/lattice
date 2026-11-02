@@ -4,7 +4,8 @@
 //! frontend reads and writes, asked to with [`Effect::SavePreset`] and [`Effect::LoadPreset`].
 //!
 //! `:face TITLE` names the track's face, giving it one if it has none, and `:face-show` and
-//! `:face-hide` put the instrument's settings forward on it, or take them back.
+//! `:face-hide` put the instrument's settings forward on it, or take them back. `:face-art FILE`
+//! draws it from a text file, which the frontend reads, asked to with [`Effect::LoadFaceArt`].
 
 use lattice_core::{Face, Kind, MAX_CONTROLS, PRESETS, Preset, preset};
 
@@ -103,6 +104,71 @@ impl Editor {
         let face = track.face.get_or_insert_default();
         face.title = title.into();
         Ok(vec![])
+    }
+
+    /// `:face-art [PATH]`: asks for the file to draw the track's face from, or with none takes
+    /// the face's art away, so it's a fractal again.
+    pub(crate) fn face_art(&mut self, path: &str) -> Result<Vec<Effect>, String> {
+        let t = self.preset_track()?;
+        let track = self.grid.tracks.get(t).ok_or("no such track")?;
+        let path = path.trim();
+        if !path.is_empty() {
+            return Ok(vec![Effect::LoadFaceArt(t, path.into())]);
+        }
+        if track.face.as_ref().is_none_or(|face| face.art.is_empty()) {
+            return Err("the face has no art to take away; :face-art FILE draws it".into());
+        }
+        self.checkpoint();
+        if let Some(face) = (self.grid.tracks.get_mut(t)).and_then(|t| t.face.as_mut()) {
+            face.art.clear();
+        }
+        Ok(vec![])
+    }
+
+    /// Draws track `t`'s face from `text`, read from `path`, giving the track a face titled
+    /// after the file if it has none. Empty lines before the first frame and after the last
+    /// are dropped, as are spaces at the ends of lines.
+    pub fn put_face_art(&mut self, t: usize, path: &std::path::Path, text: &str) {
+        let Some(track) = self.grid.tracks.get(t) else {
+            self.message = Some(format!("no track {} to draw", t + 1));
+            return;
+        };
+        let mut art: Vec<String> = text.lines().map(|l| l.trim_end().to_string()).collect();
+        while art.last().is_some_and(String::is_empty) {
+            art.pop();
+        }
+        let first = art.iter().position(|l| !l.is_empty()).unwrap_or(art.len());
+        art.drain(..first);
+        if art.is_empty() {
+            self.message = Some(format!("{} has nothing to draw", path.display()));
+            return;
+        }
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy())
+            .unwrap_or_default();
+        let face = Face {
+            art,
+            ..track
+                .face
+                .clone()
+                .unwrap_or_else(|| Face::new(&title(&stem)))
+        };
+        if let Err(e) = face.check(track.instrument.kind) {
+            self.message = Some(format!("{}: {e}", path.display()));
+            return;
+        }
+        let frames = face.frames().count();
+        self.checkpoint();
+        if let Some(track) = self.grid.tracks.get_mut(t) {
+            self.message = Some(format!(
+                "{} is drawn from {}, {frames} frame{}",
+                face.title,
+                path.display(),
+                if frames == 1 { "" } else { "s" }
+            ));
+            track.face = Some(face);
+        }
     }
 
     /// `:face-show [SETTING]` and `:face-hide [SETTING]`: puts one of the instrument's settings
@@ -279,5 +345,31 @@ mod tests {
         assert_eq!(face.controls, [5, 7]);
         e.run_command("face-hide cutoff");
         assert_eq!(e.grid.tracks[0].face.as_ref().unwrap().controls, [7]);
+    }
+
+    #[test]
+    fn face_art_draws_a_face_from_a_file_and_takes_it_away() {
+        let mut e = editor();
+        let effects = e.run_command("face-art art/lamp.txt");
+        let path = std::path::PathBuf::from("art/lamp.txt");
+        assert_eq!(effects, [Effect::LoadFaceArt(0, path.clone())]);
+
+        // Too wide to fit, the track's left as it was.
+        e.put_face_art(0, &path, &"⣿".repeat(32));
+        assert!(e.grid.tracks[0].face.is_none(), "{:?}", e.message);
+
+        e.put_face_art(0, &path, "\n⣿⣿  \n⠿\n\n⣀\n\n");
+        let face = e.grid.tracks[0].face.as_ref().unwrap();
+        assert_eq!(face.title, "Lamp", "titled after the file");
+        assert_eq!(face.art, ["⣿⣿", "⠿", "", "⣀"]);
+        assert_eq!(face.frames().count(), 2);
+
+        e.run_command("face Night Lamp");
+        e.run_command("face-art");
+        let face = e.grid.tracks[0].face.as_ref().unwrap();
+        assert!(face.art.is_empty());
+        assert_eq!(face.title, "Night Lamp", "the face stays");
+        e.handle(Key::Char('u'));
+        assert_eq!(e.grid.tracks[0].face.as_ref().unwrap().art.len(), 4);
     }
 }

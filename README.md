@@ -238,6 +238,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:preset NAME` | put a preset on the track (the instrument page's or the cursor's): its instrument, effects, macros and face, in place of the track's own; Lattice comes with 22: type `:preset ` to see them |
 | `:preset-save NAME` | save the track's instrument, effects and macros, and its face, as `~/.config/lattice/presets/NAME.toml`, giving the track a face titled after `NAME` if it has none |
 | `:face TITLE` | title the track's face |
+| `:face-art [PATH]` | draw the track's face from a text file, up to 8 frames of 8 rows of 31 characters, each after an empty line, giving the track a face titled after the file if it has none; with no file, take the art away |
 | `:face-show [SETTING]`, `:face-hide [SETTING]` | put one of the instrument's settings on the track's face, beside its macros, or take it off; the one under the cursor if none's named |
 | `:fx-send LANE [DB]` | on the fx page, add a send after the cursor into lane `LANE` (`B`, say); the next letter after the last lane adds one. Into its own lane or one to its left it's feedback, at -6 dB unless given, and at most 0 dB |
 | `:lock PARAM VALUE` | lock a setting of the track's instrument or effects on every step the selections reach: `:lock cutoff 800`, `:lock filter.mix 0.5` (or `2.mix`, the second effect's). `:lock cutoff 200..4000` sweeps it across each selection, `:lock cutoff ~4000` slides there, arriving on the step, and `:lock cutoff --` puts it back to the mixer's. With no value, `:lock cutoff` gives the track a column for it. The cursor's locks are shown in the status line |
@@ -362,7 +363,9 @@ forward, its macros and whichever settings `:face-show cutoff` adds. The track k
 song saves it, until its instrument changes for another kind. Its art, lit by what the track
 plays, is a fractal its title picks, unless it's drawn by hand: a preset's file can give it up to
 8 frames of 8 rows of 31 characters, `art = ["⢠⣶⣦ ⣿", …]`, each frame after an empty row (`""`),
-as `great-machine` draws the Great Machine of the Krell from *Forbidden Planet*. A track with no
+as `great-machine` draws the Great Machine of the Krell from *Forbidden Planet*, and
+`:face-art lamp.txt` draws a track's face from a text file the same way, each frame after an
+empty line. A track with no
 face shows its engine's own: the Rhythmicon's disc spinning in front of its lamp, the monochord's
 string ringing, Switched's patch cables swaying, an oscilloscope's wave for the synth, a tape
 machine's reels for the sampler and Chop's slices lighting their pads. The art moves on a frame

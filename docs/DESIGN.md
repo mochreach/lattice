@@ -1171,7 +1171,9 @@ keeps the face of the preset it was given (`Track::face`, saved with the song), 
 and macros; locks on the old chain and macros go, and on the old instrument's settings unless it's
 the same kind. Lattice's own presets are built in code (`lattice_core::preset`), like the shimmer
 chain; others are TOML files in `~/.config/lattice/presets`, read and written by the TUI when the
-editor asks with `Effect::LoadPreset` and `Effect::SavePreset`, as for chains. The built-in chains
+editor asks with `Effect::LoadPreset` and `Effect::SavePreset`, as for chains. `:face-art FILE`
+likewise asks with `Effect::LoadFaceArt`, and `Editor::put_face_art` checks the art fits before it
+replaces the face's. The built-in chains
 are `lattice_core::CHAINS` and `built_in_chain`, so `PRESETS` and `preset` mean these.
 
 ### The command line's suggestions and history

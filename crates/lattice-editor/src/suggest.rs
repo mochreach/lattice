@@ -314,6 +314,7 @@ fn files(command: &str) -> Option<Option<&'static str>> {
     match command {
         "open" | "open!" | "new" | "new!" | "write" | "write-quit" => Some(Some("lattice")),
         "sample" | "chop" | "export" | "export-sel" | "export-loop" => Some(Some("wav")),
+        "face-art" => Some(Some("txt")),
         _ => None,
     }
 }
