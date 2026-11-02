@@ -326,6 +326,15 @@ impl Editor {
         )
     }
 
+    /// Whether the entry playing mutes track `t`, as the song page shows with `─`.
+    pub fn entry_mutes(&self, t: usize) -> bool {
+        let (now, _) = self.song_mutes();
+        u32::try_from(t)
+            .ok()
+            .and_then(|t| now.checked_shr(t))
+            .is_some_and(|bits| bits & 1 == 1)
+    }
+
     /// The playing pattern has ended and the next begun: the engine changed to `changed_to`,
     /// or played the same one again.
     pub fn boundary(&mut self, changed_to: Option<usize>) {
@@ -410,6 +419,22 @@ mod tests {
         assert!(!e.heard_mix(0).unwrap().mute);
         e.stopped();
         assert!(!e.heard_mix(1).unwrap().solo);
+    }
+
+    #[test]
+    fn the_entry_playing_says_which_tracks_it_mutes() {
+        let mut e = editor();
+        e.arrangement.entries = vec![lattice_core::Entry {
+            pattern: 0,
+            repeats: 1,
+            mutes: 0b10,
+        }];
+        assert!(!e.entry_mutes(1), "only while the song plays");
+        e.start_song(0);
+        assert!(!e.entry_mutes(0) && e.entry_mutes(1));
+        assert!(!e.entry_mutes(40), "no such track");
+        e.stopped();
+        assert!(!e.entry_mutes(1));
     }
 
     #[test]

@@ -83,7 +83,8 @@ fn columns(
     let track_columns = shown.map(|(i, track)| {
         let colour = theme.track(i);
         let mix = editor.heard_mix(i).unwrap_or(track.mix);
-        let audible = !mix.mute && !track.pattern_mute && (mix.solo || !any_solo);
+        let audible =
+            !mix.mute && !track.pattern_mute && !editor.entry_mutes(i) && (mix.solo || !any_solo);
         let style = Style::new().fg(colour);
         Column {
             index: i,
@@ -229,6 +230,7 @@ pub fn flag(editor: &Editor, strip: Strip, theme: &Theme) -> (&'static str, Colo
     match track {
         Some((_, mix)) if mix.mute => ("M", theme.error),
         Some((t, _)) if t.pattern_mute => ("m", theme.error),
+        Some(_) if matches!(strip, Strip::Track(i) if editor.entry_mutes(i)) => ("─", theme.error),
         Some((_, mix)) if mix.solo => ("S", theme.accent),
         _ => (" ", theme.accent),
     }

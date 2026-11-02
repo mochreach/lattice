@@ -479,7 +479,8 @@ repeats, `o` `O` add an entry after or before, `d` removes one (`y`
 copies, `p` `P` paste after and before, so `d` then `p` moves an entry), and `ret` goes to the
 entry's pattern to edit it, with the cursor at the bar it was on, and on its track if it was on a
 track's column. On a track's column, `m` mutes the track in the cursor's entry alone, so it can
-sit out a section without a pattern of its own; its bars there show `─`. `s` solos it there
+sit out a section without a pattern of its own; its bars there show `─`, and while the entry
+plays, so does its name on the pattern, mixer and instrument pages. `s` solos it there
 instead, muting the rest, and either again undoes it. `v` selects bars and tracks from the
 cursor, as on the grid, and `x` the cursor's entry (again, the next too); then `m` `s` act on
 every track and entry selected, and `d` `y` `p` `L` `^a` `^x` `+` `-` on every entry. The track

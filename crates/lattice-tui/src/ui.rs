@@ -551,6 +551,8 @@ struct Column<'a> {
     colour: Color,
     /// Not muted, and not silenced by another track's solo.
     audible: bool,
+    /// Muted by the song's entry playing.
+    entry_mute: bool,
     /// How it sits in the mix as heard, the conductor's mutes and solos over its own.
     mix: lattice_core::Mix,
     meter: f32,
@@ -692,6 +694,7 @@ impl<'a> Column<'a> {
         let any_solo =
             (0..editor.grid.tracks.len()).any(|t| editor.heard_mix(t).is_some_and(|m| m.solo));
         let mix = editor.heard_mix(index).unwrap_or(track.mix);
+        let entry_mute = editor.entry_mutes(index);
         let shown = match editor.view {
             View::Source => track.steps.clone(),
             View::Live => realise(track, position.map_or(0, |(_, pass)| pass)),
@@ -728,7 +731,8 @@ impl<'a> Column<'a> {
             playhead: position.map(|(step, _)| step),
             pass: position.map(|(_, pass)| pass),
             colour: theme.track(index),
-            audible: !mix.mute && !track.pattern_mute && (mix.solo || !any_solo),
+            audible: !mix.mute && !track.pattern_mute && !entry_mute && (mix.solo || !any_solo),
+            entry_mute,
             mix,
             meter,
         }
@@ -925,6 +929,8 @@ fn header_lines(
                 let (flag, flag_style) = match (mix.mute, c.track.pattern_mute, mix.solo) {
                     (true, ..) => ("M", Style::new().fg(theme.error)),
                     (_, true, _) => ("m", Style::new().fg(theme.error)),
+                    // The song's entry mutes it, as the song page shows.
+                    _ if c.entry_mute => ("─", Style::new().fg(theme.error)),
                     (.., true) => ("S", Style::new().fg(theme.accent)),
                     // Armed to record the input: filled while it records.
                     _ => match armed {
