@@ -841,20 +841,25 @@ gestures are written as they're typed:
   for `T--`.
 - `X` stops the song at the end of the step.
 - `P3` cues pattern 3 for the next bar, as `]p` does, leaving the arrangement.
-- `M2` `S2` toggle track 2's mute or solo from this step, as `tm` `ts` do.
+- `M2` mutes track 2 from this step and `M-2` unmutes it; `S2` `S-2` solo and unsolo it. Set
+  rather than toggled, so a step says what's heard whichever way the track was.
 
 Patterns and tracks are numbered from 1, as shown. The engine plays the conductor: each step it
 reads the conductor's step for the pattern's step, round its own length (`Engine::conduct`).
 Tempo changes the length of a step from the step that sets it (`Clock::retime`, keeping the
 samples already counted); a step on the way to a slide's takes its share of the way there, so
 the slide arrives on its step. `X` stops where the next step would start. Mutes and solos are
-toggled on the engine's own copy of the track, in time, and sent back (`Handle::conducted`) for
-the editor to follow, so the header shows them and the song saves them; a cue is sent back too,
-as the engine doesn't hold the patterns. The `Sequencer` sends the playing pattern's conductor
+an overlay on the engine's track (`TrackPlayer::conducted_mute`), set in time and dropped when
+the song stops, so the song's own mix is never changed. They're sent back (`Handle::conducted`)
+for the editor to keep the same overlay (`Editor::conducted`, by track id), which the header and
+mixer show (`Editor::heard_mix`) and which is cleared on stop. The player muting or soloing a
+track (`tm`, `ts`, a pad) starts from what's heard and takes over: the overlay on it goes, in the
+editor and, by `Command::Unconduct`, the engine. A cue is sent back too, as the engine doesn't
+hold the patterns. The `Sequencer` sends the playing pattern's conductor
 (`Command::SetConductor`, carrying the swaps it's seen, as `SetTrack` does), and a cued
 pattern's with its lanes in the `Section`. `:export` renders each part with its pattern's
-conductor, its own cues aside, as the parts are already the arrangement's; a selection exports
-without one.
+conductor, its own cues aside, as the parts are already the arrangement's (the status line
+says so when there are any); a selection exports without one.
 
 In the editor, the conductor's fields are the first track's leftmost (`StepField::Gesture`): `h`
 from its notes goes into them, `fg` `fG` straight there. Its cursor is bounded by the

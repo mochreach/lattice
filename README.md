@@ -375,12 +375,14 @@ The **conductor** is a lane of each pattern for what belongs to the whole song: 
 first track, beside the step numbers, two fields on each step. `h` from the first track's notes
 (`gh`) goes into them, or `fg`. In insert mode, type a gesture: `T140` sets the tempo from that
 step, `~140` slides there, arriving on the step, `T--` goes back to the song's `:bpm`, `X` stops
-the song at the end of the step, `P3` cues pattern 3 for the next bar, and `M2` `S2` mute or solo
-track 2. Each goes in once it's whole, or with `enter` or `esc`. `^a` `^x` nudge a tempo, `d` `y`
+the song at the end of the step, `P3` cues pattern 3 for the next bar, `M2` mutes track 2 and `M-2`
+unmutes it, and `S2` `S-2` solo and unsolo it. Those mutes and solos last until the song stops,
+leaving the song's own mix as it was; `tm` or `ts` on the track takes over from them. Each goes in once it's whole, or with `enter` or `esc`. `^a` `^x` nudge a tempo, `d` `y`
 `p` work as in any field, and `&` fills tempos between a selection's ends. The conductor has its
 own length, as long as the pattern until `:len` in it changes it, so a tempo change can come round
 every bar or once in four. While it plays, the header shows the tempo it's set. It's shown when
-it has gestures or the cursor's in it, and `:export` plays it.
+it has gestures or the cursor's in it, and `:export` plays it, all but its `P` cues, as it
+plays the arrangement: it says when it leaves them out.
 
 The **song page** (`gs`) is the arrangement: the patterns in the order they play, each entry
 repeated some number of times. A strip across the top shows the whole song, each entry as wide as

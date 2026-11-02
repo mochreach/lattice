@@ -204,10 +204,15 @@ impl Editor {
             return vec![];
         }
         self.checkpoint();
+        // As heard: the conductor's mute, if it has one, then the track's own from now.
+        let muted = self.heard_mix(track).is_some_and(|m| m.mute);
         if let Some(t) = self.grid.tracks.get_mut(track) {
-            t.mix.mute = !t.mix.mute;
+            t.mix.mute = !muted;
         }
-        vec![Effect::TrackChanged(track)]
+        [Effect::TrackChanged(track)]
+            .into_iter()
+            .chain(self.unconduct(track))
+            .collect()
     }
 
     /// The scale the pads play.

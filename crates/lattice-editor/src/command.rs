@@ -1319,16 +1319,21 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             let solo = command.spec.name == "solo";
             let flag = |mix: Mix| if solo { mix.solo } else { mix.mute };
             // Toggled together: if any selected track is off, they all go on.
-            let on = (mix_tracks(editor)?.iter())
-                .filter_map(|&t| editor.grid.tracks.get(t))
-                .any(|t| !flag(t.mix));
-            mix(editor, |mix| {
+            // As heard, the conductor's over the tracks' own, which take over again.
+            let tracks = mix_tracks(editor)?;
+            let on = (tracks.iter())
+                .filter_map(|&t| editor.heard_mix(t))
+                .any(|mix| !flag(mix));
+            let unconducted: Vec<_> = tracks.iter().filter_map(|&t| editor.unconduct(t)).collect();
+            let mut effects = mix(editor, |mix| {
                 if solo {
                     mix.solo = on;
                 } else {
                     mix.mute = on;
                 }
-            })
+            })?;
+            effects.extend(unconducted);
+            Ok(effects)
         }
         "set" => {
             let word = command.text(0)?;

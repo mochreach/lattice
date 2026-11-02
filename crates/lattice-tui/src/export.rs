@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 
 use anyhow::{Context, Result};
-use lattice_core::{Buses, MIN_BPM};
+use lattice_core::{Buses, Gesture, MIN_BPM};
 use lattice_editor::{Editor, Export, Part, file_name};
 use lattice_engine::{Command, Cue, Engine, Handle, Section};
 
@@ -39,7 +39,8 @@ impl Exports {
 
     /// Starts rendering `export` with the editor's buses and tempo as they are now.
     pub fn start(&mut self, export: Export, editor: &mut Editor) {
-        editor.message = Some(format!("exporting {}…", file_name(&export.path)));
+        let name = file_name(&export.path);
+        editor.message = Some(format!("exporting {name}{}…", cues_left_out(&export)));
         let buses = editor.buses.clone();
         self.pending
             .push(start(export, buses, editor.bpm, self.sample_rate));
@@ -62,6 +63,19 @@ impl Exports {
     }
 }
 
+/// What to add to the export's messages if its conductor cues patterns: it plays the parts as
+/// arranged, so a `P` would take it somewhere else, and they're left out.
+fn cues_left_out(export: &Export) -> &'static str {
+    let cues = (export.parts.iter())
+        .flat_map(|p| p.conductor.gestures())
+        .any(|(_, g)| matches!(g, Gesture::Pattern(_)));
+    if cues {
+        ", as arranged: the conductor's P cues are left out"
+    } else {
+        ""
+    }
+}
+
 /// Starts rendering; the receiver gets the message to show when it's done.
 fn start(
     export: Export,
@@ -75,7 +89,11 @@ fn start(
             .and_then(|audio| write_wav(&export.path, &audio, sample_rate as u32))
         {
             Ok(seconds) => (
-                format!("exported {} ({seconds:.1}s)", file_name(&export.path)),
+                format!(
+                    "exported {} ({seconds:.1}s){}",
+                    file_name(&export.path),
+                    cues_left_out(&export)
+                ),
                 std::path::absolute(&export.path).ok(),
             ),
             Err(e) => (format!("export failed: {e:#}"), None),

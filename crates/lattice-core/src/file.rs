@@ -246,7 +246,10 @@ mod tests {
                             steps: vec![
                                 [Some(Gesture::Tempo(120)), None],
                                 [None; 2],
-                                [Some(Gesture::Slide(140)), Some(Gesture::Mute(2))],
+                                [
+                                    Some(Gesture::Slide(140)),
+                                    Some(Gesture::Mute { track: 2, on: true }),
+                                ],
                                 [Some(Gesture::Stop), None],
                             ],
                         },

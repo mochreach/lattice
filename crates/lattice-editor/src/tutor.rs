@@ -944,8 +944,9 @@ const LESSONS: &[Lesson] = &[
                insert mode, type a gesture: `T140` sets the tempo from that step, `~140` \
                slides there, arriving on the step, and `T--` goes back to the song's `:bpm`; \
                `X` stops the song at the end of the step, `P3` cues pattern 3 for the next bar, \
-               and `M2` `S2` mute or solo track 2. Each goes in once it's whole, or with enter \
-               (`P3` could be `P31`). {note_up} {note_down} nudge a tempo, {delete} {yank} \
+               `M2` mutes track 2 and `M-2` unmutes it, and `S2` `S-2` solo and unsolo it, \
+               until the song stops. Each goes in once it's whole, or with enter (`P3` could \
+               be `P31`). {note_up} {note_down} nudge a tempo, {delete} {yank} \
                {paste} work as in any field, and {fill} fills tempos between two. It has its \
                own length, as long as the pattern until `:len` in it changes it, so a tempo \
                change can come once a bar or once in four.\n\n\

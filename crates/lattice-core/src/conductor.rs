@@ -19,7 +19,7 @@ pub const MAX_BPM: u16 = 400;
 pub const GESTURES: usize = 2;
 
 /// Something the conductor does once, on a step. Written as it's typed: `T140`, `~140`, `T--`,
-/// `X`, `P3`, `M2`, `S2`. Patterns and tracks are numbered from 1, as they're shown.
+/// `X`, `P3`, `M2` `M-2`, `S2` `S-2`. Patterns and tracks are numbered from 1, as they're shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Gesture {
     /// `T140`: this tempo from this step, until the next.
@@ -32,10 +32,10 @@ pub enum Gesture {
     Stop,
     /// `P3`: cues pattern 3 (from 1) to take over at the next bar.
     Pattern(u8),
-    /// `M2`: mutes track 2 (from 1), or unmutes it.
-    Mute(u8),
-    /// `S2`: solos track 2 (from 1), or unsolos it.
-    Solo(u8),
+    /// `M2`: mutes track 2 (from 1); `M-2` unmutes it. Only while the song plays.
+    Mute { track: u8, on: bool },
+    /// `S2`: solos track 2 (from 1); `S-2` unsolos it. Only while the song plays.
+    Solo { track: u8, on: bool },
 }
 
 impl Gesture {
@@ -56,18 +56,18 @@ impl Gesture {
     }
 
     /// Whether more could be typed after `text` to make another gesture: a `T14` might become
-    /// `T140`, but `T140`, `X` and `T--` are done.
+    /// `T140`, and `M-` `M-1`, but `T140`, `X`, `T--` and `M-16` are done.
     pub fn could_go_on(text: &str) -> bool {
         let mut chars = text.chars();
-        let digits = text
-            .chars()
-            .skip(1)
-            .take_while(char::is_ascii_digit)
-            .count();
-        match chars.next() {
-            Some('T' | 't') if text.get(1..2) == Some("-") => text.len() < 3,
-            Some('T' | 't' | '~') => digits == text.len() - 1 && digits < 3,
-            Some('P' | 'p' | 'M' | 'm' | 'S' | 's') => digits == text.len() - 1 && digits < 2,
+        let first = chars.next();
+        let rest = chars.as_str();
+        let digits =
+            |rest: &str, most: usize| rest.chars().all(|c| c.is_ascii_digit()) && rest.len() < most;
+        match first {
+            Some('T' | 't') if rest.starts_with('-') => rest.len() < 2,
+            Some('T' | 't' | '~') => digits(rest, 3),
+            Some('P' | 'p') => digits(rest, 2),
+            Some('M' | 'm' | 'S' | 's') => digits(rest.strip_prefix('-').unwrap_or(rest), 2),
             _ => false,
         }
     }
@@ -82,7 +82,9 @@ impl Gesture {
             Gesture::Pattern(p) if !(1..=MAX_PATTERNS).contains(&usize::from(p)) => {
                 Err(format!("patterns go from 1 to {MAX_PATTERNS}"))
             }
-            Gesture::Mute(t) | Gesture::Solo(t) if !(1..=MAX_TRACKS).contains(&usize::from(t)) => {
+            Gesture::Mute { track: t, .. } | Gesture::Solo { track: t, .. }
+                if !(1..=MAX_TRACKS).contains(&usize::from(t)) =>
+            {
                 Err(format!("tracks go from 1 to {MAX_TRACKS}"))
             }
             _ => Ok(()),
@@ -98,8 +100,8 @@ impl fmt::Display for Gesture {
             Gesture::SongTempo => write!(f, "T--"),
             Gesture::Stop => write!(f, "X"),
             Gesture::Pattern(p) => write!(f, "P{p}"),
-            Gesture::Mute(t) => write!(f, "M{t}"),
-            Gesture::Solo(t) => write!(f, "S{t}"),
+            Gesture::Mute { track, on } => write!(f, "M{}{track}", if *on { "" } else { "-" }),
+            Gesture::Solo { track, on } => write!(f, "S{}{track}", if *on { "" } else { "-" }),
         }
     }
 }
@@ -109,11 +111,19 @@ impl std::str::FromStr for Gesture {
 
     /// Reads a gesture as it's written, upper or lower case, and checks it.
     fn from_str(text: &str) -> Result<Self, String> {
-        let unknown =
-            || format!("{text:?} isn't a conductor's gesture: T140, ~140, T--, X, P3, M2 or S2");
+        let unknown = || {
+            format!(
+                "{text:?} isn't a conductor's gesture: T140, ~140, T--, X, P3, M2, M-2, S2 or S-2"
+            )
+        };
         let mut chars = text.chars();
         let first = chars.next().ok_or_else(unknown)?.to_ascii_uppercase();
         let rest = chars.as_str();
+        // `M-2` and `S-2` turn off what `M2` and `S2` turn on.
+        let (on, rest) = match rest.strip_prefix('-') {
+            Some(after) if matches!(first, 'M' | 'S') => (false, after),
+            _ => (true, rest),
+        };
         let number = |what: &str| -> Result<u16, String> {
             rest.parse::<u16>().map_err(|_| {
                 format!(
@@ -132,8 +142,14 @@ impl std::str::FromStr for Gesture {
             '~' => Gesture::Slide(number("a tempo")?),
             'X' if rest.is_empty() => Gesture::Stop,
             'P' => Gesture::Pattern(small(number("a pattern")?)?),
-            'M' => Gesture::Mute(small(number("a track")?)?),
-            'S' => Gesture::Solo(small(number("a track")?)?),
+            'M' => Gesture::Mute {
+                track: small(number("a track")?)?,
+                on,
+            },
+            'S' => Gesture::Solo {
+                track: small(number("a track")?)?,
+                on,
+            },
             _ => return Err(unknown()),
         };
         gesture.check()?;
@@ -246,7 +262,7 @@ mod tests {
 
     #[test]
     fn gestures_read_as_they_are_written() {
-        for text in ["T140", "~96", "T--", "X", "P3", "M2", "S16"] {
+        for text in ["T140", "~96", "T--", "X", "P3", "M2", "M-2", "S16", "S-16"] {
             let gesture: Gesture = text.parse().unwrap();
             assert_eq!(gesture.to_string(), text);
         }
@@ -269,5 +285,15 @@ mod tests {
         assert!(!Gesture::could_go_on("X"));
         assert!(Gesture::could_go_on("P1"));
         assert!(!Gesture::could_go_on("P12"));
+        assert!(Gesture::could_go_on("M-"));
+        assert!(Gesture::could_go_on("M-1"));
+        assert!(!Gesture::could_go_on("M-16"));
+        assert_eq!(
+            "m-3".parse(),
+            Ok(Gesture::Mute {
+                track: 3,
+                on: false
+            })
+        );
     }
 }

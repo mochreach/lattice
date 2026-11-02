@@ -125,6 +125,9 @@ pub enum Command {
         every: u32,
         now: bool,
     },
+    /// The player's muted or soloed the track at this index themselves: their mute and solo
+    /// take over from the conductor's again.
+    Unconduct(usize),
     /// End a previewed or repeated note.
     Release {
         track: usize,
@@ -464,9 +467,9 @@ pub enum Conducted {
     /// A `P` gesture: cue this pattern, from 0, to take over at the next bar. The engine can't,
     /// as it doesn't hold the patterns.
     Pattern(usize),
-    /// An `M` gesture muted the track at this index, or unmuted it.
+    /// An `M` gesture muted the track at this index, or unmuted it, until the song stops.
     Mute { track: usize, muted: bool },
-    /// An `S` gesture soloed it, or unsoloed it.
+    /// An `S` gesture soloed it, or unsoloed it, until the song stops.
     Solo { track: usize, soloed: bool },
 }
 
@@ -742,6 +745,9 @@ pub struct TrackPlayer {
     locked: Locks,
     /// Settings sliding to a later step's lock, one per setting.
     ramps: [Option<Ramp>; MAX_LOCKS],
+    /// The conductor's mute and solo (`M2`, `S-2`) over the track's own, while the song plays.
+    conducted_mute: Option<bool>,
+    conducted_solo: Option<bool>,
 }
 
 /// A setting sliding from one value to the next, along its curve, for a slide lock.
@@ -768,6 +774,8 @@ impl TrackPlayer {
             base,
             locked: Locks::default(),
             ramps: [None; MAX_LOCKS],
+            conducted_mute: None,
+            conducted_solo: None,
             track,
             instrument,
             effects: effects(),
@@ -788,6 +796,14 @@ impl TrackPlayer {
 }
 
 impl TrackPlayer {
+    /// How the track sits in the mix: its own, with the conductor's mute and solo over it.
+    fn mix(&self) -> Mix {
+        let mut mix = self.track.mix;
+        mix.mute = self.conducted_mute.unwrap_or(mix.mute);
+        mix.solo = self.conducted_solo.unwrap_or(mix.solo);
+        mix
+    }
+
     /// Plays a step's locks at `offset`: each sets its setting, or slides it, from here until
     /// the setting's next lock, or puts it back. The other settings hold.
     fn lock(&mut self, step: Locks, offset: u32) {
@@ -1226,6 +1242,9 @@ impl Engine {
             t.playhead = 0;
             t.pass = 0;
             t.position = u64::MAX;
+            // The conductor's mutes and solos last while the song plays.
+            t.conducted_mute = None;
+            t.conducted_solo = None;
         }
         self.step_index = 0;
         self.count_in = 0;
@@ -1382,6 +1401,12 @@ impl Engine {
                         every: every.max(1),
                     };
                     self.preview(track, preview, now);
+                }
+                Command::Unconduct(track) => {
+                    if let Some(t) = self.tracks.get_mut(track) {
+                        t.conducted_mute = None;
+                        t.conducted_solo = None;
+                    }
                 }
                 Command::Release { track, pitch } => {
                     if let Some(t) = self.tracks.get_mut(track)
@@ -1776,8 +1801,9 @@ impl Engine {
             frames(&mut group.left, len).fill(0.0);
             frames(&mut group.right, len).fill(0.0);
         }
-        let any_solo = self.tracks.iter().any(|t| t.track.mix.solo);
+        let any_solo = self.tracks.iter().any(|t| t.mix().solo);
         for (index, t) in self.tracks.iter_mut().enumerate() {
+            let mix = t.mix();
             sort_by_offset(&mut t.events);
             let (tl, tr) = (frames(&mut t.left, len), frames(&mut t.right, len));
             tl.fill(0.0);
@@ -1785,7 +1811,7 @@ impl Engine {
             t.instrument.process(&t.events, tl, tr);
             t.events.clear();
             run_chain(&mut t.effects, &mut t.routing, tl, tr);
-            t.strip.set(&t.track.mix, any_solo);
+            t.strip.set(&mix, any_solo);
             // Groups are checked to be in range as they're set, so a track goes to the master
             // only when it's in none.
             let out = match t.group.and_then(|g| self.groups.get_mut(g)) {
@@ -2006,22 +2032,18 @@ impl Engine {
                     // Full, the UI thread's fallen behind; it'll miss this cue.
                     let _ = self.conducted.push(Conducted::Pattern(pattern));
                 }
-                Gesture::Mute(t) => {
-                    let track = usize::from(t).saturating_sub(1);
+                Gesture::Mute { track, on } => {
+                    let track = usize::from(track).saturating_sub(1);
                     if let Some(player) = self.tracks.get_mut(track) {
-                        let mix = &mut player.track.mix;
-                        mix.mute = !mix.mute;
-                        let muted = mix.mute;
-                        let _ = self.conducted.push(Conducted::Mute { track, muted });
+                        player.conducted_mute = Some(on);
+                        let _ = self.conducted.push(Conducted::Mute { track, muted: on });
                     }
                 }
-                Gesture::Solo(t) => {
-                    let track = usize::from(t).saturating_sub(1);
+                Gesture::Solo { track, on } => {
+                    let track = usize::from(track).saturating_sub(1);
                     if let Some(player) = self.tracks.get_mut(track) {
-                        let mix = &mut player.track.mix;
-                        mix.solo = !mix.solo;
-                        let soloed = mix.solo;
-                        let _ = self.conducted.push(Conducted::Solo { track, soloed });
+                        player.conducted_solo = Some(on);
+                        let _ = self.conducted.push(Conducted::Solo { track, soloed: on });
                     }
                 }
             }
@@ -2478,17 +2500,14 @@ mod tests {
     #[test]
     fn the_conductor_stops_mutes_solos_and_cues() {
         let (mut engine, mut handle) = with_synth(48_000.0);
-        engine.conductor = conductor(&[(1, "M1"), (1, "P3"), (2, "S1"), (3, "X")], 8);
+        engine.conductor = conductor(&[(1, "M1"), (1, "P3"), (2, "S1"), (3, "M-1"), (3, "X")], 8);
         let step = (48_000.0 * 60.0 / (133.0 * 4.0)) as usize;
         render(&mut engine, 256, step * 3 + 10);
-        assert!(engine.tracks[0].track.mix.mute && engine.tracks[0].track.mix.solo);
+        let player = &engine.tracks[0];
+        assert!(!player.mix().mute && player.mix().solo);
+        assert!(!player.track.mix.solo, "the track's own is as it was");
         assert_eq!(
-            [
-                handle.conducted(),
-                handle.conducted(),
-                handle.conducted(),
-                handle.conducted()
-            ],
+            [(); 5].map(|()| handle.conducted()),
             [
                 Some(Conducted::Mute {
                     track: 0,
@@ -2499,6 +2518,10 @@ mod tests {
                     track: 0,
                     soloed: true
                 }),
+                Some(Conducted::Mute {
+                    track: 0,
+                    muted: false
+                }),
                 None
             ]
         );
@@ -2506,6 +2529,10 @@ mod tests {
         assert!(handle.status().playing());
         render(&mut engine, 256, step);
         assert!(!handle.status().playing());
+        assert!(
+            !engine.tracks[0].mix().solo,
+            "they last while the song plays"
+        );
     }
 
     #[test]

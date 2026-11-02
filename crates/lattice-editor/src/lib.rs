@@ -191,6 +191,9 @@ pub enum Effect {
         track: usize,
         lock: Lock,
     },
+    /// The player's muted or soloed this track themselves, so the conductor's mute and solo
+    /// on it are over.
+    Unconduct(usize),
     /// The key holding this note has come up: end it.
     Release {
         track: usize,
@@ -415,6 +418,9 @@ pub struct Editor {
     open: Vec<TrackId>,
     /// The field the cursor's in on an open track; see [`Editor::field`].
     field: StepField,
+    /// The conductor's mutes and solos (`M2`, `S-2`) over the tracks' own while the song plays:
+    /// shown, but not the song's.
+    conducted: Vec<(TrackId, Option<bool>, Option<bool>)>,
     /// What's been typed into a field so far.
     typing: fields::Typing,
     /// Values copied from a field, one list per selection, `None` where there was none.
@@ -553,6 +559,7 @@ impl Editor {
             locking: None,
             open: vec![],
             field: StepField::Note,
+            conducted: vec![],
             typing: Default::default(),
             field_clipboard: vec![],
             live_lock: None,

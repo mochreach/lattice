@@ -3,7 +3,7 @@
 //! [`Arrangement`](lattice_core::Arrangement)). The pattern being edited is always the one
 //! playing, so picking another while the song plays cues it for when the playing one ends.
 
-use lattice_core::{BEATS_PER_BAR, Entry, Lane, MAX_BARS, MAX_ENTRIES, MAX_PATTERNS, Step};
+use lattice_core::{BEATS_PER_BAR, Entry, Lane, MAX_BARS, MAX_ENTRIES, MAX_PATTERNS, Mix, Step};
 
 use crate::{Editor, Effect, Page, changed};
 
@@ -74,14 +74,44 @@ impl Editor {
         }
     }
 
-    /// The conductor has muted or soloed track `track` (`M2`, `S2`) in the engine; the song
-    /// follows, as it would `tm` or `ts`.
+    /// The conductor has muted or soloed track `track` (`M2`, `S-2`) in the engine, until the
+    /// song stops: shown over the track's own, which stays as the song has it.
     pub fn conducted_mix(&mut self, track: usize, mute: Option<bool>, solo: Option<bool>) {
-        let Some(mix) = self.grid.tracks.get_mut(track).map(|t| &mut t.mix) else {
+        let Some(&id) = self.ids.get(track) else {
             return;
         };
-        mix.mute = mute.unwrap_or(mix.mute);
-        mix.solo = solo.unwrap_or(mix.solo);
+        let at = match self.conducted.iter().position(|(i, ..)| *i == id) {
+            Some(at) => at,
+            None => {
+                self.conducted.push((id, None, None));
+                self.conducted.len() - 1
+            }
+        };
+        if let Some((_, m, s)) = self.conducted.get_mut(at) {
+            *m = mute.or(*m);
+            *s = solo.or(*s);
+        }
+    }
+
+    /// How track `t` sits in the mix as it's heard: its own, with the conductor's mute and solo
+    /// over it while the song plays.
+    pub fn heard_mix(&self, t: usize) -> Option<Mix> {
+        let mut mix = self.grid.tracks.get(t)?.mix;
+        let id = self.ids.get(t);
+        if let Some((_, mute, solo)) = self.conducted.iter().find(|(i, ..)| Some(i) == id) {
+            mix.mute = mute.unwrap_or(mix.mute);
+            mix.solo = solo.unwrap_or(mix.solo);
+        }
+        Some(mix)
+    }
+
+    /// The player's muting or soloing track `t` themselves: the conductor's mute and solo on
+    /// it are over, if it had any.
+    pub(crate) fn unconduct(&mut self, t: usize) -> Option<Effect> {
+        let id = self.ids.get(t)?;
+        let at = self.conducted.iter().position(|(i, ..)| i == id)?;
+        self.conducted.remove(at);
+        Some(Effect::Unconduct(t))
     }
 
     /// Makes `index` the pattern being edited, at once.
@@ -322,6 +352,7 @@ impl Editor {
     /// Playback has stopped.
     pub fn stopped(&mut self) {
         self.cue = None;
+        self.conducted.clear();
         self.song_position = None;
     }
 }
@@ -362,6 +393,22 @@ mod tests {
             into_step: 0.0,
             count_in: 0,
         }));
+    }
+
+    #[test]
+    fn the_conductors_mutes_are_heard_until_the_song_stops_or_the_player_takes_over() {
+        let mut e = editor();
+        e.conducted_mix(0, Some(true), None);
+        e.conducted_mix(1, None, Some(true));
+        assert!(e.heard_mix(0).unwrap().mute && e.heard_mix(1).unwrap().solo);
+        assert!(!e.grid.tracks[0].mix.mute, "the song's own is as it was");
+        // Muting it themselves, the player takes over from the conductor: it was heard muted,
+        // so it's unmuted.
+        let effects = crate::command::run(&mut e, "mute").unwrap();
+        assert!(effects.contains(&Effect::Unconduct(0)));
+        assert!(!e.heard_mix(0).unwrap().mute);
+        e.stopped();
+        assert!(!e.heard_mix(1).unwrap().solo);
     }
 
     #[test]

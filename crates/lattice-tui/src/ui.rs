@@ -538,6 +538,8 @@ struct Column<'a> {
     colour: Color,
     /// Not muted, and not silenced by another track's solo.
     audible: bool,
+    /// How it sits in the mix as heard, the conductor's mutes and solos over its own.
+    mix: lattice_core::Mix,
     meter: f32,
     /// On a chop track, what each row plays.
     pieces: Option<Vec<Option<Piece>>>,
@@ -673,7 +675,10 @@ impl<'a> Column<'a> {
         meter: f32,
     ) -> Self {
         let position = status.position(index);
-        let any_solo = editor.grid.tracks.iter().any(|t| t.mix.solo);
+        // As heard: the conductor's mutes and solos over the tracks' own.
+        let any_solo =
+            (0..editor.grid.tracks.len()).any(|t| editor.heard_mix(t).is_some_and(|m| m.solo));
+        let mix = editor.heard_mix(index).unwrap_or(track.mix);
         let shown = match editor.view {
             View::Source => track.steps.clone(),
             View::Live => realise(track, position.map_or(0, |(_, pass)| pass)),
@@ -710,7 +715,8 @@ impl<'a> Column<'a> {
             playhead: position.map(|(step, _)| step),
             pass: position.map(|(_, pass)| pass),
             colour: theme.track(index),
-            audible: !track.mix.mute && !track.pattern_mute && (track.mix.solo || !any_solo),
+            audible: !mix.mute && !track.pattern_mute && (mix.solo || !any_solo),
+            mix,
             meter,
         }
     }
@@ -902,7 +908,7 @@ fn header_lines(
                 if !c.audible {
                     style = style.add_modifier(Modifier::DIM);
                 }
-                let mix = c.track.mix;
+                let mix = c.mix;
                 let (flag, flag_style) = match (mix.mute, c.track.pattern_mute, mix.solo) {
                     (true, ..) => ("M", Style::new().fg(theme.error)),
                     (_, true, _) => ("m", Style::new().fg(theme.error)),

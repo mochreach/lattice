@@ -60,7 +60,9 @@ fn columns(
     at: usize,
 ) -> Vec<Column> {
     let tracks = editor.grid.tracks.len();
-    let any_solo = editor.grid.tracks.iter().any(|t| t.mix.solo);
+    // As heard: the conductor's mutes and solos over the tracks' own.
+    let any_solo =
+        (0..editor.grid.tracks.len()).any(|t| editor.heard_mix(t).is_some_and(|m| m.solo));
     let groups = &editor.grid.groups;
     let buses = groups.len() + 2;
     let room = (area.width as usize).saturating_sub(LABEL + buses * (CELL + 1) + 2);
@@ -80,7 +82,8 @@ fn columns(
         .take(fits);
     let track_columns = shown.map(|(i, track)| {
         let colour = theme.track(i);
-        let audible = !track.mix.mute && !track.pattern_mute && (track.mix.solo || !any_solo);
+        let mix = editor.heard_mix(i).unwrap_or(track.mix);
+        let audible = !mix.mute && !track.pattern_mute && (mix.solo || !any_solo);
         let style = Style::new().fg(colour);
         Column {
             index: i,
@@ -220,13 +223,13 @@ fn overview(
 /// `M` when muted, `m` when muted in this pattern, `S` when soloed.
 pub fn flag(editor: &Editor, strip: Strip, theme: &Theme) -> (&'static str, Color) {
     let track = match strip {
-        Strip::Track(i) => editor.grid.tracks.get(i),
+        Strip::Track(i) => editor.grid.tracks.get(i).zip(editor.heard_mix(i)),
         _ => None,
     };
     match track {
-        Some(t) if t.mix.mute => ("M", theme.error),
-        Some(t) if t.pattern_mute => ("m", theme.error),
-        Some(t) if t.mix.solo => ("S", theme.accent),
+        Some((_, mix)) if mix.mute => ("M", theme.error),
+        Some((t, _)) if t.pattern_mute => ("m", theme.error),
+        Some((_, mix)) if mix.solo => ("S", theme.accent),
         _ => (" ", theme.accent),
     }
 }
