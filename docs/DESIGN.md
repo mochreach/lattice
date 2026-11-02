@@ -1131,7 +1131,7 @@ masks, `now` and `next` (`Command::SetMutes`), and moves `next` into `now` at ea
 pattern, looping or not, so a mute starts on the entry's first step even when the pattern doesn't
 change. The `Sequencer` sends them from `Editor::song_mutes` whenever they change, and playing
 sends them just before `Play`, so the first entry's are in from the start. The masks follow the
-tracks when one's added, removed or moved. `:export` folds them into each part's lanes instead.
+tracks when one's added, removed or moved. `:export` sends them too, part by part, and loops a part that plays the same pattern again, as the song does, so its conductor goes on round.
 
 The pattern being edited keeps its lanes in the grid's tracks, so everything that works on tracks
 works on it unchanged; `Arrangement::select` swaps lanes in and out. Adding, removing and moving a

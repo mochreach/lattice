@@ -89,8 +89,7 @@ fn start(
 /// mixer, then lets it ring out until it's quiet. Returns interleaved stereo.
 pub fn render(export: &Export, buses: Buses, bpm: f64, sample_rate: f32) -> Result<Vec<f32>> {
     let mut grid = export.grid.clone();
-    let mut parts = export.parts.iter();
-    let first = parts.next().context("nothing to export")?;
+    let first = export.parts.first().context("nothing to export")?;
     for (track, lane) in grid.tracks.iter_mut().zip(&first.lanes) {
         lane.clone().swap(track);
     }
@@ -112,16 +111,34 @@ pub fn render(export: &Export, buses: Buses, bpm: f64, sample_rate: f32) -> Resu
         tries += 1;
         anyhow::ensure!(tries < 1000, "the song's mixer wouldn't load");
     }
-    // Each part is cued while the one before plays, and after the last, playback stops.
-    let cue = |parts: &mut std::slice::Iter<Part>| match parts.next() {
-        Some(part) => Cue::Pattern(Box::new(Section {
-            conductor: part.conductor.clone(),
-            lanes: part.lanes.clone(),
-            steps: part.steps,
-            at_bar: false,
-        })),
-        None => Cue::Stop,
+    // Each part is cued while the one before plays, with the song's mutes now and next, and
+    // after the last, playback stops. The same pattern again loops it, as the song does, so
+    // tracks and the conductor go on round rather than starting again; only the mutes change.
+    let mut next = 1;
+    let mut cue = || {
+        let (before, part) = (export.parts.get(next - 1), export.parts.get(next));
+        next += 1;
+        let same = |a: &Part, b: &Part| {
+            (&a.lanes, a.steps, &a.conductor) == (&b.lanes, b.steps, &b.conductor)
+        };
+        let now = before.map_or(0, |p| p.mutes);
+        let mutes = Command::SetMutes {
+            now,
+            next: part.map_or(now, |p| p.mutes),
+        };
+        let cue = match part {
+            Some(part) if before.is_some_and(|b| same(b, part)) => Cue::Loop,
+            Some(part) => Cue::Pattern(Box::new(Section {
+                conductor: part.conductor.clone(),
+                lanes: part.lanes.clone(),
+                steps: part.steps,
+                at_bar: false,
+            })),
+            None => Cue::Stop,
+        };
+        [mutes, Command::Cue(cue)]
     };
+    let [mutes, first_cue] = cue();
     for command in [
         Command::SetClick(false),
         Command::SetLength(first.steps),
@@ -129,7 +146,8 @@ pub fn render(export: &Export, buses: Buses, bpm: f64, sample_rate: f32) -> Resu
             conductor: Box::new(first.conductor.clone()),
             swaps: 0,
         },
-        Command::Cue(cue(&mut parts)),
+        mutes,
+        first_cue,
         Command::Play { count_in: 0 },
     ] {
         handle.send(command);
@@ -156,7 +174,9 @@ pub fn render(export: &Export, buses: Buses, bpm: f64, sample_rate: f32) -> Resu
         render(&mut engine, &mut audio);
         if handle.status().boundaries() > boundaries {
             boundaries += 1;
-            handle.send(Command::Cue(cue(&mut parts)));
+            for command in cue() {
+                handle.send(command);
+            }
             handle.collect_garbage();
         }
         // The parts are played as arranged, whatever patterns the conductor cues.
@@ -264,6 +284,7 @@ mod tests {
             }],
             steps,
             conductor: Default::default(),
+            mutes: 0,
         };
         Export {
             path: "x.wav".into(),
@@ -370,6 +391,7 @@ mod tests {
             }],
             steps: 4,
             conductor,
+            mutes: 0,
         };
         x.parts.insert(0, silent);
         let audio = render(&x, Buses::default(), 120.0, rate).unwrap();
@@ -391,6 +413,7 @@ mod tests {
             }],
             steps: 4,
             conductor: Default::default(),
+            mutes: 0,
         };
         x.parts.insert(0, silent);
         let audio = render(&x, Buses::default(), 120.0, rate).unwrap();

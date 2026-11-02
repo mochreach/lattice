@@ -1043,6 +1043,9 @@ pub struct Engine {
     /// is, and what happens when it ends.
     pattern_len: u64,
     pattern_step: u64,
+    /// Steps since the pattern began, through its loops: the conductor goes round its own
+    /// length, which can be longer than the pattern's.
+    conductor_at: u64,
     cue: Cue,
     /// The tracks the song mutes now, and once the playing pattern ends, a bit each.
     mutes: u32,
@@ -1141,6 +1144,7 @@ impl Engine {
             mutes: 0,
             next_mutes: 0,
             pattern_step: 0,
+            conductor_at: 0,
             cue: Cue::Loop,
             swaps: 0,
             tracks,
@@ -1226,6 +1230,7 @@ impl Engine {
         self.step_index = 0;
         self.count_in = 0;
         self.pattern_step = 0;
+        self.conductor_at = 0;
         self.swaps = 0;
         self.playing = false;
         self.stopping = false;
@@ -1885,8 +1890,9 @@ impl Engine {
             .pattern_step
             .store(self.pattern_step, Ordering::Relaxed);
         // Before the tracks, so a tempo the step sets times its own locks' slides.
-        self.conduct(self.pattern_step);
+        self.conduct(self.conductor_at);
         self.pattern_step += 1;
+        self.conductor_at += 1;
         if self.click_enabled && self.step_index.is_multiple_of(self.steps_per_beat) {
             let beat = self.step_index / self.steps_per_beat;
             let pitch = if beat.is_multiple_of(BEATS_PER_BAR) {
@@ -1973,8 +1979,8 @@ impl Engine {
         }
     }
 
-    /// Plays the conductor's step for `pattern_step` steps into the pattern: its gestures, and
-    /// a step's share of any tempo slide on its way.
+    /// Plays the conductor's step for `pattern_step` steps into the pattern, its loops
+    /// included: its gestures, and a step's share of any tempo slide on its way.
     fn conduct(&mut self, pattern_step: u64) {
         let len = self.conductor.steps.len() as u64;
         let Some(at) = pattern_step.checked_rem(len).map(|at| at as usize) else {
@@ -2089,6 +2095,7 @@ impl Engine {
             t.pass = 0;
         }
         self.pattern_step = 0;
+        self.conductor_at = 0;
         // Bars count from the top of each pattern, for the click's accent.
         self.step_index = 0;
         self.status.boundaries.fetch_add(1, Ordering::Relaxed);
@@ -2454,6 +2461,18 @@ mod tests {
         assert_eq!(onsets(&audio), [0, 36_458]);
         assert_eq!(engine.status.tempo(), 120.0);
         assert!(engine.conducted_tempo);
+    }
+
+    #[test]
+    fn a_conductor_longer_than_its_pattern_goes_on_round_the_loops() {
+        let mut engine = click_only(48_000.0, 120.0);
+        engine.pattern_len = 4;
+        engine.conductor = conductor(&[(4, "T60")], 8);
+        // Four steps at 120, then the pattern loops and the conductor goes on to its step 4.
+        let audio = render(&mut engine, 256, 80_000);
+        assert_eq!(onsets(&audio), [0, 24_000, 72_000]);
+        // Step 8 is round again to the conductor's first.
+        assert_eq!(engine.status.conductor_step(), Some(0));
     }
 
     #[test]

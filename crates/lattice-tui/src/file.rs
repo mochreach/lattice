@@ -160,6 +160,12 @@ mod tests {
         assert_eq!(troll.macros.len(), 1);
         assert_eq!(troll.effects.lanes().len(), 2);
         assert_eq!(song.grid.groups.len(), 2);
+        // The conductor speeds the frenzy up through its three times round.
+        let frenzy = (song.arrangement.patterns.iter())
+            .find(|p| p.name == "frenzy")
+            .unwrap();
+        assert_eq!(frenzy.conductor.steps.len(), 192);
+        assert_eq!(frenzy.conductor.gestures().count(), 4);
     }
 
     #[test]

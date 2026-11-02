@@ -32,6 +32,8 @@ pub struct Part {
     pub steps: u64,
     /// The pattern's conductor; a selection plays without one, at the song's tempo.
     pub conductor: Conductor,
+    /// The tracks the song mutes in it, a bit each, as an entry does.
+    pub mutes: u32,
 }
 
 impl Export {
@@ -53,6 +55,7 @@ impl Editor {
                 lanes: a.lanes(&self.grid, pattern).ok_or_else(missing)?,
                 steps: a.steps(&self.grid, pattern).ok_or_else(missing)?,
                 conductor: a.conductor(pattern).cloned().unwrap_or_default(),
+                mutes: 0,
             })
         };
         let parts = match words.last().map(|w| w.parse::<u32>()) {
@@ -73,10 +76,10 @@ impl Editor {
             _ => {
                 let mut parts = vec![];
                 for e in &a.entries {
-                    let mut part = part(e.pattern)?;
-                    for (t, lane) in part.lanes.iter_mut().enumerate() {
-                        lane.mute |= e.muted(t);
-                    }
+                    let part = Part {
+                        mutes: e.mutes,
+                        ..part(e.pattern)?
+                    };
                     parts.extend(std::iter::repeat_n(part, e.repeats as usize));
                 }
                 parts
@@ -129,6 +132,7 @@ impl Editor {
                 lanes,
                 steps: region.rows() as u64,
                 conductor: Conductor::default(),
+                mutes: 0,
             }],
             looped,
         }))])
