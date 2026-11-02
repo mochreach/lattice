@@ -1449,7 +1449,7 @@ impl Editor {
                         .iter()
                         .position(|e| e.pattern == self.arrangement.current)
                 }) {
-                    self.song.cursor = entry;
+                    self.song_to_entry(entry);
                 }
                 self.page = Page::Song;
                 self.mode = Mode::Normal;

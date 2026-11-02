@@ -1,7 +1,10 @@
 //! Drawing the song page: the arrangement as a strip across the top, each entry as wide as it
-//! plays for, then the entries one to a line, and the patterns there are to choose from.
+//! plays for, then the song a bar to a row, time going down. On the left are each bar's time and
+//! number, then the entries, each a block of rows in its pattern's colour, then a column for each
+//! track showing how busy it is in each part of the bar. Under it all, the patterns there are to
+//! choose from.
 
-use lattice_core::BEATS_PER_BAR;
+use lattice_core::{BEATS_PER_BAR, Lane};
 use lattice_editor::Editor;
 use lattice_engine::Status;
 use ratatui::Frame;
@@ -13,47 +16,44 @@ use ratatui::widgets::Paragraph;
 use crate::theme::Theme;
 use crate::ui::fit;
 
-/// Width of a pattern's name in the list of entries.
-const NAME: usize = 12;
+/// Width of the entries' column.
+const ENTRY: usize = 16;
+/// Width of the time and bar number on the left.
+const GUTTER: usize = 12;
+/// How busy part of a bar is, from a note on every step down to one now and then.
+const BUSY: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 
 pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, theme: &Theme) {
     let arrangement = &editor.arrangement;
+    let tracks = &editor.grid.tracks;
     let steps_per_beat = u64::from(editor.grid.steps_per_beat.max(1));
     let bar = u64::from(BEATS_PER_BAR) * steps_per_beat;
     let pattern_steps: Vec<u64> = (0..arrangement.patterns.len())
         .map(|p| arrangement.steps(&editor.grid, p))
         .collect();
-    let lengths: Vec<u64> = arrangement
-        .entries
-        .iter()
-        .map(|e| pattern_steps[e.pattern] * u64::from(e.repeats))
-        .collect();
-    let total: u64 = lengths.iter().sum();
+    let entry_bars = editor.entry_bars();
+    let total = entry_bars.iter().sum::<usize>() as u64 * bar;
     let time = |steps: u64| {
         let seconds = steps as f64 / steps_per_beat as f64 * 60.0 / editor.bpm;
         let seconds = seconds.round() as u64;
         format!("{}:{:02}", seconds / 60, seconds % 60)
     };
     let length = |steps: u64| {
-        if steps.is_multiple_of(bar) {
-            let bars = steps / bar;
-            format!("{bars} bar{}", if bars == 1 { "" } else { "s" })
-        } else {
-            format!("{steps} steps")
-        }
+        let bars = steps / bar;
+        format!("{bars} bar{}", if bars == 1 { "" } else { "s" })
     };
     let playing = editor.song_position;
-    let cursor = editor.song_cursor();
     let width = area.width as usize;
     // How far into the song the playhead is, while it plays from the arrangement.
     let playhead = playing
         .filter(|_| status.playing() && status.count_in() == 0)
         .and_then(|(entry, repeat)| {
             let steps = pattern_steps[arrangement.entries.get(entry)?.pattern];
-            let start: u64 = lengths[..entry].iter().sum();
+            let start = editor.entry_start(entry) as u64 * bar;
             Some(start + u64::from(repeat) * steps + status.pattern_step().min(steps - 1))
         });
     let elapsed = playhead.map_or(String::new(), |at| format!("{} / ", time(at)));
+    let lengths: Vec<u64> = entry_bars.iter().map(|&b| b as u64 * bar).collect();
 
     let mut lines = vec![
         Line::from(Span::styled(
@@ -69,62 +69,135 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
         Line::raw(""),
     ];
 
-    // The entries, scrolled to keep the cursor in view, leaving room for the patterns below.
+    // Each track's column: a character for each beat, or each half beat where there's room,
+    // scrolled sideways to keep the cursor's track in view.
+    let room = width.saturating_sub(GUTTER + ENTRY);
+    let beats = BEATS_PER_BAR as usize;
+    let wide = steps_per_beat.is_multiple_of(2) && room / tracks.len().max(1) > beats * 2;
+    let cells = if wide { beats * 2 } else { beats };
+    let shown = (room / (cells + 2)).clamp(1, tracks.len().max(1));
+    let column = editor.song_column();
+    let first_track = column
+        .saturating_sub(1)
+        .saturating_sub(shown - 1)
+        .min(tracks.len().saturating_sub(shown));
+    let shown_tracks = first_track..(first_track + shown).min(tracks.len());
+
+    let mut header = vec![
+        Span::raw(" ".repeat(GUTTER)),
+        Span::styled(fit("entries", ENTRY), theme.dim),
+    ];
+    for t in shown_tracks.clone() {
+        header.push(Span::styled(
+            fit(&tracks[t].name, cells + 2),
+            Style::new().fg(theme.track(t)),
+        ));
+    }
+    lines.push(Line::from(header));
+
+    // The bars, scrolled to keep the cursor in view, leaving room for the patterns below.
+    let all_bars: usize = entry_bars.iter().sum();
     let rows = (area.height as usize)
-        .saturating_sub(lines.len() + 4)
+        .saturating_sub(lines.len() + 2)
         .max(1);
+    let cursor = editor.song_bar();
     let first = cursor
         .saturating_sub(rows / 2)
-        .min(arrangement.entries.len().saturating_sub(rows));
+        .min(all_bars.saturating_sub(rows));
     if arrangement.entries.is_empty() {
         lines.push(Line::styled(
             "   nothing to play yet: o adds an entry",
             theme.dim,
         ));
     }
-    let mut start: u64 = lengths[..first].iter().sum();
-    for (i, entry) in arrangement
-        .entries
-        .iter()
-        .enumerate()
-        .skip(first)
-        .take(rows)
-    {
-        let pattern = &arrangement.patterns[entry.pattern];
+    let playing_bar = playhead.map(|at| (at / bar) as usize);
+    let mut lanes: Vec<Option<Vec<Lane>>> = vec![None; arrangement.patterns.len()];
+    let mut start = 0;
+    for (i, entry) in arrangement.entries.iter().enumerate() {
+        let bars = entry_bars[i];
+        let (from, to) = (start.max(first), (start + bars).min(first + rows));
+        let pattern_bars = (bars / entry.repeats.max(1) as usize).max(1);
         let colour = theme.track(entry.pattern);
-        let marker = match playing {
-            Some((at, repeat)) if at == i => {
-                format!("▶ {}/{}", repeat + 1, entry.repeats)
+        let name = &arrangement.patterns[entry.pattern].name;
+        let lanes = lanes[entry.pattern]
+            .get_or_insert_with(|| arrangement.lanes(&editor.grid, entry.pattern));
+        for at in from..to {
+            let row = at - start;
+            let repeat = row / pattern_bars;
+            let in_pattern = row % pattern_bars;
+            let here = at == cursor;
+
+            // The time and bar number, the playhead marked.
+            let is_playing = playing_bar == Some(at);
+            let (marker, number_style) = if is_playing {
+                ("▶", Style::new().fg(theme.playing))
+            } else if here {
+                (" ", Style::new().fg(theme.accent))
+            } else {
+                (" ", theme.dim)
+            };
+            let mut spans = vec![
+                Span::styled(marker, Style::new().fg(theme.playing)),
+                Span::styled(format!("{:>5} ", time(at as u64 * bar)), theme.dim),
+                Span::styled(format!("{:>4}  ", at + 1), number_style),
+            ];
+
+            // The entry, as a bracket down its rows, named on its first.
+            let edge = match (row, bars) {
+                (_, 1) => '╶',
+                (0, _) => '┌',
+                (r, b) if r == b - 1 => '└',
+                _ if in_pattern == 0 => '├',
+                _ => '│',
+            };
+            // Named on its first row, or the first in view.
+            let label = match row {
+                _ if at == from && entry.repeats > 1 => format!("{name} ×{}", entry.repeats),
+                _ if at == from => name.clone(),
+                _ if in_pattern == 0 => format!("{}/{}", repeat + 1, entry.repeats),
+                _ => String::new(),
+            };
+            let mut style = Style::new().fg(colour);
+            if here && column == 0 {
+                style = style.bg(theme.selection);
             }
-            _ => String::new(),
-        };
-        let repeats = if entry.repeats > 1 {
-            format!("×{}", entry.repeats)
-        } else {
-            String::new()
-        };
-        let mut spans = vec![
-            Span::styled(format!(" {:>3} ", i + 1), theme.dim),
-            Span::styled(format!("{:>5}  ", time(start)), theme.dim),
-            Span::styled(fit(&pattern.name, NAME), Style::new().fg(colour)),
-            Span::styled(
-                format!(" {:<10}", length(pattern_steps[entry.pattern])),
-                theme.text,
-            ),
-            Span::styled(format!("{repeats:<4}"), theme.text),
-            Span::styled(marker, Style::new().fg(theme.playing)),
-        ];
-        if i == cursor {
-            for span in &mut spans {
-                span.style = span.style.bg(theme.selection);
+            spans.push(Span::styled(
+                format!("{edge} {}", fit(&label, ENTRY - 3)),
+                style,
+            ));
+            spans.push(Span::raw(" "));
+
+            // How busy each track is in this bar.
+            for t in shown_tracks.clone() {
+                let busy = lanes.get(t).map_or(String::new(), |lane| {
+                    busy_bar(lane, in_pattern as u64 * bar, bar, cells)
+                });
+                let selected = here && column == t + 1;
+                for c in busy.chars() {
+                    let mut style = match c {
+                        '·' | '─' => theme.faint,
+                        _ => Style::new().fg(theme.track(t)),
+                    };
+                    if selected {
+                        style = style.bg(theme.selection);
+                    }
+                    spans.push(Span::styled(c.to_string(), style));
+                }
+                spans.push(Span::raw("  "));
             }
+            if is_playing {
+                for span in &mut spans[1..] {
+                    span.style = span.style.add_modifier(Modifier::BOLD);
+                }
+            }
+            lines.push(Line::from(spans));
         }
-        lines.push(Line::from(spans));
-        start += lengths[i];
+        start += bars;
     }
 
     // The patterns to choose from, the one being edited underlined.
-    lines.push(Line::raw(""));
+    let padding = (area.height as usize).saturating_sub(lines.len() + 1);
+    lines.extend(std::iter::repeat_n(Line::raw(""), padding.min(1)));
     let mut patterns = vec![Span::styled(" patterns  ", theme.dim)];
     for (p, pattern) in arrangement.patterns.iter().enumerate() {
         let mut style = Style::new().fg(theme.track(p));
@@ -139,6 +212,35 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
     }
     lines.push(Line::from(patterns));
     frame.render_widget(Paragraph::new(lines), area);
+}
+
+/// How busy `lane` is in the bar starting at step `from`, `bar` steps long, in `cells` characters:
+/// a block as tall as the share of steps with a note, a dot where there are none, and a line
+/// across if the lane's muted. A lane shorter than the pattern plays round again.
+fn busy_bar(lane: &Lane, from: u64, bar: u64, cells: usize) -> String {
+    if lane.mute {
+        return "─".repeat(cells);
+    }
+    let len = lane.steps.len() as u64;
+    let per = bar / cells as u64;
+    (0..cells as u64)
+        .map(|c| {
+            if len == 0 {
+                return '·';
+            }
+            let notes = (0..per)
+                .filter(|s| {
+                    lane.steps[((from + c * per + s) % len) as usize]
+                        .note
+                        .is_some()
+                })
+                .count();
+            match notes {
+                0 => '·',
+                n => BUSY[(n * BUSY.len()).div_ceil(per as usize).clamp(1, BUSY.len()) - 1],
+            }
+        })
+        .collect()
 }
 
 /// The song in one line, each entry as wide as it plays for, coloured by its pattern and named

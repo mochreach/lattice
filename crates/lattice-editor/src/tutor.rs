@@ -768,10 +768,13 @@ const LESSONS: &[Lesson] = &[
     },
     Lesson {
         title: "The song page",
-        text: "{goto_song} opens the song page: the order the patterns play in. Each entry plays \
-               a pattern some number of times. {up} {down} move between entries, {left} \
-               {right} change which pattern the entry plays, and {longer} {shorter} play it \
-               more or fewer times.\n\nOpen the song page and make an entry play twice.",
+        text: "{goto_song} opens the song page: the order the patterns play in, a bar to a row, \
+               time going down. Each entry plays a pattern some number of times, marked down \
+               the left in its pattern's colour; across are the tracks, each showing how busy \
+               it is in each bar. {up} {down} move a bar, {next_note} {prev_note} from entry to \
+               entry, and {left} {right} across the tracks. {note_up} {note_down} change which \
+               pattern the entry plays, and {longer} {shorter} play it more or fewer \
+               times.\n\nOpen the song page and make an entry play twice.",
         teaches: &[Action::GotoSong, Action::Longer, Action::Shorter],
         commands: &[],
         setup: nothing,

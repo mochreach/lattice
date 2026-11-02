@@ -357,12 +357,17 @@ resonance.
 
 The **song page** (`gs`) is the arrangement: the patterns in the order they play, each entry
 repeated some number of times. A strip across the top shows the whole song, each entry as wide as
-it plays for, coloured by its pattern; below it, the entries with when each starts, and the
-patterns there are. `j` `k` move between entries, `h` `l` change the entry's pattern, `+` `-` (or
-`^a` `^x`) how many times it repeats, `o` `O` add an entry after or before, `d` removes one (`y`
+it plays for, coloured by its pattern; below it, the song a bar to a row with time going down:
+each bar's time and number, the entries as blocks of rows in their pattern's colour (`├` where a
+repeat starts), and a column for each track showing how busy it is in each beat of the bar (`·`
+for nothing, `─` where it's muted). Under it are the patterns there are. `j` `k` move a bar, `w`
+`b` from entry to entry, `gg` `ge` to the ends, `h` `l` across the tracks (the columns scroll to
+keep the cursor's in view), `^a` `^x` change the entry's pattern, `+` `-` how many times it
+repeats, `o` `O` add an entry after or before, `d` removes one (`y`
 copies, `p` `P` paste after and before, so `d` then `p` moves an entry), and `ret` goes to the
 entry's pattern to edit it. `space` plays the song from the cursor's entry to the end, following
-along in the header (`song 2/3`) and on the page, where the playhead moves along the strip;
+along in the header (`song 2/3`) and on the page, where the playhead moves along the strip and
+down the bars;
 `:export` renders it. Anywhere else, `^space` plays the song from the entry playing the pattern
 you're on.
 
