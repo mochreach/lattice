@@ -51,7 +51,7 @@
                 name: "pedal",
                 length: 32,
                 steps: {0: (note: (pitch: 31, velocity: 110, length: 32))},
-                instrument: (kind: Switched, params: {"stack": 0.0, "spread": 0.0, "width": 0.0, "grit": 0.0, "ladder": 420.0, "scream": 0.3, "contour": 0.2, "snap": 0.5, "gain": 0.5}),
+                instrument: (kind: Switched, params: {"stack": 0.0, "spread": 0.0, "width": 0.0, "grit": 0.0, "ladder": 671.0, "scream": 0.6, "contour": 0.2, "snap": 0.5, "gain": 0.5}),
                 mix: (level: -14.0, send: -24.0),
             ),
             (

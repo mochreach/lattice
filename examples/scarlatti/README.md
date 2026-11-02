@@ -33,8 +33,8 @@ muted each time:
 The left hand is split across the `bass`, a single saw on Switched with its ladder low and
 screaming, the `tenor` (what's held over the bass, on organ stops) and the `alto` (the odd third
 note of a chord, on a swarm), each note going to the lowest of them that's free. The `pedal`, one
-plain saw, doubles the bass an octave down, as an organ's 16-foot stops do, its ladder open just
-enough to keep the saw's lowest harmonics, so it's heard on small speakers too.
+plain saw, doubles the bass an octave down, as an organ's 16-foot stops do, its ladder open
+and screaming a little, so it's heard on small speakers too and pops through at points.
 
 The effects, on `gf`:
 
