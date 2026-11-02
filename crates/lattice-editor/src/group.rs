@@ -141,13 +141,13 @@ mod tests {
     #[test]
     fn tg_groups_and_ungroups_the_selected_tracks() {
         let mut e = editor();
-        keys(&mut e, "lvlltg");
+        keys(&mut e, "tlvtltltg");
         assert_eq!(groups(&e), [("group 1".into(), 1, 3)]);
         keys(&mut e, ":group-name kit\n");
         assert_eq!(groups(&e)[0].0, "kit");
 
         // Overlapping another group isn't allowed.
-        keys(&mut e, "\x1bggghvltg");
+        keys(&mut e, "\x1bggghvtltg");
         assert_eq!(groups(&e).len(), 1);
         assert!(
             e.message
@@ -185,7 +185,7 @@ mod tests {
         let mut e = editor();
         keys(&mut e, "tz");
         assert!(e.message.as_deref().unwrap().contains("only groups fold"));
-        keys(&mut e, "vltg\x1btz");
+        keys(&mut e, "vtltg\x1btz");
         assert!(e.grid.groups[0].folded);
         keys(&mut e, "tz");
         assert!(!e.grid.groups[0].folded);
@@ -194,7 +194,7 @@ mod tests {
     #[test]
     fn groups_follow_tracks_as_they_move() {
         let mut e = editor();
-        keys(&mut e, "lvltg\x1b");
+        keys(&mut e, "tlvtltg\x1b");
         assert_eq!(groups(&e), [("group 1".into(), 1, 2)]);
         // Removing a track before the group moves it along; adding one inside grows it.
         keys(&mut e, "ghtd");
@@ -222,7 +222,7 @@ mod tests {
         );
 
         e.grid.groups = vec![Group::new("kit", 1..4)];
-        keys(&mut e, "l");
+        keys(&mut e, "tl");
         assert_eq!(e.handle(Key::Pad(2)), [Effect::Preview { track: 2, pitch }]);
         assert!(e.handle(Key::Pad(4)).is_empty(), "past the group's end");
         assert!(

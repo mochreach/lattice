@@ -27,12 +27,14 @@ mod chains;
 mod command;
 mod devices;
 mod export;
+mod fields;
 mod fx_page;
 mod group;
 mod help;
 mod inst_page;
 mod keymap;
 mod locks;
+pub use fields::StepField;
 pub use locks::{ColumnLabel, lock_text};
 mod looper;
 mod macros;
@@ -326,6 +328,8 @@ enum Place {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Pending {
     Menu(Key),
+    /// `f`: the next key picks a field of the open track.
+    Field,
     /// `r`: the next piano key fills the selection.
     Replace,
 }
@@ -409,6 +413,12 @@ pub struct Editor {
     locking: Option<locks::Locking>,
     /// Tracks `te` keeps open, showing their fields, as well as the cursor's.
     open: Vec<TrackId>,
+    /// The field the cursor's in on an open track; see [`Editor::field`].
+    field: StepField,
+    /// What's been typed into a field so far.
+    typing: fields::Typing,
+    /// Values copied from a field, one list per selection, `None` where there was none.
+    field_clipboard: Vec<Vec<Option<fields::Value>>>,
     /// The lock last recorded from the mixer, and its track, to nudge on from.
     live_lock: Option<(TrackId, Lock)>,
     /// The lesson, while the tutor's running.
@@ -542,6 +552,9 @@ impl Editor {
             help: Help::default(),
             locking: None,
             open: vec![],
+            field: StepField::Note,
+            typing: Default::default(),
+            field_clipboard: vec![],
             live_lock: None,
             tutor: None,
             octave: 4,
@@ -774,6 +787,18 @@ impl Editor {
             return self.device_infobox();
         };
         match pending {
+            // The open track's fields, by the keys that go to them.
+            Pending::Field => {
+                let t = self.cursor().track;
+                let columns = self.lock_columns(t);
+                Some(Infobox {
+                    title: "field".into(),
+                    items: [("n".into(), "note".into()), ("v".into(), "velocity".into())]
+                        .into_iter()
+                        .chain(columns.into_iter().map(|c| (c.key.to_string(), c.name)))
+                        .collect(),
+                })
+            }
             Pending::Menu(key) => {
                 let Some(Binding::Menu(menu)) = self.keymap.normal.get(&key) else {
                     return None;
@@ -939,6 +964,10 @@ impl Editor {
                 }
                 return self.replace(key);
             }
+            Some(Pending::Field) => {
+                self.goto_field(key);
+                return vec![];
+            }
             Some(Pending::Menu(prefix)) => {
                 let n = self.count.take().unwrap_or(1);
                 let binding = match self.keymap.normal.get(&prefix) {
@@ -996,6 +1025,7 @@ impl Editor {
         match (key, &self.mode) {
             (_, Mode::Command(_)) => false,
             (Key::Pad(_), _) => true,
+            _ if self.typing_field() => false,
             (Key::Char('1'..='9'), Mode::Insert) if self.in_folded_group() => true,
             (_, Mode::Insert) => self.piano_pitch(key).is_some(),
             _ => false,
@@ -1015,6 +1045,11 @@ impl Editor {
     fn insert_key(&mut self, key: Key) -> Vec<Effect> {
         if self.page == Page::Instrument {
             return self.play_key(key);
+        }
+        if let Some(field) = self.on_field()
+            && let Some(effects) = self.type_field(key, field)
+        {
+            return effects;
         }
         if let Some(pitch) = self.piano_pitch(key) {
             let track = self.cursor().track;
@@ -1290,9 +1325,54 @@ impl Editor {
         let by = n as isize;
         let at_step = |step: usize| move |_: &Self, c: Cursor| Cursor { step, ..c };
         let at_track = |track: usize| move |_: &Self, c: Cursor| Cursor { track, ..c };
+        if let Some(field) = self.on_field() {
+            match action {
+                Action::NoteUp | Action::NoteDown => {
+                    let by = if action == Action::NoteUp {
+                        n
+                    } else {
+                        n.wrapping_neg()
+                    };
+                    return self.nudge_field(field, by as i32);
+                }
+                Action::NoteOctaveUp => return self.nudge_field(field, 10 * n as i32),
+                Action::NoteOctaveDown => return self.nudge_field(field, -10 * n as i32),
+                Action::Delete | Action::Clear => {
+                    if action == Action::Delete {
+                        self.yank_field(field);
+                    }
+                    return self.clear_field(field);
+                }
+                Action::ClearAdvance => {
+                    let effects = self.clear_field(field);
+                    self.advance();
+                    return effects;
+                }
+                Action::Change => {
+                    self.yank_field(field);
+                    let effects = self.clear_field(field);
+                    self.insert_at(false);
+                    return effects;
+                }
+                Action::Yank => {
+                    self.yank_field(field);
+                    return vec![];
+                }
+                Action::Paste | Action::PasteInsert => return self.paste_field(field, n),
+                Action::Replace => {
+                    self.message = Some("in a field, i and two digits set its value".into());
+                    return vec![];
+                }
+                _ => {}
+            }
+        }
         match action {
-            Action::Left => self.motion(|e, c| e.offset(c, -by, 0)),
-            Action::Right => self.motion(|e, c| e.offset(c, by, 0)),
+            Action::Left => self.step_field(false, n),
+            Action::Right => self.step_field(true, n),
+            Action::PrevTrack => self.motion(|e, c| e.offset(c, -by, 0)),
+            Action::NextTrack => self.motion(|e, c| e.offset(c, by, 0)),
+            Action::GotoField => self.pending = Some(Pending::Field),
+            Action::Fill => return self.fill_field(),
             Action::Up => self.motion(|e, c| e.offset(c, 0, -by)),
             Action::Down => self.motion(|e, c| e.offset(c, 0, by)),
             Action::HalfPageUp => self.motion(|e, c| e.offset(c, 0, -by * (PAGE / 2) as isize)),
@@ -1681,10 +1761,15 @@ impl Editor {
     /// unless in select mode.
     fn motion(&mut self, target: impl Fn(&Self, Cursor) -> Cursor) {
         let extend = self.mode == Mode::Select;
+        let track = self.cursor().track;
         self.map_selections(|e, s| {
             let to = target(e, s.cursor);
             e.clamped(if extend { s.anchor } else { to }, to)
         });
+        // On another track, the cursor's on its notes.
+        if self.cursor().track != track {
+            self.field = StepField::Note;
+        }
     }
 
     fn offset(&self, c: Cursor, tracks: isize, steps: isize) -> Cursor {
@@ -2238,7 +2323,7 @@ mod tests {
         assert_eq!(e.cursor().step, 5);
         keys(&mut e, "12j");
         assert_eq!(e.cursor().step, 15, "clamped to the track");
-        keys(&mut e, "l");
+        keys(&mut e, "tl");
         assert_eq!(
             e.cursor(),
             Cursor { track: 1, step: 7 },
@@ -2268,7 +2353,7 @@ mod tests {
     #[test]
     fn select_mode_extends() {
         let mut e = editor();
-        keys(&mut e, "vjjl");
+        keys(&mut e, "vjjtl");
         assert_eq!(
             e.selection(),
             Region {
@@ -2368,7 +2453,7 @@ mod tests {
     fn rows_span_every_track() {
         let mut e = editor();
         notes(&mut e, "zx");
-        keys(&mut e, "lgg");
+        keys(&mut e, "tlgg");
         notes(&mut e, "c");
         keys(&mut e, "ghggx");
         assert_eq!(
@@ -2787,14 +2872,14 @@ mod tests {
         keys(&mut e, "uuuu");
         assert_eq!(e.grid.tracks.len(), 2, "all undone");
 
-        // And `ta`, `td`, `th`, `tl` add, remove and move tracks.
+        // And `ta`, `td`, `tH`, `tL` add, remove and move tracks.
         keys(&mut e, ";gh");
         assert_eq!(keys(&mut e, "ta"), [Effect::TracksChanged]);
         assert_eq!(e.grid.tracks.len(), 3);
         assert_eq!(e.cursor().track, 1, "on the new track");
-        keys(&mut e, "tl");
+        keys(&mut e, "tL");
         assert_eq!(e.grid.tracks[2].name, "track 3");
-        keys(&mut e, "th");
+        keys(&mut e, "tH");
         assert_eq!(e.grid.tracks[1].name, "track 3");
         keys(&mut e, "td");
         assert_eq!(e.grid.tracks.len(), 2);
@@ -2995,7 +3080,7 @@ mod tests {
     fn select_notes_within_the_selections() {
         let mut e = editor();
         notes(&mut e, "zxz");
-        keys(&mut e, "lgg");
+        keys(&mut e, "tlgg");
         notes(&mut e, ",");
         keys(&mut e, "%s");
         assert!(matches!(&e.mode, Mode::Command(p) if p.kind == PromptKind::Select));
@@ -3097,7 +3182,7 @@ mod tests {
     #[test]
     fn insert_at_every_cursor() {
         let mut e = editor();
-        keys(&mut e, "lCi");
+        keys(&mut e, "tlCi");
         assert_eq!(steps(&e), [(1, 0), (1, 1)]);
         keys(&mut e, "z");
         assert_eq!(&pitches(&e, 1)[..3], [Some(60), Some(60), None]);
@@ -3142,7 +3227,7 @@ mod tests {
     #[test]
     fn removing_a_track_keeps_the_cursor_on_the_grid() {
         let mut e = editor();
-        keys(&mut e, "l12j");
+        keys(&mut e, "tl12j");
         assert_eq!(command(&mut e, "track-remove"), [Effect::TracksChanged]);
         assert_eq!(names(&e), ["a"]);
         assert_eq!(e.track_ids(), [TrackId(0)]);
@@ -3199,10 +3284,10 @@ mod tests {
     fn undo_and_redo_across_adding_and_removing_tracks() {
         let mut e = editor();
         notes(&mut e, "z");
-        keys(&mut e, "l");
+        keys(&mut e, "tl");
         command(&mut e, "ta c");
         command(&mut e, "track-move -2");
-        keys(&mut e, "l");
+        keys(&mut e, "tl");
         command(&mut e, "track-remove");
         assert_eq!(names(&e), ["c", "b"]);
         let ids = |e: &Editor| e.track_ids().to_vec();

@@ -335,7 +335,7 @@ mod tests {
     fn every_instrument_side_by_side() {
         let mut e = editor();
         // From the pattern cursor's track, onto its first setting.
-        keys(&mut e, "lgi");
+        keys(&mut e, "tlgi");
         assert_eq!(e.page, Page::Instrument);
         assert_eq!(e.inst_cursor(), InstCursor { track: 1, line: 1 });
         assert_eq!(e.inst_line(), Some(InstLine::Param(0)));

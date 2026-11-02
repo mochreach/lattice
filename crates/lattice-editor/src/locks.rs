@@ -118,6 +118,11 @@ fn setting(track: &Track, fx: Option<u8>, param: u8) -> Option<Setting> {
     Some(Setting::new(fx, params.get(usize::from(param))?))
 }
 
+/// What's known of the setting `column` locks on `track`, if it's still there.
+pub(crate) fn column_info(track: &Track, column: LockColumn) -> Option<&'static ParamInfo> {
+    setting(track, column.fx, column.param).map(|s| s.info)
+}
+
 /// A track's lock column, as the grid heads it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColumnLabel {

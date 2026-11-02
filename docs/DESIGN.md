@@ -807,7 +807,18 @@ value shows from 00 to 99 across the setting's range on its own curve (`lock_tex
 it for a slide, `--` for a reset, and `╵` on the rows it carries on over, counting round from the
 track's last lock, as the loop plays it. A header row names the fields, underlining the letter
 `f` will go to each by (`Editor::lock_columns`). Closed tracks mark a step with locks `◆` at its
-end. The status line lists the cursor's locks in place of the key hints. The engine publishes each track's locks in force every
+end. The status line lists the cursor's locks in place of the key hints.
+
+The cursor has a field as well as a step (`StepField`: the note, the velocity, or a lock column
+by its place), kept on the editor rather than in each selection: `h` `l` step through the open
+track's fields and then on to the next track, and any other motion that changes track puts it
+back on the notes, as do `th` `tl`. Edits go to the field only while every selection is on the
+cursor's track (`Editor::on_field`); across tracks they take whole steps, as before. A field's
+values are numbers from 00 to 99 (`fields::Value`), read and written through the setting's curve
+or the note's velocity, so typing, nudging, copying and `&`'s fill work the same way on every
+field. Copying a field fills its own clipboard, of values rather than steps, so `p` can put a
+cutoff column's values into a resonance column. In insert mode digits type into the field
+instead of playing the piano, two to a step. The engine publishes each track's locks in force every
 block (`Status::locks`, one atomic per lock: a present bit, the effect, the setting and the
 value's bits), and the mixer page shows those values while they hold, so its knobs move with the
 pattern.

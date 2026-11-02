@@ -180,8 +180,18 @@ const LESSONS: &[Lesson] = &[
                a lesson, `:tutor back` goes back one and `:tutor end` stops.\n\n\
                The grid has a column for each track and a row for each step. Move with \
                {left} {down} {up} {right}; a number first repeats the move, so 4 then {down} goes \
-               down four. Move to the BASS track's step 08.",
-        teaches: &[Action::Left, Action::Down, Action::Up, Action::Right],
+               down four. The track under the cursor opens out, and {left} {right} go through \
+               its fields, the note, its velocity and more, before the next track; \
+               {prev_track} {next_track} jump straight to the previous and next track's notes. \
+               Move to the BASS track's step 08.",
+        teaches: &[
+            Action::Left,
+            Action::Down,
+            Action::Up,
+            Action::Right,
+            Action::PrevTrack,
+            Action::NextTrack,
+        ],
         commands: &["tutor"],
         setup: nothing,
         watch: never,
@@ -189,7 +199,7 @@ const LESSONS: &[Lesson] = &[
             let c = e.cursor();
             index(e, "BASS") == Some(c.track) && c.step == 8
         },
-        solution: "ll8j",
+        solution: "tltl8j",
     },
     Lesson {
         title: "Jumping",
@@ -299,7 +309,7 @@ const LESSONS: &[Lesson] = &[
                 run().all(|s| !has_note(bass, s)) && has_note(bass, 0) && has_note(bass, 8)
             })
         },
-        solution: "ghllgg4jv3jd",
+        solution: "ghtltlgg4jv3jd",
     },
     Lesson {
         title: "Undo",
@@ -361,7 +371,7 @@ const LESSONS: &[Lesson] = &[
                 _ => false,
             })
         },
-        solution: "ghllgg4jv3j>",
+        solution: "ghtltlgg4jv3j>",
     },
     Lesson {
         title: "Copy and paste",
@@ -378,7 +388,7 @@ const LESSONS: &[Lesson] = &[
             };
             (0..4).all(|s| note(kick, s).is_some_and(|n| note(hat, 8 + s) == Some(n)))
         },
-        solution: "ghggv3jyl5jp",
+        solution: "ghggv3jytl5jp",
     },
     Lesson {
         title: "Many selections",
@@ -489,7 +499,7 @@ const LESSONS: &[Lesson] = &[
         setup: nothing,
         watch: |e| track(e, "BASS").is_some_and(|t| t.mix.mute),
         done: |e, t| t.seen && track(e, "BASS").is_some_and(|t| !t.mix.mute),
-        solution: "ghlltmtm",
+        solution: "ghtltltmtm",
     },
     Lesson {
         title: "Rules",
@@ -517,7 +527,7 @@ const LESSONS: &[Lesson] = &[
                 .flat_map(|t| t.rules.iter().skip(was.rules.len()))
                 .any(|r| r.when != Condition::Always)
         },
-        solution: "ghll:tr 5 every 4<ret>",
+        solution: "ghtltl:tr 5 every 4<ret>",
     },
     Lesson {
         title: "Tracks",
@@ -539,7 +549,7 @@ const LESSONS: &[Lesson] = &[
         setup: nothing,
         watch: never,
         done: |e, t| e.grid.tracks.len() > t.start.tracks.len() && e.page == Page::Pattern,
-        solution: "ghllta",
+        solution: "ghtltlta",
     },
     Lesson {
         title: "The mixer",
@@ -558,7 +568,7 @@ const LESSONS: &[Lesson] = &[
             };
             track(e, "BASS").is_some_and(|t| t.mix.level < was.mix.level) && e.page == Page::Pattern
         },
-        solution: "ghllgm<C-x>gp",
+        solution: "ghtltlgm<C-x>gp",
     },
     Lesson {
         title: "Instruments and effects",
@@ -647,8 +657,18 @@ const LESSONS: &[Lesson] = &[
                tracks mark a step with locks `◆`. {toggle_open} keeps the selected tracks open \
                too, and again closes them. `:lock cutoff` alone adds a column, and `:unlock` \
                along the whole track takes one away.\n\n\
+               {goto_field}, then a field's letter, underlined in its header, goes straight to \
+               it: `n` the note, `v` the velocity. In a field, insert mode's digits type values, \
+               two to a step, `~` first slides and `-` puts the setting back; {note_up} \
+               {note_down} nudge them, {delete} {yank} {paste} work on them, and {fill} fills \
+               a selection evenly between the values at its ends.\n\n\
                Lock the LEAD track's cutoff on step 00.",
-        teaches: &[Action::LockSetting, Action::ToggleOpen],
+        teaches: &[
+            Action::LockSetting,
+            Action::ToggleOpen,
+            Action::GotoField,
+            Action::Fill,
+        ],
         commands: &["lock", "unlock"],
         setup: nothing,
         watch: never,
@@ -733,7 +753,7 @@ const LESSONS: &[Lesson] = &[
         setup: nothing,
         watch: never,
         done: |e, _| e.grid.tracks.iter().any(chopped),
-        solution: "ghvltt:export-loop<ret>:track-add BEAT<ret>:chop<ret>",
+        solution: "ghvtltt:export-loop<ret>:track-add BEAT<ret>:chop<ret>",
     },
     Lesson {
         title: "Rearranging",
@@ -791,7 +811,7 @@ const LESSONS: &[Lesson] = &[
             crate::rearrange::reverse(&mut turned, &was.instrument);
             now_end == turned.as_slice() && now_run.iter().all(|s| s == repeated)
         },
-        solution: "ghllgg12jv3j~<esc>;11kv3j*",
+        solution: "ghtltlgg12jv3j~<esc>;11kv3j*",
     },
     Lesson {
         title: "Looping",
@@ -811,7 +831,7 @@ const LESSONS: &[Lesson] = &[
         setup: nothing,
         watch: never,
         done: |e, _| e.armed().is_some(),
-        solution: "ghll:arm<ret>",
+        solution: "ghtltl:arm<ret>",
     },
     Lesson {
         title: "Patterns",

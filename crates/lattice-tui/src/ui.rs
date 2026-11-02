@@ -6,7 +6,7 @@ use lattice_core::instrument::chop;
 use lattice_core::{Change, Group, InstKind, MAX_GROUPS, MAX_TRACKS, Step, Track, realise};
 use lattice_editor::{
     BEATS_PER_BAR, ColumnLabel, Completion, Cursor, Editor, Infobox, Mode, NoteLayout, PadMode,
-    Page, PromptKind, Selection, TutorView, View, word_start,
+    Page, PromptKind, Selection, StepField, TutorView, View, word_start,
 };
 use lattice_engine::{Chain, Status};
 use ratatui::Frame;
@@ -1100,7 +1100,10 @@ fn grid_row(
         };
         let selected = here.iter().any(|s| s.region().contains(i, row));
         let plain = style;
-        if at(primary) {
+        // The field the cursor's in, if it's moved off the note.
+        let in_field = Some(editor.field())
+            .filter(|&f| at(primary) && f != StepField::Note && c.fields.is_some());
+        if at(primary) && in_field.is_none() {
             style = theme.block(mode_colour);
         } else if here.iter().any(|s| at(s.cursor)) {
             // The other selections' cursors: marked, but not as a block like the primary's.
@@ -1116,11 +1119,15 @@ fn grid_row(
 
         // In the track's colour, unless the cell is highlighted.
         // The cursor's on the note, so the fields beside it stay as they are.
-        let on_note = at(primary);
+        let on_note = at(primary) && in_field.is_none();
         let highlight = |own: Style| match () {
             _ if style == plain => own.patch(band),
             _ if on_note => own.patch(band),
             _ => style,
+        };
+        let cursor = |field: StepField, own: Style| match in_field {
+            Some(f) if f == field => theme.block(mode_colour),
+            _ => highlight(own),
         };
         match mark {
             Some(mark) => {
@@ -1136,15 +1143,18 @@ fn grid_row(
                 .map(|n| format!(" {:02}", (u32::from(n.velocity) * 99).div_ceil(127)));
             spans.push(Span::styled(
                 fit(&velocity.unwrap_or_default(), FIELD),
-                highlight(c.style()),
+                cursor(StepField::Velocity, c.style()),
             ));
-            for (_, rows) in fields {
+            for (k, (_, rows)) in fields.iter().enumerate() {
                 let (text, own) = match rows.get(row) {
                     Some(Field::Lock(text)) => (format!(" {text}"), c.style()),
                     Some(Field::Held) => ("   ╵".into(), c.style().add_modifier(Modifier::DIM)),
                     _ => ("  ··".into(), theme.faint),
                 };
-                spans.push(Span::styled(fit(&text, FIELD), highlight(own)));
+                spans.push(Span::styled(
+                    fit(&text, FIELD),
+                    cursor(StepField::Lock(k), own),
+                ));
             }
         }
         spans.push(Span::styled(" ", band));

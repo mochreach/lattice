@@ -968,7 +968,7 @@ mod tests {
     #[test]
     fn gi_gm_and_gf_open_on_the_cursors_track() {
         let mut e = editor();
-        keys(&mut e, "gpl");
+        keys(&mut e, "gptl");
         command(&mut e, "fx-add delay");
         // gi opens the instrument page, with the mixer's cursor on the track's instrument.
         keys(&mut e, "gi");
@@ -1052,7 +1052,7 @@ mod tests {
         assert_eq!(e.grid.tracks[0].effects.len(), 2);
 
         // On the pattern page, it goes at the end of the cursor's track's chain.
-        keys(&mut e, "gpl");
+        keys(&mut e, "gptl");
         command(&mut e, "fx-add delay");
         assert_eq!(e.grid.tracks[1].effects.len(), 1);
     }

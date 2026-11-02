@@ -240,6 +240,13 @@ pub enum Action {
     PasteTracksBefore,
     MoveTrackLeft,
     MoveTrackRight,
+    /// To the previous or next track, on its notes.
+    PrevTrack,
+    NextTrack,
+    /// `f` then a key: to a field of the open track.
+    GotoField,
+    /// Fill the field evenly between the values at each selection's ends.
+    Fill,
     /// Group the tracks the selections reach, or ungroup the group they're in.
     ToggleGroup,
     /// Fold or unfold the groups the selections reach.
@@ -340,6 +347,10 @@ impl Action {
         Action::PasteTracksBefore,
         Action::MoveTrackLeft,
         Action::MoveTrackRight,
+        Action::PrevTrack,
+        Action::NextTrack,
+        Action::GotoField,
+        Action::Fill,
         Action::ToggleGroup,
         Action::ToggleFold,
         Action::ToggleOpen,
@@ -452,6 +463,10 @@ impl Action {
             Action::PasteTracksBefore => "paste tracks before",
             Action::MoveTrackLeft => "move track left",
             Action::MoveTrackRight => "move track right",
+            Action::PrevTrack => "previous track, on its notes",
+            Action::NextTrack => "next track, on its notes",
+            Action::GotoField => "to a field: n note, v velocity, a lock column's letter",
+            Action::Fill => "fill the field evenly between the selection's ends",
             Action::ToggleGroup => "group / ungroup tracks",
             Action::ToggleFold => "fold / unfold group",
             Action::ToggleOpen => "keep tracks open / close them",
@@ -709,8 +724,10 @@ impl Default for Keymap {
                 (Char('y'), YankTracks),
                 (Char('p'), PasteTracksAfter),
                 (Char('P'), PasteTracksBefore),
-                (Char('h'), MoveTrackLeft),
-                (Char('l'), MoveTrackRight),
+                (Char('h'), PrevTrack),
+                (Char('l'), NextTrack),
+                (Char('H'), MoveTrackLeft),
+                (Char('L'), MoveTrackRight),
                 (Char('g'), ToggleGroup),
                 (Char('z'), ToggleFold),
                 (Char('e'), ToggleOpen),
@@ -722,6 +739,8 @@ impl Default for Keymap {
             .chain([
                 (Char('h'), Action::Left),
                 (Char('l'), Action::Right),
+                (Char('f'), GotoField),
+                (Char('&'), Fill),
                 (Char('k'), Action::Up),
                 (Char('j'), Action::Down),
                 (Ctrl('u'), HalfPageUp),

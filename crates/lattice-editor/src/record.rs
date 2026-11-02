@@ -334,6 +334,7 @@ mod tests {
     #[test]
     fn a_shorter_track_records_on_its_own_pass() {
         let mut e = editor();
+        e.handle(Key::Char('t'));
         e.handle(Key::Char('l'));
         e.handle(Key::Char(':'));
         for c in "rec".chars() {

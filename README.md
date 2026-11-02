@@ -85,7 +85,9 @@ in order, repeating the last if there are more selections than values. So `%`, t
 
 | Moving and selecting | |
 | --- | --- |
-| `h j k l`, arrows | move between tracks and steps |
+| `h j k l`, arrows | move between fields and steps: `h` `l` go through the open track's fields (note, velocity, lock columns), then on to the next track |
+| `th` `tl` | previous / next track, on its notes |
+| `f` then a key | to a field of the open track: `n` note, `v` velocity, or a lock column by the letter its header underlines |
 | `w` `b` | next / previous note |
 | `^u` `^d`, `^b` `^f` | up / down half a page, a page |
 | `gg` `ge` `gh` `gl` | first step, last step, first track, last track |
@@ -98,7 +100,7 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `tt` | select every step of the tracks the selections reach |
 | `tm` `ts` | mute / solo every track the selections reach (not Helix's `t`, which has no use on a grid) |
 | `tM` | mute / unmute in this pattern only: the notes stay, ready to bring back, and the other patterns play them (shown `m`) |
-| `ta`, `th` `tl` | add a track after this one, move it left / right |
+| `ta`, `tH` `tL` | add a track after this one, move it left / right |
 | `ty`, `td` | copy the tracks the selections reach; remove them, copying them first |
 | `tp` `tP` | paste copied tracks after / before this one, with their notes, rules, mix and instrument |
 | `tg` | group the tracks the selections reach (from the first to the last), or ungroup the group they're in; a group's tracks mix into its bus, a strip on the mixer page with a level and effects |
@@ -126,7 +128,8 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `y` | copy |
 | `p` `P` | paste over the selection, from its first step; or insert there, pushing the notes below down (the end of the track falls off) |
 | `r` then a piano key | fill the selection with that note |
-| `^a` `^x` | note up / down a semitone |
+| `^a` `^x` | note up / down a semitone; in a field, its values up / down by one |
+| `&` | in a field, fill each selection evenly between the values at its ends |
 | `>` `<` | note up / down an octave |
 | `+` `-` | longer / shorter note |
 | `i` `a` | insert at the start, or after the end |
@@ -349,7 +352,10 @@ own. A lock holds from its step until that setting's next lock; `--` puts the se
 mixer's, and `~` slides to a value, arriving on its step. The track under the cursor opens out to
 show its columns beside its notes and their velocity: each value from 00 to 99 across the
 setting's range, and `╵` where one carries on. Other tracks mark a step with locks `◆`, and `te`
-keeps tracks open. While a lock plays, the mixer page shows its value, in the accent colour and
+keeps tracks open. In a field, `i` and two digits set its value on each cursor's step and move
+on, `~` first slides, and `-` puts the setting back; `^a` `^x` nudge the values the selections
+reach, `d` `y` `p` work on the field alone, and `&` fills evenly between a selection's ends. While
+a lock plays, the mixer page shows its value, in the accent colour and
 marked `◆`, in place of the track's own. Or select the steps, go to
 the mixer (`gm`), press `L`, and change the track's settings by ear; `L` again locks each setting
 that changed onto the selected steps and puts the track's own settings back (`esc`, or leaving the
