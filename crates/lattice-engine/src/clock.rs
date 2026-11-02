@@ -38,6 +38,15 @@ impl Clock {
         self.samples_per_step = samples_per_step(self.sample_rate, bpm, self.steps_per_beat);
     }
 
+    /// Changes tempo from the step just taken on, so it's that step that's longer or shorter:
+    /// for a tempo the step itself sets.
+    pub fn retime(&mut self, bpm: f64) {
+        let this = self.next_step.saturating_sub(1).max(self.base_step);
+        self.origin = self.step_position(this);
+        self.base_step = this;
+        self.samples_per_step = samples_per_step(self.sample_rate, bpm, self.steps_per_beat);
+    }
+
     /// How long a step is now, in frames.
     pub fn samples_per_step(&self) -> f64 {
         self.samples_per_step

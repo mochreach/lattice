@@ -9,7 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
-use lattice_core::{BEATS_PER_BAR, Grid, Lane, MAX_BARS, Step};
+use lattice_core::{BEATS_PER_BAR, Conductor, Grid, Lane, MAX_BARS, Step};
 
 use crate::{Editor, Effect};
 
@@ -30,6 +30,8 @@ pub struct Export {
 pub struct Part {
     pub lanes: Vec<Lane>,
     pub steps: u64,
+    /// The pattern's conductor; a selection plays without one, at the song's tempo.
+    pub conductor: Conductor,
 }
 
 impl Export {
@@ -50,6 +52,7 @@ impl Editor {
             Ok(Part {
                 lanes: a.lanes(&self.grid, pattern).ok_or_else(missing)?,
                 steps: a.steps(&self.grid, pattern).ok_or_else(missing)?,
+                conductor: a.conductor(pattern).cloned().unwrap_or_default(),
             })
         };
         let parts = match words.last().map(|w| w.parse::<u32>()) {
@@ -125,6 +128,7 @@ impl Editor {
             parts: vec![Part {
                 lanes,
                 steps: region.rows() as u64,
+                conductor: Conductor::default(),
             }],
             looped,
         }))])

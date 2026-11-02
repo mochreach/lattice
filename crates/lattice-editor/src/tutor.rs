@@ -937,6 +937,31 @@ const LESSONS: &[Lesson] = &[
         solution: "gs<space><playing><space><stopped>",
     },
     Lesson {
+        title: "The conductor",
+        text: "Left of the first track is the conductor: two fields on each step for what \
+               belongs to the whole song, not one track. From the first track's notes \
+               ({first_track}), {left} goes into them, and {goto_field} `g` straight there. In \
+               insert mode, type a gesture: `T140` sets the tempo from that step, `~140` \
+               slides there, arriving on the step, and `T--` goes back to the song's `:bpm`; \
+               `X` stops the song at the end of the step, `P3` cues pattern 3 for the next bar, \
+               and `M2` `S2` mute or solo track 2. Each goes in once it's whole, or with enter \
+               (`P3` could be `P31`). {note_up} {note_down} nudge a tempo, {delete} {yank} \
+               {paste} work as in any field, and {fill} fills tempos between two. It has its \
+               own length, as long as the pattern until `:len` in it changes it, so a tempo \
+               change can come once a bar or once in four.\n\n\
+               Set the tempo to 140 on the first step of the conductor.",
+        teaches: &[],
+        commands: &[],
+        setup: nothing,
+        watch: never,
+        done: |e, _| {
+            (e.conductor().into_iter())
+                .flat_map(|c| c.gestures())
+                .any(|(_, g)| g == lattice_core::Gesture::Tempo(140))
+        },
+        solution: "gpghhhggit140<esc>",
+    },
+    Lesson {
         title: "Finding more",
         text: "That's the tutor. `:help` lists every key and command, as they're bound, and \
                `:tutor` starts this again.\n\nOpen the help page to finish.",

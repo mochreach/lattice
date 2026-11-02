@@ -168,6 +168,7 @@ fn rendering_never_allocates() {
     });
     // Another pattern to change to, with a rule to realise.
     let mut section = Some(Box::new(Section {
+        conductor: Default::default(),
         lanes: vec![Lane {
             mute: false,
             steps: vec![Step::note(48); 5],

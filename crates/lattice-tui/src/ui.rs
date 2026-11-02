@@ -3,7 +3,9 @@
 use std::time::Instant;
 
 use lattice_core::instrument::chop;
-use lattice_core::{Change, Group, InstKind, MAX_GROUPS, MAX_TRACKS, Step, Track, realise};
+use lattice_core::{
+    Change, Conductor, Gesture, Group, InstKind, MAX_GROUPS, MAX_TRACKS, Step, Track, realise,
+};
 use lattice_editor::{
     BEATS_PER_BAR, ColumnLabel, Completion, Cursor, Editor, Infobox, Mode, NoteLayout, PadMode,
     Page, PromptKind, Selection, StepField, TutorView, View, word_start,
@@ -383,7 +385,12 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         value(editor.pattern_name().into()),
         Span::styled(where_in_song(editor), theme.text),
         label("   bpm "),
-        value(bpm(editor.bpm)),
+        // Playing, the tempo the conductor's set, if it's changed it.
+        value(bpm(if status.playing() {
+            status.tempo()
+        } else {
+            editor.bpm
+        })),
         label("   oct "),
         value(editor.octave.to_string()),
         label("   vel "),
@@ -407,6 +414,72 @@ const CHOP: usize = 15;
 
 /// Width of an open track's field: its velocity, or a lock column's value, and a gap.
 const FIELD: usize = 4;
+
+/// Width of a conductor's gesture field, and of the conductor's column: its two fields, and a
+/// gap.
+const GESTURE: usize = 5;
+const CONDUCTOR: usize = 2 * GESTURE + 1;
+
+/// The conductor's lane, as the grid shows it: left of the tracks, when it has gestures or the
+/// cursor's in it.
+struct Conducting<'a> {
+    conductor: Option<&'a Conductor>,
+    len: usize,
+    playhead: Option<usize>,
+}
+
+impl<'a> Conducting<'a> {
+    fn new(editor: &'a Editor, status: &Status) -> Option<Self> {
+        let conductor = editor.conductor();
+        let has_gestures = conductor.is_some_and(|c| !c.is_empty());
+        (has_gestures || editor.in_conductor()).then(|| Conducting {
+            conductor,
+            len: editor.conductor_len(),
+            playhead: status.conductor_step().filter(|_| status.playing()),
+        })
+    }
+
+    /// Its column on row `row`.
+    fn row(&self, row: usize, editor: &Editor, theme: &Theme, band: Style) -> Vec<Span<'static>> {
+        let mut spans = vec![];
+        let primary = editor.cursor();
+        let mode_colour = match editor.mode {
+            Mode::Insert => theme.accent,
+            Mode::Select => theme.visual,
+            _ => Color::Reset,
+        };
+        let conducting = editor.in_conductor();
+        let selected = conducting
+            && (editor.selections().iter())
+                .any(|s| s.region().first_track == 0 && s.region().contains(0, row));
+        for field in 0..lattice_core::GESTURES {
+            let gesture = self.conductor.and_then(|c| c.get(row, field));
+            let (text, own) = match gesture {
+                _ if row >= self.len => (String::new(), Style::new()),
+                Some(g @ (Gesture::Tempo(_) | Gesture::Slide(_) | Gesture::SongTempo)) => {
+                    (format!(" {g}"), Style::new().fg(theme.accent))
+                }
+                Some(Gesture::Stop) => (" X".into(), Style::new().fg(theme.error)),
+                Some(g) => (format!(" {g}"), theme.text),
+                None => ("  ··".into(), theme.faint),
+            };
+            let style =
+                if conducting && primary.step == row && editor.field() == StepField::Gesture(field)
+                {
+                    theme.block(mode_colour)
+                } else if self.playhead == Some(row) && row < self.len {
+                    theme.block(theme.accent)
+                } else if selected {
+                    own.bg(theme.selection)
+                } else {
+                    own.patch(band)
+                };
+            spans.push(Span::styled(fit(&text, GESTURE), style));
+        }
+        spans.push(Span::styled(" ", band));
+        spans
+    }
+}
 
 /// The width of track `index`'s column: its notes, and its fields if it's open.
 fn column_width(editor: &Editor, index: usize) -> usize {
@@ -654,8 +727,10 @@ fn draw_grid(
     let tracks = editor.grid.tracks.len();
     let widths: Vec<usize> = (0..tracks).map(|i| column_width(editor, i)).collect();
     let note_widths: Vec<usize> = (0..tracks).map(|i| note_width(editor, i)).collect();
+    let conducting = Conducting::new(editor, status);
+    let lead = GUTTER + if conducting.is_some() { CONDUCTOR } else { 0 };
     // One column spare for the arrow that shows there are more tracks.
-    let room = (area.width as usize).saturating_sub(GUTTER + 1);
+    let room = (area.width as usize).saturating_sub(lead + 1);
     scroll_tracks(view, editor.cursor().track, &widths, room);
     let fits = fitting(widths.get(view.first_track..).unwrap_or_default(), room);
     let columns: Vec<Column> = editor
@@ -675,18 +750,34 @@ fn draw_grid(
         })
         .collect();
     let hidden = (view.first_track > 0, view.first_track + fits < tracks);
-    let mut lines: Vec<_> = group_line(&columns, &editor.grid.groups, theme)
+    let mut lines: Vec<_> = group_line(&columns, &editor.grid.groups, lead, theme)
         .into_iter()
         .collect();
     let armed = editor.armed().map(|t| (t, status.recording()));
-    lines.extend(header_lines(&columns, hidden, armed, theme));
+    lines.extend(header_lines(
+        &columns,
+        hidden,
+        armed,
+        conducting.is_some(),
+        theme,
+    ));
     let rows = (area.height as usize).saturating_sub(lines.len());
-    let longest = columns.iter().map(|c| c.shown.len()).max().unwrap_or(0);
+    let longest = (columns.iter().map(|c| c.shown.len()))
+        .chain(conducting.as_ref().map(|c| c.len))
+        .max()
+        .unwrap_or(0);
     scroll_to(view, editor, &columns, rows, longest, status.playing());
 
     let steps_per_beat = editor.grid.steps_per_beat.max(1) as usize;
     for row in (view.scroll..longest).take(rows) {
-        lines.push(grid_row(row, steps_per_beat, &columns, editor, theme));
+        lines.push(grid_row(
+            row,
+            steps_per_beat,
+            &columns,
+            conducting.as_ref(),
+            editor,
+            theme,
+        ));
     }
     frame.render_widget(Paragraph::new(lines), area);
 }
@@ -730,11 +821,16 @@ fn scroll_to(
 }
 
 /// A bracket over each group's columns, with its name, if the grid has groups.
-fn group_line(columns: &[Column], groups: &[Group], theme: &Theme) -> Option<Line<'static>> {
+fn group_line(
+    columns: &[Column],
+    groups: &[Group],
+    lead: usize,
+    theme: &Theme,
+) -> Option<Line<'static>> {
     if groups.is_empty() {
         return None;
     }
-    let mut spans = vec![Span::raw(" ".repeat(GUTTER))];
+    let mut spans = vec![Span::raw(" ".repeat(lead))];
     let mut k = 0;
     while let Some(c) = columns.get(k) {
         let Some(group) = groups.iter().find(|g| g.contains(c.index)) else {
@@ -778,16 +874,24 @@ fn header_lines(
     columns: &[Column],
     (left, right): (bool, bool),
     armed: Option<(usize, bool)>,
+    conducting: bool,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
+    let lead = GUTTER + if conducting { CONDUCTOR } else { 0 };
     let cell = |c: &Column, text: String, style: Style| {
         Span::styled(format!("{} ", fit(&text, c.width)), style)
     };
     let blank = |c: &Column| vec![Span::raw(" ".repeat(c.width + 1))];
     let line = |cells: Vec<Span<'static>>| {
-        let mut spans = vec![Span::raw(" ".repeat(GUTTER))];
+        let mut spans = vec![Span::raw(" ".repeat(lead))];
         spans.extend(cells);
         Line::from(spans)
+    };
+    // The conductor's name over its column, then its fields' with the keys `f` goes to them by.
+    let conductor_name = |gutter: Span<'static>| {
+        let name = fit("CONDUCTOR", CONDUCTOR);
+        let name = Span::styled(name, theme.dim.add_modifier(Modifier::BOLD));
+        [gutter, name]
     };
 
     let mut names = line(
@@ -817,8 +921,16 @@ fn header_lines(
             })
             .collect(),
     );
-    if left && let Some(gutter) = names.spans.first_mut() {
-        *gutter = Span::styled(fit(" ‹", GUTTER), theme.dim);
+    if let Some(gutter) = names.spans.first_mut() {
+        *gutter = match left {
+            true => Span::styled(fit(" ‹", GUTTER), theme.dim),
+            false => Span::raw(" ".repeat(GUTTER)),
+        };
+    }
+    if conducting {
+        let gutter = names.spans.drain(..1.min(names.spans.len())).next();
+        let gutter = gutter.unwrap_or_else(|| Span::raw(" ".repeat(GUTTER)));
+        names.spans.splice(0..0, conductor_name(gutter));
     }
     if right {
         names.spans.push(Span::styled("›", theme.dim));
@@ -881,7 +993,7 @@ fn header_lines(
             .collect(),
     ));
     // Open tracks name their fields, with the key `f` goes to each by underlined.
-    lines.push(line(
+    let mut fields = line(
         columns
             .iter()
             .flat_map(|c| {
@@ -912,7 +1024,24 @@ fn header_lines(
                 spans
             })
             .collect(),
-    ));
+    );
+    if conducting && !fields.spans.is_empty() {
+        let key = |k: &'static str| {
+            [
+                Span::raw(" "),
+                Span::styled(k, theme.dim.add_modifier(Modifier::UNDERLINED)),
+                Span::raw("   "),
+            ]
+        };
+        let spans = [Span::raw(" ".repeat(GUTTER))]
+            .into_iter()
+            .chain(key("g"))
+            .chain(key("G"))
+            .chain([Span::raw(" ")]);
+        // In place of the line's lead, the gutter and the conductor's width.
+        fields.spans.splice(0..1, spans);
+    }
+    lines.push(fields);
     lines
 }
 
@@ -994,6 +1123,7 @@ fn grid_row(
     row: usize,
     steps_per_beat: usize,
     columns: &[Column],
+    conducting: Option<&Conducting>,
     editor: &Editor,
     theme: &Theme,
 ) -> Line<'static> {
@@ -1015,6 +1145,9 @@ fn grid_row(
         format!("{:>3} ", format!("{row:02}")),
         gutter_style.patch(band),
     )];
+    if let Some(conducting) = conducting {
+        spans.extend(conducting.row(row, editor, theme, band));
+    }
 
     // The selections crossing this row, so each cell only checks those.
     let here: Vec<&Selection> = editor
@@ -1103,7 +1236,10 @@ fn grid_row(
         // The field the cursor's in, if it's moved off the note.
         let in_field = Some(editor.field())
             .filter(|&f| at(primary) && f != StepField::Note && c.fields.is_some());
-        if at(primary) && in_field.is_none() {
+        let conducting = editor.in_conductor();
+        if conducting && selected {
+            // The selection's in the conductor, not the track.
+        } else if at(primary) && in_field.is_none() && !conducting {
             style = theme.block(mode_colour);
         } else if here.iter().any(|s| at(s.cursor)) {
             // The other selections' cursors: marked, but not as a block like the primary's.

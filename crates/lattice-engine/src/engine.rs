@@ -14,8 +14,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 use lattice_core::{
-    Change, Grid, Lane, Lock, Locks, MACRO, MAX_LOCKS, MAX_PARAMS, MAX_STEPS, Mix, ParamInfo, Step,
-    Track, db_to_gain, realise_into,
+    Change, Conductor, Gesture, Grid, Lane, Lock, Locks, MACRO, MAX_LOCKS, MAX_PARAMS, MAX_STEPS,
+    Mix, ParamInfo, Step, Track, db_to_gain, realise_into,
 };
 pub use lattice_core::{MAX_EFFECTS, MAX_GROUPS, MAX_TRACKS};
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
@@ -79,6 +79,13 @@ pub enum Command {
     },
     /// What happens when the playing pattern ends. Kept while stopped, for the next play.
     Cue(Cue),
+    /// Replace the playing pattern's conductor; heard from the current step on. The old one is
+    /// sent back to be freed. Ignored if it's longer than `MAX_STEPS`, or sent before a pattern
+    /// change the sender hadn't seen, as [`Command::SetTrack`] is.
+    SetConductor {
+        conductor: Box<Conductor>,
+        swaps: u64,
+    },
     /// Insert a track and its instrument at `index` (or at the end, if past it), moving later
     /// tracks along. Joins in step with the others. Build the player off the audio thread with
     /// [`TrackPlayer::new`]; it's sent straight back if there are already `MAX_TRACKS` tracks.
@@ -406,10 +413,11 @@ pub enum Cue {
     Stop,
 }
 
-/// A pattern to play: a lane for each track, and how many steps it lasts.
+/// A pattern to play: a lane for each track, its conductor, and how many steps it lasts.
 #[derive(Debug)]
 pub struct Section {
     pub lanes: Vec<Lane>,
+    pub conductor: Conductor,
     pub steps: u64,
     /// Whether it takes over at the next bar, rather than when the playing pattern ends.
     pub at_bar: bool,
@@ -443,6 +451,23 @@ pub struct Status {
     recording: AtomicBool,
     /// Things leaked on the audio thread because the garbage queue was full.
     leaked: AtomicU64,
+    /// The tempo playing, as `f64` bits: the song's, or the conductor's.
+    tempo: AtomicU64,
+    /// The conductor's step playing, or `u64::MAX` when there's none.
+    conductor_step: AtomicU64,
+}
+
+/// What the conductor did that the UI thread should know of, as it does it itself when the user
+/// asks: see [`Handle::conducted`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Conducted {
+    /// A `P` gesture: cue this pattern, from 0, to take over at the next bar. The engine can't,
+    /// as it doesn't hold the patterns.
+    Pattern(usize),
+    /// An `M` gesture muted the track at this index, or unmuted it.
+    Mute { track: usize, muted: bool },
+    /// An `S` gesture soloed it, or unsoloed it.
+    Solo { track: usize, soloed: bool },
 }
 
 /// A lock in one atomic: a present bit, the effect (255 for the instrument), the setting and the
@@ -490,6 +515,21 @@ impl Status {
             locks: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU64::new(0))),
             recording: AtomicBool::new(false),
             leaked: AtomicU64::new(0),
+            tempo: AtomicU64::new(0),
+            conductor_step: AtomicU64::new(u64::MAX),
+        }
+    }
+
+    /// The tempo playing, in BPM: the song's, or the one its conductor set.
+    pub fn tempo(&self) -> f64 {
+        f64::from_bits(self.tempo.load(Ordering::Relaxed))
+    }
+
+    /// The conductor's step playing, if it has steps and the song's playing.
+    pub fn conductor_step(&self) -> Option<usize> {
+        match self.conductor_step.load(Ordering::Relaxed) {
+            u64::MAX => None,
+            step => Some(step as usize),
         }
     }
 
@@ -607,6 +647,7 @@ impl Status {
         self.boundaries.store(0, Ordering::Relaxed);
         self.swaps.store(0, Ordering::Relaxed);
         self.pattern_step.store(0, Ordering::Relaxed);
+        self.conductor_step.store(u64::MAX, Ordering::Relaxed);
         for p in &self.positions {
             p.store(u64::MAX, Ordering::Relaxed);
         }
@@ -627,6 +668,7 @@ enum Garbage {
     Routing(Box<Routing>),
     Instrument(Box<dyn Processor>),
     Section(Box<Section>),
+    Conductor(Box<Conductor>),
     Take(Box<Take>),
     Input(Consumer<f32>),
     Sample(Option<Arc<Sample>>),
@@ -637,6 +679,7 @@ pub struct Handle {
     commands: Producer<Command>,
     garbage: Consumer<Garbage>,
     takes: Consumer<Box<Take>>,
+    conducted: Consumer<Conducted>,
     status: Arc<Status>,
 }
 
@@ -658,6 +701,11 @@ impl Handle {
     /// Frees patterns and tracks the audio thread has finished with. Call regularly.
     pub fn collect_garbage(&mut self) {
         while self.garbage.pop().is_ok() {}
+    }
+
+    /// The next thing the conductor did, if it's done anything since this was last called.
+    pub fn conducted(&mut self) -> Option<Conducted> {
+        self.conducted.pop().ok()
     }
 }
 
@@ -1038,6 +1086,16 @@ pub struct Engine {
     frames: u64,
     looper: Looper,
     takes: Producer<Box<Take>>,
+    /// The playing pattern's conductor, and what it's told the UI thread.
+    conductor: Conductor,
+    conducted: Producer<Conducted>,
+    /// The song's tempo, which `T--` goes back to, and the one playing.
+    song_bpm: f64,
+    bpm: f64,
+    /// Whether the tempo playing is the conductor's, rather than the song's.
+    conducted_tempo: bool,
+    /// Whether an `X` has stopped the song at the end of the step playing.
+    stopping: bool,
 }
 
 impl Engine {
@@ -1069,7 +1127,9 @@ impl Engine {
         let (command_tx, command_rx) = RingBuffer::new(COMMAND_QUEUE);
         let (garbage_tx, garbage_rx) = RingBuffer::new(COMMAND_QUEUE);
         let (takes_tx, takes_rx) = RingBuffer::new(COMMAND_QUEUE);
+        let (conducted_tx, conducted_rx) = RingBuffer::new(COMMAND_QUEUE);
         let status = Arc::new(Status::new());
+        status.tempo.store(bpm.to_bits(), Ordering::Relaxed);
 
         let engine = Self {
             clock: Clock::new(f64::from(sample_rate), bpm, grid.steps_per_beat),
@@ -1112,11 +1172,18 @@ impl Engine {
             frames: 0,
             looper: Looper::default(),
             takes: takes_tx,
+            conductor: Conductor::default(),
+            conducted: conducted_tx,
+            song_bpm: bpm,
+            bpm,
+            conducted_tempo: false,
+            stopping: false,
         };
         let handle = Handle {
             commands: command_tx,
             garbage: garbage_rx,
             takes: takes_rx,
+            conducted: conducted_rx,
             status,
         };
         (engine, handle)
@@ -1161,7 +1228,24 @@ impl Engine {
         self.pattern_step = 0;
         self.swaps = 0;
         self.playing = false;
+        self.stopping = false;
+        // The conductor's tempo lasts while the song plays.
+        self.conducted_tempo = false;
+        self.set_tempo(self.song_bpm, false);
         self.status.set_stopped();
+    }
+
+    /// Plays at `bpm`: from the step just taken if `now`, as a step's tempo is, or else from the
+    /// next.
+    fn set_tempo(&mut self, bpm: f64, now: bool) {
+        if bpm != self.bpm {
+            match now {
+                true => self.clock.retime(bpm),
+                false => self.clock.set_bpm(bpm),
+            }
+        }
+        self.bpm = bpm;
+        self.status.tempo.store(bpm.to_bits(), Ordering::Relaxed);
     }
 
     /// Renders the next stretch of stereo audio. Real-time safe: no allocation, no locks.
@@ -1181,7 +1265,13 @@ impl Engine {
             match command {
                 Command::Play { count_in } => self.play_after(count_in),
                 Command::Stop => self.stop(),
-                Command::SetBpm(bpm) => self.clock.set_bpm(bpm),
+                Command::SetBpm(bpm) => {
+                    // Under a tempo from the conductor, the song's waits for `T--`.
+                    self.song_bpm = bpm;
+                    if !self.conducted_tempo {
+                        self.set_tempo(bpm, false);
+                    }
+                }
                 Command::SetClick(on) => self.click_enabled = on,
                 Command::SetTrack {
                     index,
@@ -1205,6 +1295,15 @@ impl Engine {
                         realise_into(&t.track, t.pass, &mut t.steps);
                     }
                     self.discard(Garbage::Track(track));
+                }
+                Command::SetConductor {
+                    mut conductor,
+                    swaps,
+                } => {
+                    if conductor.steps.len() <= MAX_STEPS && swaps == self.swaps {
+                        std::mem::swap(&mut self.conductor, &mut conductor);
+                    }
+                    self.discard(Garbage::Conductor(conductor));
                 }
                 Command::SetLength(steps) => self.pattern_len = steps,
                 Command::SetMutes { now, next } => (self.mutes, self.next_mutes) = (now, next),
@@ -1767,6 +1866,11 @@ impl Engine {
             return;
         }
         self.status.count_in.store(0, Ordering::Relaxed);
+        // An `X` on the step before: the song ends as it does.
+        if self.stopping {
+            self.stop();
+            return;
+        }
         let bar = BEATS_PER_BAR * self.steps_per_beat;
         let at_bar = matches!(&self.cue, Cue::Pattern(s) if s.at_bar)
             && self.pattern_step > 0
@@ -1780,6 +1884,8 @@ impl Engine {
         self.status
             .pattern_step
             .store(self.pattern_step, Ordering::Relaxed);
+        // Before the tracks, so a tempo the step sets times its own locks' slides.
+        self.conduct(self.pattern_step);
         self.pattern_step += 1;
         if self.click_enabled && self.step_index.is_multiple_of(self.steps_per_beat) {
             let beat = self.step_index / self.steps_per_beat;
@@ -1867,6 +1973,80 @@ impl Engine {
         }
     }
 
+    /// Plays the conductor's step for `pattern_step` steps into the pattern: its gestures, and
+    /// a step's share of any tempo slide on its way.
+    fn conduct(&mut self, pattern_step: u64) {
+        let len = self.conductor.steps.len() as u64;
+        let Some(at) = pattern_step.checked_rem(len).map(|at| at as usize) else {
+            self.status
+                .conductor_step
+                .store(u64::MAX, Ordering::Relaxed);
+            return;
+        };
+        self.status
+            .conductor_step
+            .store(at as u64, Ordering::Relaxed);
+        let Some(&gestures) = self.conductor.steps.get(at) else {
+            return;
+        };
+        let mut tempo = None;
+        for gesture in gestures.into_iter().flatten() {
+            match gesture {
+                Gesture::Tempo(bpm) | Gesture::Slide(bpm) => tempo = Some(Some(f64::from(bpm))),
+                Gesture::SongTempo => tempo = Some(None),
+                Gesture::Stop => self.stopping = true,
+                Gesture::Pattern(p) => {
+                    let pattern = usize::from(p).saturating_sub(1);
+                    // Full, the UI thread's fallen behind; it'll miss this cue.
+                    let _ = self.conducted.push(Conducted::Pattern(pattern));
+                }
+                Gesture::Mute(t) => {
+                    let track = usize::from(t).saturating_sub(1);
+                    if let Some(player) = self.tracks.get_mut(track) {
+                        let mix = &mut player.track.mix;
+                        mix.mute = !mix.mute;
+                        let muted = mix.mute;
+                        let _ = self.conducted.push(Conducted::Mute { track, muted });
+                    }
+                }
+                Gesture::Solo(t) => {
+                    let track = usize::from(t).saturating_sub(1);
+                    if let Some(player) = self.tracks.get_mut(track) {
+                        let mix = &mut player.track.mix;
+                        mix.solo = !mix.solo;
+                        let soloed = mix.solo;
+                        let _ = self.conducted.push(Conducted::Solo { track, soloed });
+                    }
+                }
+            }
+        }
+        // With no tempo of its own, the step might be on the way to a slide's: from the last
+        // tempo there, a step's share of the way at a time, arriving on the slide's step.
+        let tempo = tempo.or_else(|| {
+            let (ahead, target) =
+                (self.conductor.steps.iter().skip(at + 1).enumerate()).find_map(|(k, step)| {
+                    let gesture = step.iter().flatten().rev().find(|g| g.is_tempo())?;
+                    Some((k + 1, *gesture))
+                })?;
+            let Gesture::Slide(target) = target else {
+                return None;
+            };
+            let share = 1.0 / (ahead as f64 + 1.0);
+            Some(Some(self.bpm + (f64::from(target) - self.bpm) * share))
+        });
+        match tempo {
+            Some(Some(bpm)) => {
+                self.conducted_tempo = true;
+                self.set_tempo(bpm, true);
+            }
+            Some(None) => {
+                self.conducted_tempo = false;
+                self.set_tempo(self.song_bpm, true);
+            }
+            None => {}
+        }
+    }
+
     /// The playing pattern has ended: carry out the cue, and start every track from the top.
     fn next_pattern(&mut self) {
         self.mutes = self.next_mutes;
@@ -1891,6 +2071,9 @@ impl Engine {
                 if fits {
                     for (t, lane) in self.tracks.iter_mut().zip(&mut section.lanes) {
                         lane.swap(&mut t.track);
+                    }
+                    if section.conductor.steps.len() <= MAX_STEPS {
+                        std::mem::swap(&mut self.conductor, &mut section.conductor);
                     }
                     self.pattern_len = section.steps;
                     self.swaps += 1;
@@ -2095,6 +2278,7 @@ mod tests {
         };
         handle.send(Command::SetLength(4));
         handle.send(Command::Cue(Cue::Pattern(Box::new(Section {
+            conductor: Default::default(),
             lanes: vec![lane],
             steps: 6,
             at_bar: false,
@@ -2153,6 +2337,7 @@ mod tests {
         // 125 samples a step: four steps of a muted pattern, then one where it plays.
         handle.send(Command::SetLength(4));
         handle.send(Command::Cue(Cue::Pattern(Box::new(Section {
+            conductor: Default::default(),
             lanes: vec![Lane {
                 steps: vec![Step::note(60); 2],
                 ..Lane::default()
@@ -2207,6 +2392,7 @@ mod tests {
         let step = 48_000.0 * 60.0 / (133.0 * 4.0);
         handle.send(Command::SetLength(64));
         handle.send(Command::Cue(Cue::Pattern(Box::new(Section {
+            conductor: Default::default(),
             lanes: vec![Lane {
                 mute: false,
                 steps: vec![Step::note(50); 3],
@@ -2229,6 +2415,78 @@ mod tests {
         let spb = 44_100.0 * 60.0 / 137.0;
         let expected: Vec<usize> = (0..6).map(|k| (k as f64 * spb).ceil() as usize).collect();
         assert_eq!(onsets(&audio), expected);
+    }
+
+    fn conductor(steps: &[(usize, &str)], len: usize) -> Conductor {
+        let mut conductor = Conductor::new(len);
+        for &(at, text) in steps {
+            let step = &mut conductor.steps[at];
+            let free = step.iter_mut().find(|g| g.is_none()).unwrap();
+            *free = Some(text.parse().unwrap());
+        }
+        conductor
+    }
+
+    #[test]
+    fn the_conductors_tempo_times_its_own_step_until_the_next() {
+        // 120 BPM at 48 kHz: 6,000 samples a step, so a beat's 24,000; at 60 BPM, twice that.
+        let mut engine = click_only(48_000.0, 120.0);
+        engine.conductor = conductor(&[(0, "T60"), (4, "T--")], 8);
+        let audio = render(&mut engine, 256, 100_000);
+        // Step 4 goes back to 120, then the lane comes round to `T60` again on step 8.
+        assert_eq!(onsets(&audio), [0, 48_000, 72_000]);
+        assert_eq!(engine.status.tempo(), 60.0);
+        assert_eq!(engine.status.conductor_step(), Some(2));
+        engine.stop();
+        assert_eq!(
+            engine.status.tempo(),
+            120.0,
+            "stopping goes back to the song's"
+        );
+    }
+
+    #[test]
+    fn a_tempo_slide_arrives_on_its_step() {
+        let mut engine = click_only(48_000.0, 120.0);
+        engine.conductor = conductor(&[(0, "T60"), (4, "~120")], 16);
+        let audio = render(&mut engine, 256, 50_000);
+        // Steps of 60, 75, 90 and 105 BPM: 12,000, 9,600, 8,000 and 6,857.1 samples.
+        assert_eq!(onsets(&audio), [0, 36_458]);
+        assert_eq!(engine.status.tempo(), 120.0);
+        assert!(engine.conducted_tempo);
+    }
+
+    #[test]
+    fn the_conductor_stops_mutes_solos_and_cues() {
+        let (mut engine, mut handle) = with_synth(48_000.0);
+        engine.conductor = conductor(&[(1, "M1"), (1, "P3"), (2, "S1"), (3, "X")], 8);
+        let step = (48_000.0 * 60.0 / (133.0 * 4.0)) as usize;
+        render(&mut engine, 256, step * 3 + 10);
+        assert!(engine.tracks[0].track.mix.mute && engine.tracks[0].track.mix.solo);
+        assert_eq!(
+            [
+                handle.conducted(),
+                handle.conducted(),
+                handle.conducted(),
+                handle.conducted()
+            ],
+            [
+                Some(Conducted::Mute {
+                    track: 0,
+                    muted: true
+                }),
+                Some(Conducted::Pattern(2)),
+                Some(Conducted::Solo {
+                    track: 0,
+                    soloed: true
+                }),
+                None
+            ]
+        );
+        // `X` on step 3: it plays, then the song stops as step 4 would start.
+        assert!(handle.status().playing());
+        render(&mut engine, 256, step);
+        assert!(!handle.status().playing());
     }
 
     #[test]

@@ -88,9 +88,9 @@ in order, repeating the last if there are more selections than values. So `%`, t
 
 | Moving and selecting | |
 | --- | --- |
-| `h j k l`, arrows | move between fields and steps: `h` `l` go through the open track's fields (note, velocity, lock columns), then on to the next track |
+| `h j k l`, arrows | move between fields and steps: `h` `l` go through the open track's fields (note, velocity, lock columns), then on to the next track; left of the first track's notes, into the conductor's |
 | `th` `tl` | previous / next track, on its notes |
-| `f` then a key | to a field of the open track: `n` note, `v` velocity, or a lock column by the letter its header underlines |
+| `f` then a key | to a field of the open track: `n` note, `v` velocity, a lock column by the letter its header underlines, or `g` `G` the conductor's |
 | `w` `b` | next / previous note |
 | `^u` `^d`, `^b` `^f` | up / down half a page, a page |
 | `gg` `ge` `gh` `gl` | first step, last step, first track, last track |
@@ -207,7 +207,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | --- | --- |
 | `:rot N`, `:drift N`, `:rev`, `:tr N` | add a rule to the track, optionally `every N [OFFSET]` or `pass K`, or as they're shown, `/N[+OFFSET]` or `@K` |
 | `:pop`, `:clear` | remove the last rule, or all of them |
-| `:len N` | track length (1–256) |
+| `:len N` | track length (1–256); in the conductor, its length |
 | `:bpm N`, `:step N`, `:oct N` | tempo, auto-step, keyboard octave |
 | `:help` (`:h`) | the help page: every key and command |
 | `:click`, `:follow` | toggle the metronome, following the playhead |
@@ -369,6 +369,17 @@ setting you change is locked on the step that's playing, and heard at once, so a
 note changes the setting on its own, so a few locks down an empty stretch move an effect along.
 In the demo, the second stab in each bar is brighter and rings, from its locked cutoff and
 resonance, and the first puts them back.
+
+The **conductor** is a lane of each pattern for what belongs to the whole song: left of the
+first track, beside the step numbers, two fields on each step. `h` from the first track's notes
+(`gh`) goes into them, or `fg`. In insert mode, type a gesture: `T140` sets the tempo from that
+step, `~140` slides there, arriving on the step, `T--` goes back to the song's `:bpm`, `X` stops
+the song at the end of the step, `P3` cues pattern 3 for the next bar, and `M2` `S2` mute or solo
+track 2. Each goes in once it's whole, or with `enter` or `esc`. `^a` `^x` nudge a tempo, `d` `y`
+`p` work as in any field, and `&` fills tempos between a selection's ends. The conductor has its
+own length, as long as the pattern until `:len` in it changes it, so a tempo change can come round
+every bar or once in four. While it plays, the header shows the tempo it's set. It's shown when
+it has gestures or the cursor's in it, and `:export` plays it.
 
 The **song page** (`gs`) is the arrangement: the patterns in the order they play, each entry
 repeated some number of times. A strip across the top shows the whole song, each entry as wide as

@@ -1678,8 +1678,12 @@ impl Editor {
         })
     }
 
-    /// How many steps `track` has: none if there's no such track.
+    /// How many steps `track` has: none if there's no such track. In the conductor, left of the
+    /// first track, as many as the conductor has.
     fn track_len(&self, track: usize) -> usize {
+        if track == 0 && self.in_conductor() {
+            return self.conductor_len();
+        }
         self.grid.tracks.get(track).map_or(0, |t| t.steps.len())
     }
 
@@ -1762,13 +1766,18 @@ impl Editor {
     fn motion(&mut self, target: impl Fn(&Self, Cursor) -> Cursor) {
         let extend = self.mode == Mode::Select;
         let track = self.cursor().track;
+        let conducting = self.in_conductor();
         self.map_selections(|e, s| {
             let to = target(e, s.cursor);
             e.clamped(if extend { s.anchor } else { to }, to)
         });
-        // On another track, the cursor's on its notes.
+        // On another track, the cursor's on its notes, kept to the track's length if it's left
+        // the conductor's.
         if self.cursor().track != track {
             self.field = StepField::Note;
+            if conducting {
+                self.clamp_selection();
+            }
         }
     }
 

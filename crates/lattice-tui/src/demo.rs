@@ -720,6 +720,7 @@ pub fn song() -> Song {
             name: name.into(),
             bars: Some(bars),
             lanes,
+            conductor: Default::default(),
         });
     }
     let entry = |pattern, repeats| Entry {

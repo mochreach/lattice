@@ -825,6 +825,48 @@ block (`Status::locks`, one atomic per lock: a present bit, the effect, the sett
 value's bits), and the mixer page shows those values while they hold, so its knobs move with the
 pattern.
 
+### The conductor
+
+Some changes belong to the whole song rather than a track: its tempo, stopping, going to another
+pattern, bringing a part in or out. They're **gestures**, things that happen once on a step, in
+the **conductor**: a lane of each pattern (`Pattern::conductor`, `lattice-core/src/conductor.rs`)
+drawn left of the tracks, beside the step numbers, with two 4-character fields on each step and
+no notes. It has its own length, so a tempo change can come round every bar or once in eight;
+with no steps of its own (as saved, when it has no gestures) it's as long as the pattern. The
+gestures are written as they're typed:
+
+- `T140` the tempo from this step; `~140` a slide from the last tempo, arriving on this step;
+  `T--` back to the song's own `:bpm`. A tempo holds until the next, as a lock does, and outlasts
+  the pattern; stopping goes back to `:bpm`, and a `:bpm` while the conductor's tempo holds waits
+  for `T--`.
+- `X` stops the song at the end of the step.
+- `P3` cues pattern 3 for the next bar, as `]p` does, leaving the arrangement.
+- `M2` `S2` toggle track 2's mute or solo from this step, as `tm` `ts` do.
+
+Patterns and tracks are numbered from 1, as shown. The engine plays the conductor: each step it
+reads the conductor's step for the pattern's step, round its own length (`Engine::conduct`).
+Tempo changes the length of a step from the step that sets it (`Clock::retime`, keeping the
+samples already counted); a step on the way to a slide's takes its share of the way there, so
+the slide arrives on its step. `X` stops where the next step would start. Mutes and solos are
+toggled on the engine's own copy of the track, in time, and sent back (`Handle::conducted`) for
+the editor to follow, so the header shows them and the song saves them; a cue is sent back too,
+as the engine doesn't hold the patterns. The `Sequencer` sends the playing pattern's conductor
+(`Command::SetConductor`, carrying the swaps it's seen, as `SetTrack` does), and a cued
+pattern's with its lanes in the `Section`. `:export` renders each part with its pattern's
+conductor, its own cues aside, as the parts are already the arrangement's; a selection exports
+without one.
+
+In the editor, the conductor's fields are the first track's leftmost (`StepField::Gesture`): `h`
+from its notes goes into them, `fg` `fG` straight there. Its cursor is bounded by the
+conductor's length rather than the track's, and `:len` there sets that. Insert mode types a
+gesture letter by letter: it goes in once it can't go on (`T140`, `X`), or with enter or `esc`
+(`P3`, which might have been `P31`), and a letter that can't follow puts in what was there
+before it. The field ops (`d` `y` `p`, `^a` `^x` a tempo by 1 BPM and octave keys by 10, `&`
+filling tempos) read and write gestures as values (`fields::Value::Gesture`). The grid shows the
+lane only when it has gestures or the cursor's in it, with the playhead from
+`Status::conductor_step`, and the header's tempo is the engine's (`Status::tempo`) while
+playing.
+
 ### Macros
 
 A macro (`lattice-core/src/macros.rs`) is a knob on a track, from 0 to 1, that turns up to

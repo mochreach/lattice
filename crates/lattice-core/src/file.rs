@@ -142,6 +142,7 @@ fn check_track(track: &Track) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::arrangement::{Arrangement, Entry, Lane, Pattern};
+    use crate::conductor::{Conductor, Gesture};
     use crate::fx::{self, Bus, Buses, Fx, FxKind};
     use crate::group::Group;
     use crate::instrument::{InstKind, Instrument, kick};
@@ -241,10 +242,19 @@ mod tests {
                         name: "A".into(),
                         bars: None,
                         lanes: vec![],
+                        conductor: Conductor {
+                            steps: vec![
+                                [Some(Gesture::Tempo(120)), None],
+                                [None; 2],
+                                [Some(Gesture::Slide(140)), Some(Gesture::Mute(2))],
+                                [Some(Gesture::Stop), None],
+                            ],
+                        },
                     },
                     Pattern {
                         name: "B".into(),
                         bars: Some(2),
+                        conductor: Conductor::default(),
                         lanes: vec![
                             Lane {
                                 mute: false,
@@ -302,6 +312,10 @@ mod tests {
         assert!(text.contains("(transform: Reverse),"), "{text}");
         assert!(text.contains("change: slide"), "{text}");
         assert!(text.contains("change: reset"), "{text}");
+        assert!(
+            text.contains(r#"steps: {0: ["T120"], 2: ["~140", "M2"], 3: ["X"]},"#),
+            "{text}"
+        );
         assert!(!text.contains("None"), "{text}");
         assert!(text.contains("level: -3.5,\n"), "{text}");
         assert!(text.contains("mute: true,\n"), "{text}");

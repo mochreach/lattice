@@ -8,7 +8,8 @@ use std::ops::Range;
 use std::path::PathBuf;
 
 use lattice_core::{
-    Condition, MAX_CHOKE, MAX_DB, MAX_STEPS, MAX_TRACKS, MIN_DB, Mix, Rule, Step, Track, Transform,
+    Condition, GESTURES, MAX_CHOKE, MAX_DB, MAX_STEPS, MAX_TRACKS, MIN_DB, Mix, Rule, Step, Track,
+    Transform,
 };
 
 use crate::{Direction, Editor, Effect, NoteLayout};
@@ -156,7 +157,7 @@ pub const COMMANDS: &[Spec] = &[
         name: "len",
         alias: None,
         params: &[int("STEPS", "length", 1, MAX_STEPS as i64)],
-        describe: "track length",
+        describe: "track length, or the conductor's in it",
     },
     Spec {
         name: "name",
@@ -1194,6 +1195,16 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             editor.bpm = bpm;
             Ok(vec![Effect::Bpm(bpm)])
         }
+        "len" if editor.in_conductor() => {
+            let len: usize = command.int(0)?;
+            editor.checkpoint();
+            if let Some(conductor) = editor.conductor_mut() {
+                conductor.steps.resize(len, [None; GESTURES]);
+            }
+            editor.clamp_selection();
+            editor.message = Some(format!("the conductor's {len} steps long"));
+            Ok(vec![])
+        }
         "len" => {
             let len: usize = command.int(0)?;
             editor.checkpoint();
@@ -1595,7 +1606,10 @@ mod tests {
             problem("bpm 500.5 "),
             Some(Problem::new(4..9, "bpm is 20 to 400"))
         );
-        assert_eq!(find("len").unwrap().description(), "track length, 1 to 256");
+        assert_eq!(
+            find("len").unwrap().description(),
+            "track length, or the conductor's in it, 1 to 256"
+        );
         assert_eq!(find("name").unwrap().description(), "rename the track");
         assert_eq!(find("rev").unwrap().description(), "rule: play backwards");
     }

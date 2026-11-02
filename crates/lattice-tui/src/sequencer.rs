@@ -1,9 +1,9 @@
-//! Keeps the engine's pattern length and cue in line with the editor's, and tells the editor
-//! when the engine moves from one pattern to the next.
+//! Keeps the engine's pattern length, conductor and cue in line with the editor's, and tells the
+//! editor when the engine moves from one pattern to the next, or the conductor does something.
 
-use lattice_core::Lane;
+use lattice_core::{Conductor, Lane};
 use lattice_editor::{Editor, Next};
-use lattice_engine::{Command, Cue, Handle, Section};
+use lattice_engine::{Command, Conducted, Cue, Handle, Section};
 
 #[derive(Default)]
 pub struct Sequencer {
@@ -14,6 +14,8 @@ pub struct Sequencer {
     cued: Option<(Next, Vec<Lane>, u64)>,
     /// The pattern length sent.
     length: Option<u64>,
+    /// The playing pattern's conductor sent.
+    conductor: Option<Conductor>,
     /// The song's mutes sent, now and next.
     mutes: Option<(u32, u32)>,
     playing: bool,
@@ -36,6 +38,7 @@ impl Sequencer {
             self.swaps = 0;
             self.cued = None;
             self.mutes = None;
+            self.conductor = None;
         }
         self.playing = playing;
         let (boundaries, swaps) = (status.boundaries(), status.swaps());
@@ -48,11 +51,36 @@ impl Sequencer {
             };
             self.swaps = swaps;
             editor.boundary(changed_to);
+            if changed_to.is_some() {
+                // The engine has the new pattern's conductor, from its cue.
+                self.conductor = None;
+            }
+        }
+        while let Some(conducted) = handle.conducted() {
+            match conducted {
+                Conducted::Pattern(p) => editor.conducted_pattern(p),
+                Conducted::Mute { track, muted } => editor.conducted_mix(track, Some(muted), None),
+                Conducted::Solo { track, soloed } => {
+                    editor.conducted_mix(track, None, Some(soloed));
+                }
+            }
         }
 
         let length = editor.pattern_steps();
         if self.length != Some(length) && handle.send(Command::SetLength(length)) {
             self.length = Some(length);
+        }
+        let current = editor.arrangement.current;
+        if let Some(conductor) = editor.arrangement.conductor(current)
+            && self.conductor.as_ref() != Some(conductor)
+        {
+            let command = Command::SetConductor {
+                conductor: Box::new(conductor.clone()),
+                swaps: self.swaps,
+            };
+            if handle.send(command) {
+                self.conductor = Some(conductor.clone());
+            }
         }
         let mutes = editor.song_mutes();
         if self.mutes != Some(mutes) {
@@ -78,9 +106,10 @@ impl Sequencer {
             let cue = match next {
                 Next::Loop => Cue::Loop,
                 Next::Stop => Cue::Stop,
-                Next::Pattern(_) => Cue::Pattern(Box::new(Section {
+                Next::Pattern(p) => Cue::Pattern(Box::new(Section {
                     lanes: wanted.1.clone(),
                     steps,
+                    conductor: editor.arrangement.conductor(p).cloned().unwrap_or_default(),
                     // Picked by hand, it takes over at the next bar; in the song, when the
                     // pattern before it ends.
                     at_bar: editor.song_position.is_none(),

@@ -67,6 +67,23 @@ impl Editor {
         self.select_pattern(index)
     }
 
+    /// The conductor's cued pattern `index` (`P3`), as `]p` would. Stopped, it's too late.
+    pub fn conducted_pattern(&mut self, index: usize) {
+        if self.transport.is_some() {
+            self.go_to_pattern(index);
+        }
+    }
+
+    /// The conductor has muted or soloed track `track` (`M2`, `S2`) in the engine; the song
+    /// follows, as it would `tm` or `ts`.
+    pub fn conducted_mix(&mut self, track: usize, mute: Option<bool>, solo: Option<bool>) {
+        let Some(mix) = self.grid.tracks.get_mut(track).map(|t| &mut t.mix) else {
+            return;
+        };
+        mix.mute = mute.unwrap_or(mix.mute);
+        mix.solo = solo.unwrap_or(mix.solo);
+    }
+
     /// Makes `index` the pattern being edited, at once.
     pub(crate) fn select_pattern(&mut self, index: usize) -> Vec<Effect> {
         if index == self.arrangement.current {
@@ -115,7 +132,13 @@ impl Editor {
                 .collect()
         };
         self.checkpoint();
-        let index = self.arrangement.insert(name, lanes);
+        let conductor = match copy {
+            true => (self.arrangement.conductor(self.arrangement.current))
+                .cloned()
+                .unwrap_or_default(),
+            false => Default::default(),
+        };
+        let index = self.arrangement.insert(name, lanes, conductor);
         if self.arrangement.entries.len() < MAX_ENTRIES {
             self.arrangement.entries.push(Entry {
                 pattern: index,

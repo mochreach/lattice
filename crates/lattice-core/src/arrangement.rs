@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::conductor::Conductor;
 use crate::song::{Grid, MAX_STEPS, Step, Track};
 use crate::transform::Rule;
 
@@ -58,6 +59,10 @@ pub struct Pattern {
     /// A lane per track, or none for the pattern being edited, whose lanes are in the tracks.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lanes: Vec<Lane>,
+    /// Its conductor lane, for the whole song. Kept here even for the pattern being edited, as
+    /// it isn't a track's.
+    #[serde(default, skip_serializing_if = "Conductor::is_empty")]
+    pub conductor: Conductor,
 }
 
 /// One entry in the arrangement: a pattern, played a number of times running, with some of its
@@ -144,6 +149,7 @@ impl Default for Arrangement {
                 name: pattern_name(0),
                 bars: None,
                 lanes: vec![],
+                conductor: Conductor::default(),
             }],
             current: 0,
             entries: vec![Entry {
@@ -196,6 +202,11 @@ impl Arrangement {
         }
     }
 
+    /// Pattern `index`'s conductor, if there's such a pattern.
+    pub fn conductor(&self, index: usize) -> Option<&Conductor> {
+        Some(&self.patterns.get(index)?.conductor)
+    }
+
     /// How many steps pattern `index` plays for, if there's such a pattern.
     pub fn steps(&self, grid: &Grid, index: usize) -> Option<u64> {
         let pattern = self.patterns.get(index)?;
@@ -225,9 +236,14 @@ impl Arrangement {
         steps_for(grid, pattern.bars, longest)
     }
 
-    /// A new pattern after the current one, with `lanes`, named `name` or else the first
-    /// letter not taken. Doesn't select it. Returns its index.
-    pub fn insert(&mut self, name: Option<String>, lanes: Vec<Lane>) -> usize {
+    /// A new pattern after the current one, with `lanes` and `conductor`, named `name` or else
+    /// the first letter not taken. Doesn't select it. Returns its index.
+    pub fn insert(
+        &mut self,
+        name: Option<String>,
+        lanes: Vec<Lane>,
+        conductor: Conductor,
+    ) -> usize {
         let index = self.current + 1;
         // Of one more name than there are patterns, one's always free.
         let name = name.unwrap_or_else(|| {
@@ -238,7 +254,15 @@ impl Arrangement {
         });
         let bars = self.patterns.get(self.current).and_then(|p| p.bars);
         let index = index.min(self.patterns.len());
-        self.patterns.insert(index, Pattern { name, bars, lanes });
+        self.patterns.insert(
+            index,
+            Pattern {
+                name,
+                bars,
+                lanes,
+                conductor,
+            },
+        );
         for entry in &mut self.entries {
             if entry.pattern >= index {
                 entry.pattern += 1;
@@ -481,6 +505,7 @@ mod tests {
                 };
                 2
             ],
+            Conductor::default(),
         );
         assert_eq!(a.patterns[b].name, "B");
         assert!(a.select(&mut g, b));
@@ -501,7 +526,7 @@ mod tests {
             steps: vec![Step::default(); len],
             rules: vec![],
         };
-        a.insert(None, vec![lane(1), lane(2)]);
+        a.insert(None, vec![lane(1), lane(2)], Conductor::default());
         a.insert_track(1, 5);
         assert_eq!(
             a.patterns[1]
@@ -552,7 +577,7 @@ mod tests {
     #[test]
     fn removing_a_pattern_takes_its_entries() {
         let mut a = Arrangement::default();
-        a.insert(None, vec![]);
+        a.insert(None, vec![], Conductor::default());
         a.entries = vec![
             Entry {
                 pattern: 1,

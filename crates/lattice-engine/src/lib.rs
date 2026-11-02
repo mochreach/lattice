@@ -46,8 +46,8 @@ pub use delay::Delay;
 pub use drive::Drive;
 pub use dsp::{AdsrParams, Wave};
 pub use engine::{
-    Chain, Command, Cue, EffectSlot, Engine, Handle, MAX_EFFECTS, MAX_TRACKS, Section, Status,
-    Target, TrackPlayer,
+    Chain, Command, Conducted, Cue, EffectSlot, Engine, Handle, MAX_EFFECTS, MAX_TRACKS, Section,
+    Status, Target, TrackPlayer,
 };
 pub use looper::Take;
 pub use param::{ParamInfo, Smoothed};

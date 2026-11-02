@@ -1,8 +1,11 @@
 //! The fields of an open track: each step's note, its velocity, and a value in each of the
-//! track's lock columns. `h` `l` go field by field, `f` jumps to one, and typing, `^a` `^x`, `d`,
-//! `y` `p` and `&` work on the field the cursor's in, on every step the selections reach.
+//! track's lock columns; and, left of the first track's, the conductor's two gesture fields.
+//! `h` `l` go field by field, `f` jumps to one, and typing, `^a` `^x`, `d`, `y` `p` and `&` work
+//! on the field the cursor's in, on every step the selections reach.
 
-use lattice_core::{Change, Lock, ParamInfo, Step, Track};
+use lattice_core::{
+    Change, Conductor, GESTURES, Gesture, Lock, MAX_BPM, MIN_BPM, ParamInfo, Step, Track,
+};
 
 use crate::keymap::Key;
 use crate::{Editor, Effect, Mode, Page, changed, locks};
@@ -15,6 +18,9 @@ pub enum StepField {
     Velocity,
     /// A lock column, by its place among the track's.
     Lock(usize),
+    /// One of the conductor's gesture fields, left of the first track's: it's the pattern's,
+    /// not the track's, and has its own length.
+    Gesture(usize),
 }
 
 /// What a field holds on a step, as its column shows it.
@@ -24,13 +30,17 @@ pub(crate) enum Value {
     Number(u8, bool),
     /// `--`: the setting back to the mixer's.
     Reset,
+    /// One of the conductor's.
+    Gesture(Gesture),
 }
 
-/// What's being typed into a field in insert mode: `~`, then the first digit.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// What's being typed into a field in insert mode: `~`, then the first digit; or a gesture so
+/// far.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Typing {
     slide: bool,
     digit: Option<u8>,
+    gesture: String,
 }
 
 /// A velocity, 1 to 127, as 00 to 99.
@@ -51,7 +61,7 @@ fn number(info: &ParamInfo, value: f32) -> u8 {
 /// What `field` holds on `step` of `track`. `None` for nothing there.
 fn read(track: &Track, step: &Step, field: StepField) -> Option<Value> {
     match field {
-        StepField::Note => None,
+        StepField::Note | StepField::Gesture(_) => None,
         StepField::Velocity => step
             .note
             .map(|n| Value::Number(velocity_number(n.velocity), false)),
@@ -71,7 +81,7 @@ fn read(track: &Track, step: &Step, field: StepField) -> Option<Value> {
 /// on a note, and clearing one puts it back to `default`.
 fn write(track: &mut Track, at: usize, field: StepField, value: Option<Value>, default: u8) {
     match field {
-        StepField::Note => {}
+        StepField::Note | StepField::Gesture(_) => {}
         StepField::Velocity => {
             let Some(note) = track.steps.get_mut(at).and_then(|s| s.note.as_mut()) else {
                 return;
@@ -95,6 +105,7 @@ fn write(track: &mut Track, at: usize, field: StepField, value: Option<Value>, d
                     let change = if slide { Change::Slide } else { Change::Set };
                     Some(column.lock(info.at(f32::from(n.min(99)) / 99.0), change))
                 }
+                Some(Value::Gesture(_)) => return,
             };
             // The column's the track's already, as it was found among them.
             track.add_column(column);
@@ -111,20 +122,101 @@ fn write(track: &mut Track, at: usize, field: StepField, value: Option<Value>, d
     }
 }
 
+/// A gesture `by` further on: a tempo by so many BPM; anything else as it is.
+fn nudge_gesture(gesture: Gesture, by: i32) -> Gesture {
+    let bpm = |bpm: u16| (i32::from(bpm) + by).clamp(i32::from(MIN_BPM), i32::from(MAX_BPM)) as u16;
+    match gesture {
+        Gesture::Tempo(b) => Gesture::Tempo(bpm(b)),
+        Gesture::Slide(b) => Gesture::Slide(bpm(b)),
+        other => other,
+    }
+}
+
 impl Editor {
     /// The fields of track `t`, in order: just its notes if its group's folded.
     fn fields_of(&self, t: usize) -> Vec<StepField> {
         let folded = (self.grid.group_of(t))
             .and_then(|g| self.grid.groups.get(g))
             .is_some_and(|g| g.folded);
+        let conductor = (0..GESTURES).map(StepField::Gesture).filter(|_| t == 0);
         if folded {
-            return vec![StepField::Note];
+            return conductor.chain([StepField::Note]).collect();
         }
         let columns = self.lock_columns(t).len();
-        [StepField::Note, StepField::Velocity]
-            .into_iter()
+        (conductor.chain([StepField::Note, StepField::Velocity]))
             .chain((0..columns).map(StepField::Lock))
             .collect()
+    }
+
+    /// Whether the cursor's in the conductor's fields.
+    pub fn in_conductor(&self) -> bool {
+        matches!(self.field(), StepField::Gesture(_))
+    }
+
+    /// The pattern being edited's conductor.
+    pub fn conductor(&self) -> Option<&Conductor> {
+        self.arrangement.conductor(self.arrangement.current)
+    }
+
+    /// How many steps the conductor has: with none of its own, as many as the pattern.
+    pub fn conductor_len(&self) -> usize {
+        match self.conductor() {
+            Some(c) if !c.steps.is_empty() => c.steps.len(),
+            _ => self.pattern_steps() as usize,
+        }
+    }
+
+    /// The conductor, to change: given steps of its own, if it hasn't any, as many as the
+    /// pattern has.
+    pub(crate) fn conductor_mut(&mut self) -> Option<&mut Conductor> {
+        let len = self.conductor_len();
+        let current = self.arrangement.current;
+        let conductor = &mut self.arrangement.patterns.get_mut(current)?.conductor;
+        if conductor.steps.is_empty() {
+            *conductor = Conductor::new(len);
+        }
+        Some(conductor)
+    }
+
+    /// What `field` holds on step `at` of track `t`, or of the conductor.
+    fn read_field(&self, t: usize, at: usize, field: StepField) -> Option<Value> {
+        if let StepField::Gesture(g) = field {
+            return self.conductor()?.get(at, g).map(Value::Gesture);
+        }
+        let track = self.grid.tracks.get(t)?;
+        read(track, track.steps.get(at)?, field)
+    }
+
+    /// Writes `value` into `field` on step `at` of track `t`, or of the conductor; or clears it.
+    fn write_field(&mut self, t: usize, at: usize, field: StepField, value: Option<Value>) {
+        if let StepField::Gesture(g) = field {
+            let gesture = match value {
+                Some(Value::Gesture(gesture)) => Some(gesture),
+                None => None,
+                Some(_) => return,
+            };
+            let Some(step) = (self.conductor_mut())
+                .and_then(|c| c.steps.get_mut(at))
+                .and_then(|step| step.get_mut(g))
+            else {
+                return;
+            };
+            *step = gesture;
+            return;
+        }
+        let default = self.velocity;
+        if let Some(track) = self.grid.tracks.get_mut(t) {
+            write(track, at, field, value, default);
+        }
+    }
+
+    /// What's changed by editing `field` on these tracks: nothing the engine plays from the
+    /// tracks for the conductor's, which the sequencer sends itself.
+    fn field_changed(field: StepField, tracks: impl IntoIterator<Item = usize>) -> Vec<Effect> {
+        match field {
+            StepField::Gesture(_) => vec![],
+            _ => changed(tracks),
+        }
     }
 
     /// The field the cursor's in, on the pattern page: its note unless it's moved to another.
@@ -159,6 +251,8 @@ impl Editor {
             };
             if let Some(&field) = next.and_then(|i| fields.get(i)) {
                 self.field = field;
+                // The conductor's as long as it is, not the track.
+                self.clamp_selection();
                 continue;
             }
             let by = if right { 1 } else { -1 };
@@ -183,12 +277,20 @@ impl Editor {
         let field = match c {
             'n' => Some(StepField::Note),
             'v' => Some(StepField::Velocity),
+            'g' => Some(StepField::Gesture(0)),
+            'G' => Some(StepField::Gesture(1)),
             c => (self.lock_columns(t).iter())
                 .position(|label| label.key == c)
                 .map(StepField::Lock),
         };
         match field.filter(|f| self.fields_of(t).contains(f)) {
-            Some(field) => self.field = field,
+            Some(field) => {
+                self.field = field;
+                self.clamp_selection();
+            }
+            None if c == 'g' || c == 'G' => {
+                self.message = Some("the conductor's left of the first track: th then fg".into());
+            }
             None => self.message = Some(format!("{c} isn't a field on this track")),
         }
     }
@@ -196,6 +298,9 @@ impl Editor {
     /// Plays a key typed into a field in insert mode: two digits set a value and move on, `~`
     /// first makes it slide, and `-` puts the setting back. `None` for a key that isn't one.
     pub(crate) fn type_field(&mut self, key: Key, field: StepField) -> Option<Vec<Effect>> {
+        if let StepField::Gesture(_) = field {
+            return self.type_gesture(key, field);
+        }
         let Key::Char(c) = key else {
             self.typing = Typing::default();
             return None;
@@ -222,16 +327,78 @@ impl Editor {
             _ => return Some(vec![]),
         };
         self.typing = Typing::default();
+        Some(self.put_field(field, value))
+    }
+
+    /// Writes `value` into `field` at every cursor, and moves on.
+    fn put_field(&mut self, field: StepField, value: Value) -> Vec<Effect> {
         self.checkpoint();
         let cursors: Vec<_> = self.selections.iter().map(|s| s.cursor).collect();
-        let default = self.velocity;
         for c in &cursors {
-            if let Some(track) = self.grid.tracks.get_mut(c.track) {
-                write(track, c.step, field, Some(value), default);
-            }
+            self.write_field(c.track, c.step, field, Some(value));
         }
         self.advance();
-        Some(changed(cursors.iter().map(|c| c.track)))
+        Self::field_changed(field, cursors.iter().map(|c| c.track))
+    }
+
+    /// Plays a key typed into a conductor's field: a gesture's letter, then its number, going
+    /// in once it can't go on (`T140`, `X`), or with enter (`P3`); backspace takes a key back.
+    fn type_gesture(&mut self, key: Key, field: StepField) -> Option<Vec<Effect>> {
+        let c = match key {
+            Key::Char(c) => c,
+            Key::Enter if !self.typing.gesture.is_empty() => {
+                let text = std::mem::take(&mut self.typing.gesture);
+                return Some(match text.parse() {
+                    Ok(gesture) => self.put_field(field, Value::Gesture(gesture)),
+                    Err(e) => {
+                        self.message = Some(e);
+                        vec![]
+                    }
+                });
+            }
+            // Leaving insert mode puts in what's been typed, if it's a gesture.
+            Key::Esc => {
+                let text = std::mem::take(&mut self.typing.gesture);
+                if let Ok(gesture) = text.parse() {
+                    self.put_field(field, Value::Gesture(gesture));
+                }
+                self.typing = Typing::default();
+                return None;
+            }
+            Key::Backspace if !self.typing.gesture.is_empty() => {
+                self.typing.gesture.pop();
+                self.message = Some(format!("{}_", self.typing.gesture));
+                return Some(vec![]);
+            }
+            _ => {
+                self.typing = Typing::default();
+                return None;
+            }
+        };
+        let before = std::mem::take(&mut self.typing.gesture);
+        let mut text = before.clone();
+        text.push(c.to_ascii_uppercase());
+        // A gesture that could have gone on, `P3`, ends as another begins.
+        if !Gesture::could_go_on(&text)
+            && text.parse::<Gesture>().is_err()
+            && let Ok(gesture) = before.parse()
+        {
+            let mut effects = self.put_field(field, Value::Gesture(gesture));
+            effects.extend(self.type_gesture(key, field).unwrap_or_default());
+            return Some(effects);
+        }
+        if Gesture::could_go_on(&text) {
+            self.message = Some(format!("{text}_  (enter if that's all)"));
+            self.typing.gesture = text;
+            return Some(vec![]);
+        }
+        Some(match text.parse() {
+            Ok(gesture) => self.put_field(field, Value::Gesture(gesture)),
+            Err(e) => {
+                self.message = Some(e);
+                vec![]
+            }
+        })
     }
 
     /// Changes `field`'s value on every step the selections reach that has one.
@@ -240,21 +407,14 @@ impl Editor {
         let columns: Vec<_> = (self.selections.iter())
             .flat_map(|s| self.columns(s.region()))
             .collect();
-        let default = self.velocity;
         for (t, steps) in &columns {
-            let Some(track) = self.grid.tracks.get_mut(*t) else {
-                continue;
-            };
             for at in steps.clone() {
-                let Some(step) = track.steps.get(at) else {
-                    continue;
-                };
-                if let Some(value) = read(track, step, field) {
-                    write(track, at, field, f(value), default);
+                if let Some(value) = self.read_field(*t, at, field) {
+                    self.write_field(*t, at, field, f(value));
                 }
             }
         }
-        changed(columns.into_iter().map(|(t, _)| t))
+        Self::field_changed(field, columns.into_iter().map(|(t, _)| t))
     }
 
     /// `^a` `^x` on a field: each value up or down by `by`, out of 99.
@@ -265,6 +425,7 @@ impl Editor {
                     Value::Number((i32::from(n) + by).clamp(0, 99) as u8, slide)
                 }
                 Value::Reset => Value::Reset,
+                Value::Gesture(gesture) => Value::Gesture(nudge_gesture(gesture, by)),
             })
         })
     }
@@ -279,12 +440,11 @@ impl Editor {
         let mut clips = vec![];
         for s in &self.selections {
             let region = s.region();
-            let Some(track) = self.grid.tracks.get(region.first_track) else {
-                continue;
-            };
-            let values = (region.first_step..=region.last_step)
-                .filter_map(|at| track.steps.get(at))
-                .map(|step| read(track, step, field))
+            let t = region.first_track;
+            let len = self.track_len(t);
+            let values = (region.first_step..=region.last_step.min(len.saturating_sub(1)))
+                .filter(|&at| at < len)
+                .map(|at| self.read_field(t, at, field))
                 .collect();
             clips.push(values);
         }
@@ -301,7 +461,6 @@ impl Editor {
             return vec![];
         }
         self.checkpoint();
-        let default = self.velocity;
         let mut tracks = vec![];
         for (i, s) in self.selections.clone().iter().enumerate() {
             let region = s.region();
@@ -311,17 +470,15 @@ impl Editor {
             else {
                 continue;
             };
-            let Some(track) = self.grid.tracks.get_mut(region.first_track) else {
-                continue;
-            };
-            let len = track.steps.len();
+            let t = region.first_track;
+            let len = self.track_len(t);
             let values = clip.iter().cycle().take(clip.len() * n);
             for (at, &value) in (region.first_step..len).zip(values) {
-                write(track, at, field, value, default);
+                self.write_field(t, at, field, value);
             }
-            tracks.push(region.first_track);
+            tracks.push(t);
         }
-        changed(tracks)
+        Self::field_changed(field, tracks)
     }
 
     /// `&` on a field: fills each selection evenly between the values at its ends, which both
@@ -331,42 +488,43 @@ impl Editor {
             self.message = Some("& fills a field: go to one with l or f".into());
             return vec![];
         };
+        // Values, or tempos in the conductor, from one end to the other.
+        let number = |value| match value {
+            Some(Value::Number(n, _)) => Some(f32::from(n)),
+            Some(Value::Gesture(Gesture::Tempo(bpm) | Gesture::Slide(bpm))) => Some(f32::from(bpm)),
+            _ => None,
+        };
         let mut fills = vec![];
         for s in &self.selections {
             let region = s.region();
-            let Some(track) = self.grid.tracks.get(region.first_track) else {
-                continue;
-            };
-            let end = |at: usize| match track.steps.get(at).and_then(|s| read(track, s, field)) {
-                Some(Value::Number(n, _)) => Some(n),
-                _ => None,
-            };
+            let end = |at| number(self.read_field(region.first_track, at, field));
             let (Some(from), Some(to)) = (end(region.first_step), end(region.last_step)) else {
-                self.message = Some("& needs a value at each end of the selection".into());
+                self.message = Some(
+                    match field {
+                        StepField::Gesture(_) => "& needs a tempo at each end of the selection",
+                        _ => "& needs a value at each end of the selection",
+                    }
+                    .into(),
+                );
                 return vec![];
             };
             fills.push((region, from, to));
         }
         self.checkpoint();
-        let default = self.velocity;
         for &(region, from, to) in &fills {
-            let Some(track) = self.grid.tracks.get_mut(region.first_track) else {
-                continue;
-            };
             let span = (region.last_step - region.first_step).max(1) as f32;
-            for at in region.first_step..=region.last_step {
+            // The ends stay as they are, a slide or not.
+            for at in region.first_step + 1..region.last_step {
                 let along = (at - region.first_step) as f32 / span;
-                let n = f32::from(from) + (f32::from(to) - f32::from(from)) * along;
-                write(
-                    track,
-                    at,
-                    field,
-                    Some(Value::Number(n.round() as u8, false)),
-                    default,
-                );
+                let n = (from + (to - from) * along).round();
+                let value = match field {
+                    StepField::Gesture(_) => Value::Gesture(Gesture::Tempo(n as u16)),
+                    _ => Value::Number(n as u8, false),
+                };
+                self.write_field(region.first_track, at, field, Some(value));
             }
         }
-        changed(fills.iter().map(|(r, ..)| r.first_track))
+        Self::field_changed(field, fills.iter().map(|(r, ..)| r.first_track))
     }
 
     /// Whether insert mode's keys go to a field, rather than playing notes.
@@ -416,6 +574,85 @@ mod tests {
             .iter()
             .map(|s| read(track, s, StepField::Lock(0)))
             .collect()
+    }
+
+    fn gestures(e: &Editor, field: usize) -> Vec<Option<String>> {
+        let c = e.conductor().unwrap();
+        (0..c.steps.len())
+            .map(|at| c.get(at, field).map(|g| g.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn the_conductor_is_left_of_the_first_track_with_its_own_length() {
+        let mut e = editor();
+        keys(&mut e, "h");
+        assert_eq!((e.cursor().track, e.field()), (0, StepField::Gesture(1)));
+        keys(&mut e, "h");
+        assert_eq!(e.field(), StepField::Gesture(0));
+        keys(&mut e, "h");
+        assert_eq!(e.field(), StepField::Gesture(0), "nothing further left");
+        // With none of its own, it's as long as the pattern, a bar; :len gives it its own.
+        assert_eq!(e.conductor_len(), 16);
+        crate::command::run(&mut e, "len 32").unwrap();
+        assert_eq!(e.conductor_len(), 32);
+        assert_eq!(e.grid.tracks[0].steps.len(), 8, "the track's as it was");
+        keys(&mut e, "ge");
+        assert_eq!(e.cursor().step, 31);
+        // Back on the track, the cursor's kept to its steps.
+        keys(&mut e, "ll");
+        assert_eq!((e.field(), e.cursor().step), (StepField::Note, 7));
+        keys(&mut e, "tl");
+        keys(&mut e, "fg");
+        assert!(
+            e.message
+                .as_ref()
+                .unwrap()
+                .contains("left of the first track")
+        );
+        keys(&mut e, "thfG");
+        assert_eq!(e.field(), StepField::Gesture(1));
+    }
+
+    #[test]
+    fn gestures_are_typed_in_and_edited_like_values() {
+        let mut e = editor();
+        // Each goes in once it's whole, or with enter; a bad one says why.
+        keys(&mut e, "fgit140~96xp3");
+        e.handle(Key::Enter);
+        keys(&mut e, "t10");
+        e.handle(Key::Enter);
+        assert!(e.message.as_ref().unwrap().contains("20 to 400"));
+        // Leaving insert mode puts in a gesture that's whole so far.
+        keys(&mut e, "p1\x1bggjjjj");
+        assert_eq!(gestures(&e, 0)[4], Some("P1".into()));
+        keys(&mut e, "d");
+        assert_eq!(
+            gestures(&e, 0)[..5],
+            [
+                Some("T140".into()),
+                Some("~96".into()),
+                Some("X".into()),
+                Some("P3".into()),
+                None
+            ]
+        );
+        assert!(e.grid.tracks[0].steps.iter().all(|s| s.locks.is_empty()));
+        // ^a nudges tempos, d clears, y and p copy.
+        keys(&mut e, "gg");
+        e.handle(Key::Ctrl('a'));
+        assert_eq!(gestures(&e, 0)[0], Some("T141".into()));
+        keys(&mut e, "yjjjjjp");
+        assert_eq!(gestures(&e, 0)[5], Some("T141".into()));
+        keys(&mut e, "ggjjd");
+        assert_eq!(gestures(&e, 0)[2], None);
+        // & fills tempos between the ends.
+        keys(&mut e, "ggit100\x1bggvjjjjj&");
+        let filled = ["T100", "T108", "T116", "T125", "T133", "T141"];
+        assert_eq!(gestures(&e, 0)[..6], filled.map(|g| Some(g.to_string())));
+        // Undo puts it back.
+        keys(&mut e, "u");
+        assert_eq!(gestures(&e, 0)[1], Some("~96".into()));
     }
 
     #[test]

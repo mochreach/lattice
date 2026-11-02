@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 
 use anyhow::{Context, Result};
-use lattice_core::Buses;
+use lattice_core::{Buses, MIN_BPM};
 use lattice_editor::{Editor, Export, Part, file_name};
 use lattice_engine::{Command, Cue, Engine, Handle, Section};
 
@@ -115,6 +115,7 @@ pub fn render(export: &Export, buses: Buses, bpm: f64, sample_rate: f32) -> Resu
     // Each part is cued while the one before plays, and after the last, playback stops.
     let cue = |parts: &mut std::slice::Iter<Part>| match parts.next() {
         Some(part) => Cue::Pattern(Box::new(Section {
+            conductor: part.conductor.clone(),
             lanes: part.lanes.clone(),
             steps: part.steps,
             at_bar: false,
@@ -124,6 +125,10 @@ pub fn render(export: &Export, buses: Buses, bpm: f64, sample_rate: f32) -> Resu
     for command in [
         Command::SetClick(false),
         Command::SetLength(first.steps),
+        Command::SetConductor {
+            conductor: Box::new(first.conductor.clone()),
+            swaps: 0,
+        },
         Command::Cue(cue(&mut parts)),
         Command::Play { count_in: 0 },
     ] {
@@ -131,8 +136,15 @@ pub fn render(export: &Export, buses: Buses, bpm: f64, sample_rate: f32) -> Resu
     }
     drain(&mut engine, &mut handle);
 
-    let step = 60.0 / (bpm * f64::from(editor.grid.steps_per_beat.max(1)));
-    let length = (export.steps() as f64 * step * f64::from(sample_rate)).round() as usize;
+    // How long the parts last at the song's tempo, and at the slowest the conductor could
+    // take them, after which they must have ended.
+    let frames = |bpm: f64| {
+        let step = 60.0 / (bpm * f64::from(editor.grid.steps_per_beat.max(1)));
+        (export.steps() as f64 * step * f64::from(sample_rate)).round() as usize
+    };
+    // Loops are selections, which play without a conductor, so this is exact for them.
+    let length = frames(bpm);
+    let longest = frames(bpm.min(f64::from(MIN_BPM)));
     let mut audio = Vec::with_capacity(2 * length);
     let mut render = |engine: &mut Engine, audio: &mut Vec<f32>| {
         let (l, r) = (&mut left[..], &mut right[..]);
@@ -147,9 +159,10 @@ pub fn render(export: &Export, buses: Buses, bpm: f64, sample_rate: f32) -> Resu
             handle.send(Command::Cue(cue(&mut parts)));
             handle.collect_garbage();
         }
-        anyhow::ensure!(audio.len() < 4 * length + 2 * BLOCK, "the song didn't end");
+        // The parts are played as arranged, whatever patterns the conductor cues.
+        while handle.conducted().is_some() {}
+        anyhow::ensure!(audio.len() < 2 * longest + 2 * BLOCK, "the song didn't end");
     }
-
     // Then on while delays and reverbs fade.
     let quiet = (QUIET * sample_rate) as usize;
     let max = audio.len() + 2 * (MAX_TAIL * sample_rate) as usize;
@@ -250,6 +263,7 @@ mod tests {
                 rules: vec![],
             }],
             steps,
+            conductor: Default::default(),
         };
         Export {
             path: "x.wav".into(),
@@ -343,6 +357,28 @@ mod tests {
     }
 
     #[test]
+    fn the_conductor_sets_the_tempo_it_renders_at() {
+        let rate = 8000.0;
+        let mut x = export(4);
+        let mut conductor = lattice_core::Conductor::new(4);
+        conductor.steps[0][0] = Some("T60".parse().unwrap());
+        let silent = Part {
+            lanes: vec![Lane {
+                mute: false,
+                steps: vec![Step::default(); 4],
+                rules: vec![],
+            }],
+            steps: 4,
+            conductor,
+        };
+        x.parts.insert(0, silent);
+        let audio = render(&x, Buses::default(), 120.0, rate).unwrap();
+        let first = audio.iter().position(|s| s.abs() > 0.0).unwrap() / 2;
+        // Four steps at 60 BPM, a second, and the tempo holds into the next part.
+        assert_eq!(first, 8000 + 1);
+    }
+
+    #[test]
     fn renders_each_part_in_turn() {
         let rate = 8000.0;
         // Silent for four steps, then the note in the second part.
@@ -354,6 +390,7 @@ mod tests {
                 rules: vec![],
             }],
             steps: 4,
+            conductor: Default::default(),
         };
         x.parts.insert(0, silent);
         let audio = render(&x, Buses::default(), 120.0, rate).unwrap();
