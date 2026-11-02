@@ -78,12 +78,15 @@ impl Editor {
     }
 
     /// Whether the cursor's track is in a folded group, where the number row stands in for the
-    /// pads in insert mode, for terminals that don't tell the numpad apart.
+    /// pads in insert mode, for terminals that don't tell the numpad apart. The conductor's left
+    /// of the first track, not in its group, and takes digits for its gestures.
     pub fn in_folded_group(&self) -> bool {
-        self.grid
-            .group_of(self.cursor().track)
-            .and_then(|g| self.grid.groups.get(g))
-            .is_some_and(|g| g.folded)
+        !self.in_conductor()
+            && self
+                .grid
+                .group_of(self.cursor().track)
+                .and_then(|g| self.grid.groups.get(g))
+                .is_some_and(|g| g.folded)
     }
 
     /// Renames the group the cursor's track is in.
@@ -253,5 +256,19 @@ mod tests {
         e.handle(Key::Pad(8));
         keys(&mut e, "\n");
         assert_eq!(e.grid.tracks[1].steps.len(), 8);
+    }
+
+    #[test]
+    fn the_conductor_left_of_a_folded_group_takes_digits() {
+        use lattice_core::{Gesture, Group};
+
+        let mut e = editor();
+        e.grid.groups = vec![Group::new("kit", 0..2)];
+        e.grid.groups[0].folded = true;
+        keys(&mut e, "fgiM1\n");
+        assert_eq!(
+            e.conductor().unwrap().get(0, 0),
+            Some(Gesture::Mute { track: 1, on: true })
+        );
     }
 }
