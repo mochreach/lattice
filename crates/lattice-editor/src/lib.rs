@@ -344,6 +344,8 @@ struct Snapshot {
     ids: Vec<TrackId>,
     selections: Vec<Selection>,
     primary: usize,
+    /// The song page's loop, which goes by entries.
+    looped: Option<(usize, usize)>,
 }
 
 /// What one selection copied: a column of steps per track.
@@ -404,7 +406,7 @@ pub struct Editor {
     /// After a first `L` on the mixer page, the settings to lock the changes to.
     locking: Option<locks::Locking>,
     /// The lock last recorded from the mixer, and its track, to nudge on from.
-    live_lock: Option<(usize, Lock)>,
+    live_lock: Option<(TrackId, Lock)>,
     /// The lesson, while the tutor's running.
     tutor: Option<tutor::Tutor>,
     /// Octave of the lower piano row in insert mode.
@@ -435,7 +437,7 @@ pub struct Editor {
     /// Whether the frontend reports key releases, so previews are held until their key comes up.
     pub releases: bool,
     /// Previewed notes, by the key that's holding each, and whether each is repeating.
-    sounding: Vec<(Key, usize, u8, bool)>,
+    sounding: Vec<(Key, TrackId, u8, bool)>,
     /// Whether the numpad's `0` is held, so pads repeat.
     repeat: bool,
     /// How often pads repeat, in steps.
@@ -702,6 +704,7 @@ impl Editor {
         self.pending = None;
         self.undo.clear();
         self.redo.clear();
+        self.reconcile();
         // Every id is new, so the engine rebuilds every track with its contents.
         vec![
             Effect::TracksChanged,
@@ -844,11 +847,15 @@ impl Editor {
         for effect in effects {
             out.push(match effect {
                 Effect::Preview { track, pitch } => {
-                    self.sounding.push((key, track, pitch, false));
+                    if let Some(&id) = self.ids.get(track) {
+                        self.sounding.push((key, id, pitch, false));
+                    }
                     Effect::Hold { track, pitch }
                 }
                 Effect::Repeat { track, pitch, .. } => {
-                    self.sounding.push((key, track, pitch, true));
+                    if let Some(&id) = self.ids.get(track) {
+                        self.sounding.push((key, id, pitch, true));
+                    }
                     effect
                 }
                 effect => effect,
@@ -860,9 +867,11 @@ impl Editor {
     /// Ends the previews `key` is holding, and if `repeats`, every repeat.
     fn release_previews(&mut self, key: Key, repeats: bool) -> Vec<Effect> {
         let mut released = vec![];
-        self.sounding.retain(|&(k, track, pitch, repeating)| {
+        let ids = &self.ids;
+        self.sounding.retain(|&(k, id, pitch, repeating)| {
             let up = k == key || (repeats && repeating);
-            if up {
+            // A track that's gone took its notes with it.
+            if up && let Some(track) = ids.iter().position(|&i| i == id) {
                 released.push(Effect::Release { track, pitch });
             }
             !up
@@ -1910,12 +1919,20 @@ impl Editor {
         self.grid.insert_track(index, track);
         self.ids.insert(index, TrackId(self.next_id));
         self.next_id += 1;
+        for entry in &mut self.song.yanked {
+            entry.insert_track(index);
+        }
+        self.reconcile();
     }
 
     pub(crate) fn remove_track(&mut self, index: usize) {
         self.grid.remove_track(index);
         self.arrangement.remove_track(index);
         self.ids.remove(index);
+        for entry in &mut self.song.yanked {
+            entry.remove_track(index);
+        }
+        self.reconcile();
     }
 
     pub(crate) fn move_track(&mut self, from: usize, to: usize) {
@@ -1923,6 +1940,38 @@ impl Editor {
         self.arrangement.move_track(from, to);
         let id = self.ids.remove(from);
         self.ids.insert(to, id);
+        for entry in &mut self.song.yanked {
+            entry.move_track(from, to);
+        }
+        self.reconcile();
+    }
+
+    /// Where the track with `id` is now, if it's still there.
+    pub(crate) fn track_index(&self, id: TrackId) -> Option<usize> {
+        self.ids.iter().position(|&i| i == id)
+    }
+
+    /// Lets go of whatever points into the song where the song no longer reaches, after it
+    /// changes underneath: tracks added, removed or moved, or an undo or redo. The cursors
+    /// keep themselves on the song as they're read; this is for the rest.
+    fn reconcile(&mut self) {
+        let patterns = self.arrangement.patterns.len();
+        let current = self.arrangement.current;
+        self.cue = self.cue.filter(|&p| p < patterns && p != current);
+        let entries = self.arrangement.entries.len();
+        self.song_position = self.song_position.filter(|&(e, _)| e < entries);
+        self.song.looped = self.song.looped.filter(|&(a, b)| a <= b && b < entries);
+        let tracks = self.grid.tracks.len();
+        let every = (1u32 << tracks) - 1;
+        self.song.yanked.retain(|e| e.pattern < patterns);
+        for entry in &mut self.song.yanked {
+            entry.mutes &= every;
+        }
+        if self.locking.as_ref().is_some_and(|l| !l.matches(self)) {
+            self.locking = None;
+        }
+        let ids = &self.ids;
+        self.live_lock = self.live_lock.filter(|(id, _)| ids.contains(id));
     }
 
     /// Saves the current state for undo. Call before every change to the song.
@@ -1945,6 +1994,8 @@ impl Editor {
     /// Forgets the undo steps after the first `len`.
     pub(crate) fn truncate_undo(&mut self, len: usize) {
         self.undo.truncate(len);
+        // What was undone came after, so it can't be redone.
+        self.redo.clear();
     }
 
     pub(crate) fn checkpoint(&mut self) {
@@ -1956,6 +2007,7 @@ impl Editor {
             ids: self.ids.clone(),
             selections: self.selections.clone(),
             primary: self.primary,
+            looped: self.song.looped,
         });
         if self.undo.len() > UNDO_LIMIT {
             self.undo.remove(0);
@@ -1990,8 +2042,10 @@ impl Editor {
             ids: std::mem::replace(&mut self.ids, snapshot.ids),
             selections: std::mem::replace(&mut self.selections, snapshot.selections),
             primary: std::mem::replace(&mut self.primary, snapshot.primary),
+            looped: std::mem::replace(&mut self.song.looped, snapshot.looped),
         });
         self.mode = Mode::Normal;
+        self.reconcile();
         // Line the tracks up first, so the indices that follow are the restored ones.
         tracks_changed
             .then_some(Effect::TracksChanged)
@@ -2996,6 +3050,34 @@ mod tests {
         assert_eq!(command(&mut e, "tmv 1"), [], "already at the end");
         command(&mut e, "tmv left");
         assert_eq!(e.message.as_deref(), Some("tracks to move is -16 to 16"));
+    }
+
+    #[test]
+    fn previews_end_on_their_track_wherever_it_moves() {
+        let mut e = editor();
+        e.sounding.push((Key::Char('z'), TrackId(1), 60, false));
+        e.sounding.push((Key::Char('z'), TrackId(0), 62, false));
+        e.move_track(1, 0);
+        e.remove_track(1);
+        // Track 0, a, has gone, and its note with it; b's ends where b is now.
+        assert_eq!(
+            e.release_previews(Key::Char('z'), false),
+            [Effect::Release {
+                track: 0,
+                pitch: 60
+            }]
+        );
+        assert!(e.sounding.is_empty());
+    }
+
+    #[test]
+    fn undoing_while_locking_forgets_what_was_undone() {
+        let mut e = editor();
+        notes(&mut e, "z");
+        keys(&mut e, "u");
+        assert!(!e.redo.is_empty());
+        e.truncate_undo(0);
+        assert!(e.redo.is_empty());
     }
 
     #[test]

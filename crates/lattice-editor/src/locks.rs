@@ -4,13 +4,13 @@
 use lattice_core::macros::MACRO_INFO;
 use lattice_core::{Curve, Fx, Instrument, Kind, Lock, MACRO, MAX_LOCKS, ParamInfo, Track};
 
-use crate::{Editor, Effect, Row, Strip, changed};
+use crate::{Editor, Effect, Row, Strip, TrackId, changed};
 
 /// What the first `L` on the mixer page remembers: a track's settings as they were, and how far
 /// back undo went.
 #[derive(Debug, Clone)]
 pub(crate) struct Locking {
-    track: usize,
+    track: TrackId,
     instrument: Instrument,
     effects: Vec<Fx>,
     macros: Vec<f32>,
@@ -19,13 +19,16 @@ pub(crate) struct Locking {
 
 impl Locking {
     /// Whether the track still has the same instrument and effects, so its settings line up.
-    fn matches(&self, editor: &Editor) -> bool {
-        editor.grid.tracks.get(self.track).is_some_and(|track| {
-            track.instrument.kind == self.instrument.kind
-                && track.effects.len() == self.effects.len()
-                && track.macros.len() == self.macros.len()
-                && (track.effects.iter().zip(&self.effects)).all(|(a, b)| a.kind == b.kind)
-        })
+    pub(crate) fn matches(&self, editor: &Editor) -> bool {
+        let track = editor.track_index(self.track);
+        track
+            .and_then(|t| editor.grid.tracks.get(t))
+            .is_some_and(|track| {
+                track.instrument.kind == self.instrument.kind
+                    && track.effects.len() == self.effects.len()
+                    && track.macros.len() == self.macros.len()
+                    && (track.effects.iter().zip(&self.effects)).all(|(a, b)| a.kind == b.kind)
+            })
     }
 }
 
@@ -202,9 +205,11 @@ impl Editor {
             return Err("locks are on tracks' steps; buses have none".into());
         };
         // The hints say what to do next.
-        let track = &self.grid.tracks[t];
+        let (Some(track), Some(&id)) = (self.grid.tracks.get(t), self.ids.get(t)) else {
+            return Err("no such track".into());
+        };
         self.locking = Some(Locking {
-            track: t,
+            track: id,
             instrument: track.instrument.clone(),
             effects: track.effects.to_vec(),
             macros: track.macros.iter().map(|m| m.value).collect(),
@@ -215,7 +220,9 @@ impl Editor {
 
     /// Whether the mixer is waiting for a second `L`, and on which track.
     pub fn locking(&self) -> Option<usize> {
-        self.locking.as_ref().map(|l| l.track)
+        self.locking
+            .as_ref()
+            .and_then(|l| self.track_index(l.track))
     }
 
     /// Puts back the settings `L` remembered, and forgets the changes' undo steps, as though
@@ -224,10 +231,15 @@ impl Editor {
         let Some(locking) = self.locking.take() else {
             return vec![];
         };
-        if !locking.matches(self) {
+        let Some(t) = self
+            .track_index(locking.track)
+            .filter(|_| locking.matches(self))
+        else {
             return vec![];
-        }
-        let track = &mut self.grid.tracks[locking.track];
+        };
+        let Some(track) = self.grid.tracks.get_mut(t) else {
+            return vec![];
+        };
         track.instrument.values = locking.instrument.values.clone();
         for (fx, was) in track.effects.iter_mut().zip(&locking.effects) {
             fx.values = was.values.clone();
@@ -236,19 +248,20 @@ impl Editor {
             m.value = was;
         }
         self.truncate_undo(locking.undo);
-        vec![Effect::MixerChanged, Effect::TrackChanged(locking.track)]
+        vec![Effect::MixerChanged, Effect::TrackChanged(t)]
     }
 
     fn finish_locking(&mut self) -> Result<Vec<Effect>, String> {
         let Some(locking) = self.locking.clone() else {
             return Err("nothing's being locked".into());
         };
-        if !locking.matches(self) {
+        let Some((t, track)) = (self.track_index(locking.track))
+            .filter(|_| locking.matches(self))
+            .and_then(|t| Some((t, self.grid.tracks.get(t)?)))
+        else {
             self.locking = None;
-            return Err("the track's chain changed; nothing locked".into());
-        }
-        let t = locking.track;
-        let track = &self.grid.tracks[t];
+            return Err("the track or its chain changed; nothing locked".into());
+        };
         // Each setting that changed, as a lock.
         let mut new = vec![];
         let devices = std::iter::once((None, &locking.instrument.values, &track.instrument))
@@ -383,7 +396,7 @@ impl Editor {
             self.take = Some(pass);
         }
         self.grid.tracks[t].steps[step].locks.set(lock);
-        self.live_lock = Some((t, lock));
+        self.live_lock = self.ids.get(t).map(|&id| (id, lock));
         let track = &self.grid.tracks[t];
         self.message = Some(format!(
             "◆ {} on {} step {step}",

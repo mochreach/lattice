@@ -525,7 +525,7 @@ pub(crate) struct SongCursor {
     /// In select mode, the bar and column the selection began at.
     anchor: Option<(usize, usize)>,
     /// The entries last copied.
-    yanked: Vec<Entry>,
+    pub(crate) yanked: Vec<Entry>,
     /// The first and last entries of the section the song loops round.
     pub(crate) looped: Option<(usize, usize)>,
 }
@@ -817,6 +817,37 @@ mod tests {
         assert_eq!(e.song_loop(), None);
         keys(&mut e, "j ");
         assert_eq!(e.next(), crate::Next::Stop);
+    }
+
+    #[test]
+    fn undo_and_redo_take_the_loop_with_the_entries() {
+        let mut e = editor();
+        keys(&mut e, "ooL");
+        assert_eq!(e.song_loop(), Some((2, 2)));
+        // Undoing the entry it loops round takes the loop too, and redoing brings it back.
+        keys(&mut e, "u");
+        assert_eq!(e.song.looped, None);
+        keys(&mut e, "U");
+        assert_eq!(e.song_loop(), Some((2, 2)));
+    }
+
+    #[test]
+    fn copied_entries_follow_the_tracks_and_patterns() {
+        let mut e = three_tracks();
+        let entry = |pattern, mutes| Entry {
+            pattern,
+            repeats: 1,
+            mutes,
+        };
+        e.song.yanked = vec![entry(0, 0b0100), entry(1, 0b1000)];
+        e.move_track(3, 0);
+        assert_eq!(e.song.yanked, [entry(0, 0b1000), entry(1, 0b0001)]);
+        e.remove_track(3);
+        assert_eq!(e.song.yanked, [entry(0, 0b0000), entry(1, 0b0001)]);
+        // Pattern 1's the one being edited; removing it takes its entries.
+        e.select_pattern(1);
+        e.remove_pattern().unwrap();
+        assert_eq!(e.song.yanked, [entry(0, 0)]);
     }
 
     #[test]

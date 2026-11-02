@@ -84,18 +84,25 @@ impl Entry {
     }
 
     /// A track went in at `index`, unmuted: the tracks after it move up a bit.
-    fn insert_track(&mut self, index: usize) {
+    pub fn insert_track(&mut self, index: usize) {
         let below = self.mutes & ((1 << index) - 1);
         self.mutes = below | (self.mutes >> index) << (index + 1);
     }
 
     /// The track at `index` went: the tracks after it move down a bit. Returns whether it was
     /// muted.
-    fn remove_track(&mut self, index: usize) -> bool {
+    pub fn remove_track(&mut self, index: usize) -> bool {
         let muted = self.muted(index);
         let below = self.mutes & ((1 << index) - 1);
         self.mutes = below | (self.mutes >> (index + 1)) << index;
         muted
+    }
+
+    /// The track at `from` moved to `to`, taking its mute with it.
+    pub fn move_track(&mut self, from: usize, to: usize) {
+        let muted = self.remove_track(from);
+        self.insert_track(to);
+        self.set_muted(to, muted);
     }
 }
 
@@ -213,10 +220,13 @@ impl Arrangement {
         index
     }
 
-    /// Removes pattern `index`, which mustn't be the current one or the last, and the entries
-    /// that play it.
-    pub fn remove(&mut self, index: usize) {
-        assert!(index != self.current && self.patterns.len() > 1);
+    /// Removes pattern `index`, and the entries that play it. False, changing nothing, if it's
+    /// the current one or there's no such pattern.
+    #[must_use]
+    pub fn remove(&mut self, index: usize) -> bool {
+        if index == self.current || index >= self.patterns.len() {
+            return false;
+        }
         self.patterns.remove(index);
         if self.current > index {
             self.current -= 1;
@@ -227,6 +237,7 @@ impl Arrangement {
                 entry.pattern -= 1;
             }
         }
+        true
     }
 
     /// A track was inserted at `index`, `len` steps long: the other patterns get an empty lane
@@ -257,9 +268,7 @@ impl Arrangement {
     /// The track at `from` moved to `to`: so do its lanes and its mutes.
     pub fn move_track(&mut self, from: usize, to: usize) {
         for entry in &mut self.entries {
-            let muted = entry.remove_track(from);
-            entry.insert_track(to);
-            entry.set_muted(to, muted);
+            entry.move_track(from, to);
         }
         for pattern in self.others_mut() {
             let lane = pattern.lanes.remove(from);
@@ -523,7 +532,7 @@ mod tests {
                 mutes: 0,
             },
         ];
-        a.remove(1);
+        assert!(a.remove(1));
         assert_eq!(
             a.entries,
             [Entry {

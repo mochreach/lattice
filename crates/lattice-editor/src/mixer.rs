@@ -438,10 +438,10 @@ impl Editor {
                 let info = shown.params[p];
                 // Recording locks, nudges go on from the last one.
                 let value = match self.live_lock {
-                    Some((t, lock))
+                    Some((id, lock))
                         if self.record
                             && self.transport.is_some()
-                            && shown.strip == Strip::Track(t)
+                            && self.track_index(id).map(Strip::Track) == Some(shown.strip)
                             && lock.fx == shown.slot.map(|s| s as u8)
                             && u32::from(lock.param) == info.id =>
                     {

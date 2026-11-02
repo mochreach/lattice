@@ -147,7 +147,16 @@ impl Editor {
         let current = self.arrangement.current;
         let gone = self.pattern_name().to_string();
         let effects = self.select_pattern(current.saturating_sub(1).max(usize::from(current == 0)));
-        self.arrangement.remove(current);
+        if !self.arrangement.remove(current) {
+            return Err(format!("couldn't remove pattern {gone}"));
+        }
+        // Copied entries of the patterns after it follow them down; those of it go.
+        self.song.yanked.retain(|e| e.pattern != current);
+        for entry in &mut self.song.yanked {
+            if entry.pattern > current {
+                entry.pattern -= 1;
+            }
+        }
         self.cue = None;
         self.song_position = None;
         self.song.looped = None;
