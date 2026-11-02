@@ -186,6 +186,9 @@ mod tests {
                 .iter()
                 .any(|s| s.gestures().any(|g| g == Gesture::Fill))
         );
+        // The brass's shimmer, an octave-up echo on a lane of its own.
+        let brass = song.grid.tracks.iter().find(|t| t.name == "brass").unwrap();
+        assert_eq!(brass.effects.lanes().len(), 2);
     }
 
     #[test]

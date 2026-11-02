@@ -40,7 +40,7 @@ one song, [`examples/mountain-king`](examples/mountain-king) is Grieg's *In the 
 Mountain King*: groups, a branching effects chain, a macro, faces, choke, rules, mutes in the
 arrangement, locks that slide, a section chopped from its own render, and the conductor speeding
 it up. [`examples/scarlatti`](examples/scarlatti) is a Switched-On Scarlatti, his Sonata in G,
-K. 455, on synthesisers: gestures (trills, glides, a run split between two tracks, chance), a
+K. 455, on synthesisers, drive, delays and a big hall: gestures (trills, glides, a run split between two tracks, chance), a
 canon and timpani rolls that play only in a fill, and repeats orchestrated differently by
 mutes in the arrangement.
 
