@@ -57,6 +57,8 @@ pub struct ViewState {
     pub(crate) face_clock: crate::face::Clock,
     /// Each track's count of notes started, as last seen, and when it last changed.
     pub(crate) notes: [Option<(u16, Instant)>; MAX_TRACKS],
+    /// Each track's beat, as last seen, and the frame its face's art is on.
+    pub(crate) frames: [(u64, usize); MAX_TRACKS],
     /// The keys just pressed, shown when the editor's `show_keys` is on.
     pub keys: KeyLog,
     /// The waveforms of the files chop tracks play.

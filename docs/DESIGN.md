@@ -1140,7 +1140,11 @@ forward, so `InstLine::Param` holds a setting's id rather than its place in the 
 stop wherever the kind of line changes. The TUI draws each shown face's art (`lattice-tui/src/face.rs`)
 in a band under the tracks' names: the face's own, drawn by hand, its middle on the band's and
 cut down to it, or else a fractal from the splash, picked by hashing the title, mirrored about the
-middle. Either way it's lit the same. It reads the track's meter for how far it's lit, the macros' values
+middle. Hand-drawn art can have frames (`Face::frames`, split at empty rows), and moves on one
+whenever a new beat starts (from `Status::pattern_step` and `boundaries`, or every
+`face::IDLE_BEAT` when stopped) or the track starts a note, once for both together, so a drum on
+every beat doesn't skip a two-frame loop's other frame; `ViewState::frames` holds each track's.
+Either way it's lit the same. It reads the track's meter for how far it's lit, the macros' values
 (locked ones while playing) for zoom and flow, and the engine's `Status::last_note`, the pitch,
 velocity and a count of notes started, packed into one atomic per track, for the colour and the
 ring a new note sends out. Colours come from `Theme::hues`, a wheel of the terminal's six.
@@ -1155,7 +1159,8 @@ the instrument page's track too (`Editor::played_track`).
 
 A preset (`lattice_core::Preset`, `lattice-core/src/preset.rs`) is an instrument, its chain and its
 macros, with a `Face`: a title, the instrument settings it puts forward, by id, and art drawn by
-hand, if it has any, as text, at most `ART_ROWS` by `ART_WIDTH` characters, the most the
+hand, if it has any, as text, up to `ART_FRAMES` frames of at most `ART_ROWS` by `ART_WIDTH`
+characters, the most the
 instrument page has room for (`great-machine`'s is a file, `lattice-core/src/art`). Faces only name
 the instrument's own settings, not its effects', so removing or moving effects never leaves one
 pointing at the wrong thing; an effect's setting goes on a face by mapping a macro to it. A track

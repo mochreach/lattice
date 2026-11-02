@@ -1,7 +1,8 @@
 //! A face's art, played by the track: drawn by hand, or else one of the splash's fractals, drawn
-//! in braille and mirrored about the middle so it looks back at you. The title picks the fractal,
-//! its scale and which way it flows, the first macro zooms in on it, and the second hurries its
-//! flow. Either way, the track's level lights it from the middle out, each new note sends a ring
+//! in braille and mirrored about the middle so it looks back at you. Art drawn by hand moves on a
+//! frame with each beat and each note, and slowly when the song's stopped. The title picks the
+//! fractal, its scale and which way it flows, the first macro zooms in on it, and the second
+//! hurries its flow. Either way, the track's level lights it from the middle out, each new note sends a ring
 //! out from the middle, and the note's pitch picks the colour, a step round the colour wheel for
 //! each step round the circle of fifths. At rest it's a faint outline.
 
@@ -30,6 +31,8 @@ const BANDS: f32 = 4.0;
 const RIPPLE: f32 = 1.0;
 /// A velocity above which the colours are bold.
 const LOUD: u8 = 100;
+/// Seconds between frames of hand-drawn art while the song's stopped.
+pub const IDLE_BEAT: f32 = 0.75;
 
 /// What a track's doing, for its face to show.
 #[derive(Debug, Clone, Copy, Default)]
@@ -42,6 +45,8 @@ pub struct Feel {
     pub since_note: f32,
     /// The first two macros, from 0 to 1.
     pub macros: [f32; 2],
+    /// Which frame of hand-drawn art to show, counting round them.
+    pub frame: usize,
 }
 
 /// The art a title gives.
@@ -96,11 +101,20 @@ pub fn draw(buf: &mut Buffer, area: Rect, face: &Face, feel: &Feel, theme: &Them
     }
     let zoom = look.scale * (1.0 + ZOOM * feel.macros[0]);
     let flowed = time * (FLOW + HURRY * feel.macros[1]);
-    // Hand-drawn art's middle on the area's, cut down to it where it's bigger.
-    let rows: Vec<Vec<char>> = face.art.iter().map(|row| row.chars().collect()).collect();
-    let art_width = rows.iter().map(Vec::len).max().unwrap_or(0);
+    // Hand-drawn art's middle on the area's, cut down to it where it's bigger, every frame in
+    // the same place.
+    let frames: Vec<&[String]> = face.frames().collect();
+    let art_width = (frames.iter().flat_map(|f| f.iter()))
+        .map(|row| row.chars().count())
+        .max()
+        .unwrap_or(0);
+    let art_height = frames.iter().map(|f| f.len()).max().unwrap_or(0);
+    let frame = frames.get(feel.frame % frames.len().max(1));
+    let rows: Vec<Vec<char>> = (frame.iter().flat_map(|f| f.iter()))
+        .map(|row| row.chars().collect())
+        .collect();
     let left = (art_width as i32 - i32::from(area.width)) / 2;
-    let top = (rows.len() as i32 - i32::from(area.height)) / 2;
+    let top = (art_height as i32 - i32::from(area.height)) / 2;
     let drawn = |cx: u16, cy: u16| {
         let row = usize::try_from(top + i32::from(cy)).ok()?;
         let column = usize::try_from(left + i32::from(cx)).ok()?;
@@ -222,6 +236,7 @@ mod tests {
             note: Some((60, 120)),
             since_note: 1.0,
             macros: [0.0; 2],
+            frame: 0,
         };
         assert!(colours(&draw_with("Night Bus", loud)) > 0);
     }
@@ -258,9 +273,35 @@ mod tests {
             note: Some((60, 120)),
             since_note: 1.0,
             macros: [0.0; 2],
+            frame: 0,
         };
         let played = draw_in(Rect::new(0, 0, 9, 5), loud);
         assert_eq!(big[(1, 1)].fg, theme.faint.fg.unwrap());
         assert_ne!(played[(1, 1)].fg, theme.faint.fg.unwrap());
+    }
+
+    #[test]
+    fn hand_drawn_art_steps_through_its_frames() {
+        let theme = Theme::terminal();
+        let face = Face {
+            art: vec!["ab".into(), "".into(), "cd".into(), "efgh".into()],
+            ..Face::new("Night Bus")
+        };
+        let area = Rect::new(0, 0, 4, 2);
+        let top_row = |frame| {
+            let mut buf = Buffer::empty(area);
+            let feel = Feel {
+                frame,
+                ..Feel::default()
+            };
+            draw(&mut buf, area, &face, &feel, &theme, 0.0);
+            (0..4)
+                .map(|x| buf[(x, 0)].symbol().to_string())
+                .collect::<String>()
+        };
+        // Each where the biggest puts it, and round again after the last.
+        assert_eq!(top_row(0), "ab  ");
+        assert_eq!(top_row(1), "cd  ");
+        assert_eq!(top_row(2), "ab  ");
     }
 }

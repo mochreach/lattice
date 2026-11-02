@@ -16,10 +16,11 @@ use crate::macros::{MAX_MACROS, MAX_TARGETS, Macro, Target};
 
 /// The most of the instrument's settings a face puts forward, beside its macros.
 pub const MAX_CONTROLS: usize = 6;
-/// The most rows and characters a row a face's hand-drawn art has: as much as the instrument
-/// page has room for at most.
+/// The most rows and characters a row a frame of a face's hand-drawn art has, as much as the
+/// instrument page has room for at most, and the most frames it has.
 pub const ART_ROWS: usize = 8;
 pub const ART_WIDTH: usize = 31;
+pub const ART_FRAMES: usize = 8;
 
 /// How a preset shows itself.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -28,7 +29,8 @@ pub struct Face {
     /// The instrument's settings it puts forward, by id, in order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub controls: Vec<u8>,
-    /// Art drawn by hand, a row of text a line, in place of the art the title picks.
+    /// Art drawn by hand, a row of text a line, in place of the art the title picks: one frame,
+    /// or several, each after an empty row, that the track steps through as it plays.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub art: Vec<String>,
 }
@@ -42,13 +44,23 @@ impl Face {
         }
     }
 
+    /// The frames of its art: its rows, split at each empty one.
+    pub fn frames(&self) -> impl Iterator<Item = &[String]> {
+        (self.art.split(String::is_empty)).filter(|frame| !frame.is_empty())
+    }
+
     /// Checks it fits an instrument of `kind`.
     pub fn check(&self, kind: InstKind) -> Result<(), String> {
         if self.controls.len() > MAX_CONTROLS {
             return Err(format!("a face has at most {MAX_CONTROLS} controls"));
         }
-        if self.art.len() > ART_ROWS {
-            return Err(format!("a face's art has at most {ART_ROWS} rows"));
+        if self.frames().count() > ART_FRAMES {
+            return Err(format!("a face's art has at most {ART_FRAMES} frames"));
+        }
+        if self.frames().any(|frame| frame.len() > ART_ROWS) {
+            return Err(format!(
+                "a frame of a face's art has at most {ART_ROWS} rows"
+            ));
         }
         for row in &self.art {
             if row.chars().count() > ART_WIDTH {
@@ -1037,10 +1049,25 @@ mod tests {
                 .is_err()
         );
         assert!(art(&["⣿"; ART_ROWS + 1]).check(InstKind::Synth).is_err());
+        // Frames, each after an empty row, and each as big as one.
+        let frames = art(&["", "⣿", "⣿", "", "", "⠿", ""]);
+        assert_eq!(frames.frames().count(), 2);
+        let mut rows = vec!["⣿"; ART_ROWS];
+        rows.push("");
+        rows.extend(["⠿"; ART_ROWS]);
+        assert!(art(&rows).check(InstKind::Synth).is_ok());
+        assert!(
+            art(&["⣿", ""].repeat(ART_FRAMES + 1))
+                .check(InstKind::Synth)
+                .is_err()
+        );
         assert!(art(&["a\tb"]).check(InstKind::Synth).is_err());
         // The Great Machine fills it.
-        let machine = preset("great-machine").unwrap().face.art;
-        assert_eq!(machine.len(), ART_ROWS);
-        assert!(machine.iter().all(|r| r.chars().count() == ART_WIDTH));
+        let machine = preset("great-machine").unwrap().face;
+        assert!(machine.frames().count() > 1, "it moves");
+        for frame in machine.frames() {
+            assert_eq!(frame.len(), ART_ROWS);
+            assert!(frame.iter().all(|r| r.chars().count() == ART_WIDTH));
+        }
     }
 }

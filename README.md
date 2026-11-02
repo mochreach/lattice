@@ -361,8 +361,10 @@ A preset gives its track a **face**: a title (`:face Cold Iron`), and the contro
 forward, its macros and whichever settings `:face-show cutoff` adds. The track keeps it, and the
 song saves it, until its instrument changes for another kind. Its art, lit by what the track
 plays, is a fractal its title picks, unless it's drawn by hand: a preset's file can give it up to
-8 rows of 31 characters, `art = ["⢠⣶⣦ ⣿", …]`, as `great-machine` draws the Great Machine of the
-Krell from *Forbidden Planet*.
+8 frames of 8 rows of 31 characters, `art = ["⢠⣶⣦ ⣿", …]`, each frame after an empty row (`""`),
+as `great-machine` draws the Great Machine of the Krell from *Forbidden Planet*. The art moves on
+a frame with each beat, and with each note the track starts, and slowly when the song's
+stopped.
 
 **Locks** automate settings by step, as on Elektron machines and in trackers' columns: a track
 can lock up to four of its instrument's or effects' settings with `:lock`, each in a column of its

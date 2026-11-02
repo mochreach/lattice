@@ -144,6 +144,13 @@ pub fn draw(
     }
     let now = Instant::now();
     let time = view.face_clock.seconds();
+    // The beat playing, which pattern's it is with it; stopped, a slow beat of the art's own.
+    let beat = if status.playing() {
+        let steps_per_beat = u64::from(editor.grid.steps_per_beat.max(1));
+        1 << 63 | status.boundaries() << 24 | (status.pattern_step() / steps_per_beat)
+    } else {
+        (time / face::IDLE_BEAT) as u64
+    };
     for (k, &(t, track)) in columns.iter().enumerate() {
         let Some(face) = track.face.as_ref().filter(|_| editor.shows_face(t)) else {
             continue;
@@ -154,8 +161,9 @@ pub fn draw(
         let Some(seen) = view.notes.get_mut(t) else {
             continue;
         };
+        let new_note = note.is_some_and(|(_, _, count)| seen.is_none_or(|(c, _)| c != count));
         if let Some((_, _, count)) = note
-            && seen.is_none_or(|(c, _)| c != count)
+            && new_note
         {
             // Not on first sight, only for the notes after.
             let when = if seen.is_some() {
@@ -166,6 +174,15 @@ pub fn draw(
             *seen = Some((count, when));
         }
         let since_note = seen.map_or(f32::MAX, |(_, when)| (now - when).as_secs_f32());
+        // The art moves on a frame with each new beat or note, once for a note on the beat.
+        let Some((seen_beat, art_frame)) = view.frames.get_mut(t) else {
+            continue;
+        };
+        if *seen_beat != beat || new_note {
+            *seen_beat = beat;
+            *art_frame = art_frame.wrapping_add(1);
+        }
+        let art_frame = *art_frame;
         let locks = status.locks(t);
         let macro_value = |m: usize| {
             let lock = locks
@@ -180,6 +197,7 @@ pub fn draw(
             note: note.map(|(pitch, velocity, _)| (pitch, velocity)),
             since_note,
             macros: [macro_value(0), macro_value(1)],
+            frame: art_frame,
         };
         let x = area.x + (LABEL + k * column_width) as u16 + 1;
         let rect = Rect::new(

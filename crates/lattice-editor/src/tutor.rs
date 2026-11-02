@@ -722,7 +722,8 @@ const LESSONS: &[Lesson] = &[
                instrument for another kind takes the face away. The instrument page \
                ({goto_instrument}) shows a face in place of the instrument's settings, its art \
                lit by what the track plays: drawn from its title, or by hand, as \
-               `great-machine`'s is, the Great Machine of the Krell. {open} on its title opens \
+               `great-machine`'s is, the Great Machine of the Krell, moving with each beat \
+               and note. {open} on its title opens \
                all the settings, and again goes back.\n\n\
                Put `night-bus` on the LEAD track, and show its resonance on its face.",
         teaches: &[],
