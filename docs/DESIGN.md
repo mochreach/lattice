@@ -859,6 +859,12 @@ mirrored about the middle. It reads the track's meter for how far it's lit, the 
 velocity and a count of notes started, packed into one atomic per track, for the colour and the
 ring a new note sends out. Colours come from `Theme::hues`, a wheel of the terminal's six.
 
+Playing live on the instrument page is insert mode on that page (`Editor::play_key`): a piano key
+previews the cursor's track, or records it through `record_note` when armed, but never enters a
+note at a cursor. Insert mode's other keys act as usual, through `inst_act`, and `Ctrl` keys fall
+back to the normal keymap so `C-a` `C-x` turn settings; letters are left to the piano. Pads play
+the instrument page's track too (`Editor::played_track`).
+
 ### Presets and faces
 
 A preset (`lattice_core::Preset`, `lattice-core/src/preset.rs`) is an instrument, its chain and its

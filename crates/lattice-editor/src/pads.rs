@@ -102,7 +102,7 @@ impl Editor {
         if self.pad_mode == PadMode::Mute {
             return self.mute_pad(n - 1);
         }
-        let (track, pitch) = match self.grid.group_of(self.cursor().track) {
+        let (track, pitch) = match self.grid.group_of(self.played_track()) {
             // In a group, its `n`th track at C-4, which plays a drum at its tuning.
             Some(g) => {
                 let group = &self.grid.groups[g];
@@ -113,7 +113,7 @@ impl Editor {
             }
             // Elsewhere, the scale's `n`th note on the cursor's track.
             None => match self.scale_pitch(n - 1) {
-                Some(pitch) => (self.cursor().track, pitch),
+                Some(pitch) => (self.played_track(), pitch),
                 None => return vec![],
             },
         };

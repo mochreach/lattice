@@ -71,6 +71,12 @@ impl Editor {
         if self.record && self.page == Page::Mixer {
             self.message =
                 Some("record armed: settings changed while the song plays are locked".into());
+        } else if self.record && self.page == Page::Instrument {
+            self.start_playing();
+            self.message = Some(
+                "record armed: notes played and settings turned while the song plays are recorded"
+                    .into(),
+            );
         } else if self.record {
             if self.mode != Mode::Insert {
                 self.insert_at(false);

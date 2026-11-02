@@ -961,6 +961,9 @@ impl Editor {
     }
 
     fn insert_key(&mut self, key: Key) -> Vec<Effect> {
+        if self.page == Page::Instrument {
+            return self.play_key(key);
+        }
         if let Some(pitch) = self.piano_pitch(key) {
             let track = self.cursor().track;
             let cursors: Vec<Cursor> = self.selections.iter().map(|s| s.cursor).collect();

@@ -1049,6 +1049,10 @@ fn grid_row(
 fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
     let mut left = match &editor.mode {
         Mode::Normal => vec![Span::styled(" NORMAL ", theme.block(Color::DarkGray))],
+        // On the instrument page, the keys play rather than enter notes.
+        Mode::Insert if editor.page == Page::Instrument => {
+            vec![Span::styled(" PLAY ", theme.block(theme.accent))]
+        }
         Mode::Insert => vec![Span::styled(" INSERT ", theme.block(theme.accent))],
         Mode::Select => vec![Span::styled(" SELECT ", theme.block(theme.visual))],
         Mode::Command(prompt) => {
@@ -1121,7 +1125,7 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             theme.dim,
         ),
         Mode::Normal if editor.page == Page::Instrument => (
-            "hl tracks · jk lines · w b parts · C-a C-x adjust · c set · :map macro · L lock · ret face, effects · gp pattern".into(),
+            "hl tracks · jk lines · w b parts · C-a C-x adjust · c set · i play · :map macro · L lock · ret face, effects · gp pattern".into(),
             theme.dim,
         ),
         Mode::Normal if editor.page == Page::Mixer => (
@@ -1148,6 +1152,18 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
                 (format!("◆ {}", locks.join(" · ")), theme.text)
             }
         }
+        Mode::Insert if editor.page == Page::Instrument && editor.record => (
+            format!(
+                "recording: {notes} and turned settings at the playhead, while playing · ←→ tracks · ↑↓ lines · C-a C-x adjust · R off · esc stop"
+            ),
+            theme.dim,
+        ),
+        Mode::Insert if editor.page == Page::Instrument => (
+            format!(
+                "{notes} play · [ ] octave · ←→ tracks · ↑↓ lines · C-a C-x adjust · R record · esc stop"
+            ),
+            theme.dim,
+        ),
         Mode::Insert if editor.record && editor.in_folded_group() => (
             format!("recording: 1–9 pads · {notes} at the playhead, while playing · R off · esc done"),
             theme.dim,

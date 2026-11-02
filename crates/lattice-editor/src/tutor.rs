@@ -535,7 +535,10 @@ const LESSONS: &[Lesson] = &[
                side, a column each, with its settings, the track's macros and its effects. \
                {left} {right} move across the tracks and {up} {down} down a column, and \
                {note_up} {note_down} turn a setting; {change} on the instrument's name changes \
-               it. `:inst string` does too, and `:sample kick.wav` plays a sound file on it. \
+               it. {insert} plays the track on the piano keys, to try it out, without entering \
+               notes; the arrows still move and {note_up} {note_down} still turn, so you can \
+               shape it as you play, and {escape} stops. \
+               `:inst string` changes it too, and `:sample kick.wav` plays a sound file on it. \
                `:fx-add delay` adds an effect: `delay`, `reverb`, `filter`, `drive`, `comp` or \
                `pitch`.\n\nAdd a reverb to the LEAD track.",
         teaches: &[Action::GotoInstrument],

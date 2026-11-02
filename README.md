@@ -286,6 +286,13 @@ picks its colour, round the colour wheel as it goes round the circle of fifths. 
 zooms in on it and the second hurries its flow. `enter` on the title opens all the instrument's
 settings, and again goes back to the face.
 
+`i` on the instrument page plays the cursor's track live on the computer keyboard, laid out as in
+insert mode (`[` `]` change octave, and the numpad's pads play too), to try a sound out without
+entering any notes. The status line says `PLAY`. The arrows still move across the tracks and down
+the column, and `^a` `^x` still turn the setting or macro under the cursor, so a sound can be
+shaped while it's played; `esc` stops. With record armed (`R`, which starts playing too) and the
+song playing, the notes go in at the playhead, and the settings you turn are locked as you go.
+
 The **fx page** (`gf`) shows one strip's effects the way the pattern shows notes: the sound goes
 down through them, each effect's settings on the lines under its name, and they can branch into up to four **lanes**, side by side. A **send** row,
 `→ B -3.0 dB`, copies the sound at that point into lane B; added with `:fx-send B`, it starts lane

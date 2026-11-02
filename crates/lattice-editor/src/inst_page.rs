@@ -2,6 +2,10 @@
 //! bottom like the fx page's lanes. A column starts with the instrument's name, then has its
 //! settings a line each, the track's macros, and last its chain of effects.
 //!
+//! `i` plays the cursor's track on the piano keys, as insert mode does on the pattern, but
+//! without entering the notes, unless record's armed and the song's playing; the arrows still
+//! move and `C-a` `C-x` still turn, so a sound can be played and shaped at once. `esc` stops.
+//!
 //! A track with a preset's face shows that instead: its title, its macros, the settings it puts
 //! forward and its chain. `enter` on the title opens all its settings, and again goes back to
 //! the face.
@@ -12,9 +16,9 @@
 //! page keeps on the track and setting under its own, so `:set`, `:map`, locking and recorded
 //! locks work as there. `enter` on the chain, or `gf` anywhere, opens the track's fx page.
 
-use crate::keymap::Action;
+use crate::keymap::{Action, Binding};
 use crate::mixer::{Page, Row};
-use crate::{Editor, Effect, Mode, PromptKind};
+use crate::{Editor, Effect, Key, Mode, PromptKind};
 
 /// Where the instrument page's cursor is: a track's column, and a line down it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -116,6 +120,42 @@ impl Editor {
         };
     }
 
+    /// The track notes played live go to: the instrument page's, or the pattern cursor's.
+    pub(crate) fn played_track(&self) -> usize {
+        match self.page {
+            Page::Instrument => self.inst_cursor().track,
+            _ => self.cursor().track,
+        }
+    }
+
+    /// Starts playing the cursor's track on the piano keys.
+    pub(crate) fn start_playing(&mut self) {
+        self.mode = Mode::Insert;
+        let name = &self.grid.tracks[self.inst_cursor().track].name;
+        self.message = Some(format!("playing {name} on the keyboard; esc stops"));
+    }
+
+    /// A key while playing on the instrument page: a piano key plays the cursor's track, or
+    /// records it at the playhead; the rest move and turn, with `C-a` `C-x` as in normal mode.
+    pub(crate) fn play_key(&mut self, key: Key) -> Vec<Effect> {
+        let track = self.inst_cursor().track;
+        if let Some(pitch) = self.piano_pitch(key) {
+            return (self.record_note(key, &[track], pitch, 0))
+                .unwrap_or_else(|| vec![Effect::Preview { track, pitch }]);
+        }
+        let action = self.keymap.insert.get(&key).copied().or_else(|| {
+            match (key, self.keymap.normal.get(&key)) {
+                (Key::Ctrl(_), Some(&Binding::Action(action))) => Some(action),
+                _ => None,
+            }
+        });
+        match action {
+            // Nothing to clear: no notes went in.
+            Some(Action::ClearAdvance) | None => vec![],
+            Some(action) => self.act(action, 1),
+        }
+    }
+
     /// The `n`th line from the cursor's that starts a part, forward or back.
     fn inst_part(&self, n: usize, forward: bool) -> usize {
         let cursor = self.inst_cursor();
@@ -160,6 +200,7 @@ impl Editor {
             Action::FirstStep => self.move_inst(line(0)),
             Action::LastStep => self.move_inst(line(usize::MAX)),
             Action::ToggleView => {}
+            Action::Insert | Action::Append => self.start_playing(),
             Action::NoteUp | Action::Longer | Action::NoteDown | Action::Shorter => {
                 let up = matches!(action, Action::NoteUp | Action::Longer);
                 let by = if up { n as i32 } else { -(n as i32) };
@@ -304,6 +345,52 @@ mod tests {
         assert_eq!(e.page, Page::Fx);
         keys(&mut e, "gi");
         assert_eq!(e.inst_cursor().track, 0, "back on the same track");
+    }
+
+    #[test]
+    fn i_plays_the_track_on_the_keyboard() {
+        let mut e = editor();
+        keys(&mut e, "gilj");
+        let before = e.grid.tracks.clone();
+        keys(&mut e, "i");
+        assert_eq!(e.mode, Mode::Insert);
+        let pitch = (u16::from(e.octave) + 1) * 12;
+        let played = keys(&mut e, "z");
+        assert_eq!(
+            played,
+            [Effect::Preview {
+                track: 1,
+                pitch: pitch as u8
+            }]
+        );
+        assert_eq!(e.grid.tracks, before, "heard, not entered");
+
+        // The arrows move and C-a turns, while the letters stay notes.
+        e.handle(Key::Left);
+        assert_eq!(e.inst_cursor().track, 0);
+        let value = e.grid.tracks[0].instrument.values[1];
+        keys(&mut e, "A");
+        assert_ne!(e.grid.tracks[0].instrument.values[1], value);
+        assert!(matches!(
+            &keys(&mut e, "z")[..],
+            [Effect::Preview { track: 0, .. }]
+        ));
+        e.handle(Key::Backspace);
+        assert_eq!(e.grid.tracks[0].steps, before[0].steps, "nothing to clear");
+        e.handle(Key::Esc);
+        assert_eq!(e.mode, Mode::Normal);
+        assert_eq!(e.page, Page::Instrument);
+
+        // Armed while the song plays, the notes go in at the playhead.
+        keys(&mut e, "R");
+        assert_eq!(e.mode, Mode::Insert, "arming starts playing");
+        e.set_transport(Some(crate::record::Transport {
+            positions: vec![Some((4, 0)); 2],
+            into_step: 0.0,
+            count_in: 0,
+        }));
+        keys(&mut e, "z");
+        assert!(e.grid.tracks[0].steps[4].note.is_some());
     }
 
     #[test]
