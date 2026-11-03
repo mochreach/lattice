@@ -16,6 +16,9 @@ use crate::ui::{CELL, ViewState, fit};
 
 /// Width of the row names down the left.
 const LABEL: usize = 10;
+/// Narrowest a strip gets, still room for `-11dB`, and the track strips it tries to fit.
+const NARROW: usize = 7;
+const FEW: usize = 4;
 /// Width of a setting's name in the grid of settings.
 const PARAM_LABEL: usize = 12;
 /// Widest a setting's bar gets.
@@ -65,8 +68,17 @@ fn columns(
         (0..editor.grid.tracks.len()).any(|t| editor.heard_mix(t).is_some_and(|m| m.solo));
     let groups = &editor.grid.groups;
     let buses = groups.len() + 2;
-    let room = (area.width as usize).saturating_sub(LABEL + buses * (CELL + 1) + 2);
-    let fits = (room / (CELL + 1)).max(1);
+    // Strips narrow, down to `NARROW`, until a few tracks fit beside the buses.
+    let fitting = |cell: usize| {
+        let room = (area.width as usize).saturating_sub(LABEL + buses * (cell + 1) + 2);
+        (room / (cell + 1)).max(1)
+    };
+    let cell = (NARROW..=CELL)
+        .rev()
+        .find(|&cell| fitting(cell) >= tracks.min(FEW))
+        .unwrap_or(NARROW);
+    let fits = fitting(cell);
+    view.strip_width = cell;
     if at < tracks {
         if at < view.first_strip {
             view.first_strip = at;
@@ -166,6 +178,7 @@ fn overview(
         Line::from(spans)
     };
 
+    let cell = view.strip_width.max(NARROW);
     let names = columns
         .iter()
         .map(|c| {
@@ -175,7 +188,7 @@ fn overview(
             }
             let (flag, flag_colour) = flag(editor, c.strip, theme);
             vec![
-                Span::styled(fit(&c.name, CELL - 1), style),
+                Span::styled(fit(&c.name, cell - 1), style),
                 Span::styled(
                     flag,
                     Style::new().fg(flag_colour).add_modifier(Modifier::BOLD),
@@ -195,7 +208,7 @@ fn overview(
                 } else {
                     c.style
                 };
-                bars::level(editor.strip_level(c.strip), CELL, style, theme)
+                bars::level(editor.strip_level(c.strip), cell, style, theme)
             })
             .collect(),
     ));
@@ -205,9 +218,9 @@ fn overview(
             .iter()
             .map(|c| match c.strip {
                 Strip::Track(i) if let Some(track) = editor.grid.tracks.get(i) => {
-                    bars::pan(track.mix.pan, CELL, c.style, theme)
+                    bars::pan(track.mix.pan, cell, c.style, theme)
                 }
-                _ => vec![Span::raw(" ".repeat(CELL))],
+                _ => vec![Span::raw(" ".repeat(cell))],
             })
             .collect(),
     ));
@@ -215,7 +228,7 @@ fn overview(
         "",
         columns
             .iter()
-            .map(|c| bars::meter(c.meter, CELL, c.colour, theme).to_vec())
+            .map(|c| bars::meter(c.meter, cell, c.colour, theme).to_vec())
             .collect(),
     ));
     lines

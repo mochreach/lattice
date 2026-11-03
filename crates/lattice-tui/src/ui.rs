@@ -48,6 +48,8 @@ pub struct ViewState {
     pub(crate) first_strip: usize,
     /// How many track strips fit on the mixer page.
     pub(crate) strips_shown: usize,
+    /// How wide they're drawn: narrower than a cell on a narrow screen, so more fit.
+    pub(crate) strip_width: usize,
     /// The first line shown on the fx page, when they don't all fit.
     pub(crate) fx_top: usize,
     /// The instrument page's first line and leftmost track shown, when they don't all fit.

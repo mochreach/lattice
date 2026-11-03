@@ -145,7 +145,9 @@ The overview has a column for each **track**, then each **group's bus** (named a
 group), then the **SEND** and **MASTER** buses. Each column shows the strip's name, its level
 with a small bar of where it sits between -60 and +6 dB, its pan (tracks only) and its meter.
 When there are more tracks than fit, the tracks scroll sideways (`‹` `›` mark that there are
-more), while the group, send and master columns stay in view to the right of the `│`.
+more), while the group, send and master columns stay in view to the right of the `│`. On a
+narrow screen the columns narrow, down to seven characters with the names cut short, so that a
+few tracks still fit beside the buses.
 
 On the overview, `h` and `l` move from strip to strip, and `^a` `^x` raise and lower the
 level of the one under the cursor, half a decibel at a time, or more with a count (`6^x` takes
