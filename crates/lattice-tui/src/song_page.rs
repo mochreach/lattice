@@ -27,19 +27,26 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
     let arrangement = &editor.arrangement;
     let tracks = &editor.grid.tracks;
     let steps_per_beat = u64::from(editor.grid.steps_per_beat.max(1));
-    let bar = u64::from(editor.grid.steps_per_bar());
     let pattern_steps = arrangement.all_steps(&editor.grid);
     let entry_bars = editor.entry_bars();
-    let total = entry_bars.iter().sum::<usize>() as u64 * bar;
+    // Where each bar of the song starts, in steps, and the song's end: patterns in a meter of
+    // their own have bars of their own length.
+    let mut bar_starts = vec![];
+    let mut total = 0;
+    for (entry, &bars) in arrangement.entries.iter().zip(&entry_bars) {
+        let bar = arrangement.bar(&editor.grid, entry.pattern);
+        for _ in 0..bars {
+            bar_starts.push(total);
+            total += bar;
+        }
+    }
+    let bar_start = |at: usize| bar_starts.get(at).copied().unwrap_or(total);
     let time = |steps: u64| {
         let seconds = steps as f64 / steps_per_beat as f64 * 60.0 / editor.bpm;
         let seconds = seconds.round() as u64;
         format!("{}:{:02}", seconds / 60, seconds % 60)
     };
-    let length = |steps: u64| {
-        let bars = steps / bar;
-        format!("{bars} bar{}", if bars == 1 { "" } else { "s" })
-    };
+    let length = |bars: u64| format!("{bars} bar{}", if bars == 1 { "" } else { "s" });
     let playing = editor.song_position;
     let width = area.width as usize;
     // How far into the song the playhead is, while it plays from the arrangement.
@@ -47,7 +54,7 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
         .filter(|_| status.playing() && status.count_in() == 0)
         .and_then(|(entry, repeat)| {
             let steps = *pattern_steps.get(arrangement.entries.get(entry)?.pattern)?;
-            let start = editor.entry_start(entry) as u64 * bar;
+            let start = bar_start(editor.entry_start(entry));
             let step = status.pattern_step().min(steps.saturating_sub(1));
             Some(start + u64::from(repeat) * steps + step)
         });
@@ -63,14 +70,16 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
         Some((start, end)) => format!(" · looping entries {} to {}", start + 1, end + 1),
         None => String::new(),
     };
-    let lengths: Vec<u64> = entry_bars.iter().map(|&b| b as u64 * bar).collect();
+    let lengths: Vec<u64> = (arrangement.entries.iter().zip(&entry_bars))
+        .map(|(e, &b)| b as u64 * arrangement.bar(&editor.grid, e.pattern))
+        .collect();
 
     let mut lines = vec![
         Line::from(Span::styled(
             format!(
                 " {} entries · {} · {elapsed}{}{looping}",
                 arrangement.entries.len(),
-                length(total),
+                length(bar_starts.len() as u64),
                 time(total)
             ),
             theme.dim,
@@ -82,9 +91,14 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
     // Each track's column: a character for each beat, or each half beat where there's room,
     // scrolled sideways to keep the cursor's track in view.
     let room = width.saturating_sub(GUTTER + ENTRY);
-    let beats = editor.grid.beats_per_bar.max(1) as usize;
+    // As many beats as the longest bar has, the song's or a pattern's own.
+    let beats = (arrangement.patterns.iter())
+        .filter_map(|p| p.meter.as_ref().map(|m| m.beats))
+        .fold(editor.grid.beats_per_bar, u32::max)
+        .max(1) as usize;
     let wide = steps_per_beat.is_multiple_of(2) && room / tracks.len().max(1) > beats * 2;
-    let cells = if wide { beats * 2 } else { beats };
+    let per_beat = if wide { 2 } else { 1 };
+    let cells = beats * per_beat;
     let shown = (room / (cells + 2)).clamp(1, tracks.len().max(1));
     let column = editor.song_column();
     let first_track = column
@@ -120,7 +134,7 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
             theme.dim,
         ));
     }
-    let playing_bar = playhead.map(|at| (at / bar) as usize);
+    let playing_bar = playhead.map(|at| bar_starts.partition_point(|&s| s <= at).saturating_sub(1));
     // The selection shaded, and in select mode the cursor's cell picked out within it.
     let (selected_bars, selected_columns) = editor.song_selection();
     let selecting = editor.mode == Mode::Select;
@@ -140,6 +154,11 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
     for (entry, &bars) in arrangement.entries.iter().zip(&entry_bars) {
         let (from, to) = (start.max(first), (start + bars).min(first + rows));
         let pattern_bars = (bars / entry.repeats.max(1) as usize).max(1);
+        let bar = arrangement.bar(&editor.grid, entry.pattern);
+        // A cell a beat, or half beat, of its own bars, leaving the rest of the column blank.
+        let beats = arrangement.meter(&editor.grid, entry.pattern).beats.max(1) as usize;
+        let own_cells = (beats * per_beat).min(cells);
+        let blank = " ".repeat(cells - own_cells);
         let colour = theme.track(entry.pattern);
         // An entry of a pattern that isn't there draws empty and unnamed.
         let pattern = arrangement.patterns.get(entry.pattern);
@@ -174,7 +193,7 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
             };
             let mut spans = vec![
                 Span::styled(marker, Style::new().fg(theme.playing)),
-                Span::styled(format!("{:>5} ", time(at as u64 * bar)), theme.dim),
+                Span::styled(format!("{:>5} ", time(bar_start(at))), theme.dim),
                 Span::styled(format!("{:>4}", at + 1), number_style),
                 Span::styled(loop_mark, Style::new().fg(theme.accent)),
                 Span::raw(" "),
@@ -205,10 +224,10 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
             // How busy each track is in this bar.
             for t in shown_tracks.clone() {
                 let busy = match lanes.get(t) {
-                    _ if entry.muted(t) => "─".repeat(cells),
-                    Some(lane) => busy_bar(lane, in_pattern as u64 * bar, bar, cells),
+                    _ if entry.muted(t) => "─".repeat(own_cells),
+                    Some(lane) => busy_bar(lane, in_pattern as u64 * bar, bar, own_cells),
                     None => String::new(),
-                };
+                } + &blank;
                 for c in busy.chars() {
                     let style = match c {
                         '·' | '─' => theme.faint,
@@ -238,7 +257,8 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
             style = style.add_modifier(Modifier::UNDERLINED);
         }
         patterns.push(Span::styled(pattern.name.clone(), style));
-        patterns.push(Span::styled(format!(" {}   ", length(steps)), theme.dim));
+        let bars = steps / arrangement.bar(&editor.grid, p);
+        patterns.push(Span::styled(format!(" {}   ", length(bars)), theme.dim));
     }
     lines.push(Line::from(patterns));
     frame.render_widget(Paragraph::new(lines), area);
@@ -252,15 +272,18 @@ fn busy_bar(lane: &Lane, from: u64, bar: u64, cells: usize) -> String {
         return "─".repeat(cells);
     }
     let len = lane.steps.len() as u64;
-    let per = bar / cells as u64;
-    (0..cells as u64)
+    let cells = cells as u64;
+    (0..cells)
         .map(|c| {
             if len == 0 {
                 return '·';
             }
-            let notes = (0..per)
+            // Each cell its share of the bar's steps, which needn't divide evenly.
+            let steps = c * bar / cells..(c + 1) * bar / cells;
+            let per = steps.end - steps.start;
+            let notes = steps
                 .filter(|s| {
-                    let step = lane.steps.get(((from + c * per + s) % len) as usize);
+                    let step = lane.steps.get(((from + s) % len) as usize);
                     step.is_some_and(|step| step.note.is_some())
                 })
                 .count();

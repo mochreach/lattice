@@ -9,7 +9,7 @@ use std::fmt;
 use ron::extensions::Extensions;
 use ron::ser::PrettyConfig;
 
-use crate::arrangement::{MAX_BEATS_PER_BAR, MAX_STEPS_PER_BEAT};
+use crate::arrangement::MAX_STEPS_PER_BEAT;
 use crate::group::MAX_GROUPS;
 use crate::song::{Grid, MAX_CHOKE, MAX_DB, MAX_TRACKS, Song, Track};
 
@@ -74,20 +74,7 @@ fn check_grid(grid: &Grid) -> Result<(), String> {
             grid.name, grid.steps_per_beat
         ));
     }
-    if !grid.grouping.is_empty()
-        && (grid.grouping.contains(&0) || grid.grouping.iter().sum::<u32>() != grid.beats_per_bar)
-    {
-        return Err(format!(
-            "grid {:?} groups its beats {:?}, which don't add up to its {} beats",
-            grid.name, grid.grouping, grid.beats_per_bar
-        ));
-    }
-    if !(1..=MAX_BEATS_PER_BAR).contains(&grid.beats_per_bar) {
-        return Err(format!(
-            "grid {:?} has {} beats per bar; bars have 1 to {MAX_BEATS_PER_BAR}",
-            grid.name, grid.beats_per_bar
-        ));
-    }
+    (grid.meter().check()).map_err(|e| format!("grid {:?}: {e}", grid.name))?;
     if !(1..=MAX_TRACKS).contains(&grid.tracks.len()) {
         return Err(format!(
             "grid {:?} has {} tracks; grids have 1 to {MAX_TRACKS}",
@@ -159,7 +146,7 @@ fn check_track(track: &Track) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::arrangement::{Arrangement, Entry, Lane, Pattern};
+    use crate::arrangement::{Arrangement, Entry, Lane, Meter, Pattern};
     use crate::conductor::{Conductor, SongGesture};
     use crate::fx::{self, Bus, Buses, Fx, FxKind};
     use crate::group::Group;
@@ -263,6 +250,7 @@ mod tests {
                     Pattern {
                         name: "A".into(),
                         bars: None,
+                        meter: None,
                         lanes: vec![],
                         conductor: Conductor {
                             steps: vec![
@@ -279,6 +267,7 @@ mod tests {
                     Pattern {
                         name: "B".into(),
                         bars: Some(2),
+                        meter: None,
                         conductor: Conductor::default(),
                         lanes: vec![
                             Lane {
@@ -335,6 +324,20 @@ mod tests {
         let text = to_ron(&song).unwrap();
         assert!(text.contains("click: false"), "{text}");
         assert_eq!(from_ron(&text).unwrap(), song, "{text}");
+    }
+
+    #[test]
+    fn a_pattern_keeps_a_meter_of_its_own_if_it_adds_up() {
+        let mut song = song();
+        song.arrangement.patterns[0].meter = Some(Meter {
+            beats: 7,
+            grouping: vec![2, 2, 3],
+        });
+        let text = to_ron(&song).unwrap();
+        assert!(text.contains("grouping: [2, 2, 3]"), "{text}");
+        assert_eq!(from_ron(&text).unwrap(), song, "{text}");
+        let wrong = text.replace("[2, 2, 3]", "[2, 2, 2]");
+        assert!(from_ron(&wrong).is_err());
     }
 
     #[test]

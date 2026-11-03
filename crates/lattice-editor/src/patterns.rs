@@ -5,7 +5,7 @@
 
 use lattice_core::{
     Entry, Lane, MAX_BARS, MAX_BEATS_PER_BAR, MAX_BPM, MAX_ENTRIES, MAX_PATTERNS,
-    MAX_STEPS_PER_BEAT, MIN_BPM, Mix, SongGesture, Step,
+    MAX_STEPS_PER_BEAT, MIN_BPM, Meter, Mix, Pattern, SongGesture, Step,
 };
 
 use crate::{Editor, Effect, Page, changed};
@@ -19,6 +19,51 @@ pub enum Next {
     Pattern(usize),
     /// Stop: the song's over.
     Stop,
+}
+
+/// `4`, or groups of beats as `2+2+3`, as many beats as they add up to.
+fn parse_meter(word: &str) -> Result<Meter, String> {
+    let sizes = (word.split('+'))
+        .map(|n| {
+            n.parse::<u32>()
+                .ok()
+                .filter(|n| (1..=MAX_BEATS_PER_BAR).contains(n))
+        })
+        .collect::<Option<Vec<u32>>>()
+        .ok_or_else(|| format!("beats: 1 to {MAX_BEATS_PER_BAR}, or groups of them as 2+2+3"))?;
+    let beats: u32 = sizes.iter().sum();
+    if beats > MAX_BEATS_PER_BAR {
+        return Err(format!("bars have up to {MAX_BEATS_PER_BAR} beats"));
+    }
+    let grouping = if sizes.len() > 1 { sizes } else { vec![] };
+    Ok(Meter { beats, grouping })
+}
+
+/// `7 beats a bar (2+2+3), 2 steps a beat`.
+fn describe(meter: &Meter, steps: u32) -> String {
+    let beats = meter.beats;
+    let grouped = match meter.to_string().split_once(' ') {
+        Some((_, groups)) => format!(" {groups}"),
+        None => String::new(),
+    };
+    format!(
+        "{beats} beat{} a bar{grouped}, {steps} step{} a beat",
+        if beats == 1 { "" } else { "s" },
+        if steps == 1 { "" } else { "s" }
+    )
+}
+
+/// How many bars of `bar` steps `pattern`'s `len` steps make, if they make 1 to [`MAX_BARS`]
+/// whole ones.
+fn whole_bars(pattern: &Pattern, len: u32, bar: u32) -> Result<u32, String> {
+    let new = len / bar.max(1);
+    if !len.is_multiple_of(bar.max(1)) || !(1..=MAX_BARS).contains(&new) {
+        return Err(format!(
+            "{} is {len} steps, which isn't 1 to {MAX_BARS} bars of {bar}",
+            pattern.name
+        ));
+    }
+    Ok(new)
 }
 
 impl Editor {
@@ -122,6 +167,7 @@ impl Editor {
         if index == self.arrangement.current {
             return vec![];
         }
+        let meter = self.meter();
         if !self.arrangement.select(&mut self.grid, index) {
             self.message = Some(format!("no pattern {}", index + 1));
             return vec![];
@@ -130,7 +176,12 @@ impl Editor {
         self.take = None;
         self.clamp_selection();
         self.message = Some(format!("pattern {}", self.pattern_name()));
-        changed(0..self.grid.tracks.len())
+        let mut effects = changed(0..self.grid.tracks.len());
+        // In a meter of its own: the engine has it already if it changed pattern itself.
+        if self.meter() != meter {
+            effects.push(self.meter());
+        }
+        effects
     }
 
     /// The pattern after or before this one, wrapping round.
@@ -248,63 +299,37 @@ impl Editor {
                 .ok_or_else(|| format!("{what}: 1 to {max}")),
         };
         let grid = &self.grid;
-        let describe = |beats: u32, grouping: &[u32], steps: u32| {
-            let grouped = if grouping.is_empty() {
-                String::new()
-            } else {
-                let sizes: Vec<String> = grouping.iter().map(u32::to_string).collect();
-                format!(" ({})", sizes.join("+"))
-            };
-            format!(
-                "{beats} beat{} a bar{grouped}, {steps} step{} a beat",
-                if beats == 1 { "" } else { "s" },
-                if steps == 1 { "" } else { "s" }
-            )
-        };
-        if words.is_empty() {
-            self.message = Some(describe(
-                grid.beats_per_bar,
-                &grid.grouping,
-                grid.steps_per_beat,
-            ));
+        let Some(first) = words.first() else {
+            self.message = Some(describe(&grid.meter(), grid.steps_per_beat));
             return Ok(vec![]);
-        }
+        };
         if words.len() > 2 {
             return Err("meter: BEATS (or groups, as 2+2+3), then optionally STEPS".into());
         }
-        // `2+2+3`: groups of beats, as many beats as they add up to.
-        let sizes = (words.first().into_iter())
-            .flat_map(|w| w.split('+'))
-            .map(|n| number(Some(&n), "beats", MAX_BEATS_PER_BAR, 0))
-            .collect::<Result<Vec<u32>, String>>()?;
-        let beats: u32 = sizes.iter().sum();
-        if beats > MAX_BEATS_PER_BAR {
-            return Err(format!("bars have up to {MAX_BEATS_PER_BAR} beats"));
-        }
-        let grouping = if sizes.len() > 1 { sizes } else { vec![] };
+        let meter = parse_meter(first)?;
         let steps = number(
             words.get(1),
             "steps",
             MAX_STEPS_PER_BEAT,
             grid.steps_per_beat,
         )?;
-        let (old_bar, new_bar) = (grid.steps_per_bar(), beats * steps);
-        // Each pattern of so many bars keeps its steps, which must make whole bars.
+        // Each pattern of so many bars keeps its steps, which must make whole bars, in its own
+        // meter or the song's.
+        let bar_of = |p: &Pattern, song: &Meter, steps| {
+            p.meter.as_ref().unwrap_or(song).steps_per_bar(steps)
+        };
         let mut bars = vec![];
         for pattern in &self.arrangement.patterns {
             let Some(old) = pattern.bars else {
                 bars.push(None);
                 continue;
             };
-            let len = old * old_bar;
-            let new = len / new_bar;
-            if len % new_bar != 0 || !(1..=MAX_BARS).contains(&new) {
-                return Err(format!(
-                    "{} is {len} steps, which isn't 1 to {MAX_BARS} bars of {new_bar}",
-                    pattern.name
-                ));
-            }
-            bars.push(Some(new));
+            let len = old * bar_of(pattern, &grid.meter(), grid.steps_per_beat);
+            bars.push(Some(whole_bars(
+                pattern,
+                len,
+                bar_of(pattern, &meter, steps),
+            )?));
         }
         // Tempos count beats, so they scale with the steps in one, keeping the steps' length.
         let scale = f64::from(grid.steps_per_beat) / f64::from(steps);
@@ -338,15 +363,63 @@ impl Editor {
                 }
             }
         }
-        self.message = Some(format!(
-            "{} at {bpm:.1} BPM",
-            describe(beats, &grouping, steps)
-        ));
-        self.grid.beats_per_bar = beats;
-        self.grid.grouping = grouping;
+        self.message = Some(format!("{} at {bpm:.1} BPM", describe(&meter, steps)));
+        self.grid.beats_per_bar = meter.beats;
+        self.grid.grouping = meter.grouping;
         self.grid.steps_per_beat = steps;
         self.bpm = bpm;
         Ok(vec![self.meter(), Effect::Bpm(bpm)])
+    }
+
+    /// `:pattern-meter BEATS|a+b+c`: this pattern's own beats in a bar, in the song's steps;
+    /// `song` for the song's again; nothing to say what it is.
+    pub(crate) fn set_pattern_meter(&mut self, text: &str) -> Result<Vec<Effect>, String> {
+        let index = self.arrangement.current;
+        let pattern = self
+            .arrangement
+            .patterns
+            .get(index)
+            .ok_or("no such pattern")?;
+        let (song, steps) = (self.grid.meter(), self.grid.steps_per_beat);
+        let meter = match text.trim() {
+            "" => {
+                let own = pattern.meter.as_ref();
+                let meter = own.unwrap_or(&song);
+                let whose = if own.is_some() {
+                    "its own"
+                } else {
+                    "the song's"
+                };
+                self.message = Some(format!(
+                    "{} is in {whose} meter: {}",
+                    pattern.name,
+                    describe(meter, steps)
+                ));
+                return Ok(vec![]);
+            }
+            "song" => None,
+            word => Some(parse_meter(word)?),
+        };
+        // So many bars keep their steps, which must make whole bars of the new meter.
+        let bars = match pattern.bars {
+            Some(old) => {
+                let len = old * pattern.meter.as_ref().unwrap_or(&song).steps_per_bar(steps);
+                let new = meter.as_ref().unwrap_or(&song).steps_per_bar(steps);
+                Some(whole_bars(pattern, len, new)?)
+            }
+            None => None,
+        };
+        let message = match &meter {
+            Some(m) => format!("{} has {}", pattern.name, describe(m, steps)),
+            None => format!("{} is in the song's meter again", pattern.name),
+        };
+        self.checkpoint();
+        if let Some(p) = self.arrangement.patterns.get_mut(index) {
+            p.meter = meter;
+            p.bars = bars;
+        }
+        self.message = Some(message);
+        Ok(vec![self.meter()])
     }
 
     /// `:bars N` or `:bars auto`: how long this pattern plays.
@@ -373,7 +446,7 @@ impl Editor {
         }
         self.song.bar = self.entry_start(entry) + into;
         self.keep_on_entry(entry);
-        let bar = u64::from(self.grid.steps_per_bar());
+        let bar = self.arrangement.bar(&self.grid, pattern);
         let steps = (self.arrangement.steps(&self.grid, pattern)).ok_or("no such pattern")?;
         let auto = if bars.is_some() {
             ""

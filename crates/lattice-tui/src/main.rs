@@ -129,6 +129,13 @@ fn main() -> Result<()> {
     if !editor.click {
         handle.send(Command::SetClick(false));
     }
+    // It starts in the song's meter too, where the pattern being edited may have its own.
+    let meter = (editor.arrangement).meter(&editor.grid, editor.arrangement.current);
+    handle.send(Command::SetMeter {
+        steps_per_beat: editor.grid.steps_per_beat,
+        beats_per_bar: meter.beats,
+        groups: meter.group_starts(),
+    });
     editor.show_keys = args.iter().any(|a| a == "--show-keys");
     editor.history = history::load();
     editor.chains = chains::names();

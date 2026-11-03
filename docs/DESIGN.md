@@ -1380,6 +1380,16 @@ back when it puts back a different meter, so undoing an edit doesn't undo a `:bp
 engine takes `Command::SetMeter` before the tempo, for the click's beats and accents, the
 count-in and cues at the bar; until the tempo comes, steps keep their length.
 
+A pattern can have a meter of its own, `Pattern::meter` (`:pattern-meter`), in beats and their
+grouping but not steps a beat, which stays the song's: the tempo counts the same beats in every
+pattern, so a change of time never changes the speed of a step. A song going from 4/4 into 7/8
+is in eighth-note beats, two steps each, say: `:meter 8` (or `4+4`) and `:pattern-meter 2+2+3`.
+`Arrangement::meter` and `Arrangement::bar` give a pattern's, its own or the song's; its length,
+the song page's bars, the grid's bar lines and the editor's bar motions all count in them. The
+engine hears it with the pattern: `Section` carries the meter of a cued pattern, which takes over
+at the change, and the editor sends `Effect::Meter` when it picks a pattern in another (stopped,
+or loading a song). The song page gives each bar its own row and time, however long it is.
+
 Looping, the engine leaves the tracks running, so polymeters carry on
 drifting; a change of pattern starts every track from its top. The frontend's `Sequencer` sends the
 engine that length and a cue for when it ends: loop, change to a pattern (its lanes, built off the

@@ -1851,17 +1851,18 @@ impl Editor {
         (self.grid.steps_per_beat as usize).max(1)
     }
 
-    /// Steps in a bar.
+    /// Steps in a bar of the pattern being edited.
     fn bar(&self) -> usize {
-        self.grid.steps_per_bar() as usize
+        (self.arrangement).bar(&self.grid, self.arrangement.current) as usize
     }
 
-    /// The meter, to send to the engine.
+    /// The meter of the pattern being edited, which is the one playing, to send to the engine.
     pub(crate) fn meter(&self) -> Effect {
+        let meter = (self.arrangement).meter(&self.grid, self.arrangement.current);
         Effect::Meter {
             steps_per_beat: self.grid.steps_per_beat,
-            beats_per_bar: self.grid.beats_per_bar,
-            groups: self.grid.group_starts(),
+            beats_per_bar: meter.beats,
+            groups: meter.group_starts(),
         }
     }
 
@@ -2295,6 +2296,7 @@ impl Editor {
     }
 
     fn restore(&mut self, undo: bool) -> Vec<Effect> {
+        let playing = self.meter();
         let (from, to) = if undo {
             (&mut self.undo, &mut self.redo)
         } else {
@@ -2313,12 +2315,8 @@ impl Editor {
         };
         let tracks_changed = snapshot.ids != self.ids;
         let grid = &snapshot.grid;
-        let meter_changed = (grid.steps_per_beat, grid.beats_per_bar, &grid.grouping)
-            != (
-                self.grid.steps_per_beat,
-                self.grid.beats_per_bar,
-                &self.grid.grouping,
-            );
+        let meter_changed =
+            (grid.steps_per_beat, grid.meter()) != (self.grid.steps_per_beat, self.grid.meter());
         // A `:meter` changed the tempo with the steps per beat, so they come back together.
         let bpm = if meter_changed {
             snapshot.bpm
@@ -2340,13 +2338,16 @@ impl Editor {
         self.mode = Mode::Normal;
         self.reconcile();
         // Line the tracks up first, so the indices that follow are the restored ones.
-        let meter = meter_changed.then(|| [self.meter(), Effect::Bpm(self.bpm)]);
+        // The song's meter, or the pattern's own, which `:pattern-meter` changes alone.
+        let meter = (meter_changed || self.meter() != playing).then(|| self.meter());
+        let bpm = meter_changed.then_some(Effect::Bpm(self.bpm));
         tracks_changed
             .then_some(Effect::TracksChanged)
             .into_iter()
             .chain((0..self.grid.tracks.len()).map(Effect::TrackChanged))
             .chain([Effect::MixerChanged])
-            .chain(meter.into_iter().flatten())
+            .chain(meter)
+            .chain(bpm)
             .collect()
     }
 }
@@ -3186,7 +3187,7 @@ mod tests {
         // A plain number of beats takes the groups away.
         command(&mut e, "meter 7");
         assert!(e.grid.grouping.is_empty());
-        assert_eq!(e.grid.group_starts(), 1);
+        assert_eq!(e.grid.meter().group_starts(), 1);
         keys(&mut e, "u");
         assert_eq!(e.grid.grouping, [2, 2, 3]);
 
@@ -3194,6 +3195,73 @@ mod tests {
             command(&mut e, bad);
             assert_eq!(e.grid.grouping, [2, 2, 3], "{bad}");
         }
+    }
+
+    #[test]
+    fn a_pattern_can_have_a_meter_of_its_own() {
+        let mut e = editor();
+        e.grid.steps_per_beat = 2;
+        command(&mut e, "bars 3");
+        // Three bars of four beats are twelve beats: four bars of three.
+        let effects = command(&mut e, "pattern-meter 3");
+        assert_eq!(
+            effects,
+            [Effect::Meter {
+                steps_per_beat: 2,
+                beats_per_bar: 3,
+                groups: 1
+            }]
+        );
+        let current = e.arrangement.current;
+        assert_eq!(e.arrangement.patterns[current].bars, Some(4));
+        assert_eq!(e.arrangement.steps(&e.grid, current), Some(24));
+        assert_eq!(e.bar(), 6);
+        // Five beats don't go into twelve.
+        command(&mut e, "pattern-meter 2+3");
+        assert!(e.message.as_ref().unwrap().contains("isn't 1 to"));
+
+        // A copy keeps the meter, and going to a pattern in another sends it.
+        command(&mut e, "pattern-dup");
+        assert_eq!(e.arrangement.meter(&e.grid, e.arrangement.current).beats, 3);
+        command(&mut e, "pattern-meter song");
+        assert_eq!(e.arrangement.patterns[e.arrangement.current].bars, Some(3));
+        let name = e.arrangement.patterns[current].name.clone();
+        let effects = command(&mut e, &format!("pattern {name}"));
+        assert!(
+            effects.contains(&Effect::Meter {
+                steps_per_beat: 2,
+                beats_per_bar: 3,
+                groups: 1
+            }),
+            "{effects:?}"
+        );
+
+        // The song's meter leaves it be, and a new steps a beat keeps its beats.
+        command(&mut e, "meter 3+3 4");
+        assert_eq!(e.arrangement.meter(&e.grid, current).beats, 3);
+        assert_eq!(e.arrangement.steps(&e.grid, current), Some(24));
+        assert_eq!(e.arrangement.patterns[current].bars, Some(2));
+
+        // Undo takes it back to the song's, telling the engine.
+        command(&mut e, "pattern-meter 2+2+2");
+        let effects = keys(&mut e, "u");
+        assert!(
+            effects.iter().any(|f| matches!(
+                f,
+                Effect::Meter {
+                    beats_per_bar: 3,
+                    ..
+                }
+            )),
+            "{effects:?}"
+        );
+        command(&mut e, "pattern-meter");
+        assert!(
+            e.message
+                .as_ref()
+                .unwrap()
+                .contains("its own meter: 3 beats")
+        );
     }
 
     #[test]

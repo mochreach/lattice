@@ -81,9 +81,9 @@ impl Editor {
 
     /// How many bars each entry plays for.
     pub fn entry_bars(&self) -> Vec<usize> {
-        let bar = u64::from(self.grid.steps_per_bar());
-        let pattern_bars: Vec<usize> = (self.arrangement.all_steps(&self.grid).into_iter())
-            .map(|steps| (steps / bar) as usize)
+        let a = &self.arrangement;
+        let pattern_bars: Vec<usize> = (a.all_steps(&self.grid).into_iter().enumerate())
+            .map(|(p, steps)| (steps / a.bar(&self.grid, p)) as usize)
             .collect();
         (self.arrangement.entries.iter())
             // An entry of no pattern plays nothing.
@@ -465,8 +465,7 @@ impl Editor {
             let Some(len) = self.grid.tracks.get(track).map(|t| t.steps.len().max(1)) else {
                 return effects;
             };
-            let bar = self.grid.steps_per_bar() as usize;
-            self.select_point(track, into * bar % len);
+            self.select_point(track, into * self.bar() % len);
         }
         effects
     }

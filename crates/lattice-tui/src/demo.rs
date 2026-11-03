@@ -765,6 +765,7 @@ pub fn song() -> Song {
         patterns.push(Pattern {
             name: name.into(),
             bars: Some(bars),
+            meter: None,
             lanes,
             conductor: Default::default(),
         });

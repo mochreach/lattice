@@ -861,7 +861,8 @@ const LESSONS: &[Lesson] = &[
                it. A pattern plays for as long as its longest track, or `:bars 2` sets how many \
                bars. A bar is four beats, or `:meter 3` makes it three; `:meter 2 3` makes 6/8, \
                two beats of three steps, and `:meter 2+2+3` groups a bar of seven, accenting \
-               the start of each group.\n\nMake a copy of this pattern called `chorus`.",
+               the start of each group. `:pattern-meter 5` gives just this pattern bars of \
+               five, until `:pattern-meter song`.\n\nMake a copy of this pattern called `chorus`.",
         teaches: &[Action::NextPattern, Action::PrevPattern],
         commands: &[
             "pattern-new",
@@ -871,6 +872,7 @@ const LESSONS: &[Lesson] = &[
             "pattern-remove",
             "bars",
             "meter",
+            "pattern-meter",
         ],
         setup: nothing,
         watch: never,

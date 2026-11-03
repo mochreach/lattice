@@ -429,12 +429,16 @@ pub enum Cue {
     Stop,
 }
 
-/// A pattern to play: a lane for each track, its conductor, and how many steps it lasts.
+/// A pattern to play: a lane for each track, its conductor, how many steps it lasts and its
+/// meter.
 #[derive(Debug)]
 pub struct Section {
     pub lanes: Vec<Lane>,
     pub conductor: Conductor,
     pub steps: u64,
+    /// Beats in its bars and the beats that start a group, as [`Command::SetMeter`] has them.
+    pub beats_per_bar: u32,
+    pub groups: u32,
     /// Whether it takes over at the next bar, rather than when the playing pattern ends.
     pub at_bar: bool,
 }
@@ -1267,7 +1271,7 @@ impl Engine {
             fill: false,
             steps_per_beat: u64::from(grid.steps_per_beat.max(1)),
             beats_per_bar: u64::from(grid.beats_per_bar.max(1)),
-            beat_groups: grid.group_starts(),
+            beat_groups: grid.meter().group_starts(),
             step_index: 0,
             count_in: 0,
             pattern_len: 0,
@@ -2424,6 +2428,8 @@ impl Engine {
                         std::mem::swap(&mut self.conductor, &mut section.conductor);
                     }
                     self.pattern_len = section.steps;
+                    self.beats_per_bar = u64::from(section.beats_per_bar.max(1));
+                    self.beat_groups = section.groups;
                     self.swaps += 1;
                     self.status.swaps.store(self.swaps, Ordering::Relaxed);
                 }
@@ -2706,6 +2712,8 @@ mod tests {
             conductor: Default::default(),
             lanes: vec![lane],
             steps: 6,
+            beats_per_bar: 4,
+            groups: 1,
             at_bar: false,
         }))));
         render(&mut engine, 256, (step * 3.5) as usize);
@@ -2770,6 +2778,8 @@ mod tests {
                 ..Lane::default()
             }],
             steps: 4,
+            beats_per_bar: 4,
+            groups: 1,
             at_bar: false,
         }))));
         let (left, _) = render_stereo(&mut engine, 750);
@@ -2828,6 +2838,8 @@ mod tests {
                 rules: vec![],
             }],
             steps: 64,
+            beats_per_bar: 4,
+            groups: 1,
             at_bar: true,
         }))));
         render(&mut engine, 256, (step * 15.5) as usize);
@@ -2908,6 +2920,40 @@ mod tests {
             }
         }
         assert_eq!(clicks.iter().collect::<String>(), "B.g.g..B");
+    }
+
+    #[test]
+    fn a_pattern_in_its_own_meter_clicks_its_own_bars() {
+        let mut engine = click_only(48_000.0, 120.0);
+        engine.steps_per_beat = 1;
+        engine.playing = true;
+        engine.pattern_len = 4;
+        // A bar of four, then a pattern of two bars of three.
+        engine.cue = Cue::Pattern(Box::new(Section {
+            lanes: vec![],
+            conductor: Conductor::default(),
+            steps: 6,
+            beats_per_bar: 3,
+            groups: 1,
+            at_bar: false,
+        }));
+        let mut clicks = String::new();
+        for _ in 0..10 {
+            engine.click_events.clear();
+            engine.sequence_step(0);
+            if let Some(Event {
+                kind: EventKind::NoteOn { pitch, .. },
+                ..
+            }) = engine.click_events.pop()
+            {
+                clicks.push(if pitch == CLICK_ACCENT_PITCH {
+                    'B'
+                } else {
+                    '.'
+                });
+            }
+        }
+        assert_eq!(clicks, "B...B..B..");
     }
 
     fn conductor(steps: &[(usize, &str)], len: usize) -> Conductor {

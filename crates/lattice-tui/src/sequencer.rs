@@ -1,7 +1,7 @@
 //! Keeps the engine's pattern length, conductor and cue in line with the editor's, and tells the
 //! editor when the engine moves from one pattern to the next, or the conductor does something.
 
-use lattice_core::{Conductor, Lane};
+use lattice_core::{Conductor, Lane, Meter};
 use lattice_editor::{Editor, Next};
 use lattice_engine::{Command, Conducted, Cue, Handle, Section};
 
@@ -10,8 +10,9 @@ pub struct Sequencer {
     /// The engine's boundaries and pattern changes, as far as the editor's been told.
     boundaries: u64,
     swaps: u64,
-    /// The cue sent, with the lanes and length it carried, so it's sent again if they change.
-    cued: Option<(Next, Vec<Lane>, u64)>,
+    /// The cue sent, with the lanes, length and meter it carried, so it's sent again if they
+    /// change.
+    cued: Option<(Next, Vec<Lane>, u64, Meter)>,
     /// The pattern length sent.
     length: Option<u64>,
     /// The playing pattern's conductor sent.
@@ -90,18 +91,19 @@ impl Sequencer {
             }
         }
         let next = editor.next();
-        let (next, lanes, steps) = match next {
+        let meter = |p| editor.arrangement.meter(&editor.grid, p);
+        let (next, lanes, steps, meter) = match next {
             Next::Pattern(p) => match (
                 editor.arrangement.lanes(&editor.grid, p),
                 editor.arrangement.steps(&editor.grid, p),
             ) {
-                (Some(lanes), Some(steps)) => (next, lanes, steps),
+                (Some(lanes), Some(steps)) => (next, lanes, steps, meter(p)),
                 // There's no such pattern to go on to, so the song stops.
-                _ => (Next::Stop, vec![], 0),
+                _ => (Next::Stop, vec![], 0, editor.grid.meter()),
             },
-            Next::Loop | Next::Stop => (next, vec![], 0),
+            Next::Loop | Next::Stop => (next, vec![], 0, editor.grid.meter()),
         };
-        let wanted = (next, lanes, steps);
+        let wanted = (next, lanes, steps, meter);
         if self.cued.as_ref() != Some(&wanted) {
             let cue = match next {
                 Next::Loop => Cue::Loop,
@@ -109,6 +111,8 @@ impl Sequencer {
                 Next::Pattern(p) => Cue::Pattern(Box::new(Section {
                     lanes: wanted.1.clone(),
                     steps,
+                    beats_per_bar: wanted.3.beats,
+                    groups: wanted.3.group_starts(),
                     conductor: editor.arrangement.conductor(p).cloned().unwrap_or_default(),
                     // Picked by hand, it takes over at the next bar; in the song, when the
                     // pattern before it ends.

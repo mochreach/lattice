@@ -64,7 +64,7 @@ impl Editor {
                 if !(1..=MAX_BARS).contains(&bars) {
                     return Err(format!("bars must be 1 to {MAX_BARS}"));
                 }
-                let bar = u64::from(self.grid.steps_per_bar());
+                let bar = a.bar(&self.grid, a.current);
                 vec![Part {
                     steps: u64::from(bars) * bar,
                     ..part(a.current)?

@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::arrangement::{Arrangement, DEFAULT_BEATS_PER_BAR};
+use crate::arrangement::{Arrangement, DEFAULT_BEATS_PER_BAR, Meter};
 use crate::chain::{FxChain, FxLane};
 use crate::conductor::GESTURES;
 use crate::fx::{Buses, Fx};
@@ -524,18 +524,12 @@ impl Grid {
         self.beats_per_bar.max(1) * self.steps_per_beat.max(1)
     }
 
-    /// The beats of a bar that start a group, a bit each from the first, which always does.
-    pub fn group_starts(&self) -> u32 {
-        let mut starts = 1;
-        let mut beat = 0;
-        for &size in &self.grouping {
-            beat += size;
-            if beat < 32 {
-                starts |= 1 << beat;
-            }
+    /// The song's meter, which patterns without their own play in.
+    pub fn meter(&self) -> Meter {
+        Meter {
+            beats: self.beats_per_bar,
+            grouping: self.grouping.clone(),
         }
-        // The bar's end isn't a start within it.
-        starts & !(1u32.checked_shl(self.beats_per_bar).unwrap_or(0))
     }
 }
 

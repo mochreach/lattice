@@ -24,6 +24,68 @@ pub const MAX_BEATS_PER_BAR: u32 = 16;
 /// Most steps a beat can be split into.
 pub const MAX_STEPS_PER_BEAT: u32 = 16;
 
+/// Beats in a bar and how they group, for the song or one pattern.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Meter {
+    pub beats: u32,
+    /// Beats a group, adding up to `beats`, or empty for one group: see [`Grid::grouping`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub grouping: Vec<u32>,
+}
+
+impl Meter {
+    /// Steps in a bar of `steps_per_beat`-step beats.
+    pub fn steps_per_bar(&self, steps_per_beat: u32) -> u32 {
+        self.beats.max(1) * steps_per_beat.max(1)
+    }
+
+    /// The beats that start a group, a bit each from the first, which always does.
+    pub fn group_starts(&self) -> u32 {
+        let mut starts = 1;
+        let mut beat = 0;
+        for &size in &self.grouping {
+            beat += size;
+            if beat < 32 {
+                starts |= 1 << beat;
+            }
+        }
+        // The bar's end isn't a start within it.
+        starts & !(1u32.checked_shl(self.beats).unwrap_or(0))
+    }
+
+    /// Whether the editor and engine can use it: 1 to [`MAX_BEATS_PER_BAR`] beats, grouped into
+    /// groups that add up to them.
+    pub fn check(&self) -> Result<(), String> {
+        if !(1..=MAX_BEATS_PER_BAR).contains(&self.beats) {
+            return Err(format!(
+                "{} beats in a bar; bars have 1 to {MAX_BEATS_PER_BAR}",
+                self.beats
+            ));
+        }
+        if !self.grouping.is_empty()
+            && (self.grouping.contains(&0) || self.grouping.iter().sum::<u32>() != self.beats)
+        {
+            return Err(format!(
+                "beats grouped {:?}, which don't add up to {}",
+                self.grouping, self.beats
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl std::fmt::Display for Meter {
+    /// `7 (2+2+3)`, or just `4`.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.beats)?;
+        if !self.grouping.is_empty() {
+            let sizes: Vec<String> = self.grouping.iter().map(u32::to_string).collect();
+            write!(f, " ({})", sizes.join("+"))?;
+        }
+        Ok(())
+    }
+}
+
 /// One pattern's steps and rules for one track. Saved sparsely, as tracks are.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "SparseLane", into = "SparseLane")]
@@ -59,6 +121,10 @@ pub struct Pattern {
     /// to a whole bar.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bars: Option<u32>,
+    /// Its own beats in a bar, or `None` for the song's. Beats keep the song's steps, so the
+    /// tempo means the same in every pattern.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meter: Option<Meter>,
     /// A lane per track, or none for the pattern being edited, whose lanes are in the tracks.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lanes: Vec<Lane>,
@@ -114,9 +180,9 @@ impl Entry {
     }
 }
 
-/// Steps in `bars`, or if it's `None`, in enough bars for `longest` steps (one at least).
-fn steps_for(grid: &Grid, bars: Option<u32>, longest: Option<usize>) -> u64 {
-    let bar = u64::from(grid.steps_per_bar());
+/// Steps in `bars` of `bar` steps, or if it's `None`, in enough bars for `longest` steps (one
+/// at least).
+fn steps_for(bar: u64, bars: Option<u32>, longest: Option<usize>) -> u64 {
     match bars {
         Some(bars) => u64::from(bars) * bar,
         None => (longest.unwrap_or(0) as u64).div_ceil(bar).max(1) * bar,
@@ -151,6 +217,7 @@ impl Default for Arrangement {
             patterns: vec![Pattern {
                 name: pattern_name(0),
                 bars: None,
+                meter: None,
                 lanes: vec![],
                 conductor: Conductor::default(),
             }],
@@ -228,7 +295,7 @@ impl Arrangement {
     pub fn current_steps(&self, grid: &Grid) -> u64 {
         let bars = self.patterns.get(self.current).and_then(|p| p.bars);
         let longest = grid.tracks.iter().map(|t| t.steps.len()).max();
-        steps_for(grid, bars, longest)
+        steps_for(self.bar(grid, self.current), bars, longest)
     }
 
     fn steps_of(&self, grid: &Grid, index: usize, pattern: &Pattern) -> u64 {
@@ -236,7 +303,21 @@ impl Arrangement {
             return self.current_steps(grid);
         }
         let longest = pattern.lanes.iter().map(|l| l.steps.len()).max();
-        steps_for(grid, pattern.bars, longest)
+        steps_for(self.bar(grid, index), pattern.bars, longest)
+    }
+
+    /// Pattern `index`'s meter: its own, or the song's (for no such pattern, too).
+    pub fn meter(&self, grid: &Grid, index: usize) -> Meter {
+        (self.patterns.get(index))
+            .and_then(|p| p.meter.clone())
+            .unwrap_or_else(|| grid.meter())
+    }
+
+    /// Steps in a bar of pattern `index`.
+    pub fn bar(&self, grid: &Grid, index: usize) -> u64 {
+        let own = self.patterns.get(index).and_then(|p| p.meter.as_ref());
+        let beats = own.map_or(grid.beats_per_bar, |m| m.beats);
+        u64::from(beats.max(1) * grid.steps_per_beat.max(1))
     }
 
     /// A new pattern after the current one, with `lanes` and `conductor`, named `name` or else
@@ -255,13 +336,17 @@ impl Arrangement {
                 .find(|n| self.patterns.iter().all(|p| &p.name != n))
                 .unwrap_or_default()
         });
-        let bars = self.patterns.get(self.current).and_then(|p| p.bars);
+        // As long as the current pattern, in the same meter.
+        let current = self.patterns.get(self.current);
+        let bars = current.and_then(|p| p.bars);
+        let meter = current.and_then(|p| p.meter.clone());
         let index = index.min(self.patterns.len());
         self.patterns.insert(
             index,
             Pattern {
                 name,
                 bars,
+                meter,
                 lanes,
                 conductor,
             },
@@ -379,6 +464,11 @@ impl Arrangement {
                     "pattern {:?} lasts 1 to {MAX_BARS} bars",
                     pattern.name
                 ));
+            }
+            if let Some(meter) = &pattern.meter {
+                meter
+                    .check()
+                    .map_err(|e| format!("pattern {:?}: {e}", pattern.name))?;
             }
             let lanes = if i == self.current { 0 } else { tracks };
             if pattern.lanes.len() != lanes {

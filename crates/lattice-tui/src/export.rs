@@ -150,6 +150,10 @@ pub fn render(export: &Export, buses: Buses, bpm: f64, sample_rate: f32) -> Resu
                 conductor: part.conductor.clone(),
                 lanes: part.lanes.clone(),
                 steps: part.steps,
+                // Exports have no click, and parts change only where they end, so the meter
+                // changes nothing.
+                beats_per_bar: 1,
+                groups: 1,
                 at_bar: false,
             })),
             None => Cue::Stop,

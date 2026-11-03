@@ -32,7 +32,7 @@ pub mod transform;
 
 pub use arrangement::{
     Arrangement, DEFAULT_BEATS_PER_BAR, Entry, Lane, MAX_BARS, MAX_BEATS_PER_BAR, MAX_ENTRIES,
-    MAX_PATTERNS, MAX_REPEATS, MAX_STEPS_PER_BEAT, Pattern, pattern_name,
+    MAX_PATTERNS, MAX_REPEATS, MAX_STEPS_PER_BEAT, Meter, Pattern, pattern_name,
 };
 pub use chain::{
     CHAINS, FxChain, FxLane, FxRow, MAX_LANES, MAX_SENDS, RowAt, SavedChain, built_in_chain,

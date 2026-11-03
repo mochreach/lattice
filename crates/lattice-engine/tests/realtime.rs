@@ -213,6 +213,8 @@ fn rendering_never_allocates() {
             }],
         }],
         steps: 16,
+        beats_per_bar: 4,
+        groups: 1,
         at_bar: false,
     }));
     // The looper, recording an input fed alongside.

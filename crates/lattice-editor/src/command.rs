@@ -543,6 +543,12 @@ pub const COMMANDS: &[Spec] = &[
         describe: "beats in a bar, and steps in a beat (3 for a waltz, 2 3 for 6/8, 2+2+3 for 7/8 in groups); patterns keep their steps and the tempo keeps their speed",
     },
     Spec {
+        name: "pattern-meter",
+        alias: None,
+        params: &[optional_text("[BEATS|song]", "meter")],
+        describe: "this pattern's own beats in a bar (5, or 2+2+3), in the song's steps a beat; song for the song's again",
+    },
+    Spec {
         name: "export",
         alias: None,
         params: &[optional_text("[PATH] [BARS]", "path")],
@@ -1189,6 +1195,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![])
         }
         "meter" => editor.set_meter(command.text(0)?),
+        "pattern-meter" => editor.set_pattern_meter(command.text(0)?),
         "export" => editor.export_song(command.text(0)?),
         "export-sel" => editor.export_selection(command.text(0)?, false),
         "export-loop" => editor.export_selection(command.text(0)?, true),
