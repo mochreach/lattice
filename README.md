@@ -19,8 +19,8 @@ All the same, I think it's a fascinating piece of software and an interesting wa
 I hope other people get something from it, and I'm curious to see how they use it. There's more
 on this at the start of [the manual](docs/manual/01-introduction.md#why-it-exists).
 
-Chris Wells Wood · [Mo chreach!](https://www.youtube.com/@mochreach) on YouTube ·
-[mochreach.dev](https://mochreach.dev)
+I'm Chris Wells Wood. I make videos on my YouTube channel,
+[Mo chreach!](https://www.youtube.com/@mochreach), and write at [mochreach.dev](https://mochreach.dev).
 
 ## The manual
 

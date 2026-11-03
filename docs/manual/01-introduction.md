@@ -47,8 +47,6 @@ each time it comes round, so a loop can change as it plays.
 
 ### Why it exists
 
-From its author, Chris Wells Wood:
-
 Lattice is maximalist software, and its intended audience is me. I wanted all of the features
 and all of the tools, fast enough to get musical ideas out of my head and into songs. That's
 it. Every choice serves that, so I've been uncompromising about how easy it is for anyone
@@ -64,8 +62,8 @@ All the same, I think it's a fascinating piece of software, and an interesting w
 music. I hope other people get something from it and enjoy it, and I'm curious to see how
 they use it. But that's the philosophy: Lattice is made for me first.
 
-Chris makes videos on his YouTube channel,
-[Mo chreach!](https://www.youtube.com/@mochreach), and writes at
+I'm Chris Wells Wood. I make videos on my YouTube channel,
+[Mo chreach!](https://www.youtube.com/@mochreach), and write at
 [mochreach.dev](https://mochreach.dev).
 
 ### Trackers, from the Amiga on
