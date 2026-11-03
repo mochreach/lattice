@@ -1147,8 +1147,8 @@ fn fill(text: &str, keymap: &Keymap) -> String {
     out
 }
 
-/// Every way to press `action`, letters first: in normal mode, through a menu, then in insert
-/// mode.
+/// Every way to press `action`, the shortest first (`w` before `]n`), then in order: in normal
+/// mode, through a menu, then in insert mode.
 pub(crate) fn keys_for(keymap: &Keymap, action: Action) -> Vec<String> {
     let mut keys = vec![];
     for (key, binding) in &keymap.normal {
@@ -1169,7 +1169,7 @@ pub(crate) fn keys_for(keymap: &Keymap, action: Action) -> Vec<String> {
             keys.push(key.to_string());
         }
     }
-    keys.sort_by_key(|k| (k.chars().count() > 2, k.clone()));
+    keys.sort_by_key(|k| (k.chars().count(), k.clone()));
     keys
 }
 
