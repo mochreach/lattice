@@ -64,7 +64,7 @@ All the same, I think it's a fascinating piece of software, and an interesting w
 music. I hope other people get something from it and enjoy it, and I'm curious to see how
 they use it. But that's the philosophy: Lattice is made for me first.
 
-Chris makes videos on their YouTube channel,
+Chris makes videos on his YouTube channel,
 [Mo chreach!](https://www.youtube.com/@mochreach), and writes at
 [mochreach.dev](https://mochreach.dev).
 
