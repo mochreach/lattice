@@ -140,7 +140,7 @@ middle model is the default. Models are named for how they sound rather than aft
 | --- | --- |
 | `kick` | `tight`: no hold, a shorter decay, a faster, shallower drop and more click, the small clicky kick of a Pocket Operator · `boom`: an 808's, holding for a fifth of its decay · `hard`: a 909's, a deeper, faster drop, a loud click and extra drive |
 | `snare` | `tight`: a clean, short shell and noise high-passed at 900 Hz · `fat`: a driven shell that rings nearly as long as the wires, with noise kept down to 180 Hz · `crack`: a 909's, a bigger pitch drop, a hard-driven shell and louder, brighter wires |
-| `hat` | `metal`: the squares multiplied in pairs (XOR, as the 606's and 909's do) for a clang · `ring`: the 808's, the six summed · `sizzle`: mostly noise, through a steeper 18 dB/octave high-pass |
+| `hat` | `metal`: the squares multiplied in pairs (an XOR, a ring modulator for squares, rather than the 808's and 606's sum; the 909's hats are samples) for a clang · `ring`: the 808's, the six summed · `sizzle`: mostly noise, through a steeper 18 dB/octave high-pass |
 | `clap` | `tight`: two quick bursts and little tail · `room`: an 808's four, slightly uneven, and its tail · `crowd`: nine bursts at random gaps through a wider band, a room clapping out of time |
 | `tom` | `tight`: short, a small bend and more stick · `round`: an 808's, a long, gentle bend · `hard`: a 909's, a second shell mode, a deeper, faster bend and drive |
 

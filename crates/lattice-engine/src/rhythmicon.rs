@@ -531,7 +531,8 @@ const METAL: [f32; 6] = [1.0, 1.4827, 1.8003, 2.5460, 2.6303, 3.8967];
 
 /// What a hat model changes; the settings work within it.
 struct HatModel {
-    /// Multiply the squares in pairs, as the 606's and 909's do, rather than summing them.
+    /// Multiply the squares in pairs, a ring modulator for square waves (an XOR), rather than
+    /// summing them as the 808 and 606 do.
     pairs: bool,
     /// Where the noise setting starts from: the noise is this, plus the setting's share of the
     /// rest.

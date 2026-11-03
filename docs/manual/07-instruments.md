@@ -714,7 +714,9 @@ long, an open hat or a ride or crash.
 
 The **models** (0 to 2):
 
-- `metal`: the squares multiplied in pairs, for a clangier metal.
+- `metal`: the squares multiplied in pairs, for a clangier metal. Multiplying two square waves
+  is ring modulation, and for squares it's a logic gate's XOR; the 808 and 606 sum theirs, and
+  the 909's hats are samples, so this is a sound of Lattice's own.
 - `ring`: the 808's, the six summed.
 - `sizzle`: mostly noise, through a steeper (18 dB an octave) high-pass: bright and airy.
 
