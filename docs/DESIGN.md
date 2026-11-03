@@ -148,7 +148,8 @@ Each model is a table of constants (`KickModel` and so on) the voice reads, leve
 model's hit peaks at or below 1 and the three sit at much the same loudness.
 
 Each drum is one voice: every note retriggers it, note-offs are ignored, and it rings out by its
-decay. C-4 (`DRUM_ROOT`) plays it at its tuning and other notes tune it up or down. Velocity
+decay. A hit that lands while the drum still rings starts from where the wave was, the jump
+smoothed over 2 ms, so a roll on a long tom doesn't crackle with a click on every hit. C-4 (`DRUM_ROOT`) plays it at its tuning and other notes tune it up or down. Velocity
 scales the level. Settings apply from the next hit, except decay, which also changes the hit
 that's ringing. Decay is the time to fall by 60 dB. The drums share a `Drum<V>` processor, so
 each `Voice` is only its trigger and a per-sample tick; they're scalar, as one voice is cheap.

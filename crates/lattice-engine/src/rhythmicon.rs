@@ -43,6 +43,10 @@ trait Voice: Send {
 /// How long a choked drum takes to fade, in seconds to fall by 1/e: quick, but not a click.
 const CHOKE: f32 = 0.003;
 
+/// How long the jump between a ringing hit and the next takes to smooth over, in seconds to fall
+/// by 1/e: too quick to hear as anything but the strike.
+const JOIN: f32 = 0.002;
+
 /// A drum as an instrument.
 struct Drum<V> {
     voice: V,
@@ -51,6 +55,14 @@ struct Drum<V> {
     fade: f32,
     fade_coef: f32,
     choked: bool,
+    /// The last sample out, so a hit while the drum rings can start from it.
+    last: f32,
+    /// Added to the output, falling to nothing: what a retrigger jumped by, smoothed over, so a
+    /// drum struck again mid-ring, as in a roll, doesn't click on every hit.
+    offset: f32,
+    offset_coef: f32,
+    /// The next sample is a retrigger's first, so `offset` is to be worked out from it.
+    joining: bool,
 }
 
 impl<V: Voice> Drum<V> {
@@ -62,6 +74,10 @@ impl<V: Voice> Drum<V> {
             fade: 1.0,
             fade_coef: decay_coef(CHOKE, sample_rate),
             choked: false,
+            last: 0.0,
+            offset: 0.0,
+            offset_coef: decay_coef(JOIN, sample_rate),
+            joining: false,
         };
         for info in V::KIND.params() {
             let value = values
@@ -77,16 +93,25 @@ impl<V: Voice> Drum<V> {
         if !self.sounding {
             left.fill(0.0);
             right.fill(0.0);
+            self.last = 0.0;
             return;
         }
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             if !self.sounding {
                 (*l, *r) = (0.0, 0.0);
+                self.last = 0.0;
                 continue;
             }
             let (out, sounding) = self.voice.tick();
-            *l = out * self.fade;
-            *r = out * self.fade;
+            let out = out * self.fade;
+            if self.joining {
+                self.offset = self.last - out;
+                self.joining = false;
+            }
+            let out = out + self.offset;
+            self.offset *= self.offset_coef;
+            (*l, *r) = (out, out);
+            self.last = out;
             self.sounding = sounding;
             if self.choked {
                 self.fade *= self.fade_coef;
@@ -105,6 +130,8 @@ impl<V: Voice> Processor for Drum<V> {
                     let semitones = f32::from(pitch) - f32::from(DRUM_ROOT);
                     self.voice
                         .trigger(2f32.powf(semitones / 12.0), f32::from(velocity) / 127.0);
+                    self.joining = self.sounding;
+                    self.offset = 0.0;
                     self.sounding = true;
                     self.fade = 1.0;
                     self.choked = false;
@@ -1050,5 +1077,28 @@ mod tests {
         let (mut left, mut right) = (vec![0.0; 64], vec![0.0; 64]);
         snare.process(&[set, hit(DRUM_ROOT)], &mut left, &mut right);
         assert_eq!(snare.voice.snap, 1.0, "clamped to its range");
+    }
+
+    #[test]
+    fn a_drum_struck_again_while_it_rings_doesnt_click() {
+        let mut values = Instrument::new(InstKind::Tom).values;
+        // No stick, so only the shell's wave is left to jump.
+        values[tom::NOISE as usize] = 0.0;
+        let mut drum = build(InstKind::Tom, RATE, &values).unwrap();
+        // A roll: hits a few milliseconds apart, each landing part way through the wave.
+        let roll: Vec<_> = (0..7)
+            .map(|i| Event {
+                offset: i * 619,
+                ..hit(DRUM_ROOT)
+            })
+            .collect();
+        let (mut left, mut right) = (vec![0.0; 8_000], vec![0.0; 8_000]);
+        drum.process(&roll, &mut left, &mut right);
+        let steepest = left
+            .windows(2)
+            .map(|w| (w[1] - w[0]).abs())
+            .fold(0.0, f32::max);
+        assert!(left.iter().any(|x| x.abs() > 0.3), "it still hits");
+        assert!(steepest < 0.05, "jumps by {steepest}");
     }
 }
