@@ -204,12 +204,15 @@ pub(crate) fn pluck<'a>(
 ) -> Option<&'a [f32]> {
     let burst = scratch.get_mut(..len + gap)?;
     let mut y = 0.0;
-    // A period's worth first, so the filter has settled by the one that's kept.
-    for _ in 0..2 {
-        for x in burst.iter_mut().take(len) {
-            y += smooth * (noise.next() - y);
-            *x = y;
-        }
+    // Enough first for the filter to settle by the period that's kept: it's within 1% of
+    // where it's going in five time constants, and a time constant is `1 / smooth` samples.
+    let settle = ((5.0 / smooth.max(1e-6)) as usize).min(len);
+    for _ in 0..settle {
+        y += smooth * (noise.next() - y);
+    }
+    for x in burst.iter_mut().take(len) {
+        y += smooth * (noise.next() - y);
+        *x = y;
     }
     // The period, less itself `gap` samples on, going round.
     burst.copy_within(..gap, len);
