@@ -732,7 +732,7 @@ To lock settings by ear, without typing values:
 
 1. On the pattern page, select the steps the settings should change on (`v` and a motion, or
    `x`).
-2.  `gm` (or `gf`) for the mixer, on the track. Press `L`. The status line shows
+2. `gm` (or `gf`) for the mixer, on the track. Press `L`. The status line shows
    `◆ locking troll: change settings · L lock them on the selected steps · esc cancel`.
 3. Change any of the track's settings, instrument, effects or macros, and listen.
 4. Press `L` again. Each setting you changed is locked, at its new value, onto every selected

@@ -1,4 +1,4 @@
-//! Drawing the manual: its lines as they're written, the headings picked out, and Markdown's
+//! Drawing the manual: its lines as they're laid out, the headings picked out, and Markdown's
 //! `code`, **bold** and links styled rather than shown.
 
 use lattice_editor::{Editor, ManualLine, manual_lines};
