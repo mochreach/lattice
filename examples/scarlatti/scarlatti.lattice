@@ -93,7 +93,7 @@
                 length: 32,
                 steps: {0: (note: (pitch: 55, velocity: 120), gestures: ["!"]), 16: (note: (pitch: 55, velocity: 110))},
                 instrument: (kind: Tom, params: {"model": 1.0, "tune": 130.8, "decay": 1.4, "bend": 0.1, "noise": 0.15}),
-                mix: (level: -4.0, pan: -0.15, send: -7.0),
+                mix: (level: -4.0, pan: -0.15, send: -18.0),
             ),
         ],
         groups: [
