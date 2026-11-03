@@ -308,8 +308,24 @@ fn split(text: &str, at: char) -> Vec<&str> {
     parts
 }
 
+/// `text` as the page shows it, without Markdown's marks, for finding words in.
+pub(crate) fn shown(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(c) = rest.chars().next() {
+        if let Some((len, words)) = span(rest) {
+            out.push_str(words);
+            rest = rest.get(len..).unwrap_or("");
+        } else {
+            out.push(c);
+            rest = rest.get(c.len_utf8()..).unwrap_or("");
+        }
+    }
+    out
+}
+
 /// How wide `text` is on the page, without its marks.
-fn width(text: &str) -> usize {
+pub fn width(text: &str) -> usize {
     let mut n = 0;
     let mut rest = text;
     while let Some(c) = rest.chars().next() {
@@ -493,7 +509,7 @@ impl Editor {
 }
 
 fn contains(line: &ManualLine, lower: &str) -> bool {
-    line.text().to_lowercase().contains(lower)
+    shown(line.text()).to_lowercase().contains(lower)
 }
 
 #[cfg(test)]

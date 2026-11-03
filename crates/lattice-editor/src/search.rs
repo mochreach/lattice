@@ -112,7 +112,9 @@ impl Editor {
             }
             Page::Manual => {
                 let lines = self.manual_lines();
-                let lines = lines.iter().map(|l| l.text().to_lowercase());
+                let lines = lines
+                    .iter()
+                    .map(|l| crate::manual::shown(l.text()).to_lowercase());
                 Some((lines.collect(), self.manual.scroll))
             }
             _ => None,
@@ -156,6 +158,14 @@ mod tests {
         assert!(top(&e).contains("wicki"));
         keys(&mut e, "N");
         assert_eq!(e.manual.scroll, first);
+    }
+
+    #[test]
+    fn it_finds_words_as_shown_not_their_marks() {
+        let mut e = editor();
+        // Written `the **stops**, in order`.
+        keys(&mut e, ":manual\n/the stops, in order\n");
+        assert!(top(&e).contains("**stops**, in order"), "{}", top(&e));
     }
 
     #[test]

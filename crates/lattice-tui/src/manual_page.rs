@@ -1,7 +1,7 @@
 //! Drawing the manual: its lines as they're laid out, the headings picked out, and Markdown's
 //! `code`, **bold** and links styled rather than shown.
 
-use lattice_editor::{Editor, ManualLine, manual_wrap};
+use lattice_editor::{Editor, ManualLine, manual_width, manual_wrap};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -54,6 +54,13 @@ fn manual_rows(line: &ManualLine, room: usize, theme: &Theme) -> Vec<Line<'stati
             // Laid out to fit, a line is wrapped again only if it's a table too wide to narrow
             // further; its wrapped rows stay under its text.
             let first = text.len() - text.trim_start().len();
+            // A line that fits is shown as it is: wrapping joins words with single spaces,
+            // which would close up a table's padded columns.
+            if manual_width(text) <= room {
+                let mut spans = vec![Span::raw("  ")];
+                spans.extend(inline(text, theme));
+                return vec![Line::from(spans)];
+            }
             let indent = text.len() - text.trim_start_matches([' ', '-', '*', '|']).len();
             (manual_wrap(text.trim_start(), room.saturating_sub(first))
                 .into_iter()
