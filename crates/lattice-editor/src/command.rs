@@ -1378,11 +1378,15 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         "set" => {
             let word = command.text(0)?;
-            let value: f32 = word
-                .parse()
-                .ok()
-                .filter(|v: &f32| v.is_finite())
-                .ok_or_else(|| format!("{word:?} isn't a number"))?;
+            // A setting takes its choices by name, and its unit, as a lock does.
+            let value = match editor.param_under_cursor() {
+                Some(info) => crate::locks::value(&info, word)?,
+                None => word
+                    .parse()
+                    .ok()
+                    .filter(|v: &f32| v.is_finite())
+                    .ok_or_else(|| format!("{word:?} isn't a number"))?,
+            };
             editor.set_mixer_value(value)
         }
         "lock" => editor.lock(command.text(0)?),

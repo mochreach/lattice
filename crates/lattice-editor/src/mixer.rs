@@ -435,6 +435,20 @@ impl Editor {
         Some(vec![])
     }
 
+    /// The instrument's or effect's setting under the cursor, on the mixer, fx or instrument
+    /// page, so `:set` can take one of its choices by name.
+    pub(crate) fn param_under_cursor(&self) -> Option<ParamInfo> {
+        let page = matches!(self.page, Page::Mixer | Page::Instrument)
+            || (self.page == Page::Fx && self.on_fx_param());
+        if !page || self.inst_macro().is_some() {
+            return None;
+        }
+        let Row::Param(p) = self.mixer_cursor().row else {
+            return None;
+        };
+        self.shown()?.params.get(p).copied()
+    }
+
     /// The value under the mixer cursor, and the range it can take, in the units `:set` takes.
     fn cursor_value(&self) -> Option<(f32, f32, f32)> {
         let cursor = self.mixer_cursor();
@@ -1011,6 +1025,25 @@ mod tests {
     }
 
     #[test]
+    fn set_takes_a_choice_by_name() {
+        use lattice_core::instrument::switched;
+        let mut e = editor();
+        command(&mut e, "inst switched");
+        let params = e.grid.tracks[0].instrument.params();
+        let stack = params.iter().position(|p| p.id == switched::STACK).unwrap();
+        e.mixer.row = Row::Param(stack);
+        command(&mut e, "set fifths");
+        assert_eq!(e.grid.tracks[0].instrument.get(switched::STACK), 4.0);
+        command(&mut e, "set 1");
+        assert_eq!(e.grid.tracks[0].instrument.get(switched::STACK), 1.0);
+        command(&mut e, "set legion");
+        assert_eq!(
+            e.message.as_deref(),
+            Some("stack is one of one, pair, swarm, stops, fifths")
+        );
+    }
+
+    #[test]
     fn nudging_and_setting_values() {
         let mut e = editor();
         assert_eq!(keys(&mut e, "A"), [Effect::TrackChanged(0)]);
@@ -1035,7 +1068,7 @@ mod tests {
         command(&mut e, "set 0.5");
         assert_eq!(e.buses.send.effects[0].values[TIME as usize], 0.5);
         command(&mut e, "set 9");
-        assert_eq!(e.message.as_deref(), Some("this goes from 0.01 to 2"));
+        assert_eq!(e.message.as_deref(), Some("time goes from 0.01s to 2s"));
         keys(&mut e, "l");
         assert_eq!(at(&e).1, Row::Param(FEEDBACK as usize));
         assert!(e.modified());

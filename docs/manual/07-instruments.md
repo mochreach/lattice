@@ -225,11 +225,12 @@ instrument's name or the chain does nothing but say what does: `c changes the in
 
 **Typing a value.** `c` on a setting or macro opens the command line with `set ` ready, and
 `:set VALUE` sets the value under the cursor exactly, in the setting's own units: hertz for a
-frequency, seconds for a time, semitones for a `tune` marked `st`. A choice is set by its number
-from 0, in the order the choices are listed in its section (`:set 2` on Switched's `stack` is
-`swarm`); a name isn't accepted. A value outside the range is refused with the range, as
-`this goes from 20 to 16000`; a macro takes 0 to 1. `:set` works on the mixer, fx and instrument
-pages
+frequency, seconds for a time, semitones for a `tune` marked `st`; the unit can be written too
+(`:set 800Hz`). A choice is set by its name (`:set swarm` on Switched's `stack`) or by its number
+from 0, in the order the choices are listed in its section (`:set 2` is `swarm` too); a wrong name
+is answered with the choices (`stack is one of one, pair, swarm, stops, fifths`). A value outside
+the range is refused with the range, as `cutoff goes from 20Hz to 16000Hz`; a macro takes 0 to
+1. `:set` works on the mixer, fx and instrument pages
 (`set works on the mixer (gm), fx (gf) and instrument (gi) pages`, it says elsewhere), and the
 chapter on the mixer covers it there.
 
@@ -843,7 +844,7 @@ More about the controls:
 
 - **`start`** and **`end`** trim the file to a region: `start` 0.5 plays only its second half. If
   `end` is before `start` they're swapped. Slices cut up the region, not the whole file.
-- **`slices`** is a choice, 1 to 16; `:set` takes its number from 0, so `:set 15` is 16 slices.
+- **`slices`** is a choice, 1 to 16, named by its count, so `:set 16` is 16 slices.
 - **`tune`** applies to slices too, so a sliced loop can be pitched as a whole. Each `C-a` moves
   it about half a semitone (a hundredth of 48 semitones); `:set 7` puts it up a fifth exactly.
 - **`attack`** shows as `0.001s` at its smallest, which is 0.5 ms: a tiny fade, there only to

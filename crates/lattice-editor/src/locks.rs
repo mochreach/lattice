@@ -193,7 +193,7 @@ fn step_mut(grid: &mut Grid, t: usize, step: usize) -> Option<&mut Step> {
 }
 
 /// `word` as a value of `info`: a number in its range, or one of its choices by name.
-fn value(info: &ParamInfo, word: &str) -> Result<f32, String> {
+pub(crate) fn value(info: &ParamInfo, word: &str) -> Result<f32, String> {
     if let Curve::Choice(names) = info.curve
         && let Some(i) = names.iter().position(|n| *n == word)
     {

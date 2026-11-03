@@ -228,10 +228,12 @@ is under the cursor, in the units shown:
 :set -30         pan, from -100 (left) to 100 (right): here L30
 :set 3           the choke group, 0 to 8
 :set 800         a setting, in its unit: a cutoff of 800 Hz
-:set 2           a setting with a list of choices, by its place from 0: a filter's high-pass
+:set high        a setting with a list of choices, by name: a filter's high-pass
+:set 2           or by its place from 0: the same
 ```
 
-A value outside the range is refused, saying what the range is (`this goes from -60 to 6`).
+A value outside the range is refused, saying what the range is (`this goes from -60 to 6`, or
+for a setting `cutoff goes from 20Hz to 16000Hz`).
 On the chain row, `c` on the instrument opens `:inst ` instead, to choose another instrument;
 on an effect there's nothing to type, and `:set` says to move onto a level or setting.
 
