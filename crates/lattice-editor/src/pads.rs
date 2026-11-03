@@ -320,6 +320,7 @@ mod tests {
         let grid = Grid {
             name: "test".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks: vec![track(16), track(16)],
             groups: vec![],
         };

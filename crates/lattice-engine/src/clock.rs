@@ -47,6 +47,12 @@ impl Clock {
         self.samples_per_step = samples_per_step(self.sample_rate, bpm, self.steps_per_beat);
     }
 
+    /// Splits beats into `steps_per_beat` steps from now on, for tempos set after. The step
+    /// playing keeps its length: the frontend sets the tempo the change is meant to keep.
+    pub fn set_steps_per_beat(&mut self, steps_per_beat: u32) {
+        self.steps_per_beat = steps_per_beat;
+    }
+
     /// How long a step is now, in frames.
     pub fn samples_per_step(&self) -> f64 {
         self.samples_per_step

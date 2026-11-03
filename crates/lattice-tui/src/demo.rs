@@ -780,6 +780,7 @@ pub fn song() -> Song {
         grid: Grid {
             name: "demo".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks,
             groups: groups(),
         },

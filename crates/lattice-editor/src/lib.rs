@@ -81,7 +81,6 @@ const DEFAULT_VELOCITY: u8 = 100;
 fn pad_digit(n: u8) -> char {
     char::from(b'0' + n.min(9))
 }
-pub const BEATS_PER_BAR: usize = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mode {
@@ -167,6 +166,11 @@ pub enum Effect {
     TogglePlay,
     Bpm(f64),
     Click(bool),
+    /// Steps per beat or beats per bar changed: send them to the engine, before the tempo.
+    Meter {
+        steps_per_beat: u32,
+        beats_per_bar: u32,
+    },
     /// Audition a note on a track's instrument, briefly.
     Preview {
         track: usize,
@@ -362,6 +366,8 @@ struct Snapshot {
     primary: usize,
     /// The song page's loop, which goes by entries.
     looped: Option<(usize, usize)>,
+    /// The tempo, which only `:meter` changes along with the rest, so only comes back with it.
+    bpm: f64,
 }
 
 /// What one selection copied: a column of steps per track.
@@ -700,6 +706,7 @@ impl Editor {
             grid: Grid {
                 name: "new".into(),
                 steps_per_beat: self.grid.steps_per_beat,
+                beats_per_bar: self.grid.beats_per_bar,
                 tracks: vec![track],
                 groups: vec![],
             },
@@ -763,6 +770,7 @@ impl Editor {
         vec![
             Effect::TracksChanged,
             Effect::MixerChanged,
+            self.meter(),
             Effect::Bpm(self.bpm),
             Effect::Click(self.click),
         ]
@@ -1439,11 +1447,11 @@ impl Editor {
                 ..c
             }),
             Action::NextBar => self.motion(|e, c| Cursor {
-                step: next_multiple(c.step, e.beat() * BEATS_PER_BAR, n),
+                step: next_multiple(c.step, e.bar(), n),
                 ..c
             }),
             Action::PrevBar => self.motion(|e, c| Cursor {
-                step: prev_multiple(c.step, e.beat() * BEATS_PER_BAR, n),
+                step: prev_multiple(c.step, e.bar(), n),
                 ..c
             }),
             Action::NextNote | Action::PrevNote => self.motion(|e, mut c| {
@@ -1838,6 +1846,19 @@ impl Editor {
 
     fn beat(&self) -> usize {
         (self.grid.steps_per_beat as usize).max(1)
+    }
+
+    /// Steps in a bar.
+    fn bar(&self) -> usize {
+        self.grid.steps_per_bar() as usize
+    }
+
+    /// The meter, to send to the engine.
+    pub(crate) fn meter(&self) -> Effect {
+        Effect::Meter {
+            steps_per_beat: self.grid.steps_per_beat,
+            beats_per_bar: self.grid.beats_per_bar,
+        }
     }
 
     /// The next or previous step with a note on the cursor's track.
@@ -2261,6 +2282,7 @@ impl Editor {
             selections: self.selections.clone(),
             primary: self.primary,
             looped: self.song.looped,
+            bpm: self.bpm,
         });
         if self.undo.len() > UNDO_LIMIT {
             self.undo.remove(0);
@@ -2286,6 +2308,15 @@ impl Editor {
             return vec![];
         };
         let tracks_changed = snapshot.ids != self.ids;
+        let grid = &snapshot.grid;
+        let meter_changed = (grid.steps_per_beat, grid.beats_per_bar)
+            != (self.grid.steps_per_beat, self.grid.beats_per_bar);
+        // A `:meter` changed the tempo with the steps per beat, so they come back together.
+        let bpm = if meter_changed {
+            snapshot.bpm
+        } else {
+            self.bpm
+        };
         self.take = None;
         self.held.clear();
         to.push(Snapshot {
@@ -2296,15 +2327,18 @@ impl Editor {
             selections: std::mem::replace(&mut self.selections, snapshot.selections),
             primary: std::mem::replace(&mut self.primary, snapshot.primary),
             looped: std::mem::replace(&mut self.song.looped, snapshot.looped),
+            bpm: std::mem::replace(&mut self.bpm, bpm),
         });
         self.mode = Mode::Normal;
         self.reconcile();
         // Line the tracks up first, so the indices that follow are the restored ones.
+        let meter = meter_changed.then(|| [self.meter(), Effect::Bpm(self.bpm)]);
         tracks_changed
             .then_some(Effect::TracksChanged)
             .into_iter()
             .chain((0..self.grid.tracks.len()).map(Effect::TrackChanged))
             .chain([Effect::MixerChanged])
+            .chain(meter.into_iter().flatten())
             .collect()
     }
 }
@@ -2312,7 +2346,7 @@ impl Editor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lattice_core::{Condition, MAX_TRACKS, Rule, Transform};
+    use lattice_core::{Condition, MAX_TRACKS, Rule, SongGesture, Transform};
 
     fn editor() -> Editor {
         let track = |name: &str, len| Track {
@@ -2331,6 +2365,7 @@ mod tests {
         let grid = Grid {
             name: "test".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks: vec![track("a", 16), track("b", 8)],
             groups: vec![],
         };
@@ -3057,6 +3092,65 @@ mod tests {
     }
 
     #[test]
+    fn meter_keeps_the_music_where_it_was() {
+        let mut e = editor();
+        e.grid.steps_per_beat = 2;
+        e.bpm = 200.0;
+        command(&mut e, "bars 14");
+        let current = e.arrangement.current;
+        e.arrangement.patterns[current].conductor.steps =
+            vec![[Some(SongGesture::Tempo(200)), Some(SongGesture::Slide(144))]];
+        assert_eq!(e.arrangement.steps(&e.grid, current), Some(112));
+
+        // The Scarlatti: two beats of four steps a bar, at half the tempo, sounds the same.
+        let effects = command(&mut e, "meter 2 4");
+        assert_eq!((e.grid.beats_per_bar, e.grid.steps_per_beat), (2, 4));
+        assert_eq!(e.bpm, 100.0);
+        assert_eq!(
+            effects,
+            [
+                Effect::Meter {
+                    steps_per_beat: 4,
+                    beats_per_bar: 2
+                },
+                Effect::Bpm(100.0)
+            ]
+        );
+        assert_eq!(e.arrangement.patterns[current].bars, Some(14));
+        assert_eq!(e.arrangement.steps(&e.grid, current), Some(112));
+        assert_eq!(
+            e.arrangement.patterns[current].conductor.steps[0],
+            [Some(SongGesture::Tempo(100)), Some(SongGesture::Slide(72))]
+        );
+        assert!(e.message.as_ref().unwrap().contains("100.0 BPM"));
+
+        // In threes, 112 steps aren't whole bars, so nothing changes.
+        command(&mut e, "meter 3");
+        assert!(
+            e.message.as_ref().unwrap().contains("isn't 1 to"),
+            "{:?}",
+            e.message
+        );
+        assert_eq!(e.grid.beats_per_bar, 2);
+
+        // Undo brings the tempo back with the steps per beat.
+        let effects = keys(&mut e, "u");
+        assert_eq!(
+            (e.grid.beats_per_bar, e.grid.steps_per_beat, e.bpm),
+            (4, 2, 200.0)
+        );
+        assert!(effects.contains(&Effect::Bpm(200.0)), "{effects:?}");
+        // While undoing an edit leaves the tempo as it is.
+        command(&mut e, "bpm 150");
+        notes(&mut e, "z");
+        keys(&mut e, "u");
+        assert_eq!(e.bpm, 150.0);
+
+        command(&mut e, "meter");
+        assert_eq!(e.message.as_deref(), Some("4 beats a bar, 2 steps a beat"));
+    }
+
+    #[test]
     fn loading_replaces_the_song() {
         let mut e = editor();
         notes(&mut e, "zx");
@@ -3072,6 +3166,10 @@ mod tests {
             [
                 Effect::TracksChanged,
                 Effect::MixerChanged,
+                Effect::Meter {
+                    steps_per_beat: 4,
+                    beats_per_bar: 4
+                },
                 Effect::Bpm(140.0),
                 Effect::Click(false)
             ]

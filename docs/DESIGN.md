@@ -1361,7 +1361,19 @@ track does the same to every other pattern's lanes. Undo snapshots the arrangeme
 so undoing a change in another pattern goes back to it.
 
 The pattern being edited is always the one playing. A pattern's length is `:bars`, or by default
-as long as its longest track, rounded up to a whole bar. (Once round its whole loop, until every
+as long as its longest track, rounded up to a whole bar.
+
+**Meter.** A bar is `Grid::beats_per_bar` beats (4 unless the file says otherwise) of
+`steps_per_beat` steps, both 1–16, so 3/4 is three beats, 7/8 seven beats of one step or more,
+and compound time is beats of three steps: 6/8 is two, 12/8 four. `:meter BEATS [STEPS]` sets
+them without moving the music. Patterns of so many `:bars` keep their steps, counted in the new
+bars, and it refuses a meter they don't make whole bars of; patterns that go by their longest
+track still do. Tempos count beats, so a change of steps per beat scales `:bpm` and every
+conductor tempo with it (the conductor's rounded to a whole BPM), keeping each step as long as it
+was: 200 BPM at two steps a beat is 100 at four. Undo snapshots the tempo too, but only puts it
+back when it puts back a different steps per beat, so undoing an edit doesn't undo a `:bpm`. The
+engine takes `Command::SetMeter` before the tempo, for the click's beats and accents, the
+count-in and cues at the bar; until the tempo comes, steps keep their length. (Once round its whole loop, until every
 track and rule lines up again, was tried first: a polymetric pattern ran for a minute or more
 before the song moved on.) Looping, the engine leaves the tracks running, so polymeters carry on
 drifting; a change of pattern starts every track from its top. The frontend's `Sequencer` sends the
@@ -1392,7 +1404,5 @@ engine publishes the step it's on from the top of the pattern (`Status::pattern_
 `song_position` places the playhead on the page's strip.
 
 Not in files yet:
-- **Changing steps per beat while running.** The engine's clock is set up with it, so `:o` refuses a
-  song with a different value; opening it from the command line works.
 
 Next for the UI: effect columns, and choosing a track's instrument.

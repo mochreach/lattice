@@ -4,7 +4,7 @@
 //! track showing how busy it is in each part of the bar. Under it all, the patterns there are to
 //! choose from.
 
-use lattice_core::{BEATS_PER_BAR, Lane};
+use lattice_core::Lane;
 use lattice_editor::{Editor, Mode};
 use lattice_engine::Status;
 use ratatui::Frame;
@@ -27,7 +27,7 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
     let arrangement = &editor.arrangement;
     let tracks = &editor.grid.tracks;
     let steps_per_beat = u64::from(editor.grid.steps_per_beat.max(1));
-    let bar = u64::from(BEATS_PER_BAR) * steps_per_beat;
+    let bar = u64::from(editor.grid.steps_per_bar());
     let pattern_steps = arrangement.all_steps(&editor.grid);
     let entry_bars = editor.entry_bars();
     let total = entry_bars.iter().sum::<usize>() as u64 * bar;
@@ -82,7 +82,7 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
     // Each track's column: a character for each beat, or each half beat where there's room,
     // scrolled sideways to keep the cursor's track in view.
     let room = width.saturating_sub(GUTTER + ENTRY);
-    let beats = BEATS_PER_BAR as usize;
+    let beats = editor.grid.beats_per_bar.max(1) as usize;
     let wide = steps_per_beat.is_multiple_of(2) && room / tracks.len().max(1) > beats * 2;
     let cells = if wide { beats * 2 } else { beats };
     let shown = (room / (cells + 2)).clamp(1, tracks.len().max(1));

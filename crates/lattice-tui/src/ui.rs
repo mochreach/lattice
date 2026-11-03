@@ -8,8 +8,8 @@ use lattice_core::{
     realise,
 };
 use lattice_editor::{
-    BEATS_PER_BAR, ColumnLabel, Completion, Cursor, Editor, Infobox, Mode, NoteLayout, PadMode,
-    Page, PromptKind, Selection, StepField, TutorView, View, word_start,
+    ColumnLabel, Completion, Cursor, Editor, Infobox, Mode, NoteLayout, PadMode, Page, PromptKind,
+    Selection, StepField, TutorView, View, word_start,
 };
 use lattice_engine::{Chain, Status};
 use ratatui::Frame;
@@ -1153,7 +1153,7 @@ fn grid_row(
     editor: &Editor,
     theme: &Theme,
 ) -> Line<'static> {
-    let on_bar = row.is_multiple_of(steps_per_beat * BEATS_PER_BAR);
+    let on_bar = row.is_multiple_of(editor.grid.steps_per_bar() as usize);
     let on_beat = row.is_multiple_of(steps_per_beat);
     let gutter_style = if on_bar {
         theme.text.add_modifier(Modifier::BOLD)

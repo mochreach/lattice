@@ -537,6 +537,12 @@ pub const COMMANDS: &[Spec] = &[
         describe: "how long this pattern (on the song page, the cursor's) plays, in bars; auto (the default) is as long as its longest track",
     },
     Spec {
+        name: "meter",
+        alias: None,
+        params: &[optional_text("[BEATS [STEPS]]", "meter")],
+        describe: "beats in a bar, and steps in a beat (3 for a waltz, 2 3 for 6/8); patterns keep their steps and the tempo keeps their speed",
+    },
+    Spec {
         name: "export",
         alias: None,
         params: &[optional_text("[PATH] [BARS]", "path")],
@@ -1182,6 +1188,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             editor.set_bars(command.text(0)?)?;
             Ok(vec![])
         }
+        "meter" => editor.set_meter(command.text(0)?),
         "export" => editor.export_song(command.text(0)?),
         "export-sel" => editor.export_selection(command.text(0)?, false),
         "export-loop" => editor.export_selection(command.text(0)?, true),

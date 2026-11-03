@@ -7,20 +7,18 @@
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use lattice_core::{Song, from_ron, to_ron};
 use lattice_editor::SAMPLES;
 
 use crate::demo;
 
-/// The song at `path` if the engine can play it, or a new one if there's no such file; true if
-/// it's new. `steps_per_beat` is the engine's, once it's running.
-pub fn open(path: &Path, steps_per_beat: Option<u32>) -> Result<(Song, bool)> {
+/// The song at `path`, or a new one if there's no such file; true if it's new.
+pub fn open(path: &Path) -> Result<(Song, bool)> {
     let (song, new) = match read(path)? {
         Some(song) => (song, false),
         None => (new_song(), true),
     };
-    check(&song, steps_per_beat).with_context(|| format!("can't open {}", path.display()))?;
     Ok((song, new))
 }
 
@@ -104,21 +102,6 @@ fn new_song() -> Song {
     }
 }
 
-/// Checks the running engine can play `song`: it can't change steps per beat yet. Track counts
-/// are checked as the song is read.
-fn check(song: &Song, steps_per_beat: Option<u32>) -> Result<()> {
-    let grid = &song.grid;
-    if let Some(spb) = steps_per_beat
-        && spb != grid.steps_per_beat
-    {
-        bail!(
-            "the song has {} steps per beat; restart Lattice with it to change from {spb}",
-            grid.steps_per_beat
-        );
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,7 +110,7 @@ mod tests {
     #[test]
     fn the_amen_example_opens_and_plays_its_sample() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/amen/amen.lattice");
-        let (song, new) = open(&path, None).unwrap();
+        let (song, new) = open(&path).unwrap();
         assert!(!new);
         let amen = (song.grid.tracks.iter())
             .find(|t| t.name == "amen")
@@ -146,7 +129,7 @@ mod tests {
     fn the_mountain_king_example_opens_and_chops_its_own_render() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../examples/mountain-king/mountain-king.lattice");
-        let (song, _) = open(&path, None).unwrap();
+        let (song, _) = open(&path).unwrap();
         let tracks = &song.grid.tracks;
         let hall = tracks.iter().find(|t| t.name == "hall").unwrap();
         assert_eq!(hall.instrument.kind, InstKind::Chop);
@@ -173,8 +156,10 @@ mod tests {
     fn the_scarlatti_example_opens_with_both_halves_repeated() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../examples/scarlatti/scarlatti.lattice");
-        let (song, _) = open(&path, None).unwrap();
-        assert_eq!(song.grid.steps_per_beat, 2);
+        let (song, _) = open(&path).unwrap();
+        // 2/2: two half-note beats of four eighths.
+        assert_eq!((song.grid.beats_per_bar, song.grid.steps_per_beat), (2, 4));
+        assert_eq!(song.grid.steps_per_bar(), 8);
         let names: Vec<_> = (song.arrangement.entries.iter())
             .map(|e| song.arrangement.patterns[e.pattern].name.as_str())
             .collect();
@@ -219,7 +204,7 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("file: \"loops/amen.wav\""), "{text}");
         assert!(text.contains("file: \"/elsewhere/kick.wav\""), "{text}");
-        let (read, _) = open(&path, None).unwrap();
+        let (read, _) = open(&path).unwrap();
         std::fs::remove_dir_all(&folder).unwrap();
         assert_eq!(read.grid.tracks, song.grid.tracks);
     }

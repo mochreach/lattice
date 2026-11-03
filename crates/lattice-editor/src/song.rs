@@ -4,7 +4,7 @@
 
 use std::ops::RangeInclusive;
 
-use lattice_core::{BEATS_PER_BAR, Entry, MAX_ENTRIES, MAX_REPEATS};
+use lattice_core::{Entry, MAX_ENTRIES, MAX_REPEATS};
 
 use crate::{Action, Editor, Effect, Key, Mode, Page, PromptKind};
 
@@ -81,7 +81,7 @@ impl Editor {
 
     /// How many bars each entry plays for.
     pub fn entry_bars(&self) -> Vec<usize> {
-        let bar = u64::from(BEATS_PER_BAR * self.grid.steps_per_beat.max(1));
+        let bar = u64::from(self.grid.steps_per_bar());
         let pattern_bars: Vec<usize> = (self.arrangement.all_steps(&self.grid).into_iter())
             .map(|steps| (steps / bar) as usize)
             .collect();
@@ -465,7 +465,7 @@ impl Editor {
             let Some(len) = self.grid.tracks.get(track).map(|t| t.steps.len().max(1)) else {
                 return effects;
             };
-            let bar = BEATS_PER_BAR as usize * self.grid.steps_per_beat.max(1) as usize;
+            let bar = self.grid.steps_per_bar() as usize;
             self.select_point(track, into * bar % len);
         }
         effects
@@ -561,6 +561,7 @@ mod tests {
         let grid = Grid {
             name: "test".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks: vec![Track {
                 name: "t".into(),
                 steps: vec![Step::default(); 16],

@@ -677,6 +677,7 @@ mod tests {
             Grid {
                 name: "fields".into(),
                 steps_per_beat: 4,
+                beats_per_bar: 4,
                 tracks: vec![track.clone(), track],
                 groups: vec![],
             },

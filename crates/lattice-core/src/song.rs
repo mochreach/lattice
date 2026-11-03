@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::arrangement::Arrangement;
+use crate::arrangement::{Arrangement, DEFAULT_BEATS_PER_BAR};
 use crate::chain::{FxChain, FxLane};
 use crate::conductor::GESTURES;
 use crate::fx::{Buses, Fx};
@@ -493,11 +493,32 @@ impl TryFrom<SparseTrack> for Track {
 pub struct Grid {
     pub name: String,
     pub steps_per_beat: u32,
+    /// The beats in a bar, the meter's top number: 3 for a waltz, 2 beats of 3 steps for 6/8.
+    #[serde(
+        default = "default_beats_per_bar",
+        skip_serializing_if = "is_default_beats_per_bar"
+    )]
+    pub beats_per_bar: u32,
     pub tracks: Vec<Track>,
     /// In track order, never overlapping. Change tracks through [`Grid::insert_track`] and its
     /// siblings, which keep these in line.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<Group>,
+}
+
+fn default_beats_per_bar() -> u32 {
+    DEFAULT_BEATS_PER_BAR
+}
+
+fn is_default_beats_per_bar(beats: &u32) -> bool {
+    *beats == DEFAULT_BEATS_PER_BAR
+}
+
+impl Grid {
+    /// Steps in a bar: its beats, each of its steps.
+    pub fn steps_per_bar(&self) -> u32 {
+        self.beats_per_bar.max(1) * self.steps_per_beat.max(1)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

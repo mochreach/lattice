@@ -18,8 +18,11 @@ pub const MAX_ENTRIES: usize = 256;
 /// Most bars a pattern can last, and most times an entry repeats.
 pub const MAX_BARS: u32 = 256;
 pub const MAX_REPEATS: u32 = 64;
-/// Beats in a bar.
-pub const BEATS_PER_BAR: u32 = 4;
+/// Beats in a bar, unless the song says otherwise, and most it can have.
+pub const DEFAULT_BEATS_PER_BAR: u32 = 4;
+pub const MAX_BEATS_PER_BAR: u32 = 16;
+/// Most steps a beat can be split into.
+pub const MAX_STEPS_PER_BEAT: u32 = 16;
 
 /// One pattern's steps and rules for one track. Saved sparsely, as tracks are.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -113,7 +116,7 @@ impl Entry {
 
 /// Steps in `bars`, or if it's `None`, in enough bars for `longest` steps (one at least).
 fn steps_for(grid: &Grid, bars: Option<u32>, longest: Option<usize>) -> u64 {
-    let bar = u64::from(BEATS_PER_BAR * grid.steps_per_beat.max(1));
+    let bar = u64::from(grid.steps_per_bar());
     match bars {
         Some(bars) => u64::from(bars) * bar,
         None => (longest.unwrap_or(0) as u64).div_ceil(bar).max(1) * bar,
@@ -456,6 +459,7 @@ mod tests {
         Grid {
             name: "g".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks: lens
                 .iter()
                 .map(|&len| Track {

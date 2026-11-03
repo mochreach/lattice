@@ -139,6 +139,7 @@ mod tests {
         Grid {
             name: "test".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks: (0..6)
                 .map(|i| Track {
                     name: i.to_string(),

@@ -98,7 +98,7 @@ fn main() -> Result<()> {
         .find(|&(i, a)| !a.starts_with("--") && config.is_none_or(|c| i != c + 1))
         .map(|(_, a)| PathBuf::from(a))
     {
-        let (song, new) = file::open(&path, None)?;
+        let (song, new) = file::open(&path)?;
         log!("opened {}", path.display());
         // The engine starts from the editor's song, so nothing needs sending yet.
         editor.load(song, path.clone());
@@ -560,6 +560,13 @@ fn apply(
         }
         Effect::Bpm(bpm) => Command::SetBpm(bpm),
         Effect::Click(on) => Command::SetClick(on),
+        Effect::Meter {
+            steps_per_beat,
+            beats_per_bar,
+        } => Command::SetMeter {
+            steps_per_beat,
+            beats_per_bar,
+        },
         Effect::Preview { track, pitch } => Command::Preview {
             track,
             pitch,
@@ -713,7 +720,7 @@ fn open(
     machine: &mut Machine,
     handle: &mut Handle,
 ) -> Flow {
-    let (song, new) = match file::open(&path, Some(editor.grid.steps_per_beat)) {
+    let (song, new) = match file::open(&path) {
         Ok(opened) => opened,
         Err(e) => {
             editor.message = Some(format!("{e:#}"));

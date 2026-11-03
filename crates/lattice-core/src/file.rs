@@ -9,6 +9,7 @@ use std::fmt;
 use ron::extensions::Extensions;
 use ron::ser::PrettyConfig;
 
+use crate::arrangement::{MAX_BEATS_PER_BAR, MAX_STEPS_PER_BEAT};
 use crate::group::MAX_GROUPS;
 use crate::song::{Grid, MAX_CHOKE, MAX_DB, MAX_TRACKS, Song, Track};
 
@@ -67,8 +68,17 @@ fn check(song: &Song) -> Result<(), String> {
 }
 
 fn check_grid(grid: &Grid) -> Result<(), String> {
-    if grid.steps_per_beat == 0 {
-        return Err(format!("grid {:?} has 0 steps per beat", grid.name));
+    if !(1..=MAX_STEPS_PER_BEAT).contains(&grid.steps_per_beat) {
+        return Err(format!(
+            "grid {:?} has {} steps per beat; beats have 1 to {MAX_STEPS_PER_BEAT}",
+            grid.name, grid.steps_per_beat
+        ));
+    }
+    if !(1..=MAX_BEATS_PER_BAR).contains(&grid.beats_per_bar) {
+        return Err(format!(
+            "grid {:?} has {} beats per bar; bars have 1 to {MAX_BEATS_PER_BAR}",
+            grid.name, grid.beats_per_bar
+        ));
     }
     if !(1..=MAX_TRACKS).contains(&grid.tracks.len()) {
         return Err(format!(
@@ -232,6 +242,7 @@ mod tests {
             grid: Grid {
                 name: "a".into(),
                 steps_per_beat: 4,
+                beats_per_bar: 4,
                 tracks: vec![bass, empty],
                 groups: vec![Group {
                     folded: true,

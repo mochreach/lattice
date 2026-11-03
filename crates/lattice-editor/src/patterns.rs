@@ -3,7 +3,10 @@
 //! [`Arrangement`](lattice_core::Arrangement)). The pattern being edited is always the one
 //! playing, so picking another while the song plays cues it for when the playing one ends.
 
-use lattice_core::{BEATS_PER_BAR, Entry, Lane, MAX_BARS, MAX_ENTRIES, MAX_PATTERNS, Mix, Step};
+use lattice_core::{
+    Entry, Lane, MAX_BARS, MAX_BEATS_PER_BAR, MAX_BPM, MAX_ENTRIES, MAX_PATTERNS,
+    MAX_STEPS_PER_BEAT, MIN_BPM, Mix, SongGesture, Step,
+};
 
 use crate::{Editor, Effect, Page, changed};
 
@@ -230,6 +233,104 @@ impl Editor {
         Ok(effects)
     }
 
+    /// `:meter BEATS [STEPS]`: beats in a bar and steps in a beat, or with nothing, what they
+    /// are. The music doesn't move: patterns keep their steps, now counted in the new bars, and a
+    /// change of steps per beat changes the tempo and the conductor's tempos to keep each step as
+    /// long as it was.
+    pub(crate) fn set_meter(&mut self, text: &str) -> Result<Vec<Effect>, String> {
+        let words: Vec<&str> = text.split_whitespace().collect();
+        let number = |word: Option<&&str>, what: &str, max: u32, now: u32| match word {
+            None => Ok(now),
+            Some(word) => word
+                .parse::<u32>()
+                .ok()
+                .filter(|n| (1..=max).contains(n))
+                .ok_or_else(|| format!("{what}: 1 to {max}")),
+        };
+        let grid = &self.grid;
+        let describe = |beats: u32, steps: u32| {
+            format!(
+                "{beats} beat{} a bar, {steps} step{} a beat",
+                if beats == 1 { "" } else { "s" },
+                if steps == 1 { "" } else { "s" }
+            )
+        };
+        if words.is_empty() {
+            self.message = Some(describe(grid.beats_per_bar, grid.steps_per_beat));
+            return Ok(vec![]);
+        }
+        if words.len() > 2 {
+            return Err("meter: BEATS, then optionally STEPS".into());
+        }
+        let beats = number(
+            words.first(),
+            "beats",
+            MAX_BEATS_PER_BAR,
+            grid.beats_per_bar,
+        )?;
+        let steps = number(
+            words.get(1),
+            "steps",
+            MAX_STEPS_PER_BEAT,
+            grid.steps_per_beat,
+        )?;
+        let (old_bar, new_bar) = (grid.steps_per_bar(), beats * steps);
+        // Each pattern of so many bars keeps its steps, which must make whole bars.
+        let mut bars = vec![];
+        for pattern in &self.arrangement.patterns {
+            let Some(old) = pattern.bars else {
+                bars.push(None);
+                continue;
+            };
+            let len = old * old_bar;
+            let new = len / new_bar;
+            if len % new_bar != 0 || !(1..=MAX_BARS).contains(&new) {
+                return Err(format!(
+                    "{} is {len} steps, which isn't 1 to {MAX_BARS} bars of {new_bar}",
+                    pattern.name
+                ));
+            }
+            bars.push(Some(new));
+        }
+        // Tempos count beats, so they scale with the steps in one, keeping the steps' length.
+        let scale = f64::from(grid.steps_per_beat) / f64::from(steps);
+        let tempos = f64::from(MIN_BPM)..=f64::from(MAX_BPM);
+        let bpm = self.bpm * scale;
+        if !tempos.contains(&bpm) {
+            return Err(format!(
+                "that makes the tempo {bpm:.1}, outside {MIN_BPM}–{MAX_BPM}"
+            ));
+        }
+        let rescale = |bpm: u16| -> Option<u16> {
+            let new = (f64::from(bpm) * scale).round();
+            tempos.contains(&new).then_some(new as u16)
+        };
+        let conducted = (self.arrangement.patterns.iter())
+            .flat_map(|p| p.conductor.steps.iter().flatten().flatten())
+            .filter_map(|g| g.tempo());
+        if let Some(t) = conducted.into_iter().find(|&t| rescale(t).is_none()) {
+            return Err(format!(
+                "the conductor's tempo {t} would be outside {MIN_BPM}–{MAX_BPM}"
+            ));
+        }
+        self.checkpoint();
+        for (pattern, bars) in self.arrangement.patterns.iter_mut().zip(bars) {
+            pattern.bars = bars;
+            let gestures = pattern.conductor.steps.iter_mut().flatten().flatten();
+            for gesture in gestures {
+                match gesture {
+                    SongGesture::Tempo(t) | SongGesture::Slide(t) => *t = rescale(*t).unwrap_or(*t),
+                    _ => {}
+                }
+            }
+        }
+        self.grid.beats_per_bar = beats;
+        self.grid.steps_per_beat = steps;
+        self.bpm = bpm;
+        self.message = Some(format!("{} at {bpm:.1} BPM", describe(beats, steps)));
+        Ok(vec![self.meter(), Effect::Bpm(bpm)])
+    }
+
     /// `:bars N` or `:bars auto`: how long this pattern plays.
     pub(crate) fn set_bars(&mut self, text: &str) -> Result<(), String> {
         let bars = match text {
@@ -254,7 +355,7 @@ impl Editor {
         }
         self.song.bar = self.entry_start(entry) + into;
         self.keep_on_entry(entry);
-        let bar = u64::from(BEATS_PER_BAR * self.grid.steps_per_beat.max(1));
+        let bar = u64::from(self.grid.steps_per_bar());
         let steps = (self.arrangement.steps(&self.grid, pattern)).ok_or("no such pattern")?;
         let auto = if bars.is_some() {
             ""
@@ -382,6 +483,7 @@ mod tests {
         let grid = Grid {
             name: "test".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks: vec![track(16), track(12)],
             groups: vec![],
         };

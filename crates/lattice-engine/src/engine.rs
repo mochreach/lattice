@@ -30,7 +30,6 @@ use crate::routing::Routing;
 use crate::sampler::Sample;
 use lattice_core::macros;
 
-const BEATS_PER_BAR: u64 = 4;
 /// Largest block rendered in one go. Longer host buffers are split.
 pub(crate) const MAX_BLOCK: usize = 256;
 /// Events per track per block; more are dropped rather than allocating.
@@ -64,6 +63,12 @@ pub enum Command {
     Stop,
     SetBpm(f64),
     SetClick(bool),
+    /// Steps in a beat and beats in a bar, for the tempo and the click. Send the tempo after:
+    /// until then, steps keep their length.
+    SetMeter {
+        steps_per_beat: u32,
+        beats_per_bar: u32,
+    },
     /// Replace a track's pattern; heard from the current step on. The old pattern is sent back
     /// to be freed off the audio thread. Tracks longer than `MAX_STEPS` are ignored, and so is a
     /// track sent before a pattern change the sender hadn't seen yet: `swaps` is
@@ -1154,6 +1159,7 @@ pub struct Engine {
     /// A fill's being played, for the steps whose conditions ask.
     fill: bool,
     steps_per_beat: u64,
+    beats_per_bar: u64,
     step_index: u64,
     /// Count-in steps still to play before step 0.
     count_in: u64,
@@ -1257,6 +1263,7 @@ impl Engine {
             playing: false,
             fill: false,
             steps_per_beat: u64::from(grid.steps_per_beat.max(1)),
+            beats_per_bar: u64::from(grid.beats_per_bar.max(1)),
             step_index: 0,
             count_in: 0,
             pattern_len: 0,
@@ -1321,7 +1328,7 @@ impl Engine {
     pub fn play_after(&mut self, bars: u32) {
         self.stop();
         self.playing = true;
-        self.count_in = u64::from(bars) * BEATS_PER_BAR * self.steps_per_beat;
+        self.count_in = u64::from(bars) * self.beats_per_bar * self.steps_per_beat;
         self.status.playing.store(true, Ordering::Relaxed);
         self.clock.restart();
     }
@@ -1400,6 +1407,14 @@ impl Engine {
                     }
                 }
                 Command::SetClick(on) => self.click_enabled = on,
+                Command::SetMeter {
+                    steps_per_beat,
+                    beats_per_bar,
+                } => {
+                    self.clock.set_steps_per_beat(steps_per_beat.max(1));
+                    self.steps_per_beat = u64::from(steps_per_beat.max(1));
+                    self.beats_per_bar = u64::from(beats_per_bar.max(1));
+                }
                 Command::SetTrack {
                     index,
                     mut track,
@@ -2002,7 +2017,7 @@ impl Engine {
             if self.count_in.is_multiple_of(self.steps_per_beat) {
                 let bar = self
                     .count_in
-                    .is_multiple_of(BEATS_PER_BAR * self.steps_per_beat);
+                    .is_multiple_of(self.beats_per_bar * self.steps_per_beat);
                 let pitch = if bar { CLICK_ACCENT_PITCH } else { CLICK_PITCH };
                 push(&mut self.click_events, note_on(offset, pitch, 100));
             }
@@ -2015,7 +2030,7 @@ impl Engine {
             self.stop();
             return;
         }
-        let bar = BEATS_PER_BAR * self.steps_per_beat;
+        let bar = self.beats_per_bar * self.steps_per_beat;
         let at_bar = matches!(&self.cue, Cue::Pattern(s) if s.at_bar)
             && self.pattern_step > 0
             && self.pattern_step.is_multiple_of(bar);
@@ -2034,7 +2049,7 @@ impl Engine {
         self.conductor_at += 1;
         if self.click_enabled && self.step_index.is_multiple_of(self.steps_per_beat) {
             let beat = self.step_index / self.steps_per_beat;
-            let pitch = if beat.is_multiple_of(BEATS_PER_BAR) {
+            let pitch = if beat.is_multiple_of(self.beats_per_bar) {
                 CLICK_ACCENT_PITCH
             } else {
                 CLICK_PITCH
@@ -2584,6 +2599,7 @@ mod tests {
         let grid = Grid {
             name: "empty".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks: vec![],
             groups: vec![],
         };
@@ -2623,6 +2639,7 @@ mod tests {
         let grid = Grid {
             name: "test".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks: vec![lead()],
             groups: vec![],
         };
@@ -2718,6 +2735,7 @@ mod tests {
         let grid = Grid {
             name: "mutes".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks: vec![Track {
                 steps: vec![Step::note(60); 4],
                 rules: vec![],
@@ -2750,6 +2768,7 @@ mod tests {
         let grid = Grid {
             name: "mutes".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks: vec![Track {
                 steps: vec![Step::note(60); 2],
                 rules: vec![],
@@ -2810,6 +2829,41 @@ mod tests {
         let spb = 44_100.0 * 60.0 / 137.0;
         let expected: Vec<usize> = (0..6).map(|k| (k as f64 * spb).ceil() as usize).collect();
         assert_eq!(onsets(&audio), expected);
+    }
+
+    #[test]
+    fn the_meter_sets_the_beat_and_where_the_click_accents() {
+        let grid = Grid {
+            name: "empty".into(),
+            steps_per_beat: 4,
+            beats_per_bar: 4,
+            tracks: vec![],
+            groups: vec![],
+        };
+        let (mut engine, mut handle) = Engine::new(48_000.0, 120.0, &grid, vec![]);
+        // 6/8: two beats of three steps, at 60 beats a minute.
+        handle.send(Command::SetMeter {
+            steps_per_beat: 3,
+            beats_per_bar: 2,
+        });
+        handle.send(Command::SetBpm(60.0));
+        engine.play();
+        let audio = render(&mut engine, 256, 100_000);
+        assert_eq!(onsets(&audio), [0, 48_000, 96_000], "a beat a second");
+        // The next ten steps: the click's on every third, accented every sixth.
+        let mut clicks = vec![];
+        engine.click_events.clear();
+        for _ in 0..10 {
+            let step = engine.step_index;
+            engine.sequence_step(0);
+            if let Some(event) = engine.click_events.pop() {
+                let EventKind::NoteOn { pitch, .. } = event.kind else {
+                    panic!("{event:?}")
+                };
+                clicks.push((step, pitch == CLICK_ACCENT_PITCH));
+            }
+        }
+        assert_eq!(clicks, [(9, false), (12, true), (15, false)]);
     }
 
     fn conductor(steps: &[(usize, &str)], len: usize) -> Conductor {
@@ -3028,6 +3082,7 @@ mod tests {
         let grid = Grid {
             name: "gestures".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks: vec![Track {
                 steps,
                 ..Track::default()
@@ -3389,6 +3444,7 @@ mod tests {
         let grid = Grid {
             name: "mix".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks,
             groups: vec![],
         };
@@ -3643,6 +3699,7 @@ mod tests {
         let grid = Grid {
             name: "test".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks: vec![lead()],
             groups: vec![],
         };
@@ -3712,6 +3769,7 @@ mod tests {
         let grid = Grid {
             name: "choke".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks,
             groups: vec![],
         };
@@ -3804,6 +3862,7 @@ mod tests {
         let grid = Grid {
             name: "macros".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks: vec![track],
             groups: vec![],
         };
@@ -3852,6 +3911,7 @@ mod tests {
         let grid = Grid {
             name: "lock".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks: vec![track],
             groups: vec![],
         };
@@ -3910,6 +3970,7 @@ mod tests {
         let grid = Grid {
             name: "locks".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks: vec![track],
             groups: vec![],
         };
@@ -3985,6 +4046,7 @@ mod tests {
         let grid = Grid {
             name: "slide".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks: vec![track],
             groups: vec![],
         };
@@ -4026,6 +4088,7 @@ mod tests {
         let grid = Grid {
             name: "test".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks: vec![Track {
                 steps: vec![Step::default(); steps],
                 ..lead()

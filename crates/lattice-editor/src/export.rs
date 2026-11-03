@@ -9,7 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
-use lattice_core::{BEATS_PER_BAR, Conductor, Grid, Lane, MAX_BARS, Step};
+use lattice_core::{Conductor, Grid, Lane, MAX_BARS, Step};
 
 use crate::{Editor, Effect};
 
@@ -64,7 +64,7 @@ impl Editor {
                 if !(1..=MAX_BARS).contains(&bars) {
                     return Err(format!("bars must be 1 to {MAX_BARS}"));
                 }
-                let bar = u64::from(BEATS_PER_BAR * self.grid.steps_per_beat.max(1));
+                let bar = u64::from(self.grid.steps_per_bar());
                 vec![Part {
                     steps: u64::from(bars) * bar,
                     ..part(a.current)?
@@ -233,6 +233,7 @@ mod tests {
         let grid = Grid {
             name: "test".into(),
             steps_per_beat: 4,
+            beats_per_bar: 4,
             tracks,
             groups: vec![],
         };
