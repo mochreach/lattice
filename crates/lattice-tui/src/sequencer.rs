@@ -10,9 +10,8 @@ pub struct Sequencer {
     /// The engine's boundaries and pattern changes, as far as the editor's been told.
     boundaries: u64,
     swaps: u64,
-    /// The cue sent, with the lanes, length and meter it carried, so it's sent again if they
-    /// change.
-    cued: Option<(Next, Vec<Lane>, u64, Meter)>,
+    /// The cue sent, with all it carried, so it's sent again if any of it changes.
+    cued: Option<Cued>,
     /// The pattern length sent.
     length: Option<u64>,
     /// The playing pattern's conductor sent.
@@ -20,6 +19,19 @@ pub struct Sequencer {
     /// The song's mutes sent, now and next.
     mutes: Option<(u32, u32)>,
     playing: bool,
+}
+
+/// What a cue carried.
+#[derive(PartialEq)]
+struct Cued {
+    next: Next,
+    lanes: Vec<Lane>,
+    steps: u64,
+    meter: Meter,
+    /// The next pattern's conductor, whose tempos `:meter` rescales.
+    conductor: Option<Conductor>,
+    /// Whether it takes over at the next bar, as one picked by hand does.
+    at_bar: bool,
 }
 
 impl Sequencer {
@@ -69,7 +81,10 @@ impl Sequencer {
             // Patterns last longer than a frame, so there's never more than one to catch up on.
             self.boundaries = boundaries;
             let changed_to = match self.cued.take() {
-                Some((Next::Pattern(p), ..)) if swaps > self.swaps => Some(p),
+                Some(Cued {
+                    next: Next::Pattern(p),
+                    ..
+                }) if swaps > self.swaps => Some(p),
                 _ => None,
             };
             self.swaps = swaps;
@@ -110,20 +125,42 @@ impl Sequencer {
             },
             Next::Loop | Next::Stop => (next, vec![], 0, editor.grid.meter()),
         };
-        let wanted = (next, lanes, steps, meter);
-        if self.cued.as_ref() != Some(&wanted) {
+        let conductor = match next {
+            Next::Pattern(p) => editor.arrangement.conductor(p),
+            Next::Loop | Next::Stop => None,
+        };
+        // Picked by hand, it takes over at the next bar; in the song, when the pattern before
+        // it ends.
+        let at_bar = editor.song_position.is_none();
+        let same = self.cued.as_ref().is_some_and(|c| {
+            (
+                c.next,
+                &c.lanes,
+                c.steps,
+                &c.meter,
+                c.conductor.as_ref(),
+                c.at_bar,
+            ) == (next, &lanes, steps, &meter, conductor, at_bar)
+        });
+        if !same {
+            let wanted = Cued {
+                next,
+                lanes,
+                steps,
+                meter,
+                conductor: conductor.cloned(),
+                at_bar,
+            };
             let cue = match next {
                 Next::Loop => Cue::Loop,
                 Next::Stop => Cue::Stop,
-                Next::Pattern(p) => Cue::Pattern(Box::new(Section {
-                    lanes: wanted.1.clone(),
+                Next::Pattern(_) => Cue::Pattern(Box::new(Section {
+                    lanes: wanted.lanes.clone(),
                     steps,
-                    beats_per_bar: wanted.3.beats,
-                    groups: wanted.3.group_starts(),
-                    conductor: editor.arrangement.conductor(p).cloned().unwrap_or_default(),
-                    // Picked by hand, it takes over at the next bar; in the song, when the
-                    // pattern before it ends.
-                    at_bar: editor.song_position.is_none(),
+                    beats_per_bar: wanted.meter.beats,
+                    groups: wanted.meter.group_starts(),
+                    conductor: wanted.conductor.clone().unwrap_or_default(),
+                    at_bar,
                 })),
             };
             if handle.send(Command::Cue(cue)) {
