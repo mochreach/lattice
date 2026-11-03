@@ -142,6 +142,7 @@ pub fn draw(
     if art == 0 {
         return;
     }
+    view.animated = true;
     let now = Instant::now();
     let time = view.face_clock.seconds();
     // The beat playing, which pattern's it is with it; stopped, a slow beat of the art's own.

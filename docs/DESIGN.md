@@ -582,9 +582,12 @@ designed in from the start.
 - **Silence skipping.** Idle instruments do almost no work.
 - **Benchmarks:** `cargo bench -p lattice-engine` reports what share of one core each
   instrument needs. Run it on every target machine.
+- **The UI draws only while something moves.** It draws every frame (16 ms) while the song
+  plays, a meter falls, a face's art moves, or for three seconds after a key or a `ctl`
+  request; otherwise four times a second, in case something changed unseen. Sitting still, it
+  uses a tenth of what it did drawing every frame.
 - **Later:** tracks are independent until the mixer, so they can run in parallel on a
-  real-time thread pool (not rayon). Raise the audio thread to real-time priority. Limit the UI
-  to 30–60 redraws a second.
+  real-time thread pool (not rayon). Raise the audio thread to real-time priority.
 - **Not GPUs.** Their latency and scheduling don't suit real-time audio at small buffer sizes.
 
 Lay the foundations now, and optimise only where benchmarks show a need.

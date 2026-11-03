@@ -70,6 +70,12 @@ static ALLOCATOR: assert_no_alloc::AllocDisabler = assert_no_alloc::AllocDisable
 
 /// Redraw at least this often, so the playhead moves smoothly.
 const FRAME: Duration = Duration::from_millis(16);
+/// How long the screen is drawn every frame after a key, a request or anything else happening,
+/// for what fades after it: the keys shown, a meter's fall.
+const LIVELY: Duration = Duration::from_secs(3);
+/// How often it's drawn otherwise, while nothing's playing, sounding or moving: in case
+/// anything changes that isn't seen to.
+const IDLE_FRAME: Duration = Duration::from_millis(250);
 
 /// What to do after carrying out an effect.
 enum Flow {
@@ -260,6 +266,9 @@ fn run(
     let mut said = None;
     let mut page = editor.page;
     let mut playing = false;
+    // When something last happened, and when the screen was last drawn.
+    let mut stirred = Instant::now();
+    let mut drawn_at: Option<Instant> = None;
     loop {
         handle.collect_garbage();
         if let Some(problem) = watch.look(handle.status().leaked()) {
@@ -271,6 +280,7 @@ fn run(
                 log!("says: {message}");
             }
             said.clone_from(&editor.message);
+            stirred = Instant::now();
         }
         if editor.page != page {
             page = editor.page;
@@ -298,7 +308,11 @@ fn run(
                 handle,
             );
         }
-        for effect in machine.tick(editor, handle) {
+        let ticked = machine.tick(editor, handle);
+        if !ticked.is_empty() {
+            stirred = Instant::now();
+        }
+        for effect in ticked {
             apply(
                 effect,
                 editor,
@@ -317,7 +331,11 @@ fn run(
         // Watched every frame, so it sees each step start within a frame of it.
         editor.set_transport(playhead.transport(handle.status(), editor, Instant::now()));
         // The tutor checks its lesson as playback starts and stops, and after each key.
-        for effect in editor.tutor_tick() {
+        let tutored = editor.tutor_tick();
+        if !tutored.is_empty() {
+            stirred = Instant::now();
+        }
+        for effect in tutored {
             if let Flow::Quit = apply(
                 effect,
                 editor,
@@ -336,16 +354,28 @@ fn run(
             splash = None;
         }
         let requests = server.map(ctl::Server::requests).unwrap_or_default();
-        editor.fit_manual(usize::from(terminal.size()?.width));
-        let drawn = terminal.draw(|frame| {
-            ui::draw(frame, editor, handle.status(), theme, &mut view);
-            if let Some(splash) = &splash {
-                let area = frame.area();
-                splash.draw(frame.buffer_mut(), area, theme, now);
-            }
-        })?;
-        let screen =
-            (requests.iter().any(|r| r.line.trim() == "screen")).then(|| ctl::screen(drawn.buffer));
+        let status = handle.status();
+        let busy = status.playing() || status.count_in() > 0 || status.recording();
+        if busy || splash.is_some() || !requests.is_empty() || !view.still() {
+            stirred = now;
+        }
+        // Drawn every frame while anything moves, and now and then otherwise, which saves
+        // most of the work while Lattice sits waiting.
+        let due = drawn_at.is_none_or(|at| now.duration_since(at) >= IDLE_FRAME);
+        let mut screen = None;
+        if due || now.duration_since(stirred) < LIVELY {
+            drawn_at = Some(now);
+            editor.fit_manual(usize::from(terminal.size()?.width));
+            let drawn = terminal.draw(|frame| {
+                ui::draw(frame, editor, handle.status(), theme, &mut view);
+                if let Some(splash) = &splash {
+                    let area = frame.area();
+                    splash.draw(frame.buffer_mut(), area, theme, now);
+                }
+            })?;
+            screen = (requests.iter().any(|r| r.line.trim() == "screen"))
+                .then(|| ctl::screen(drawn.buffer));
+        }
         // Answered after drawing, so `screen` shows what's just been drawn.
         for request in requests {
             let allow_save = server.is_some_and(|s| s.allow_save);
@@ -389,6 +419,7 @@ fn run(
         if !event::poll(FRAME)? {
             continue;
         }
+        stirred = Instant::now();
         // Handle everything that's waiting before drawing again.
         loop {
             if let Event::Key(event) = event::read()?

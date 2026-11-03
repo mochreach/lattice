@@ -55,6 +55,8 @@ pub struct ViewState {
     pub(crate) inst_left: usize,
     /// Where faces' art takes its time from.
     pub(crate) face_clock: crate::face::Clock,
+    /// Whether the last frame drew something that moves by itself, as faces' art does.
+    pub(crate) animated: bool,
     /// Each track's count of notes started, as last seen, and when it last changed.
     pub(crate) notes: [Option<(u16, Instant)>; MAX_TRACKS],
     /// Each track's beat, as last seen, and the frame its face's art is on.
@@ -65,7 +67,20 @@ pub struct ViewState {
     waves: Waves,
 }
 
+/// A meter below this, -60dB, has as good as fallen to nothing.
+const METER_FLOOR: f32 = 0.001;
+
 impl ViewState {
+    /// Whether the screen would look the same drawn again, as far as it moves by itself: no
+    /// meter still falling and nothing animated.
+    pub fn still(&self) -> bool {
+        !self.animated
+            && (self.meters.iter())
+                .chain(&self.bus_meters)
+                .chain(&self.group_meters)
+                .all(|&m| m < METER_FLOOR)
+    }
+
     /// Takes the peaks since the last frame, and lets the meters fall.
     fn update_meters(&mut self, status: &Status) {
         let now = Instant::now();
@@ -132,6 +147,7 @@ pub fn draw(
     }
     frame.render_widget(Paragraph::new(header(editor, status, theme)), top);
     view.update_meters(status);
+    view.animated = false;
     match editor.page {
         Page::Pattern => draw_grid(frame, grid, editor, status, theme, view),
         Page::Mixer => mixer_page::draw(frame, grid, editor, status, theme, view),
