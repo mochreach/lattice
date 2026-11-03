@@ -857,9 +857,14 @@ fn group_line(
     }
     let mut spans = vec![Span::raw(" ".repeat(lead))];
     let mut k = 0;
+    // How far the last group's name ran on over the blank space after it.
+    let mut spill = 0;
+    let grouped = |c: &Column| groups.iter().any(|g| g.contains(c.index));
     while let Some(c) = columns.get(k) {
         let Some(group) = groups.iter().find(|g| g.contains(c.index)) else {
-            spans.push(Span::raw(" ".repeat(c.width + 1)));
+            let blank = (c.width + 1).saturating_sub(spill);
+            spill = spill.saturating_sub(c.width + 1);
+            spans.push(Span::raw(" ".repeat(blank)));
             k += 1;
             continue;
         };
@@ -873,22 +878,70 @@ fn group_line(
         let closes = span
             .last()
             .is_some_and(|c| c.index + 1 == group.first + group.len);
-        let start = if opens { "╭─" } else { "──" };
-        let end = if closes { "╮" } else { "─" };
+        // Space after it, with no group over it, that a long name can run on over.
+        let spare: usize = if closes {
+            (columns.iter().skip(k + span.len()))
+                .take_while(|c| !grouped(c))
+                .map(|c| c.width + 1)
+                .sum()
+        } else {
+            0
+        };
         let fold = if group.folded { " ▸" } else { "" };
-        let name = format!(" {}{fold} ", group.name.to_uppercase());
-        let name = fit(&name, width.saturating_sub(3)).trim_end().to_string() + " ";
-        let used = 2 + name.chars().count() + 1;
-        spans.push(Span::styled(start, theme.dim));
-        spans.push(Span::styled(name, theme.text.add_modifier(Modifier::BOLD)));
+        let label = format!(" {}{fold} ", group.name.to_uppercase());
+        let drawn = bracket(&label, width, spare, opens, closes);
+        spans.push(Span::styled(drawn.start, theme.dim));
         spans.push(Span::styled(
-            "─".repeat(width.saturating_sub(used)) + end,
-            theme.dim,
+            drawn.name,
+            theme.text.add_modifier(Modifier::BOLD),
         ));
-        spans.push(Span::raw(if closes { " " } else { "─" }));
+        spans.push(Span::styled(drawn.rest, theme.dim));
+        spill = drawn.spill;
         k += span.len();
     }
     Some(Line::from(spans))
+}
+
+/// A group's bracket over its columns, split for styling.
+struct Bracket {
+    start: &'static str,
+    name: String,
+    /// The line on to its end, and the gap after it.
+    rest: String,
+    /// How many columns the name ran on past the gap.
+    spill: usize,
+}
+
+/// The bracket over `width` columns and the gap after them: `╭─ DRUMS ▸ ───╮`. A name too long
+/// for it runs on over `spare` blank columns after, in place of the line and its end, and is cut
+/// short only where those run out.
+fn bracket(label: &str, width: usize, spare: usize, opens: bool, closes: bool) -> Bracket {
+    let start = if opens { "╭─" } else { "──" };
+    let gap = if closes { " " } else { "─" };
+    // The start, and the end's corner.
+    let room = width.saturating_sub(3);
+    if label.chars().count() <= room {
+        let name = label.to_string();
+        let line = "─".repeat(room - name.chars().count());
+        let end = if closes { "╮" } else { "─" };
+        return Bracket {
+            start,
+            name,
+            rest: format!("{line}{end}{gap}"),
+            spill: 0,
+        };
+    }
+    // Over its columns, the gap and the spare columns, but for a space before what follows.
+    let space = (width + 1 + spare).saturating_sub(start.chars().count() + 1);
+    let name = fit(label, space).trim_end().to_string() + " ";
+    let drawn = start.chars().count() + name.chars().count();
+    let rest = (if closes { " " } else { "─" }).repeat((width + 1).saturating_sub(drawn));
+    Bracket {
+        start,
+        name,
+        rest,
+        spill: drawn.saturating_sub(width + 1),
+    }
 }
 
 /// Track names with mute (`M`, or `m` in this pattern only) and solo flags, lengths and passes, level and pan, then the rules one
@@ -1584,6 +1637,20 @@ fn note_name(pitch: u8) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_group_s_name_fits_its_bracket_or_runs_on_past_it() {
+        let shown = |b: Bracket| format!("{}{}{}", b.start, b.name, b.rest);
+        let b = bracket(" DRUMS ▸ ", 20, 0, true, true);
+        assert_eq!(shown(b), "╭─ DRUMS ▸ ────────╮ ");
+        // Folded, two tracks are five columns: the name runs on over the blank after.
+        let b = bracket(" DRUMS ▸ ", 5, 12, true, true);
+        assert_eq!(b.spill, 5);
+        assert_eq!(shown(b), "╭─ DRUMS ▸ ");
+        // With another group straight after, it's cut short, but keeps to its columns.
+        let b = bracket(" DRUMS ▸ ", 5, 0, true, true);
+        assert_eq!(shown(b), "╭─ DR ");
+    }
 
     #[test]
     fn hints_give_way_to_the_message() {
