@@ -222,10 +222,12 @@ There are four ways to silence a track, for four different jobs.
 | `m`  | `tM`, `:pattern-mute` | this pattern only       | a part that sits out a section        |
 | `─`  | the song page's `m`   | one entry of the song   | a part that sits out one time through |
 
-### Mute: `tm`
+### Mute: `m` or `tm`
 
-`tm` mutes the tracks the selections reach, and unmutes them if they're all muted already; with
-some muted and some not, it mutes them all. `:mute` does the same. A muted track's name shows
+`m` mutes the tracks the selections reach, and unmutes them if they're all muted already; with
+some muted and some not, it mutes them all. It does on every page, on the track the page is on
+(the song page's `m` mutes in the entries selected; see [chapter 6](06-song.md)). `tm`, from the
+track menu, and `:mute` do the same. A muted track's name shows
 `M` and is drawn dimmed.
 
 Muting is the mixer's: it turns the track's strip down to silence, gliding there over a few
@@ -234,9 +236,11 @@ straight back in mid-phrase, and its effects ring out, a delay's echoes dying aw
 stopping. Because the send is taken after the strip's level, a muted track sends nothing either.
 A mute is saved with the song, and undone with `u`.
 
-### Solo: `ts`
+### Solo: `ts`, or `s`
 
-`ts` solos the tracks the selections reach, or unsolos them; `:solo` does the same. While any
+`ts` solos the tracks the selections reach, or unsolos them; `:solo` does the same. On the
+mixer, fx and instrument pages, which have no notes to select, `s` alone does too; on the
+pattern page `s` selects notes, as in Helix. While any
 track is soloed, only soloed tracks are heard, and the rest are dimmed: solo two tracks to hear
 those two together. It's a mixing desk's solo, for listening closely to one part: to set a
 bass's tone, or find which of eight tracks has the wrong note. Unsolo them all to hear the
@@ -271,7 +275,8 @@ With several at once, the name shows one flag, the first of `M`, `m`, `─` and 
 
 | Keys | Action                | Command         | What it does                        |
 |------|-----------------------|-----------------|-------------------------------------|
-| `tm` | `toggle_mute`         | `:mute`         | mute or unmute, in every pattern    |
+| `m`  | `toggle_mute`         | `:mute`         | mute or unmute, in every pattern    |
+| `tm` | `toggle_mute`         | `:mute`         | the same, from the track menu       |
 | `tM` | `toggle_pattern_mute` | `:pattern-mute` | mute or unmute in this pattern only |
 | `ts` | `toggle_solo`         | `:solo`         | solo or unsolo                      |
 

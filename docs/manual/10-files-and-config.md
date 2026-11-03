@@ -559,7 +559,7 @@ Insert mode shares the arrows, `pageup` `pagedown` `home` `end`, `esc`, the play
 
 | Keys | Action                | What it does                          |
 |------|-----------------------|---------------------------------------|
-| `tm` | `toggle_mute`         | mute or unmute                        |
+| `tm` | `toggle_mute`         | mute or unmute (`m` alone too)        |
 | `tM` | `toggle_pattern_mute` | mute or unmute in this pattern only   |
 | `ts` | `toggle_solo`         | solo or unsolo                        |
 | `ta` | `add_track`           | add a track after this one            |
@@ -593,6 +593,7 @@ Insert mode shares the arrows, `pageup` `pagedown` `home` `end`, `esc`, the play
 | `R`       | `toggle_record`  | record on or off                        |
 | `tab`     | `toggle_view`    | the pattern as written, or as playing   |
 | `L`       | `lock_setting`   | mixer: lock the settings changed        |
+| `\|`      | `loop_selection` | loop round the selection, or stop       |
 | `C-c`     | `quit`           | quit; again to lose unsaved changes     |
 
 ## Lattice's other files

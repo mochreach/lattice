@@ -28,7 +28,7 @@ pub struct Help {
 const PAGES: &[(&str, &str)] = &[
     (
         "mixer (gm)",
-        "h l strips · j k into the detail · ( ) strip · tab chain",
+        "h l strips · j k into the detail · ( ) strip · tab chain · m mute · s solo",
     ),
     (
         "",
@@ -44,7 +44,7 @@ const PAGES: &[(&str, &str)] = &[
     ),
     (
         "",
-        "d y p P delete, copy, paste · L loop · c rename · ret edit at this bar · space play",
+        "d y p P delete, copy, paste · | loop · c rename · ret edit at this bar · space play",
     ),
 ];
 

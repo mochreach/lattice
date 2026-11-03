@@ -108,7 +108,8 @@ in order, repeating the last if there are more selections than values. So `%`, t
 | `x` | select whole rows across every track; again to extend a row |
 | `%` | select everything |
 | `tt` | select every step of the tracks the selections reach |
-| `tm` `ts` | mute / solo every track the selections reach (not Helix's `t`, which has no use on a grid) |
+| `m`, `tm` `ts` | mute / solo every track the selections reach (`m` alone on every page, `s` alone where there are no notes to select; not Helix's `t`, which has no use on a grid) |
+| `\|` | loop playback round the selected steps, or the cursor's beat; on the loop, stop (the song page loops bars or entries) |
 | `tM` | mute / unmute in this pattern only: the notes stay, ready to bring back, and the other patterns play them (shown `m`) |
 | `ta`, `tH` `tL` | add a track after this one, move it left / right |
 | `ty`, `td` | copy the tracks the selections reach; remove them, copying them first |
@@ -488,12 +489,12 @@ sit out a section without a pattern of its own; its bars there show `─`, and w
 plays, so does its name on the pattern, mixer and instrument pages. `s` solos it there
 instead, muting the rest, and either again undoes it. `v` selects bars and tracks from the
 cursor, as on the grid, and `x` the cursor's entry (again, the next too); then `m` `s` act on
-every track and entry selected, and `d` `y` `p` `L` `^a` `^x` `+` `-` on every entry. The track
+every track and entry selected, and `d` `y` `p` `|` `^a` `^x` `+` `-` on every entry. The track
 menu (`t`) isn't used here. `c` on
 the entries renames the cursor's pattern, and on the song page `:bars` and `:pattern-name` change
-the cursor's pattern rather than the one being edited. `L` loops the song round the cursor's
-entry, and on another entry stretches the loop to take it in; on an entry inside the loop, it
-stops looping. A bar down the left (`↻` `┃`) marks the bars it covers, and the song goes back to
+the cursor's pattern rather than the one being edited. `|` loops the song round the
+selected entries, or the selected bars of one (with nothing selected, the cursor's bar); on the
+loop, it stops. A bar down the left (`↻` `┃`) marks the bars it covers, and the song goes back to
 its start at its end. `space` plays the song from the cursor's entry to the end, following
 along in the header (`song 2/3`) and on the page, where the playhead moves along the strip and
 down the bars;

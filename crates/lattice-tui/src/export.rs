@@ -155,6 +155,7 @@ pub fn render(export: &Export, buses: Buses, bpm: f64, sample_rate: f32) -> Resu
                 beats_per_bar: 1,
                 groups: 1,
                 at_bar: false,
+                looped: None,
             })),
             None => Cue::Stop,
         };

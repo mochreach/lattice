@@ -216,6 +216,8 @@ fn rendering_never_allocates() {
         beats_per_bar: 4,
         groups: 1,
         at_bar: false,
+        // Looping round some of it, so jumping back is checked too.
+        looped: Some((2, 7)),
     }));
     // The looper, recording an input fed alongside.
     let (mut input, input_rx) = rtrb::RingBuffer::new(48_000);

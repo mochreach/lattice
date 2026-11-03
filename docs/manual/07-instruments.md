@@ -194,7 +194,7 @@ job here, so the names in the middle column are what a config file binds (see
 | `d` `A-d`   | `delete` `clear`            | on a macro, remove it                           |
 | `i` `a`     | `insert` `append`           | play the track on the computer keyboard         |
 | `L`         | `lock_setting`              | lock settings onto the pattern's selection      |
-| `tm` `ts`   | `toggle_mute` `toggle_solo` | mute or solo the cursor's track                 |
+| `m` `s`     | `toggle_mute` `toggle_solo` | mute or solo the cursor's track (or `tm` `ts`)  |
 | `gf`        | `goto_effects`              | the track's effects                             |
 | `gm`        | `goto_mixer`                | the mixer                                       |
 | `gp`        | `goto_pattern`              | the pattern                                     |

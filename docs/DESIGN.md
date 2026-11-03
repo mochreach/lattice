@@ -1426,13 +1426,27 @@ goes to the new pattern. A `SetTrack` carries the number of changes the editor h
 edit made in the frame before the editor caught up is dropped by the engine rather than played in
 the wrong pattern (the editor keeps it, in the pattern it was made in).
 
+**Looping some steps.** `|` loops playback round a range of the pattern's steps
+(`Editor::step_loop`, by `PatternId`, so it stays with its pattern as others come and go). The
+`Sequencer` sends the playing pattern's with `Command::SetLoop`, carrying the swaps seen as
+`SetTrack` does, and a cued pattern's in its `Section`, so the range always arrives with the
+pattern it's for. At the range's end, or on the beat from outside it, the engine jumps back to its
+start: each track to the step it has there (`start` modulo its length) and forward at the song's
+speed, with its pass carrying on and what's sounding left to ring. That's what the pattern plays
+there from the top, gestures aside, rather than a snapshot of how it got there, so it needs no
+state kept on the audio thread and starts the moment it's set. While it loops, `Editor::next` keeps
+to the pattern. The song page loops bars within one time through an entry as the same step range,
+with an entry loop round that entry to keep the song there.
+
 The song page edits `Arrangement::entries`, with its cursor in the editor like the mixer's: a bar
 counted from the song's start and a column, the entries or a track. The entry under it
 (`Editor::song_cursor`) is found from the bars each plays for (`Editor::entry_bars`), and a change
 to an entry's length keeps the cursor on it. In select mode an anchor marks where the selection
 began (`Editor::song_selection`, bars and columns); edits act on every entry it reaches, mutes on
 every track too. `m` `s` and `t` are the page's own (`Editor::song_key`), caught before the
-keymap, as the track menu has nothing to do here. A loop (`Editor::song_loop`, the first and last
+keymap, as the track menu has nothing to do here. Elsewhere `m` mutes and `tm` `ts` mute and
+solo on every page, and `s` solos on the pages with no notes to select; `L` locks wherever there
+are settings, and on the song page says there are none. A loop (`Editor::song_loop`, the first and last
 entries) is the editor's alone, not saved: `next_position` goes from its last entry back to its
 first, so the cue, the mutes and the playhead all follow, and adding or removing entries moves it
 with its own. The page draws only the bars in view, each track's

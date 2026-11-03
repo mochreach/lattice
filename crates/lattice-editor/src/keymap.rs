@@ -235,6 +235,9 @@ pub enum Action {
     /// On the mixer page, start locking; again, lock the settings changed since onto the
     /// selected steps, and put them back.
     LockSetting,
+    /// Loop playback round the selected steps, or on the song page, the selected bars or
+    /// entries; with only the cursor, round its beat or bar; on what's looping, stop.
+    LoopSelection,
     ToggleSolo,
     AddTrack,
     /// Copy, then remove, every track the selections reach.
@@ -350,6 +353,7 @@ impl Action {
         Action::ToggleMute,
         Action::TogglePatternMute,
         Action::LockSetting,
+        Action::LoopSelection,
         Action::ToggleSolo,
         Action::AddTrack,
         Action::RemoveTrack,
@@ -469,6 +473,7 @@ impl Action {
             Action::ToggleMute => "mute / unmute",
             Action::TogglePatternMute => "mute / unmute in this pattern",
             Action::LockSetting => "mixer: L, change settings, L locks them on the selected steps",
+            Action::LoopSelection => "loop playback round the selection, or stop",
             Action::ToggleSolo => "solo / unsolo",
             Action::AddTrack => "add a track after this one",
             Action::RemoveTrack => "remove tracks (and copy)",
@@ -802,6 +807,8 @@ impl Default for Keymap {
                 (Char('s'), SelectNotes),
                 (Char('K'), KeepNotes),
                 (Char('L'), LockSetting),
+                (Char('|'), LoopSelection),
+                (Char('m'), ToggleMute),
                 (Alt('K'), RemoveNotes),
                 (Char('i'), Insert),
                 (Char('a'), Append),

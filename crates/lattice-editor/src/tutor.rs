@@ -494,7 +494,8 @@ const LESSONS: &[Lesson] = &[
     Lesson {
         title: "Mute and solo",
         text: "Some keys open a menu of what can follow, shown in the corner. {toggle_mute} \
-               mutes the tracks the selections reach, and {toggle_solo} solos them; \
+               mutes the tracks the selections reach (`m` alone does too, on every page), and \
+               {toggle_solo} solos them (as `s` alone does where there are no notes to select); \
                {toggle_pattern_mute} (or `:pattern-mute`) mutes them in this pattern only.\n\nMute the BASS \
                track, listen, and unmute it.",
         teaches: &[
@@ -934,17 +935,18 @@ const LESSONS: &[Lesson] = &[
     },
     Lesson {
         title: "Looping a section",
-        text: "To work on one part of the song, loop it. On the song page, {lock_setting} loops \
-               the song round the cursor's entry; on another entry, it stretches the loop to take \
-               that in, and on an entry inside it, it stops looping. A bar down the left marks \
-               the bars it covers, and the song plays from the cursor as ever, going back to the \
-               loop's start at its end.\n\nLoop an entry.",
-        teaches: &[],
+        text: "To work on one part of the song, loop it. On the song page, {loop_selection} \
+               loops the song round the selected entries, or round the selected bars of one, or \
+               with nothing selected, round the cursor's bar; on what's looping, it stops. A bar \
+               down the left marks what it covers, and the song plays from the cursor as ever, \
+               going back to the loop's start at its end. On the pattern page, {loop_selection} \
+               loops the selected steps, or the cursor's beat, the same way.\n\nLoop a bar.",
+        teaches: &[Action::LoopSelection],
         commands: &[],
         setup: nothing,
         watch: never,
         done: |e, _| e.song_loop().is_some(),
-        solution: "gsL",
+        solution: "gs|",
     },
     Lesson {
         title: "Playing the song",

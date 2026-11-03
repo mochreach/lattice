@@ -98,7 +98,7 @@ tracks are heard, as on a mixing desk: solo two tracks to hear just those two. M
 soloing use the same gliding gain as the level, so they fade in and out rather than click.
 Effects on the buses keep running, so a reverb tail rings out after its track is muted.
 
-`tm` and `ts` (or `:mute` and `:solo`) mute and solo on the pattern page and the mixer;
+`m` and `s`, or `tm` and `ts` (or `:mute` and `:solo`), mute and solo the strip's track;
 the [tracks chapter](03-tracks.md) covers them, with pattern mutes and the conductor's. Here
 `:name`, `:len` and `:track-add`, `:track-remove` and `:track-move` go to the strip's track.
 
@@ -196,7 +196,7 @@ the config file binds it (see [files and configuration](10-files-and-config.md))
 | `d`, `A-d` `del` | `delete`, `clear`                   | remove the effect under the cursor      |
 | `L`              | `lock_setting`                      | lock changed settings on selected steps |
 | `esc`            | `escape`                            | cancel `L`'s locking                    |
-| `tm` `ts`        | `toggle_mute`, `toggle_solo`        | mute / solo the cursor's track          |
+| `m` `s`          | `toggle_mute`, `toggle_solo`        | mute / solo the cursor's track          |
 | `R`              | `toggle_record`                     | arm record: changed settings are locked |
 | `gf` `gi`        | `goto_effects`, `goto_instrument`   | the fx, instrument pages, on the strip  |
 | `gm` `gp`        | `goto_mixer`, `goto_pattern`        | the mixer, the pattern                  |

@@ -405,6 +405,8 @@ pub struct Editor {
     /// The entry to go on to after the song position it's paired with, when the entry playing
     /// there has been removed. Any other position goes on as usual.
     song_next: Option<((usize, u32), usize)>,
+    /// The steps playback loops round, in a pattern: from the first up to the second.
+    step_loop: Option<(PatternId, u64, u64)>,
     /// The send and master buses.
     pub buses: Buses,
     pub bpm: f64,
@@ -574,6 +576,7 @@ impl Editor {
             cue: None,
             song_position: None,
             song_next: None,
+            step_loop: None,
             buses: Buses::default(),
             bpm,
             path: None,
@@ -806,6 +809,7 @@ impl Editor {
         self.arrangement = arrangement;
         self.cue = None;
         self.song_position = None;
+        self.step_loop = None;
         self.song = Default::default();
         self.buses = song.buses;
         self.bpm = song.bpm;
@@ -1096,6 +1100,11 @@ impl Editor {
         {
             self.count = None;
             return effects;
+        }
+        // Pages with no notes to select have `s` solo, as `m` mutes on every page.
+        if matches!(self.page, Page::Mixer | Page::Fx | Page::Instrument) && key == Key::Char('s') {
+            self.count = None;
+            return self.act(Action::ToggleSolo, 1);
         }
         match self.keymap.normal.get(&key).cloned() {
             // Keep the count for the menu's action.
@@ -1688,6 +1697,7 @@ impl Editor {
                     "L locks a setting from the mixer (gm), fx (gf) or instrument (gi) page".into(),
                 );
             }
+            Action::LoopSelection => self.toggle_step_loop(),
             Action::ToggleSolo => return self.run_command("solo"),
             Action::AddTrack => return self.run_command("track-add"),
             Action::RemoveTrack => return self.delete_tracks(),

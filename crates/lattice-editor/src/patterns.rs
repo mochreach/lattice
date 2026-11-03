@@ -497,9 +497,55 @@ impl Editor {
         }
     }
 
+    /// The steps playback loops round in pattern `pattern`, from the first up to the second,
+    /// if it loops round some of it.
+    pub fn step_loop(&self, pattern: usize) -> Option<(u64, u64)> {
+        let (id, start, end) = self.step_loop?;
+        if self.pattern_ids.get(pattern) != Some(&id) {
+            return None;
+        }
+        // The pattern may have been shortened since.
+        let end = end.min(self.arrangement.steps(&self.grid, pattern)?);
+        (start < end).then_some((start, end))
+    }
+
+    /// Loops playback round the steps from `start` up to `end` of pattern `pattern`, or stops
+    /// looping round steps.
+    pub(crate) fn set_step_loop(&mut self, looped: Option<(usize, u64, u64)>) {
+        self.step_loop = looped
+            .and_then(|(pattern, start, end)| Some((*self.pattern_ids.get(pattern)?, start, end)));
+    }
+
+    /// Loops playback round the selected steps of the pattern, or with only the cursor, round
+    /// its beat; or, with only the cursor on the steps being looped, stops.
+    pub(crate) fn toggle_step_loop(&mut self) {
+        let current = self.arrangement.current;
+        let region = self.selection();
+        let (first, last) = (region.first_step as u64, region.last_step as u64);
+        let beat = u64::from(self.grid.steps_per_beat.max(1));
+        let looped = match self.step_loop(current) {
+            _ if first != last => Some((first, last + 1)),
+            Some((start, end)) if (start..end).contains(&first) => None,
+            _ => Some((first / beat * beat, (first / beat + 1) * beat)),
+        };
+        let steps = self.pattern_steps();
+        let looped = looped.map(|(start, end)| (start, end.min(steps)));
+        self.set_step_loop(looped.map(|(start, end)| (current, start, end)));
+        self.message = Some(match self.step_loop(current) {
+            // Numbered as the pattern page numbers its rows, from 00.
+            Some((start, end)) if end == start + 1 => format!("looping step {start:02}"),
+            Some((start, end)) => format!("looping steps {start:02} to {:02}", end - 1),
+            None => "not looping".into(),
+        });
+    }
+
     /// What should happen when the playing pattern ends.
     pub fn next(&self) -> Next {
         let current = self.arrangement.current;
+        // Looping round some of it, it stays.
+        if self.step_loop(current).is_some() {
+            return Next::Loop;
+        }
         let pattern = match self.song_position {
             Some(position) => match self.next_position(position) {
                 Some((entry, _)) => match self.arrangement.entries.get(entry) {
@@ -609,6 +655,35 @@ mod tests {
             into_step: 0.0,
             count_in: 0,
         }));
+    }
+
+    #[test]
+    fn playback_loops_round_the_selected_steps_or_the_cursors_beat() {
+        let mut e = editor();
+        run(&mut e, "pattern-new");
+        assert_eq!(e.arrangement.current, 1);
+        e.handle(Key::Esc);
+        // The cursor's beat, steps 5 to 8.
+        for key in "jjjjj|".chars() {
+            e.handle(Key::Char(key));
+        }
+        assert_eq!(e.step_loop(1), Some((4, 8)));
+        assert_eq!(e.step_loop(0), None, "only in its own pattern");
+        assert_eq!(e.message.as_deref(), Some("looping steps 04 to 07"));
+        // Looping, the pattern plays on, whatever's cued.
+        e.cue = Some(0);
+        assert_eq!(e.next(), Next::Loop);
+        // | on the steps looping stops; a selection loops its rows.
+        e.handle(Key::Char('|'));
+        assert_eq!(e.step_loop(1), None);
+        assert_eq!(e.next(), Next::Pattern(0));
+        for key in "vjj|".chars() {
+            e.handle(Key::Char(key));
+        }
+        assert_eq!(e.step_loop(1), Some((5, 8)));
+        // Removing the pattern takes the loop with it.
+        run(&mut e, "pattern-remove");
+        assert!((0..e.arrangement.patterns.len()).all(|p| e.step_loop(p).is_none()));
     }
 
     #[test]

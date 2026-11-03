@@ -81,6 +81,12 @@ pub enum Command {
     },
     /// How many steps the playing pattern lasts before the next starts; 0 for for ever.
     SetLength(u64),
+    /// Loop round the playing pattern's steps from `start` up to `end`, or stop looping. Ignored
+    /// if the engine's changed pattern since `swaps`, as the range was for the one before.
+    SetLoop {
+        range: Option<(u64, u64)>,
+        swaps: u64,
+    },
     /// The tracks the song mutes, a bit each: `now`, and `next`, from when the playing pattern
     /// ends.
     SetMutes {
@@ -467,6 +473,8 @@ pub struct Section {
     pub groups: u32,
     /// Whether it takes over at the next bar, rather than when the playing pattern ends.
     pub at_bar: bool,
+    /// The steps it loops round, from the first up to the second, if it does.
+    pub looped: Option<(u64, u64)>,
 }
 
 /// Playback state the audio thread publishes for the UI.
@@ -1200,6 +1208,8 @@ pub struct Engine {
     /// is, and what happens when it ends.
     pattern_len: u64,
     pattern_step: u64,
+    /// The playing pattern's steps it loops round, from the first up to the second.
+    loop_range: Option<(u64, u64)>,
     /// Steps since the pattern began, through its loops: the conductor goes round its own
     /// length, which can be longer than the pattern's.
     conductor_at: u64,
@@ -1301,6 +1311,7 @@ impl Engine {
             step_index: 0,
             count_in: 0,
             pattern_len: 0,
+            loop_range: None,
             mutes: 0,
             next_mutes: 0,
             pattern_step: 0,
@@ -1485,6 +1496,11 @@ impl Engine {
                     self.discard(Garbage::Conductor(conductor));
                 }
                 Command::SetLength(steps) => self.pattern_len = steps,
+                Command::SetLoop { range, swaps } => {
+                    if swaps == self.swaps {
+                        self.loop_range = range.filter(|(start, end)| start < end);
+                    }
+                }
                 Command::SetMutes { now, next } => (self.mutes, self.next_mutes) = (now, next),
                 Command::Cue(cue) => {
                     if let Cue::Pattern(old) = std::mem::replace(&mut self.cue, cue) {
@@ -2093,6 +2109,16 @@ impl Engine {
                 return;
             }
         }
+        // Looping round some of the pattern: back to its start at its end, or from outside it,
+        // on the beat.
+        if let Some((start, end)) = self.loop_range {
+            let step = self.pattern_step;
+            let outside = step < start || step > end;
+            let on_beat = step % self.steps_per_beat == start % self.steps_per_beat;
+            if step == end || outside && on_beat {
+                self.jump_to(start);
+            }
+        }
         self.status
             .pattern_step
             .store(self.pattern_step, Ordering::Relaxed);
@@ -2461,6 +2487,7 @@ impl Engine {
                         std::mem::swap(&mut self.conductor, &mut section.conductor);
                     }
                     self.pattern_len = section.steps;
+                    self.loop_range = section.looped.filter(|(start, end)| start < end);
                     self.beats_per_bar = u64::from(section.beats_per_bar.max(1));
                     self.beat_groups = section.groups;
                     self.swaps += 1;
@@ -2479,6 +2506,24 @@ impl Engine {
         // Bars count from the top of each pattern, for the click's accent.
         self.step_index = 0;
         self.status.boundaries.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Moves playback to the pattern's step `step`, each track to the step it has there and
+    /// going forward at the song's speed, as from the top. Its pass carries on, and what's
+    /// sounding rings on.
+    fn jump_to(&mut self, step: u64) {
+        for t in &mut self.tracks {
+            let len = t.track.steps.len() as u64;
+            t.playhead = step.checked_rem(len).unwrap_or(0) as usize;
+            t.backwards = false;
+            t.faster = 1;
+            t.slower = 1;
+            t.waits = None;
+            t.rest = 0;
+        }
+        self.pattern_step = step;
+        self.conductor_at = step;
+        self.step_index = step;
     }
 
     /// Chokes every other track in `index`'s group with its choke number, except those that hit
@@ -2739,6 +2784,40 @@ mod tests {
     }
 
     #[test]
+    fn playback_loops_round_a_range_of_steps() {
+        let (mut engine, mut handle) = with_synth(48_000.0);
+        let step = 48_000.0 * 60.0 / (133.0 * 4.0);
+        handle.send(Command::SetLength(16));
+        handle.send(Command::SetLoop {
+            range: Some((2, 5)),
+            swaps: 0,
+        });
+        let mut heard = vec![];
+        render(&mut engine, 64, (step / 2.0) as usize);
+        for _ in 0..9 {
+            heard.push(handle.status().position(0).map(|(s, _)| s));
+            render(&mut engine, 64, step as usize);
+        }
+        // From the top into the loop, then round steps 2 to 4.
+        let looped = [0, 1, 2, 3, 4, 2, 3, 4, 2].map(Some);
+        assert_eq!(heard, looped);
+
+        // A range for a pattern played before is ignored; none stops looping, and it plays on.
+        handle.send(Command::SetLoop {
+            range: None,
+            swaps: 1,
+        });
+        render(&mut engine, 64, (step * 3.0) as usize);
+        assert_eq!(handle.status().position(0), Some((3, 0)));
+        handle.send(Command::SetLoop {
+            range: None,
+            swaps: 0,
+        });
+        render(&mut engine, 64, (step * 3.0) as usize);
+        assert_eq!(handle.status().position(0), Some((6, 0)));
+    }
+
+    #[test]
     fn patterns_change_on_the_boundary_as_cued() {
         let (mut engine, mut handle) = with_synth(48_000.0);
         let step = 48_000.0 * 60.0 / (133.0 * 4.0);
@@ -2755,6 +2834,7 @@ mod tests {
             beats_per_bar: 4,
             groups: 1,
             at_bar: false,
+            looped: None,
         }))));
         render(&mut engine, 256, (step * 3.5) as usize);
         assert_eq!(handle.status().position(0), Some((3, 0)));
@@ -2821,6 +2901,7 @@ mod tests {
             beats_per_bar: 4,
             groups: 1,
             at_bar: false,
+            looped: None,
         }))));
         let (left, _) = render_stereo(&mut engine, 750);
         assert_eq!(onsets(&left), [500, 625]);
@@ -2881,6 +2962,7 @@ mod tests {
             beats_per_bar: 4,
             groups: 1,
             at_bar: true,
+            looped: None,
         }))));
         render(&mut engine, 256, (step * 15.5) as usize);
         assert_eq!(handle.status().swaps(), 0);
@@ -2976,6 +3058,7 @@ mod tests {
             beats_per_bar: 3,
             groups: 1,
             at_bar: false,
+            looped: None,
         }));
         let mut clicks = String::new();
         for _ in 0..10 {

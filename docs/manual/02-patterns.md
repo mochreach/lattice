@@ -835,6 +835,29 @@ while the rest plays. Edits are heard on the next pass over the step, even mid-l
 
 Playing the song, rather than looping this pattern, is in [chapter 6](06-song.md).
 
+### Looping some steps: `|`
+
+To work on a few steps, loop playback round them: select the rows (`v` and `j`, or `x`) and
+press `|`, `loop_selection`. With only the cursor, `|` loops round its beat. The gutter marks the
+loop, `↻` on its first step and `┃` down the rest, and the status line says
+`looping steps 04 to 07`, numbered as the gutter numbers rows. `|` on a looping step stops.
+
+```
+ 04↻  C-4  ··
+ 05┃  ···  ··
+ 06┃  E-4  ··
+ 07┃  ···  ··
+ 08   G-4  ··
+```
+
+At the end of the loop playback jumps back to its first step, each track to the step it plays
+there and going forward at the song's speed, as from the top, whatever its gestures had it doing.
+Notes still sounding ring on. Started from outside the loop, or with play stopped, it jumps in on
+the next beat. While it loops, the pattern stays, even in the song or with another cued. The
+loop is the pattern's: going to another pattern leaves it, and coming back finds it again. It
+isn't saved. `|` is a repeat bar, as in printed music; the song page loops bars and entries the
+same way ([chapter 6](06-song.md)).
+
 ### As written, or as playing: `tab`
 
 The grid normally shows the pattern **as written**. A track's rules change what it plays each

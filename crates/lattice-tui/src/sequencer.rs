@@ -16,6 +16,8 @@ pub struct Sequencer {
     length: Option<u64>,
     /// The playing pattern's conductor sent.
     conductor: Option<Conductor>,
+    /// The steps the playing pattern loops round, as sent.
+    looped: Option<Option<(u64, u64)>>,
     /// The song's mutes sent, now and next.
     mutes: Option<(u32, u32)>,
     playing: bool,
@@ -32,6 +34,8 @@ struct Cued {
     conductor: Option<Conductor>,
     /// Whether it takes over at the next bar, as one picked by hand does.
     at_bar: bool,
+    /// The steps it loops round.
+    looped: Option<(u64, u64)>,
 }
 
 impl Sequencer {
@@ -58,6 +62,16 @@ impl Sequencer {
             };
             if handle.send(command) {
                 self.conductor = Some(conductor.clone());
+            }
+        }
+        let looped = editor.step_loop(current);
+        if self.looped != Some(looped) {
+            let command = Command::SetLoop {
+                range: looped,
+                swaps: self.swaps,
+            };
+            if handle.send(command) {
+                self.looped = Some(looped);
             }
         }
     }
@@ -90,8 +104,9 @@ impl Sequencer {
             self.swaps = swaps;
             editor.boundary(changed_to);
             if changed_to.is_some() {
-                // The engine has the new pattern's conductor, from its cue.
+                // The engine has the new pattern's conductor and loop, from its cue.
                 self.conductor = None;
+                self.looped = None;
             }
         }
         while let Some(conducted) = handle.conducted() {
@@ -125,9 +140,9 @@ impl Sequencer {
             },
             Next::Loop | Next::Stop => (next, vec![], 0, editor.grid.meter()),
         };
-        let conductor = match next {
-            Next::Pattern(p) => editor.arrangement.conductor(p),
-            Next::Loop | Next::Stop => None,
+        let (conductor, looped) = match next {
+            Next::Pattern(p) => (editor.arrangement.conductor(p), editor.step_loop(p)),
+            Next::Loop | Next::Stop => (None, None),
         };
         // Picked by hand, it takes over at the next bar; in the song, when the pattern before
         // it ends.
@@ -140,7 +155,8 @@ impl Sequencer {
                 &c.meter,
                 c.conductor.as_ref(),
                 c.at_bar,
-            ) == (next, &lanes, steps, &meter, conductor, at_bar)
+                c.looped,
+            ) == (next, &lanes, steps, &meter, conductor, at_bar, looped)
         });
         if !same {
             let wanted = Cued {
@@ -150,6 +166,7 @@ impl Sequencer {
                 meter,
                 conductor: conductor.cloned(),
                 at_bar,
+                looped,
             };
             let cue = match next {
                 Next::Loop => Cue::Loop,
@@ -161,6 +178,7 @@ impl Sequencer {
                     groups: wanted.meter.group_starts(),
                     conductor: wanted.conductor.clone().unwrap_or_default(),
                     at_bar,
+                    looped,
                 })),
             };
             if handle.send(Command::Cue(cue)) {

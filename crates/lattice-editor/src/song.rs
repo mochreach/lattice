@@ -133,25 +133,70 @@ impl Editor {
             .filter(|&(start, end)| start <= end && end < self.arrangement.entries.len())
     }
 
-    /// Loops the song round the selected entries. With only the cursor's, it stretches a loop
-    /// to take it in, or on an entry in the loop, stops looping.
+    /// The bars the song page shows looping: those of the entries looped, or those of the steps
+    /// looped in an entry, in its first time through.
+    pub fn song_loop_bars(&self) -> Option<RangeInclusive<usize>> {
+        let (start, end) = self.song_loop()?;
+        let pattern = self.arrangement.entries.get(start)?.pattern;
+        let from = self.entry_start(start);
+        if start == end
+            && let Some((first, last)) = self.step_loop(pattern)
+        {
+            let bar = self.arrangement.bar(&self.grid, pattern).max(1);
+            let (first, last) = ((first / bar) as usize, ((last - 1) / bar) as usize);
+            return Some(from + first..=from + last);
+        }
+        Some(from..=self.entry_end(end))
+    }
+
+    /// Loops the song round the selection: the entries it covers, or, within one time through
+    /// an entry, its bars. With only the cursor on what's looping, stops.
     fn toggle_loop(&mut self) {
         if self.arrangement.entries.is_empty() {
             return;
         }
-        let selected = self.song_entries();
-        let (first, last) = (*selected.start(), *selected.end());
-        let looped = match self.song_loop() {
-            _ if first != last => Some((first, last)),
-            Some((start, end)) if (start..=end).contains(&first) => None,
-            Some((start, end)) => Some((start.min(first), end.max(first))),
-            None => Some((first, first)),
+        let (bars, _) = self.song_selection();
+        let (first, last) = (*bars.start(), *bars.end());
+        if first == last && self.song_loop_bars().is_some_and(|b| b.contains(&first)) {
+            self.song.looped = None;
+            self.set_step_loop(None);
+            self.message = Some("not looping".into());
+            return;
+        }
+        let entries = self.song_entries();
+        let (entry, last_entry) = (*entries.start(), *entries.end());
+        // Bars within one time through one entry, short of all of it, loop as steps.
+        let pattern = self.arrangement.entries.get(entry).map(|e| e.pattern);
+        let bars_in = pattern.map_or(0, |p| {
+            let steps = self.arrangement.steps(&self.grid, p).unwrap_or(0);
+            (steps / self.arrangement.bar(&self.grid, p).max(1)) as usize
+        });
+        let into = first.saturating_sub(self.entry_start(entry));
+        let whole = first == self.entry_start(entry) && last == self.entry_end(last_entry);
+        let steps = match pattern {
+            Some(p) if entry == last_entry && !whole && bars_in > 0 => {
+                let through = last - first + into;
+                (into / bars_in == through / bars_in).then(|| {
+                    let bar = self.arrangement.bar(&self.grid, p);
+                    let (a, b) = ((into % bars_in) as u64, (through % bars_in) as u64);
+                    (p, a * bar, (b + 1) * bar)
+                })
+            }
+            _ => None,
         };
-        self.song.looped = looped;
-        self.message = Some(match looped {
-            Some((start, end)) if start == end => format!("looping entry {}", start + 1),
-            Some((start, end)) => format!("looping entries {} to {}", start + 1, end + 1),
-            None => "not looping".into(),
+        self.song.looped = Some((entry, last_entry));
+        self.set_step_loop(steps);
+        self.message = Some(match steps {
+            Some((_, a, b)) => {
+                let bar = pattern.map_or(1, |p| self.arrangement.bar(&self.grid, p).max(1));
+                let (a, b) = (a / bar + 1, b / bar);
+                match a == b {
+                    true => format!("looping bar {a} of entry {}", entry + 1),
+                    false => format!("looping bars {a} to {b} of entry {}", entry + 1),
+                }
+            }
+            None if entry == last_entry => format!("looping entry {}", entry + 1),
+            None => format!("looping entries {} to {}", entry + 1, last_entry + 1),
         });
     }
 
@@ -291,7 +336,10 @@ impl Editor {
             }
             Action::Open => return self.open_bar(),
             Action::TogglePlay => return self.play_song(false),
-            Action::LockSetting => self.toggle_loop(),
+            Action::LoopSelection => self.toggle_loop(),
+            Action::LockSetting => {
+                self.message = Some("there are no settings to lock here; | loops".into());
+            }
             Action::Change if self.song.column == 0 => {
                 // Renaming the entry's pattern.
                 self.open_prompt(PromptKind::Command);
@@ -816,10 +864,10 @@ mod tests {
         keys(&mut e, "u");
         assert_eq!(e.arrangement.entries.len(), 5);
 
-        // + and L act on every entry selected.
+        // + and | act on every entry selected.
         keys(&mut e, "ggxx+");
         assert_eq!(song(&e), [(0, 2), (0, 3), (0, 3), (0, 1), (0, 2)]);
-        keys(&mut e, "ggxxL");
+        keys(&mut e, "ggxx|");
         assert_eq!(e.song_loop(), Some((0, 1)));
     }
 
@@ -874,9 +922,10 @@ mod tests {
         let mut e = editor();
         keys(&mut e, "oo");
         assert_eq!(e.song_cursor(), 2);
-        keys(&mut e, "kL");
+        keys(&mut e, "k|");
         assert_eq!(e.song_loop(), Some((1, 1)));
-        keys(&mut e, "jL");
+        keys(&mut e, "vj|");
+        e.handle(Key::Esc);
         assert_eq!(e.song_loop(), Some((1, 2)));
 
         // It keeps to its entries as others come and go before it.
@@ -894,17 +943,46 @@ mod tests {
         assert_eq!(e.song_position, Some((1, 0)));
         e.stopped();
 
-        // L inside the loop ends it, and the song runs on to the end.
-        keys(&mut e, "L");
+        // | inside the loop ends it, and the song runs on to the end.
+        keys(&mut e, "|");
         assert_eq!(e.song_loop(), None);
         keys(&mut e, "j ");
         assert_eq!(e.next(), crate::Next::Stop);
     }
 
     #[test]
+    fn bars_within_an_entry_loop_as_steps() {
+        let mut e = editor();
+        // The first pattern two bars long, played twice: four bars.
+        e.handle(Key::Enter);
+        e.grid.tracks[0].steps.resize(32, Step::default());
+        keys(&mut e, "gs+");
+        assert_eq!(e.entry_bars(), [4]);
+
+        // Its second bar loops as the pattern's steps 16 to 32, and the song stays on it.
+        keys(&mut e, "j|");
+        assert_eq!(e.step_loop(0), Some((16, 32)));
+        assert_eq!(e.song_loop(), Some((0, 0)));
+        assert_eq!(e.song_loop_bars(), Some(1..=1));
+        assert_eq!(e.next(), crate::Next::Loop);
+        assert_eq!(e.message.as_deref(), Some("looping bar 2 of entry 1"));
+        // | on it stops.
+        keys(&mut e, "|");
+        assert_eq!((e.song_loop(), e.step_loop(0)), (None, None));
+
+        // Bars from one time through into the next can't loop as steps: the entry loops.
+        keys(&mut e, "vj|");
+        e.handle(Key::Esc);
+        assert_eq!((e.song_loop(), e.step_loop(0)), (Some((0, 0)), None));
+        // L has nothing to lock here.
+        keys(&mut e, "L");
+        assert_eq!(e.song_loop(), Some((0, 0)));
+    }
+
+    #[test]
     fn undo_and_redo_take_the_loop_with_the_entries() {
         let mut e = editor();
-        keys(&mut e, "ooL");
+        keys(&mut e, "oo|");
         assert_eq!(e.song_loop(), Some((2, 2)));
         // Undoing the entry it loops round takes the loop too, and redoing brings it back.
         keys(&mut e, "u");

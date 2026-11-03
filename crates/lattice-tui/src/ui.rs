@@ -1247,10 +1247,21 @@ fn grid_row(
         Some(bg) if on_beat => Style::new().bg(bg),
         _ => Style::new(),
     };
-    let mut spans = vec![Span::styled(
-        format!("{:>3} ", format!("{row:02}")),
-        gutter_style.patch(band),
-    )];
+    // The steps playback loops round, as the song page shows its loop: an arrow on the first,
+    // going back to, and a bar down the rest.
+    let looped = editor.step_loop(editor.arrangement.current);
+    let loop_mark = match looped {
+        Some((start, _)) if row as u64 == start => "↻",
+        Some((start, end)) if (start..end).contains(&(row as u64)) => "┃",
+        _ => " ",
+    };
+    let mut spans = vec![
+        Span::styled(
+            format!("{:>3}", format!("{row:02}")),
+            gutter_style.patch(band),
+        ),
+        Span::styled(loop_mark, theme.text.fg(theme.accent).patch(band)),
+    ];
     if let Some(conducting) = conducting {
         spans.extend(conducting.row(row, editor, theme, band));
     }

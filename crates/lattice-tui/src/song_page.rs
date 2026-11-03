@@ -59,16 +59,21 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
             Some(start + u64::from(repeat) * steps + step)
         });
     let elapsed = playhead.map_or(String::new(), |at| format!("{} / ", time(at)));
-    let looped = editor.song_loop();
-    // The bars the loop covers, from its first entry's first to its last's last.
-    let loop_bars = looped.and_then(|(start, end)| {
-        let from = editor.entry_start(start);
-        Some(from..from + entry_bars.get(start..=end)?.iter().sum::<usize>())
-    });
-    let looping = match looped {
-        Some((start, end)) if start == end => format!(" · looping entry {}", start + 1),
-        Some((start, end)) => format!(" · looping entries {} to {}", start + 1, end + 1),
-        None => String::new(),
+    let loop_bars = editor.song_loop_bars();
+    // Looping some bars of an entry, as steps of its pattern.
+    let some_bars = |entry: usize| {
+        (arrangement.entries.get(entry)).is_some_and(|e| editor.step_loop(e.pattern).is_some())
+    };
+    let looping = match (editor.song_loop(), &loop_bars) {
+        (Some((start, end)), Some(bars)) if start == end && some_bars(start) => {
+            match (bars.start() + 1, bars.end() + 1) {
+                (a, b) if a == b => format!(" · looping bar {a}"),
+                (a, b) => format!(" · looping bars {a} to {b}"),
+            }
+        }
+        (Some((start, end)), _) if start == end => format!(" · looping entry {}", start + 1),
+        (Some((start, end)), _) => format!(" · looping entries {} to {}", start + 1, end + 1),
+        (None, _) => String::new(),
     };
     let lengths: Vec<u64> = (arrangement.entries.iter().zip(&entry_bars))
         .map(|(e, &b)| b as u64 * arrangement.bar(&editor.grid, e.pattern))
@@ -187,7 +192,7 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
             // The loop as a bar down the bars it covers, an arrow at the top going back to.
             let in_loop = loop_bars.as_ref().filter(|bars| bars.contains(&at));
             let loop_mark = match in_loop {
-                Some(bars) if at == bars.start => "↻",
+                Some(bars) if at == *bars.start() => "↻",
                 Some(_) => "┃",
                 None => " ",
             };

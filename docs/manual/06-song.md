@@ -275,7 +275,7 @@ On the song page the cursor is on a bar, and on the entries column or a track's 
 | `v`       | `select_mode`              | select bars and columns from the cursor                 |
 | `x`       | `select_rows`              | select the cursor's entry; again, the next too          |
 | `;`       | `collapse`                 | collapse the selection onto the cursor                  |
-| `L`       | `lock_setting`             | loop the song round the entries selected                |
+| `\|`      | `loop_selection`           | loop round the entries or bars selected, or stop        |
 | `space`   | `toggle_play`              | play the song from the cursor's entry, or stop          |
 | `u` `U`   | `undo` `redo`              | undo, redo                                              |
 | `gs` `gp` | `goto_song` `goto_pattern` | the song page; back to the pattern page                 |
@@ -326,27 +326,32 @@ pattern doesn't change, so a mute starts exactly on the entry.
 
 `v` starts a selection at the cursor; moving extends it over bars and columns, as on the grid.
 `x` selects the cursor's entry, all its bars, and pressing it again takes in the next entry. `;`
-collapses it. Then `m` and `s` act on every track and entry selected, and `d`, `y`, `p`, `L`,
+collapses it. Then `m` and `s` act on every track and entry selected, and `d`, `y`, `p`, `|`,
 `^a`, `^x`, `+` and `-` on every entry it reaches. An edit ends select mode, as in Helix.
 
 ### Looping a section
 
-To work on one part of the song, loop it. `L` loops the song round the cursor's entry. On
-another entry, `L` stretches the loop to take it in; on an entry inside the loop, it stops
-looping. With several entries selected, it loops round them. A bar down the left marks the loop,
-`↻` at its first bar and `┃` down the rest, and the summary says `looping entries 2 to 3`.
+To work on one part of the song, loop it. `|` loops the song round what's selected: the entries
+it covers, or, if it's some of the bars of one entry, in one time through it, just those bars.
+With nothing selected, it loops round the cursor's bar (which, for a one-bar entry, is the
+entry); on what's looping, it stops. Select entries with `x` to loop whole ones. A bar down the
+left marks the loop, `↻` at its first bar and `┃` down the rest, and the summary says
+`looping entries 2 to 3`, or `looping bar 6`.
 
 ```
   0:04    5↻ ┌ A1            ▄▄▄█  ────  ▄▄▄█  ────  ▄▄▄▄  ▄▄▄▄
   0:05    6┃ │               ▄▄▄█  ────  ▄▄▄█  ────  ▄▄▄▄  ▄▄▄▄
 ```
 
-The song plays from the cursor as ever, and at the end of the loop's last entry goes back to its
-first. The loop isn't saved with the song. Undo takes it with the entries, and adding or
-removing entries keeps it round the same ones.
+The song plays from the cursor as ever, and at the end of the loop goes back to its start. Bars
+loop as steps of their pattern: the engine jumps back to the first of them at the end of the
+last, each track to the step it plays there, so four beats can go round without the rest of the
+pattern. The loop isn't saved with the song. Undo takes an entry loop with the entries, and
+adding or removing entries keeps it round the same ones.
 
-`L` is `lock_setting`: on the mixer it locks settings (see [Gestures and
-locks](05-gestures.md)), and here, having no settings to lock, it loops.
+The pattern page loops the same way (see [Playing](02-patterns.md)). `|` is a repeat bar, as
+in printed music. `L` locks settings on every page that has them (see [Gestures and
+locks](05-gestures.md)); the song page has none, so there it says so.
 
 ## Playing the song
 
