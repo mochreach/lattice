@@ -102,9 +102,9 @@ pub(crate) struct Typing {
     gesture: String,
 }
 
-/// A velocity, 1 to 127, as 00 to 99.
+/// A velocity, 1 to 127, as 00 to 99, to the nearest, so a number typed reads back the same.
 fn velocity_number(velocity: u8) -> u8 {
-    (u32::from(velocity) * 99).div_ceil(127) as u8
+    ((u32::from(velocity) * 99 + 63) / 127) as u8
 }
 
 /// 00 to 99 as a velocity: 99 is the loudest, 127, and 00 the quietest that sounds.
@@ -711,6 +711,15 @@ mod tests {
         (0..c.steps.len())
             .map(|at| c.get(at, field).map(|g| g.to_string()))
             .collect()
+    }
+
+    #[test]
+    fn a_velocity_typed_reads_back_the_same() {
+        for n in 1..=99 {
+            assert_eq!(velocity_number(number_velocity(n)), n);
+        }
+        assert_eq!(velocity_number(1), 1, "the quietest that sounds isn't 00");
+        assert_eq!(velocity_number(127), 99);
     }
 
     #[test]
