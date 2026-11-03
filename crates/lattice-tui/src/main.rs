@@ -293,14 +293,14 @@ fn run(
                 tracks,
                 mixer,
                 exports,
-                &sequencer,
+                &mut sequencer,
                 machine,
                 handle,
             );
         }
         for effect in machine.tick(editor, handle) {
             apply(
-                effect, editor, tracks, mixer, exports, &sequencer, machine, handle,
+                effect, editor, tracks, mixer, exports, &mut sequencer, machine, handle,
             );
         }
         sequencer.sync(editor, handle);
@@ -309,7 +309,7 @@ fn run(
         // The tutor checks its lesson as playback starts and stops, and after each key.
         for effect in editor.tutor_tick() {
             if let Flow::Quit = apply(
-                effect, editor, tracks, mixer, exports, &sequencer, machine, handle,
+                effect, editor, tracks, mixer, exports, &mut sequencer, machine, handle,
             ) {
                 return Ok(());
             }
@@ -338,7 +338,7 @@ fn run(
                 Ok(ask) => {
                     let said = editor.message.clone();
                     let (refused, flow) = serve(
-                        ask, allow_save, editor, tracks, mixer, exports, &sequencer, machine,
+                        ask, allow_save, editor, tracks, mixer, exports, &mut sequencer, machine,
                         handle,
                     );
                     let answer = match refused {
@@ -394,7 +394,7 @@ fn run(
                 };
                 for effect in effects {
                     match apply(
-                        effect, editor, tracks, mixer, exports, &sequencer, machine, handle,
+                        effect, editor, tracks, mixer, exports, &mut sequencer, machine, handle,
                     ) {
                         Flow::Next => {}
                         Flow::Stop => break,
@@ -463,7 +463,7 @@ fn serve(
     tracks: &mut Tracks,
     mixer: &mut Mixer,
     exports: &mut Exports,
-    sequencer: &Sequencer,
+    sequencer: &mut Sequencer,
     machine: &mut Machine,
     handle: &mut Handle,
 ) -> (Option<String>, Flow) {
@@ -505,7 +505,7 @@ fn run_outside(
     tracks: &mut Tracks,
     mixer: &mut Mixer,
     exports: &mut Exports,
-    sequencer: &Sequencer,
+    sequencer: &mut Sequencer,
     machine: &mut Machine,
     handle: &mut Handle,
 ) -> (Option<String>, Flow) {
@@ -532,7 +532,7 @@ fn apply(
     tracks: &mut Tracks,
     mixer: &mut Mixer,
     exports: &mut Exports,
-    sequencer: &Sequencer,
+    sequencer: &mut Sequencer,
     machine: &mut Machine,
     handle: &mut Handle,
 ) -> Flow {
@@ -562,6 +562,7 @@ fn apply(
             // The song's mutes from the first step.
             let (now, next) = editor.song_mutes();
             handle.send(Command::SetMutes { now, next });
+            sequencer.send_pattern(editor, handle);
             Command::Play {
                 count_in: if editor.record { editor.count_in } else { 0 },
             }
@@ -726,7 +727,7 @@ fn open(
     tracks: &mut Tracks,
     mixer: &mut Mixer,
     exports: &mut Exports,
-    sequencer: &Sequencer,
+    sequencer: &mut Sequencer,
     machine: &mut Machine,
     handle: &mut Handle,
 ) -> Flow {

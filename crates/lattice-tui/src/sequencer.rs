@@ -28,6 +28,28 @@ impl Sequencer {
         self.swaps
     }
 
+    /// Sends the pattern's length and conductor if the engine doesn't have them. Also called
+    /// just before playing, as starting the song can change pattern on the same key, and
+    /// otherwise its first step would play to the last pattern's conductor.
+    pub fn send_pattern(&mut self, editor: &Editor, handle: &mut Handle) {
+        let length = editor.pattern_steps();
+        if self.length != Some(length) && handle.send(Command::SetLength(length)) {
+            self.length = Some(length);
+        }
+        let current = editor.arrangement.current;
+        if let Some(conductor) = editor.arrangement.conductor(current)
+            && self.conductor.as_ref() != Some(conductor)
+        {
+            let command = Command::SetConductor {
+                conductor: Box::new(conductor.clone()),
+                swaps: self.swaps,
+            };
+            if handle.send(command) {
+                self.conductor = Some(conductor.clone());
+            }
+        }
+    }
+
     /// Call every frame, before handling keys.
     pub fn sync(&mut self, editor: &mut Editor, handle: &mut Handle) {
         let status = handle.status();
@@ -67,22 +89,7 @@ impl Sequencer {
             }
         }
 
-        let length = editor.pattern_steps();
-        if self.length != Some(length) && handle.send(Command::SetLength(length)) {
-            self.length = Some(length);
-        }
-        let current = editor.arrangement.current;
-        if let Some(conductor) = editor.arrangement.conductor(current)
-            && self.conductor.as_ref() != Some(conductor)
-        {
-            let command = Command::SetConductor {
-                conductor: Box::new(conductor.clone()),
-                swaps: self.swaps,
-            };
-            if handle.send(command) {
-                self.conductor = Some(conductor.clone());
-            }
-        }
+        self.send_pattern(editor, handle);
         let mutes = editor.song_mutes();
         if self.mutes != Some(mutes) {
             let (now, next) = mutes;
