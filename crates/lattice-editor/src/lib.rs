@@ -1123,6 +1123,17 @@ impl Editor {
         }
     }
 
+    /// Says that `action` has nothing to act on on this page, so the player isn't left
+    /// wondering whether the key was heard.
+    pub(crate) fn does_nothing(&mut self, action: Action) {
+        let key = tutor::keys_for(&self.keymap, action).into_iter().next();
+        let key = key.unwrap_or_else(|| action.name());
+        self.message = Some(format!(
+            "{key} does nothing on the {} page",
+            self.page.name()
+        ));
+    }
+
     /// Does what a key's bound to, `n` times for an action. A command runs once.
     fn bound(&mut self, binding: &Binding, n: usize) -> Vec<Effect> {
         match binding {

@@ -1535,7 +1535,7 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             theme.dim,
         ),
         Mode::Normal if editor.page == Page::Song => (
-            "jk bars · w b entries · hl tracks · v select · x entry · m mute · s solo · L loop · C-a C-x pattern · + - repeats · c rename · o add · d delete · ret edit".into(),
+            "jk bars · w b entries · hl tracks · v select · x entry · m mute · s solo · | loop · C-a C-x pattern · + - repeats · c rename · o add · d delete · ret edit".into(),
             theme.dim,
         ),
         Mode::Normal => {
@@ -1585,7 +1585,7 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             theme.dim,
         ),
         Mode::Select if editor.page == Page::Song => (
-            "hjkl w b extend · x next entry · m mute · s solo · L loop · y copy · d delete · C-a C-x pattern · + - repeats · esc done".into(),
+            "hjkl w b extend · x next entry · m mute · s solo · | loop · y copy · d delete · C-a C-x pattern · + - repeats · esc done".into(),
             theme.dim,
         ),
         Mode::Select => (

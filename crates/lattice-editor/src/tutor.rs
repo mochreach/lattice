@@ -1146,7 +1146,7 @@ fn fill(text: &str, keymap: &Keymap) -> String {
 
 /// Every way to press `action`, letters first: in normal mode, through a menu, then in insert
 /// mode.
-fn keys_for(keymap: &Keymap, action: Action) -> Vec<String> {
+pub(crate) fn keys_for(keymap: &Keymap, action: Action) -> Vec<String> {
     let mut keys = vec![];
     for (key, binding) in &keymap.normal {
         match binding {

@@ -655,6 +655,13 @@ mod tests {
     }
 
     #[test]
+    fn a_key_with_nothing_to_act_on_says_so() {
+        let mut e = editor();
+        keys(&mut e, "gfy");
+        assert_eq!(e.message.as_deref(), Some("y does nothing on the fx page"));
+    }
+
+    #[test]
     fn settings_are_lines_under_their_effect() {
         let mut e = editor();
         keys(&mut e, "gf:fx-add delay\n:fx-add reverb\n");

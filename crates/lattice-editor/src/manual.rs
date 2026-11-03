@@ -486,7 +486,7 @@ impl Editor {
             | Action::GotoSong
             | Action::GotoInstrument
             | Action::GotoEffects => return None,
-            _ => {}
+            _ => self.does_nothing(action),
         }
         Some(vec![])
     }

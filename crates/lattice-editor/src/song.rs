@@ -348,7 +348,7 @@ impl Editor {
                 }
             }
             // Pattern editing has nothing to act on here.
-            _ => {}
+            _ => self.does_nothing(action),
         }
         vec![]
     }

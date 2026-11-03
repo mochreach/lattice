@@ -274,7 +274,8 @@ Lattice has five pages for making music and two for reading. The `g` menu goes b
 `gm`, `gf` and `gi` open on the cursor's track, so `gf` on the bass shows the bass's effects.
 `esc` on the help page or the manual goes back to the page you came from. On every page, the
 transport, the command line and the `g` keys work; keys that would change something out of
-sight, such as editing the pattern from the help page, do nothing.
+sight, such as editing the pattern from the help page, do nothing, and the status line says so
+(`y does nothing on the fx page`), so a key that seems unheard was heard, just not useful there.
 
 ## Counts
 

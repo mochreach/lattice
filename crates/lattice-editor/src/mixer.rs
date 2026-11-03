@@ -55,6 +55,21 @@ pub enum Strip {
     Master,
 }
 
+impl Page {
+    /// What the player calls it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Page::Pattern => "pattern",
+            Page::Mixer => "mixer",
+            Page::Fx => "fx",
+            Page::Instrument => "instrument",
+            Page::Song => "song",
+            Page::Help => "help",
+            Page::Manual => "manual",
+        }
+    }
+}
+
 impl Strip {
     pub fn is_bus(self) -> bool {
         !matches!(self, Strip::Track(_))
@@ -430,7 +445,7 @@ impl Editor {
             | Action::GotoInstrument
             | Action::GotoEffects => return None,
             // Pattern editing has nothing to act on here.
-            _ => {}
+            _ => self.does_nothing(action),
         }
         Some(vec![])
     }
