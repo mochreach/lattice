@@ -295,7 +295,8 @@ cursor's (`P` before), so `d` then `p` moves an entry and `y` then `p` repeats a
 entries hold on to their patterns and muted tracks themselves, not their places, so they paste
 the same after tracks or patterns are added, removed, moved or brought back with `u`; an entry
 whose pattern has gone is left out. The cursor stays on its entry as entries around it change
-length.
+length. Removing the entry that's playing lets its pattern play to its end, then goes on with
+the entry after it, from that entry's first repeat.
 
 `ret` goes to the cursor's entry's pattern, with the grid's cursor on the bar of it the song
 page's cursor was on, and on its track if it was on a track's column. `c` on the entries column

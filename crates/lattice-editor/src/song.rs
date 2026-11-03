@@ -563,6 +563,7 @@ impl Editor {
             return;
         }
         self.checkpoint();
+        let playing_gone = (self.song_position).is_some_and(|(p, _)| selected.contains(&p));
         let gone: Vec<Entry> = self.arrangement.entries.drain(selected.clone()).collect();
         if yank {
             self.song.yanked = self.copy_entries(&gone);
@@ -581,6 +582,10 @@ impl Editor {
                 )),
                 None => None,
             };
+        }
+        // The pattern playing plays on; then the song goes on with the entry after those gone.
+        if playing_gone && let Some(position) = self.song_position {
+            self.song_next = Some((position, *selected.start()));
         }
         // Onto the start of the entry after, or the one before at the end.
         let len = self.arrangement.entries.len();
@@ -940,6 +945,30 @@ mod tests {
         keys(&mut e, "u");
         assert_eq!(e.arrangement.patterns.len(), 3);
         assert_eq!(pasted(&mut e).0, 2, "and back up");
+    }
+
+    #[test]
+    fn removing_the_entry_playing_goes_on_to_the_one_after() {
+        let mut e = editor();
+        let entry = |pattern, repeats| Entry {
+            pattern,
+            repeats,
+            mutes: 0,
+        };
+        e.arrangement.entries = vec![entry(0, 1), entry(1, 2), entry(0, 3)];
+        e.song_position = Some((1, 1));
+        e.song.bar = e.entry_start(1);
+        e.page = Page::Song;
+        keys(&mut e, "d");
+        assert_eq!(e.arrangement.entries.len(), 2);
+        // The pattern playing (1) plays on; pattern 0 follows, from its first repeat of three.
+        assert_eq!(e.next(), crate::Next::Pattern(0));
+        e.boundary(Some(0));
+        assert_eq!(e.song_position, Some((1, 0)));
+        // Removing the last entry, while it plays, ends the song after it.
+        e.song.bar = e.entry_start(1);
+        keys(&mut e, "d");
+        assert_eq!(e.next(), crate::Next::Stop);
     }
 
     #[test]

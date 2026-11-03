@@ -402,6 +402,9 @@ pub struct Editor {
     pub cue: Option<usize>,
     /// While the song plays from the arrangement: which entry, and which repeat of it.
     pub song_position: Option<(usize, u32)>,
+    /// The entry to go on to after the song position it's paired with, when the entry playing
+    /// there has been removed. Any other position goes on as usual.
+    song_next: Option<((usize, u32), usize)>,
     /// The send and master buses.
     pub buses: Buses,
     pub bpm: f64,
@@ -570,6 +573,7 @@ impl Editor {
             arrangement,
             cue: None,
             song_position: None,
+            song_next: None,
             buses: Buses::default(),
             bpm,
             path: None,

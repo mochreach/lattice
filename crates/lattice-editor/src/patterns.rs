@@ -480,6 +480,12 @@ impl Editor {
     /// The end of the loop goes back to its start.
     fn next_position(&self, (entry, repeat): (usize, u32)) -> Option<(usize, u32)> {
         let entries = &self.arrangement.entries;
+        // The entry playing was removed: the one in its place plays next, from the start.
+        if let Some((at, next)) = self.song_next
+            && at == (entry, repeat)
+        {
+            return (next < entries.len()).then_some((next, 0));
+        }
         if repeat + 1 < entries.get(entry)?.repeats {
             Some((entry, repeat + 1))
         } else if let Some((start, end)) = self.song_loop()
