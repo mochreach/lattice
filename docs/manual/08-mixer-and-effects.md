@@ -756,8 +756,8 @@ it up a step at a time, each nudge going on from the last value recorded rather 
 setting's own. Each pass round the track is one undo, as with recorded notes, and the setting
 itself is left alone, so `u` takes the whole sweep away. A change during the count-in does nothing.
 
-On the mixer and fx pages, `R` doesn't start insert mode, as it does on the pattern page, since there
-are no notes to play here. The instrument page records settings the same way, and notes too.
+On the mixer and fx pages, `R` doesn't start insert mode, as it does on the pattern page, since
+there are no notes to play here. The instrument page records settings the same way, and notes too.
 
 ### :lock and :unlock
 
