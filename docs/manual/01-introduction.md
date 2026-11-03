@@ -9,8 +9,8 @@ at a time by having you use them. Come here when you want to know exactly how so
 
 Each chapter covers one part of Lattice:
 
-- this one, what Lattice is, the screen, the modes and pages, the command line, undo, playing
-  and learning;
+- this one, what Lattice is and why it exists, the screen, the modes and pages, the command
+  line, undo, playing and learning;
 - [Patterns](02-patterns.md): the grid, moving, selecting and editing notes;
 - [Tracks](03-tracks.md): adding, moving, grouping and folding them;
 - [Rules](04-rules.md): transforms that reshape a track each time it loops;
@@ -44,6 +44,29 @@ Lattice is a music tracker for the terminal: a program for writing music as a gr
 played by its own instruments and effects, with keys modelled on the Helix text editor. It has
 a sample-accurate sequencer, a sound engine written by hand, and rules that reshape a pattern
 each time it comes round, so a loop can change as it plays.
+
+### Why it exists
+
+From its author, Chris Wells Wood:
+
+Lattice is maximalist software, and its intended audience is me. I wanted all of the features
+and all of the tools, fast enough to get musical ideas out of my head and into songs. That's
+it. Every choice serves that, so I've been uncompromising about how easy it is for anyone
+else to use: the keys are the ones my hands already know from Helix, and nothing has been
+smoothed over for a newcomer's sake.
+
+I couldn't have made this before agentic programming. Software this large, this involved and
+this fast, written for one person, wasn't something one person could build in their spare
+time. Now it is, and I think that's exciting and important: software can be made to fit the
+person who uses it, rather than the other way round.
+
+All the same, I think it's a fascinating piece of software, and an interesting way to make
+music. I hope other people get something from it and enjoy it, and I'm curious to see how
+they use it. But that's the philosophy: Lattice is made for me first.
+
+Chris makes videos on their YouTube channel,
+[Mo chreach!](https://www.youtube.com/@mochreach), and writes at
+[mochreach.dev](https://mochreach.dev).
 
 ### Trackers, from the Amiga on
 

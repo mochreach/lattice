@@ -42,7 +42,7 @@ cargo test --workspace
 cargo build --release
 ```
 
-Then try the change in the running app; `lattice ctl` (see the README) can drive it from a
+Then try the change in the running app; `lattice ctl` (see the manual's last chapter) can drive it from a
 script.
 
 ## Conventions
@@ -50,7 +50,7 @@ script.
 - **Keys follow Helix**, not vim. Each page's own actions get single keys on the cursor or the
   `v` selection, rather than going through menus that make little sense there.
 - **Teach what's new.** Every new action or command goes in the tutor, the manual
-  (`docs/manual`, explained in full), the help page, the README and, where it changes the design,
+  (`docs/manual`, explained in full), the help page and, where it changes the design,
   DESIGN.
 - **Saved songs may break.** Lattice is pre-alpha: change the file format freely, without
   keeping old files working.
