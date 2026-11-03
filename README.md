@@ -184,7 +184,7 @@ note on the cursor's step, without moving on, so a step can take several drums.
 | `1`–`9` | in a group, its drums: `1` plays the first track at C-4, `2` the second, and so on; on any other track, the notes of a scale up from the keyboard octave (`:scale`, C major to start) |
 | `0` (held) | note repeat: pads played while it's down repeat in time until let go (`REPEAT` in the header), and record each hit; needs key releases |
 | `.` | how often pads repeat: every 16th, 8th or quarter |
-| `/` `*` `-` | play and enter notes soft, medium or hard (velocity 60, 100, 127; `:vel N` for any other), shown as `vel` in the header |
+| `/` `*` `-` | play and enter notes soft, medium or hard (velocity 47, 78, 99 of 99; `:vel N` for any other), shown as `vel` in the header |
 | `+` | mute mode (`MUTE PADS` in the header): pads `1`–`9` mute and unmute the first nine tracks |
 
 `:scale NAME [ROOT]` chooses the scale: `major`, `minor`, `dorian`, `mixolydian`, `pentatonic`,
@@ -227,7 +227,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:click`, `:follow` | toggle the metronome (saved with the song), following the playhead |
 | `:rec` | toggle recording, like `R` |
 | `:layout NAME` | how notes lie on the keyboard in insert mode: `piano`, `wicki`, `fourths` or `scale` |
-| `:vel N`, `:scale NAME [ROOT]` | the velocity notes are played and entered at (1–127); the scale the numpad's pads play outside a group |
+| `:vel N`, `:scale NAME [ROOT]` | the velocity notes are played and entered at (00–99, as the `vel` field shows it); the scale the numpad's pads play outside a group |
 | `:count N` | bars counted in before recording (0–4, 0 for none; 1 to start) |
 | `:keys` | toggle showing the keys as they're pressed, above the status line, for screencasts |
 | `:name NAME` | rename the track |

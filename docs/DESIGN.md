@@ -465,7 +465,8 @@ track stays a real track, with its own rules, length and strip; the group adds:
 - **More of a pad controller (done).** Outside a group the pads play a scale on the cursor's
   track (`:scale`, from `SCALES`, with a root), degree `n - 1` up from the keyboard octave, so a
   bass or string part can be played one-handed. The numpad's `/` `*` `-` set `Editor::velocity`
-  (60, 100, 127), which every note played or entered takes, piano keys too; `+` switches the
+  (60, 100, 127, shown as 47, 78 and 99: the player only ever sees velocity as 00 to 99, the
+  `vel` field's units, in the header and `:vel` too), which every note played or entered takes, piano keys too; `+` switches the
   pads to muting the first nine tracks, an undoable change like `tm`, for building a song up and
   down live. The non-digit keys arrive as `Key::PadOp`. The pads live in `pads.rs`.
 - **Isomorphic keyboards (done).** Numpads often register only three keys at once, so chords

@@ -102,7 +102,7 @@ studio terms.
 | piano keys |                        | play and record notes                  |
 | numpad     |                        | play and record the pads               |
 
-`:vel N` sets how hard the notes are played and entered (1 to 127), and the numpad's `/` `*` `-`
+`:vel N` sets how hard the notes are played and entered (`00` to `99`), and the numpad's `/` `*` `-`
 pick soft, medium or hard; the header shows it as `vel`. `:layout` changes how the notes lie on
 the keyboard; see [the pattern chapter](02-patterns.md).
 

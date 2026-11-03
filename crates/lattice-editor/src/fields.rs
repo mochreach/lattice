@@ -103,12 +103,12 @@ pub(crate) struct Typing {
 }
 
 /// A velocity, 1 to 127, as 00 to 99, to the nearest, so a number typed reads back the same.
-fn velocity_number(velocity: u8) -> u8 {
+pub fn velocity_number(velocity: u8) -> u8 {
     ((u32::from(velocity) * 99 + 63) / 127) as u8
 }
 
 /// 00 to 99 as a velocity: 99 is the loudest, 127, and 00 the quietest that sounds.
-fn number_velocity(number: u8) -> u8 {
+pub fn number_velocity(number: u8) -> u8 {
     ((u32::from(number.min(99)) * 127 + 49) / 99).max(1) as u8
 }
 

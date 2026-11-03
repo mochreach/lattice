@@ -547,11 +547,12 @@ into a field.
 
 ### Velocity: `:vel`
 
-`:vel N` sets the velocity notes are entered and played at, 1 to 127; it starts at 100 and is
-shown as `vel` in the header. It applies to every note you enter, from the piano keys, `r`, or the
-numpad's pads, and to what you hear. The numpad's `/` `*` `-` set it to 60, 100 and 127, soft,
-medium and hard ([chapter 9](09-recording.md)). To change notes already entered, edit their `vel`
-field (below).
+`:vel N` sets the velocity notes are entered and played at, `00` to `99` as the `vel` field shows
+it, so the number you type is the number you'll see on the notes; it starts at `78` (100 of 127)
+and is shown as `vel` in the header. It applies to every note you enter, from the piano keys, `r`,
+or the numpad's pads, and to what you hear. The numpad's `/` `*` `-` set it to `47`, `78` and
+`99`, soft, medium and hard ([chapter 9](09-recording.md)). To change notes already entered,
+edit their `vel` field (below).
 
 ### Typing into fields
 

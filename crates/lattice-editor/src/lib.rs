@@ -35,7 +35,7 @@ mod inst_page;
 mod keymap;
 mod locks;
 mod manual;
-pub use fields::StepField;
+pub use fields::{StepField, number_velocity, velocity_number};
 pub use locks::{ColumnLabel, lock_text};
 mod looper;
 mod macros;

@@ -383,7 +383,9 @@ mod tests {
             .map(|s| s.note.unwrap().velocity)
             .collect();
         assert_eq!(velocities, [SOFT, HARD]);
-        assert_eq!(e.velocity, 30);
+        // In the vel field's units: 30 of 99.
+        assert_eq!(e.velocity, crate::number_velocity(30));
+        assert_eq!(e.message.as_deref(), Some("velocity 30"));
     }
 
     #[test]

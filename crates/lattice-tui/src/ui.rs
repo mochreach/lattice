@@ -9,7 +9,7 @@ use lattice_core::{
 };
 use lattice_editor::{
     ColumnLabel, Completion, Cursor, Editor, Infobox, Mode, NoteLayout, PadMode, Page, PromptKind,
-    Selection, StepField, TutorView, View, word_start,
+    Selection, StepField, TutorView, View, velocity_number, word_start,
 };
 use lattice_engine::{Chain, Status};
 use ratatui::Frame;
@@ -420,7 +420,7 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         label("   oct "),
         value(editor.octave.to_string()),
         label("   vel "),
-        value(editor.velocity.to_string()),
+        value(format!("{:02}", velocity_number(editor.velocity))),
         label("   step "),
         value(editor.auto_step.to_string()),
         label("   pattern "),
@@ -1393,7 +1393,7 @@ fn grid_row(
             // Velocity, 00 to 99 as the columns are, 99 the loudest.
             let velocity = step
                 .note
-                .map(|n| format!(" {:02}", (u32::from(n.velocity) * 99).div_ceil(127)));
+                .map(|n| format!(" {:02}", velocity_number(n.velocity)));
             spans.push(Span::styled(
                 fit(&velocity.unwrap_or_default(), FIELD),
                 cursor(StepField::Velocity, c.style()),

@@ -431,8 +431,8 @@ pub const COMMANDS: &[Spec] = &[
     Spec {
         name: "vel",
         alias: None,
-        params: &[int("VELOCITY", "velocity", 1, 127)],
-        describe: "how hard notes are played and entered (also the numpad's / * -)",
+        params: &[int("VELOCITY", "velocity", 0, 99)],
+        describe: "how hard notes are played and entered, 00 to 99 as the vel field shows it (also the numpad's / * -)",
     },
     Spec {
         name: "scale",
@@ -1357,7 +1357,12 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![])
         }
         "vel" => {
-            editor.velocity = command.int(0)?;
+            // In the vel field's units, so a velocity reads the same everywhere.
+            editor.velocity = crate::number_velocity(command.int(0)?);
+            editor.message = Some(format!(
+                "velocity {:02}",
+                crate::velocity_number(editor.velocity)
+            ));
             Ok(vec![])
         }
         "scale" => {
