@@ -498,7 +498,7 @@ impl Action {
             Action::PlayFill => "hold for a fill: steps marked F play, and F- don't",
             Action::ToggleRecord => "record on / off",
             Action::ToggleView => "written or playing pattern",
-            Action::Quit => "quit",
+            Action::Quit => "quit, warning first of unsaved changes: again to quit anyway",
         }
     }
 }

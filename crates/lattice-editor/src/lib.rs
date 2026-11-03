@@ -46,6 +46,7 @@ mod patterns;
 mod presets;
 mod rearrange;
 mod record;
+mod search;
 mod song;
 mod suggest;
 mod tutor;
@@ -110,6 +111,8 @@ pub enum PromptKind {
     Keep,
     /// `A-K`: remove the selections containing one of these notes.
     Remove,
+    /// `/` on the help page or the manual: words to find.
+    Search,
 }
 
 impl PromptKind {
@@ -120,6 +123,7 @@ impl PromptKind {
             PromptKind::Select => "select:",
             PromptKind::Keep => "keep:",
             PromptKind::Remove => "remove:",
+            PromptKind::Search => "/",
         }
     }
 }
@@ -514,6 +518,8 @@ pub struct Editor {
     pending: Option<Pending>,
     /// `C-c` was refused for unsaved changes on the last key, so pressing it again quits.
     quit_warned: bool,
+    /// What `/` last looked for on the help page or the manual.
+    search: search::Search,
     /// One clip per selection copied.
     clipboard: Vec<Clip>,
     /// Whole tracks copied, instruments and all.
@@ -634,6 +640,7 @@ impl Editor {
             count: None,
             pending: None,
             quit_warned: false,
+            search: search::Search::default(),
             clipboard: Vec::new(),
             track_clipboard: Vec::new(),
             undo: Vec::new(),
@@ -1095,6 +1102,10 @@ impl Editor {
             self.count = Some((self.count.unwrap_or(0) * 10 + digit).min(9_999));
             return vec![];
         }
+        if let Some(effects) = self.search_key(key) {
+            self.count = None;
+            return effects;
+        }
         if self.page == Page::Song
             && let Some(effects) = self.song_key(key)
         {
@@ -1220,10 +1231,12 @@ impl Editor {
 
     /// Leaves the prompt, putting back the selections a note prompt started from.
     fn cancel_prompt(&mut self) {
-        if let Mode::Command(prompt) = std::mem::replace(&mut self.mode, Mode::Normal)
-            && prompt.kind != PromptKind::Command
-        {
-            self.set_selections(prompt.saved, prompt.saved_primary);
+        match std::mem::replace(&mut self.mode, Mode::Normal) {
+            Mode::Command(prompt) if prompt.kind == PromptKind::Search => self.cancel_search(),
+            Mode::Command(prompt) if prompt.kind != PromptKind::Command => {
+                self.set_selections(prompt.saved, prompt.saved_primary);
+            }
+            _ => {}
         }
     }
 
@@ -1258,7 +1271,9 @@ impl Editor {
             Key::Enter => {
                 let prompt = std::mem::take(prompt);
                 self.mode = Mode::Normal;
-                if prompt.kind == PromptKind::Command {
+                if prompt.kind == PromptKind::Search {
+                    self.finish_search(&prompt.line);
+                } else if prompt.kind == PromptKind::Command {
                     self.remember(&prompt.line);
                     match command::run(self, &prompt.line) {
                         Ok(effects) => return effects,
@@ -1357,8 +1372,10 @@ impl Editor {
         let Mode::Command(prompt) = &self.mode else {
             return;
         };
-        if prompt.kind == PromptKind::Command {
-            return;
+        match prompt.kind {
+            PromptKind::Command => return,
+            PromptKind::Search => return self.search_preview(),
+            _ => {}
         }
         let (selections, primary) = self
             .filter(prompt)
@@ -2441,7 +2458,7 @@ mod tests {
     use super::*;
     use lattice_core::{Condition, MAX_TRACKS, Rule, SongGesture, Transform};
 
-    fn editor() -> Editor {
+    pub(crate) fn editor() -> Editor {
         let track = |name: &str, len| Track {
             face: None,
             pattern_mute: false,

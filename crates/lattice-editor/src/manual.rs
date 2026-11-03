@@ -366,7 +366,7 @@ pub fn wrap(text: &str, room: usize) -> Vec<String> {
 
 impl ManualLine {
     /// Its words, for finding things.
-    fn text(&self) -> &str {
+    pub(crate) fn text(&self) -> &str {
         match self {
             ManualLine::Heading { text, .. } | ManualLine::Text(text) | ManualLine::Code(text) => {
                 text

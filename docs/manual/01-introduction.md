@@ -519,6 +519,12 @@ and `gg` `ge` go to the top and the end; counts work (`10j`). `esc` goes back to
 came from. The transport, the command line and the `g` pages still work, so you can read while
 the song plays.
 
+`/` finds words, as in Helix: type them, and the page scrolls to the first line with them as you
+type, from where you were; `ret` keeps it there and `esc` goes back. Case doesn't matter. `n`
+finds the next line with them and `N` the one before, coming round from the end to the top (the
+status line says `round to the top`). It works on both pages, so `/` `quit` on the help page goes
+to the keys that quit.
+
 In the manual, `w` and `b` go to the next and previous heading, so `w` from the contents goes to
 this chapter. Headings are numbered as they're shown (1, 1.2, 1.2.3), and the contents list the
 chapters and their sections.

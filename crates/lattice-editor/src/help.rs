@@ -17,6 +17,17 @@ pub enum HelpLine {
     Blank,
 }
 
+impl HelpLine {
+    /// Its words, for finding things.
+    pub(crate) fn text(&self) -> String {
+        match self {
+            HelpLine::Heading(text) => text.clone(),
+            HelpLine::Item { keys, args, what } => format!("{keys} {args} {what}"),
+            HelpLine::Blank => String::new(),
+        }
+    }
+}
+
 /// Where the help page is scrolled to, and the page to go back to.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Help {
@@ -61,6 +72,10 @@ const PAGES: &[(&str, &str)] = &[
     (
         "",
         "d y p P delete, copy, paste · | loop · c rename · ret edit at this bar · space play",
+    ),
+    (
+        "help, manual",
+        "j k scroll · / find words · n N the next and the one before · esc back",
     ),
 ];
 

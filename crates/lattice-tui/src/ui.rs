@@ -1527,11 +1527,11 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             theme.dim,
         ),
         Mode::Normal if editor.page == Page::Help => (
-            "jk scroll · C-d C-u half a page · gg ge top and end · esc back".into(),
+            "jk scroll · / find · n N again · C-d C-u half a page · gg ge top and end · esc back".into(),
             theme.dim,
         ),
         Mode::Normal if editor.page == Page::Manual => (
-            "jk scroll · w b headings · C-d C-u half a page · gg ge top and end · :manual TOPIC find · esc back".into(),
+            "jk scroll · w b headings · C-d C-u half a page · gg ge top and end · / find · n N again · :manual TOPIC · esc back".into(),
             theme.dim,
         ),
         Mode::Normal if editor.page == Page::Song => (
@@ -1592,6 +1592,9 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             "hjkl extend · ; collapse · y copy · d delete · r fill · C-a C-x transpose".into(),
             theme.dim,
         ),
+        Mode::Command(prompt) if prompt.kind == PromptKind::Search => {
+            ("words to find · ret find · esc back".into(), theme.dim)
+        }
         Mode::Command(prompt) if prompt.kind != PromptKind::Command => {
             ("C C# Eb4 C-4 * · ret select · esc cancel".into(), theme.dim)
         }

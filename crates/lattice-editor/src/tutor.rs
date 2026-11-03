@@ -1048,7 +1048,8 @@ const LESSONS: &[Lesson] = &[
         title: "Finding more",
         text: "That's the tutor. `:help` lists every key and command, as they're bound; \
                `:manual` explains everything in full, and `:manual delay` goes to what it says \
-               about delay; `:tutor` starts this again.\n\nOpen the help page to finish.",
+               about delay; on either, `/` finds words and `n` `N` the next and the one before. \
+               `:tutor` starts this again.\n\nOpen the help page to finish.",
         teaches: &[],
         commands: &["help", "manual"],
         setup: nothing,
