@@ -1325,6 +1325,8 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         "name" => {
             let name = command.text(0)?.into();
+            track_mut(editor, track)?;
+            editor.checkpoint();
             track_mut(editor, track)?.name = name;
             Ok(vec![])
         }

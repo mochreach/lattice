@@ -3106,6 +3106,16 @@ mod tests {
     }
 
     #[test]
+    fn naming_a_track_is_an_undo_of_its_own() {
+        let mut e = editor();
+        notes(&mut e, "z");
+        command(&mut e, "name lead");
+        e.handle(Key::Char('u'));
+        assert_eq!(e.grid.tracks[0].name, "a", "the name goes back");
+        assert!(e.grid.tracks[0].steps[0].note.is_some(), "but not the note before it");
+    }
+
+    #[test]
     fn quit_and_open_refuse_to_lose_changes() {
         let mut e = editor();
         assert_eq!(command(&mut e, "q"), [Effect::Quit], "nothing to lose");
