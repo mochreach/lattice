@@ -1153,10 +1153,16 @@ fn grid_row(
     editor: &Editor,
     theme: &Theme,
 ) -> Line<'static> {
-    let on_bar = row.is_multiple_of(editor.grid.steps_per_bar() as usize);
+    let bar = editor.grid.steps_per_bar() as usize;
+    let on_bar = row.is_multiple_of(bar);
     let on_beat = row.is_multiple_of(steps_per_beat);
+    // A beat that starts a group of them, in a bar that has groups.
+    let beat = row % bar / steps_per_beat;
+    let on_group = on_beat && beat < 32 && editor.grid.group_starts() >> beat & 1 == 1;
     let gutter_style = if on_bar {
         theme.text.add_modifier(Modifier::BOLD)
+    } else if on_group {
+        theme.text.fg(theme.accent).add_modifier(Modifier::BOLD)
     } else if on_beat {
         theme.text
     } else {

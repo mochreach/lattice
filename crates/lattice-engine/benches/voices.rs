@@ -141,6 +141,7 @@ mod all {
             name: "bench".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks,
             groups: vec![],
         };

@@ -563,9 +563,11 @@ fn apply(
         Effect::Meter {
             steps_per_beat,
             beats_per_bar,
+            groups,
         } => Command::SetMeter {
             steps_per_beat,
             beats_per_bar,
+            groups,
         },
         Effect::Preview { track, pitch } => Command::Preview {
             track,

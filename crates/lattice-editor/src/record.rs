@@ -256,6 +256,7 @@ mod tests {
             name: "test".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: vec![track(16), track(8)],
             groups: vec![],
         };

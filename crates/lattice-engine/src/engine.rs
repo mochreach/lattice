@@ -63,11 +63,12 @@ pub enum Command {
     Stop,
     SetBpm(f64),
     SetClick(bool),
-    /// Steps in a beat and beats in a bar, for the tempo and the click. Send the tempo after:
-    /// until then, steps keep their length.
+    /// Steps in a beat, beats in a bar and the beats that start a group (a bit each), for the
+    /// tempo and the click. Send the tempo after: until then, steps keep their length.
     SetMeter {
         steps_per_beat: u32,
         beats_per_bar: u32,
+        groups: u32,
     },
     /// Replace a track's pattern; heard from the current step on. The old pattern is sent back
     /// to be freed off the audio thread. Tracks longer than `MAX_STEPS` are ignored, and so is a
@@ -1160,6 +1161,8 @@ pub struct Engine {
     fill: bool,
     steps_per_beat: u64,
     beats_per_bar: u64,
+    /// The beats of a bar that start a group, a bit each, which the click accents.
+    beat_groups: u32,
     step_index: u64,
     /// Count-in steps still to play before step 0.
     count_in: u64,
@@ -1264,6 +1267,7 @@ impl Engine {
             fill: false,
             steps_per_beat: u64::from(grid.steps_per_beat.max(1)),
             beats_per_bar: u64::from(grid.beats_per_bar.max(1)),
+            beat_groups: grid.group_starts(),
             step_index: 0,
             count_in: 0,
             pattern_len: 0,
@@ -1410,10 +1414,12 @@ impl Engine {
                 Command::SetMeter {
                     steps_per_beat,
                     beats_per_bar,
+                    groups,
                 } => {
                     self.clock.set_steps_per_beat(steps_per_beat.max(1));
                     self.steps_per_beat = u64::from(steps_per_beat.max(1));
                     self.beats_per_bar = u64::from(beats_per_bar.max(1));
+                    self.beat_groups = groups;
                 }
                 Command::SetTrack {
                     index,
@@ -2008,6 +2014,18 @@ impl Engine {
         self.status.recording.store(recording, Ordering::Relaxed);
     }
 
+    /// Clicks for beat `beat` of a bar: the accent on its first, the accent more softly where
+    /// a group of beats starts, and the plain click on the rest.
+    fn click(&mut self, offset: u32, beat: u64) {
+        let group = beat < 32 && self.beat_groups >> beat & 1 == 1;
+        let (pitch, velocity) = match beat {
+            0 => (CLICK_ACCENT_PITCH, 100),
+            _ if group => (CLICK_ACCENT_PITCH, 60),
+            _ => (CLICK_PITCH, 100),
+        };
+        push(&mut self.click_events, note_on(offset, pitch, velocity));
+    }
+
     fn sequence_step(&mut self, offset: u32) {
         // Counting in: only clicks, accenting each bar's first beat.
         if self.count_in > 0 {
@@ -2015,11 +2033,9 @@ impl Engine {
                 .count_in
                 .store(self.count_in as u32, Ordering::Relaxed);
             if self.count_in.is_multiple_of(self.steps_per_beat) {
-                let bar = self
-                    .count_in
-                    .is_multiple_of(self.beats_per_bar * self.steps_per_beat);
-                let pitch = if bar { CLICK_ACCENT_PITCH } else { CLICK_PITCH };
-                push(&mut self.click_events, note_on(offset, pitch, 100));
+                // Counting down, so the beats left in the bar give the beat it's on.
+                let left = (self.count_in / self.steps_per_beat) % self.beats_per_bar;
+                self.click(offset, (self.beats_per_bar - left) % self.beats_per_bar);
             }
             self.count_in -= 1;
             return;
@@ -2049,12 +2065,7 @@ impl Engine {
         self.conductor_at += 1;
         if self.click_enabled && self.step_index.is_multiple_of(self.steps_per_beat) {
             let beat = self.step_index / self.steps_per_beat;
-            let pitch = if beat.is_multiple_of(self.beats_per_bar) {
-                CLICK_ACCENT_PITCH
-            } else {
-                CLICK_PITCH
-            };
-            push(&mut self.click_events, note_on(offset, pitch, 100));
+            self.click(offset, beat % self.beats_per_bar);
         }
         self.step_index += 1;
 
@@ -2600,6 +2611,7 @@ mod tests {
             name: "empty".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: vec![],
             groups: vec![],
         };
@@ -2640,6 +2652,7 @@ mod tests {
             name: "test".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: vec![lead()],
             groups: vec![],
         };
@@ -2736,6 +2749,7 @@ mod tests {
             name: "mutes".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: vec![Track {
                 steps: vec![Step::note(60); 4],
                 rules: vec![],
@@ -2769,6 +2783,7 @@ mod tests {
             name: "mutes".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: vec![Track {
                 steps: vec![Step::note(60); 2],
                 rules: vec![],
@@ -2837,6 +2852,7 @@ mod tests {
             name: "empty".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: vec![],
             groups: vec![],
         };
@@ -2845,6 +2861,7 @@ mod tests {
         handle.send(Command::SetMeter {
             steps_per_beat: 3,
             beats_per_bar: 2,
+            groups: 1,
         });
         handle.send(Command::SetBpm(60.0));
         engine.play();
@@ -2864,6 +2881,33 @@ mod tests {
             }
         }
         assert_eq!(clicks, [(9, false), (12, true), (15, false)]);
+    }
+
+    #[test]
+    fn the_click_marks_where_each_group_of_beats_starts() {
+        let mut engine = click_only(48_000.0, 120.0);
+        // 7/8 as 2+2+3, a step a beat.
+        engine.steps_per_beat = 1;
+        engine.beats_per_bar = 7;
+        engine.beat_groups = 0b10101;
+        engine.step_index = 0;
+        let mut clicks = vec![];
+        for _ in 0..8 {
+            engine.click_events.clear();
+            engine.sequence_step(0);
+            if let Some(Event {
+                kind: EventKind::NoteOn { pitch, velocity },
+                ..
+            }) = engine.click_events.pop()
+            {
+                clicks.push(match (pitch == CLICK_ACCENT_PITCH, velocity) {
+                    (true, 100) => 'B',
+                    (true, _) => 'g',
+                    _ => '.',
+                });
+            }
+        }
+        assert_eq!(clicks.iter().collect::<String>(), "B.g.g..B");
     }
 
     fn conductor(steps: &[(usize, &str)], len: usize) -> Conductor {
@@ -3083,6 +3127,7 @@ mod tests {
             name: "gestures".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: vec![Track {
                 steps,
                 ..Track::default()
@@ -3445,6 +3490,7 @@ mod tests {
             name: "mix".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks,
             groups: vec![],
         };
@@ -3700,6 +3746,7 @@ mod tests {
             name: "test".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: vec![lead()],
             groups: vec![],
         };
@@ -3770,6 +3817,7 @@ mod tests {
             name: "choke".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks,
             groups: vec![],
         };
@@ -3863,6 +3911,7 @@ mod tests {
             name: "macros".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: vec![track],
             groups: vec![],
         };
@@ -3912,6 +3961,7 @@ mod tests {
             name: "lock".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: vec![track],
             groups: vec![],
         };
@@ -3971,6 +4021,7 @@ mod tests {
             name: "locks".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: vec![track],
             groups: vec![],
         };
@@ -4047,6 +4098,7 @@ mod tests {
             name: "slide".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: vec![track],
             groups: vec![],
         };
@@ -4089,6 +4141,7 @@ mod tests {
             name: "test".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: vec![Track {
                 steps: vec![Step::default(); steps],
                 ..lead()

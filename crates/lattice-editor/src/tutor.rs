@@ -860,7 +860,8 @@ const LESSONS: &[Lesson] = &[
                through them. `:pattern-name` renames this pattern and `:pattern-remove` removes \
                it. A pattern plays for as long as its longest track, or `:bars 2` sets how many \
                bars. A bar is four beats, or `:meter 3` makes it three; `:meter 2 3` makes 6/8, \
-               two beats of three steps.\n\nMake a copy of this pattern called `chorus`.",
+               two beats of three steps, and `:meter 2+2+3` groups a bar of seven, accenting \
+               the start of each group.\n\nMake a copy of this pattern called `chorus`.",
         teaches: &[Action::NextPattern, Action::PrevPattern],
         commands: &[
             "pattern-new",
@@ -1080,6 +1081,7 @@ fn song() -> Song {
             name: "tutor".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: vec![
                 track(
                     "KICK",
@@ -1305,6 +1307,7 @@ mod tests {
             name: "mine".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: vec![Track {
                 name: "t".into(),
                 steps: vec![Step::default(); 16],
@@ -1488,6 +1491,7 @@ mod tests {
             name: "mine".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: vec![Track {
                 name: "t".into(),
                 steps: vec![Step::default(); 16],

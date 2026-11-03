@@ -499,6 +499,10 @@ pub struct Grid {
         skip_serializing_if = "is_default_beats_per_bar"
     )]
     pub beats_per_bar: u32,
+    /// How the bar's beats group, in beats a group, for odd times: `[2, 2, 3]` is a 7/8 that
+    /// goes 1-2 1-2 1-2-3. Empty for none, or adding up to `beats_per_bar`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub grouping: Vec<u32>,
     pub tracks: Vec<Track>,
     /// In track order, never overlapping. Change tracks through [`Grid::insert_track`] and its
     /// siblings, which keep these in line.
@@ -518,6 +522,20 @@ impl Grid {
     /// Steps in a bar: its beats, each of its steps.
     pub fn steps_per_bar(&self) -> u32 {
         self.beats_per_bar.max(1) * self.steps_per_beat.max(1)
+    }
+
+    /// The beats of a bar that start a group, a bit each from the first, which always does.
+    pub fn group_starts(&self) -> u32 {
+        let mut starts = 1;
+        let mut beat = 0;
+        for &size in &self.grouping {
+            beat += size;
+            if beat < 32 {
+                starts |= 1 << beat;
+            }
+        }
+        // The bar's end isn't a start within it.
+        starts & !(1u32.checked_shl(self.beats_per_bar).unwrap_or(0))
     }
 }
 

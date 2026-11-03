@@ -112,6 +112,7 @@ mod tests {
             name: "test".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: (0..5)
                 .map(|i| Track {
                     name: i.to_string(),

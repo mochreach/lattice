@@ -248,26 +248,40 @@ impl Editor {
                 .ok_or_else(|| format!("{what}: 1 to {max}")),
         };
         let grid = &self.grid;
-        let describe = |beats: u32, steps: u32| {
+        let describe = |beats: u32, grouping: &[u32], steps: u32| {
+            let grouped = if grouping.is_empty() {
+                String::new()
+            } else {
+                let sizes: Vec<String> = grouping.iter().map(u32::to_string).collect();
+                format!(" ({})", sizes.join("+"))
+            };
             format!(
-                "{beats} beat{} a bar, {steps} step{} a beat",
+                "{beats} beat{} a bar{grouped}, {steps} step{} a beat",
                 if beats == 1 { "" } else { "s" },
                 if steps == 1 { "" } else { "s" }
             )
         };
         if words.is_empty() {
-            self.message = Some(describe(grid.beats_per_bar, grid.steps_per_beat));
+            self.message = Some(describe(
+                grid.beats_per_bar,
+                &grid.grouping,
+                grid.steps_per_beat,
+            ));
             return Ok(vec![]);
         }
         if words.len() > 2 {
-            return Err("meter: BEATS, then optionally STEPS".into());
+            return Err("meter: BEATS (or groups, as 2+2+3), then optionally STEPS".into());
         }
-        let beats = number(
-            words.first(),
-            "beats",
-            MAX_BEATS_PER_BAR,
-            grid.beats_per_bar,
-        )?;
+        // `2+2+3`: groups of beats, as many beats as they add up to.
+        let sizes = (words.first().into_iter())
+            .flat_map(|w| w.split('+'))
+            .map(|n| number(Some(&n), "beats", MAX_BEATS_PER_BAR, 0))
+            .collect::<Result<Vec<u32>, String>>()?;
+        let beats: u32 = sizes.iter().sum();
+        if beats > MAX_BEATS_PER_BAR {
+            return Err(format!("bars have up to {MAX_BEATS_PER_BAR} beats"));
+        }
+        let grouping = if sizes.len() > 1 { sizes } else { vec![] };
         let steps = number(
             words.get(1),
             "steps",
@@ -324,10 +338,14 @@ impl Editor {
                 }
             }
         }
+        self.message = Some(format!(
+            "{} at {bpm:.1} BPM",
+            describe(beats, &grouping, steps)
+        ));
         self.grid.beats_per_bar = beats;
+        self.grid.grouping = grouping;
         self.grid.steps_per_beat = steps;
         self.bpm = bpm;
-        self.message = Some(format!("{} at {bpm:.1} BPM", describe(beats, steps)));
         Ok(vec![self.meter(), Effect::Bpm(bpm)])
     }
 
@@ -484,6 +502,7 @@ mod tests {
             name: "test".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: vec![track(16), track(12)],
             groups: vec![],
         };

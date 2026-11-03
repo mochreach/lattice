@@ -74,6 +74,14 @@ fn check_grid(grid: &Grid) -> Result<(), String> {
             grid.name, grid.steps_per_beat
         ));
     }
+    if !grid.grouping.is_empty()
+        && (grid.grouping.contains(&0) || grid.grouping.iter().sum::<u32>() != grid.beats_per_bar)
+    {
+        return Err(format!(
+            "grid {:?} groups its beats {:?}, which don't add up to its {} beats",
+            grid.name, grid.grouping, grid.beats_per_bar
+        ));
+    }
     if !(1..=MAX_BEATS_PER_BAR).contains(&grid.beats_per_bar) {
         return Err(format!(
             "grid {:?} has {} beats per bar; bars have 1 to {MAX_BEATS_PER_BAR}",
@@ -243,6 +251,7 @@ mod tests {
                 name: "a".into(),
                 steps_per_beat: 4,
                 beats_per_bar: 4,
+                grouping: vec![],
                 tracks: vec![bass, empty],
                 groups: vec![Group {
                     folded: true,

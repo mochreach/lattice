@@ -166,10 +166,12 @@ pub enum Effect {
     TogglePlay,
     Bpm(f64),
     Click(bool),
-    /// Steps per beat or beats per bar changed: send them to the engine, before the tempo.
+    /// The meter changed: send it to the engine, before the tempo. `groups` has a bit for each
+    /// beat that starts a group, as [`Grid::group_starts`](lattice_core::Grid::group_starts).
     Meter {
         steps_per_beat: u32,
         beats_per_bar: u32,
+        groups: u32,
     },
     /// Audition a note on a track's instrument, briefly.
     Preview {
@@ -707,6 +709,7 @@ impl Editor {
                 name: "new".into(),
                 steps_per_beat: self.grid.steps_per_beat,
                 beats_per_bar: self.grid.beats_per_bar,
+                grouping: self.grid.grouping.clone(),
                 tracks: vec![track],
                 groups: vec![],
             },
@@ -1858,6 +1861,7 @@ impl Editor {
         Effect::Meter {
             steps_per_beat: self.grid.steps_per_beat,
             beats_per_bar: self.grid.beats_per_bar,
+            groups: self.grid.group_starts(),
         }
     }
 
@@ -2309,8 +2313,12 @@ impl Editor {
         };
         let tracks_changed = snapshot.ids != self.ids;
         let grid = &snapshot.grid;
-        let meter_changed = (grid.steps_per_beat, grid.beats_per_bar)
-            != (self.grid.steps_per_beat, self.grid.beats_per_bar);
+        let meter_changed = (grid.steps_per_beat, grid.beats_per_bar, &grid.grouping)
+            != (
+                self.grid.steps_per_beat,
+                self.grid.beats_per_bar,
+                &self.grid.grouping,
+            );
         // A `:meter` changed the tempo with the steps per beat, so they come back together.
         let bpm = if meter_changed {
             snapshot.bpm
@@ -2366,6 +2374,7 @@ mod tests {
             name: "test".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: vec![track("a", 16), track("b", 8)],
             groups: vec![],
         };
@@ -3111,7 +3120,8 @@ mod tests {
             [
                 Effect::Meter {
                     steps_per_beat: 4,
-                    beats_per_bar: 2
+                    beats_per_bar: 2,
+                    groups: 1
                 },
                 Effect::Bpm(100.0)
             ]
@@ -3151,6 +3161,42 @@ mod tests {
     }
 
     #[test]
+    fn meter_groups_an_odd_bar() {
+        let mut e = editor();
+        e.grid.steps_per_beat = 2;
+        let effects = command(&mut e, "meter 2+2+3");
+        assert_eq!(
+            (e.grid.beats_per_bar, &e.grid.grouping[..]),
+            (7, &[2, 2, 3][..])
+        );
+        assert_eq!(
+            effects[0],
+            Effect::Meter {
+                steps_per_beat: 2,
+                beats_per_bar: 7,
+                groups: 0b10101
+            }
+        );
+        assert!(
+            (e.message.as_deref().unwrap()).starts_with("7 beats a bar (2+2+3), 2 steps a beat"),
+            "{:?}",
+            e.message
+        );
+
+        // A plain number of beats takes the groups away.
+        command(&mut e, "meter 7");
+        assert!(e.grid.grouping.is_empty());
+        assert_eq!(e.grid.group_starts(), 1);
+        keys(&mut e, "u");
+        assert_eq!(e.grid.grouping, [2, 2, 3]);
+
+        for bad in ["meter 2+0+3", "meter 9+9", "meter 2+x"] {
+            command(&mut e, bad);
+            assert_eq!(e.grid.grouping, [2, 2, 3], "{bad}");
+        }
+    }
+
+    #[test]
     fn loading_replaces_the_song() {
         let mut e = editor();
         notes(&mut e, "zx");
@@ -3168,7 +3214,8 @@ mod tests {
                 Effect::MixerChanged,
                 Effect::Meter {
                     steps_per_beat: 4,
-                    beats_per_bar: 4
+                    beats_per_bar: 4,
+                    groups: 1
                 },
                 Effect::Bpm(140.0),
                 Effect::Click(false)

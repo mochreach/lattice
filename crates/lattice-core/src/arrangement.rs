@@ -460,6 +460,7 @@ mod tests {
             name: "g".into(),
             steps_per_beat: 4,
             beats_per_bar: 4,
+            grouping: vec![],
             tracks: lens
                 .iter()
                 .map(|&len| Track {

@@ -540,7 +540,7 @@ pub const COMMANDS: &[Spec] = &[
         name: "meter",
         alias: None,
         params: &[optional_text("[BEATS [STEPS]]", "meter")],
-        describe: "beats in a bar, and steps in a beat (3 for a waltz, 2 3 for 6/8); patterns keep their steps and the tempo keeps their speed",
+        describe: "beats in a bar, and steps in a beat (3 for a waltz, 2 3 for 6/8, 2+2+3 for 7/8 in groups); patterns keep their steps and the tempo keeps their speed",
     },
     Spec {
         name: "export",
