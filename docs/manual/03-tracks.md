@@ -344,7 +344,7 @@ played, as a drum machine's step view does:
 | `·`   | no note                        |
 
 ```
-    ╭─ DRUM ╮
+    ╭─ DRUMS ▸
     K  H  H  BASS
     16 16 16 16
                  0dB
@@ -362,8 +362,9 @@ played, as a drum machine's step view does:
 ```
 
 The header keeps each track's initial, its length, an `r` for each rule and its meter; the level
-and pan are on the mixer page. The bracket shows the group's name with `▸` while it's folded, cut
-short to fit if the group is narrow, as here.
+and pan are on the mixer page. The bracket shows the group's name with `▸` while it's folded. If the
+group is too narrow for it, as here, the name runs on over the space after, where there's no other
+group, in place of the bracket's end; only a group straight after cuts it short.
 
 Folded, everything works as unfolded: the cursor moves between the narrow columns, and notes,
 selections, edits and insert mode all work on them. In insert mode in a folded group, the number
