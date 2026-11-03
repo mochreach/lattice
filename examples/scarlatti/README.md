@@ -9,7 +9,7 @@ Krell and Switched, the ensemble and the phaser, gestures, locks, the conductor 
 that orchestrates the repeats differently, building from the harpsichord and a bass to a full,
 booming tutti over a drum machine.
 
-The song is in the sonata's 2/2 (`:meter 2 4`): two half-note beats a bar at 100 BPM, each beat
+The song is in the sonata's 2/2 (`:meter 2 4`): two half-note beats a bar at 120 BPM, the Allegro of the edition's own playback, each beat
 four steps of an eighth note, so a bar of Scarlatti's is a bar of Lattice's eight steps. Each half is cut into patterns of up to 16 bars, `A1` to `A3` and `B1` to `B4`, and `gs`
 shows the arrangement playing each half twice, as Scarlatti's repeats ask, with different tracks
 muted each time:
@@ -69,8 +69,8 @@ The rest:
 - **Chance.** The hats ratchet into sixteenths at the end of a bar on half their passes (`?50`),
   and where the right hand hammers one note, as it does for bars on end, the echo rings an octave
   over it a quarter of the time (`?25`), the same notes each time the song plays.
-- **The conductor**, left of the first track, sets 100 BPM at the start of each half and slows
-  into each half's last chord (`~84`, `~88`), the second time more (`~72`). Then `X` stops the
+- **The conductor**, left of the first track, sets 120 BPM at the start of each half and slows
+  into each half's last chord (`~101`, `~106`), the second time more (`~86`). Then `X` stops the
   song once the last chord has rung.
 - **Timpani** strike where the bass holds a whole bar, and before each half's last chord strike
   its two chords and roll into it (`R4`, `R6`), with the kick.
