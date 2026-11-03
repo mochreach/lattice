@@ -20,7 +20,8 @@ muted each time:
    faster (`R2` to `R4`) into the first note.
 2. **A**, first time: the right hand on `krell` alone, all five choirs (`16' to 2'`) drifting out
    of tune with each other over a glass body tuned to G. Its repeated notes are detached, cut a
-   little over half way through their steps (`X14`). Under it, the kick and the hats.
+   little over half way through their steps (`X14`). Under it, the hats, and the kick, once a bar,
+   with a pickup into each four bars and a hit on every beat only into the cadences.
 3. **A** again, the `lead` doubling Krell, leaning on the long notes that start its bars (`!`) and
    gliding into its octave leaps (`G6`), and the snare's backbeat in. From bar 24 to 30 its
    ladder opens, a lock sliding in its column: open the lead (`te`) to see it.
