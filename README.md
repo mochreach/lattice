@@ -100,7 +100,7 @@
 Lattice is a feature-rich audio tracker that enables you to make music in your terminal.
 It is driven entirely through your computer's keyboard with key bindings
 modelled on the [Helix](https://helix-editor.com) text editor.
-It has a custom-built sample-accurate sequencer and a sound engine that is
+It has a custom-built sample-accurate sequencer and sound engine that are
 highly performant. It contains everything you need to go and make music, enabling you
 to get your musical ideas out of your head as quickly as possible.
 
