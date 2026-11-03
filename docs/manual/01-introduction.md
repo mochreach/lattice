@@ -342,7 +342,10 @@ its values and what it does:
 The match is fuzzy: the letters you type must come in order, but not together, so `:rv` finds
 `rev` and `:pn` `pattern-new`. Matches at the start of a name and runs of letters together
 count for more, and shorter names win ties. `tab` fills in each match in turn. A name must be
-whole (or an alias) for `ret` to run it: `:ex` then `ret` says `unknown command`.
+whole (or an alias) for `ret` to run it, so that a half-typed name never runs the wrong thing:
+`:ex` then `ret` says `unknown command; did you mean :export?`, naming the match `tab` would
+have filled in. A slip of a letter or two that matches nothing, such as `:lyaout`, is still
+caught: the status line asks whether you meant `:layout`.
 
 ### Values
 

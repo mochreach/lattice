@@ -765,6 +765,53 @@ pub(crate) fn complete(query: &str) -> Vec<Match> {
     scored.into_iter().map(|(_, _, c)| c).collect()
 }
 
+/// The command the player most likely meant by `typed`, which names none: the best one with
+/// its letters in order, as `tab` would have filled in (`fxadd`), or else one or two letters
+/// off (`tmepo`, `revrese`).
+pub(crate) fn nearest(typed: &str) -> Option<&'static str> {
+    if let Some(best) = complete(typed).first() {
+        return Some(best.spec.name);
+    }
+    let names = COMMANDS
+        .iter()
+        .flat_map(|c| [Some(c.name), c.alias])
+        .flatten();
+    let (distance, name) = names
+        .map(|n| (edits(typed, n), n))
+        .min_by_key(|&(d, _)| d)?;
+    // Most of the word has to survive, or any short word would be near something.
+    (distance <= 2 && distance * 2 < name.chars().count()).then_some(name)
+}
+
+/// How many letters have to be added, removed, changed or swapped to turn `a` into `b`.
+fn edits(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    // Three rows of the table: two back, the last, and the one being filled.
+    let mut two_back: Vec<usize> = vec![0; b.len() + 1];
+    let mut last: Vec<usize> = (0..=b.len()).collect();
+    for (i, &ca) in a.iter().enumerate() {
+        let mut row = vec![i + 1; b.len() + 1];
+        for (j, &cb) in b.iter().enumerate() {
+            let change = last
+                .get(j)
+                .map_or(usize::MAX, |&d| d + usize::from(ca != cb));
+            let remove = last.get(j + 1).map_or(usize::MAX, |&d| d + 1);
+            let add = row.get(j).map_or(usize::MAX, |&d| d + 1);
+            let mut best = change.min(remove).min(add);
+            let swapped = i > 0 && j > 0 && a.get(i - 1) == Some(&cb) && b.get(j - 1) == Some(&ca);
+            if swapped && let Some(&d) = two_back.get(j - 1) {
+                best = best.min(d + 1);
+            }
+            if let Some(cell) = row.get_mut(j + 1) {
+                *cell = best;
+            }
+        }
+        two_back = std::mem::replace(&mut last, row);
+    }
+    last.last().copied().unwrap_or(a.len())
+}
+
 /// Whether `query`'s characters appear in order in `name`, and how well: matches at the start
 /// and runs of consecutive characters score higher, and shorter names win ties.
 pub(crate) fn fuzzy(query: &str, name: &str) -> Option<(i32, Vec<usize>)> {
@@ -926,7 +973,14 @@ fn parse(line: &str, live: bool) -> Result<Option<Command>, Problem> {
     let spec = match find(name.text) {
         Some(spec) => spec,
         None if typing && !complete(name.text).is_empty() => return Ok(None),
-        None => return Err(Problem::new(name.range, "unknown command")),
+        None if live => return Err(Problem::new(name.range, "unknown command")),
+        None => {
+            let message = match nearest(name.text) {
+                Some(near) => format!("unknown command; did you mean :{near}?"),
+                None => "unknown command".into(),
+            };
+            return Err(Problem::new(name.range, message));
+        }
     };
     let mut args = Vec::new();
     let mut when = Condition::Always;
@@ -1651,9 +1705,26 @@ mod tests {
             problem("fx-add ").unwrap().message,
             "expected an effect: delay, reverb, filter, ensemble, phaser, drive, comp, pitch"
         );
-        assert_eq!(problem("fo").unwrap().message, "unknown command");
+        assert_eq!(
+            problem("fo").unwrap().message,
+            "unknown command; did you mean :follow?"
+        );
         assert_eq!(problem("rev every 2 1"), None);
         assert_eq!(problem(""), None);
+    }
+
+    #[test]
+    fn unknown_commands_suggest_the_nearest() {
+        let message = |line| parse(line, false).err().unwrap().message;
+        assert_eq!(
+            message("fxadd delay"),
+            "unknown command; did you mean :fx-add?"
+        );
+        assert_eq!(message("lyaout"), "unknown command; did you mean :layout?");
+        assert_eq!(message("zz"), "unknown command");
+        assert_eq!(edits("tmepo", "tempo"), 1);
+        assert_eq!(edits("", "bpm"), 3);
+        assert_eq!(edits("kitten", "sitting"), 3);
     }
 
     #[test]

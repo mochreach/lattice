@@ -548,7 +548,10 @@ impl Binding {
         }
         if let Some(line) = target.strip_prefix(':') {
             let name = line.split_whitespace().next().unwrap_or_default();
-            crate::command::find(name).ok_or_else(|| format!("no command :{name}"))?;
+            crate::command::find(name).ok_or_else(|| match crate::command::nearest(name) {
+                Some(near) => format!("no command :{name}; did you mean :{near}?"),
+                None => format!("no command :{name}"),
+            })?;
             return Ok(Some(Binding::Command(line.trim().into())));
         }
         match Action::named(target) {
