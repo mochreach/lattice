@@ -69,7 +69,7 @@ impl Editor {
         self.held.clear();
         self.take = None;
         self.live_lock = None;
-        if self.record && self.page == Page::Mixer {
+        if self.record && matches!(self.page, Page::Mixer | Page::Fx) {
             self.message =
                 Some("record armed: settings changed while the song plays are locked".into());
         } else if self.record && self.page == Page::Instrument {

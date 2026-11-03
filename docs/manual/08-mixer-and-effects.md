@@ -245,7 +245,7 @@ whole group's sends at once:
 
 | Command     | Range          | What it sets                                                 |
 |-------------|----------------|--------------------------------------------------------------|
-| `:level DB` | -60 to 6       | the track's level; on the mixer page, the strip's, buses too |
+| `:level DB` | -60 to 6       | the track's level; on the mixer or fx page, a bus's too      |
 | `:pan P`    | -100 to 100    | the track's pan, left to right                               |
 | `:send DB`  | -60 (off) to 6 | the track's send to the send bus                             |
 | `:choke N`  | 0 to 8         | its choke group; 0 for none                                  |
@@ -749,15 +749,14 @@ Each setting locked needs a column: a track has up to four, and `L` says if ther
 
 ### Recording locks as you play
 
-To perform settings instead: on the mixer page, arm record with `R`
+To perform settings instead: on the mixer or fx page, arm record with `R`
 (`record armed: settings changed while the song plays are locked`), and play. Each setting you
-change is locked on the
-step that's playing, and heard at once. Holding `^a` on a cutoff sweeps it up a step at a time,
-each nudge going on from the last value recorded rather than the setting's own. Each pass round
-the track is one undo, as with recorded notes, and the setting itself is left alone, so `u`
-takes the whole sweep away. A change during the count-in does nothing.
+change is locked on the step that's playing, and heard at once. Holding `^a` on a cutoff sweeps
+it up a step at a time, each nudge going on from the last value recorded rather than the
+setting's own. Each pass round the track is one undo, as with recorded notes, and the setting
+itself is left alone, so `u` takes the whole sweep away. A change during the count-in does nothing.
 
-On the mixer page, `R` doesn't start insert mode, as it does on the pattern page, since there
+On the mixer and fx pages, `R` doesn't start insert mode, as it does on the pattern page, since there
 are no notes to play here. The instrument page records settings the same way, and notes too.
 
 ### :lock and :unlock

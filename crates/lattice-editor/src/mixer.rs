@@ -805,7 +805,7 @@ impl Editor {
     /// The bus under the mixer cursor, for `:level`.
     pub(crate) fn bus_under_cursor(&self) -> Option<Strip> {
         let strip = self.strip(self.mixer_cursor().strip);
-        (self.page == Page::Mixer && strip.is_bus()).then_some(strip)
+        (matches!(self.page, Page::Mixer | Page::Fx) && strip.is_bus()).then_some(strip)
     }
 
     pub(crate) fn set_bus_level(&mut self, bus: Strip, level: f32) -> Vec<Effect> {
@@ -992,6 +992,18 @@ mod tests {
         // From a bus, the instrument page stays on the track it was last on.
         keys(&mut e, "))gi");
         assert_eq!((e.page, at(&e).0), (Page::Instrument, Strip::Track(1)));
+    }
+
+    #[test]
+    fn the_fx_page_sets_a_bus_level_and_records_settings_as_the_mixer_does() {
+        let mut e = editor();
+        keys(&mut e, "ggll");
+        e.page = Page::Fx;
+        assert_eq!(command(&mut e, "level -9"), [Effect::MixerChanged]);
+        assert_eq!(e.buses.send.level, -9.0);
+        keys(&mut e, "R");
+        assert_eq!(e.mode, Mode::Normal, "recording settings, not notes");
+        assert!(e.message.as_deref().unwrap().contains("locked"));
     }
 
     #[test]

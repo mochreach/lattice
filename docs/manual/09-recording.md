@@ -107,7 +107,7 @@ the keyboard; see [the pattern chapter](02-patterns.md).
 
 ### Recording settings
 
-On the mixer page, `R` arms record without starting insert mode, and each setting you change
+On the mixer and fx pages, `R` arms record without starting insert mode, and each setting you change
 while the song plays is locked on the step that's playing; on the instrument page, `i` plays the
 track live and `R` records both its notes and the settings you turn. Both are described with
 locks, in [the mixer chapter](08-mixer-and-effects.md#recording-locks-as-you-play).
