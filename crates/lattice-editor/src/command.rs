@@ -453,6 +453,12 @@ pub const COMMANDS: &[Spec] = &[
         describe: "every key and command (esc to go back)",
     },
     Spec {
+        name: "manual",
+        alias: Some("man"),
+        params: &[optional_text("[TOPIC]", "topic")],
+        describe: "everything explained, at the contents or at TOPIC; again for the next place (esc to go back)",
+    },
+    Spec {
         name: "tutor",
         alias: None,
         params: &[optional_text("[next|back|end]", "what to do")],
@@ -1208,6 +1214,10 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         "tutor" | "tutor!" => Ok(editor.start_tutor()),
         "help" => {
             editor.open_help();
+            Ok(vec![])
+        }
+        "manual" => {
+            editor.open_manual(command.text(0)?)?;
             Ok(vec![])
         }
         "bpm" => {

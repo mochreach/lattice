@@ -1214,6 +1214,19 @@ in two columns when the terminal is wide enough. `esc` goes back to the page it 
 that would edit the pattern do nothing there, as it's out of sight, but playing, the command line
 and the `g` pages work.
 
+### The manual
+
+The manual is Markdown in `docs/manual`, a file a chapter, which reads on GitHub and is built
+into the binary with `include_str!` for `:manual`, as Vim's help is. Where the help page lists
+what each key and command is, the manual explains why and how, with examples, drawings of the
+screen, the reasoning behind names and choices, and the music behind them. The page shows the
+source a line to a line (it's wrapped at 100 columns), numbers the headings and lists them as
+contents first, and styles `code`, **bold** and links rather than showing the marks; tables show
+as written, their rule rows hidden. `:manual TOPIC` goes to a heading that mentions the topic,
+else where it's written as a command, else anywhere; the same again goes on to the next. A test
+fails if any command, any action (by its config name), or any instrument's or effect's setting
+goes unexplained, as the tutor's does for keys, so it can't fall behind.
+
 ### The tutor
 
 `:tutor` (or `--tutor`) swaps in a small song of the tutor's own and works through `LESSONS` in

@@ -27,6 +27,7 @@ mod key_log;
 mod keys;
 mod log;
 mod looper;
+mod manual_page;
 mod mixer;
 mod mixer_page;
 mod presets;

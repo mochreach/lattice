@@ -1043,10 +1043,11 @@ const LESSONS: &[Lesson] = &[
     },
     Lesson {
         title: "Finding more",
-        text: "That's the tutor. `:help` lists every key and command, as they're bound, and \
-               `:tutor` starts this again.\n\nOpen the help page to finish.",
+        text: "That's the tutor. `:help` lists every key and command, as they're bound; \
+               `:manual` explains everything in full, and `:manual delay` goes to what it says \
+               about delay; `:tutor` starts this again.\n\nOpen the help page to finish.",
         teaches: &[],
-        commands: &["help"],
+        commands: &["help", "manual"],
         setup: nothing,
         watch: never,
         done: |e, _| e.page == Page::Help,

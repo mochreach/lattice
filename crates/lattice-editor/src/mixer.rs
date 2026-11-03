@@ -41,6 +41,8 @@ pub enum Page {
     Song,
     /// Every key and command.
     Help,
+    /// Everything, explained.
+    Manual,
 }
 
 /// A column of the mixer.
@@ -595,7 +597,7 @@ impl Editor {
                 let track = self.inst_cursor().track;
                 (Strip::Track(track), self.chain(Strip::Track(track)).len())
             }
-            Page::Pattern | Page::Song | Page::Help => {
+            Page::Pattern | Page::Song | Page::Help | Page::Manual => {
                 let track = self.cursor().track;
                 (Strip::Track(track), self.chain(Strip::Track(track)).len())
             }

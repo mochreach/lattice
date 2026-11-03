@@ -34,6 +34,7 @@ mod help;
 mod inst_page;
 mod keymap;
 mod locks;
+mod manual;
 pub use fields::StepField;
 pub use locks::{ColumnLabel, lock_text};
 mod looper;
@@ -57,6 +58,7 @@ pub use help::{Help, HelpLine};
 pub use inst_page::{InstCursor, InstLine};
 pub use keymap::{Action, Binding, Key, Keymap, Menu, NoteLayout};
 pub use macros::target_name;
+pub use manual::{Manual, ManualLine, lines as manual_lines};
 pub use mixer::{Field, MixerCursor, PARAM_COLUMNS, Page, Row, Shown, Strip};
 pub use pads::{HARD, MEDIUM, PadMode, SCALES, SOFT, Scale};
 pub use patterns::Next;
@@ -427,6 +429,7 @@ pub struct Editor {
     song: song::SongCursor,
     /// Where the help page is scrolled to.
     pub help: Help,
+    pub manual: Manual,
     /// After a first `L` on the mixer page, the settings to lock the changes to.
     locking: Option<locks::Locking>,
     /// Tracks `te` keeps open, showing their fields, as well as the cursor's.
@@ -575,6 +578,7 @@ impl Editor {
             inst: InstCursor::default(),
             song: Default::default(),
             help: Help::default(),
+            manual: Manual::default(),
             locking: None,
             open: vec![],
             field: StepField::Note,
@@ -1363,6 +1367,11 @@ impl Editor {
         }
         if self.page == Page::Help
             && let Some(effects) = self.help_act(action, n)
+        {
+            return effects;
+        }
+        if self.page == Page::Manual
+            && let Some(effects) = self.manual_act(action, n)
         {
             return effects;
         }

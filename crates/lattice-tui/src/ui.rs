@@ -22,7 +22,7 @@ use crate::bars;
 use crate::key_log::KeyLog;
 use crate::theme::Theme;
 use crate::wave::{Peaks, Waves};
-use crate::{fx_page, help_page, inst_page, mixer_page, song_page};
+use crate::{fx_page, help_page, inst_page, manual_page, mixer_page, song_page};
 
 /// Width of the step-number column.
 pub(crate) const GUTTER: usize = 4;
@@ -139,6 +139,7 @@ pub fn draw(
         Page::Instrument => inst_page::draw(frame, grid, editor, status, theme, view),
         Page::Song => song_page::draw(frame, grid, editor, status, theme),
         Page::Help => help_page::draw(frame, grid, editor, theme),
+        Page::Manual => manual_page::draw(frame, grid, editor, theme),
     }
     frame.render_widget(
         Paragraph::new(status_line(editor, theme, bottom.width)),
@@ -345,6 +346,7 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         Page::Instrument => " INST ",
         Page::Song => " SONG ",
         Page::Help => " HELP ",
+        Page::Manual => " MANUAL ",
     };
     Line::from(vec![
         Span::styled(" LATTICE ", theme.block(theme.accent)),
@@ -1444,6 +1446,10 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
         ),
         Mode::Normal if editor.page == Page::Help => (
             "jk scroll · C-d C-u half a page · gg ge top and end · esc back".into(),
+            theme.dim,
+        ),
+        Mode::Normal if editor.page == Page::Manual => (
+            "jk scroll · w b headings · C-d C-u half a page · gg ge top and end · :manual TOPIC find · esc back".into(),
             theme.dim,
         ),
         Mode::Normal if editor.page == Page::Song => (

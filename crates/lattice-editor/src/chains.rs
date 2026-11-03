@@ -14,7 +14,9 @@ impl Editor {
     fn chain_strip(&self) -> Strip {
         match self.page {
             Page::Mixer | Page::Fx | Page::Instrument => self.fx_strip(),
-            Page::Pattern | Page::Song | Page::Help => Strip::Track(self.cursor().track),
+            Page::Pattern | Page::Song | Page::Help | Page::Manual => {
+                Strip::Track(self.cursor().track)
+            }
         }
     }
 

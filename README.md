@@ -56,7 +56,9 @@ tracks; with nothing selected it's just the cursor. Motions move the cursor and 
 selection onto it. In select mode (`v`) the same motions extend it instead. Counts work as in
 Helix (`4j`, `3+`). Prefix keys such as `g` show what can follow them in a box in the corner.
 `:help` lists every key and command, made from the keymap and the command table, so it's always
-up to date; `j` `k` scroll it and `esc` goes back.
+up to date; `j` `k` scroll it and `esc` goes back. The [manual](docs/manual) explains everything
+in full, and is built in: `:manual` opens it at the contents, `:manual TOPIC` at a section about
+the topic (again for the next place), `w` `b` go from heading to heading.
 
 Keys and colours can be changed in `~/.config/lattice/config.toml` (or under `$XDG_CONFIG_HOME`),
 written as in Helix. Keys are bound to actions by name (`:help` shows each one's, dimmed, before
@@ -220,6 +222,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:len N` | track length (1–256); in the conductor, its length |
 | `:bpm N`, `:step N`, `:oct N` | tempo, auto-step, keyboard octave |
 | `:help` (`:h`) | the help page: every key and command |
+| `:manual [TOPIC]` (`:man`) | the manual, at its contents or at TOPIC: a section about it, else where it's a command, else where it's mentioned; again for the next place |
 | `:click`, `:follow` | toggle the metronome (saved with the song), following the playhead |
 | `:rec` | toggle recording, like `R` |
 | `:layout NAME` | how notes lie on the keyboard in insert mode: `piano`, `wicki`, `fourths` or `scale` |
