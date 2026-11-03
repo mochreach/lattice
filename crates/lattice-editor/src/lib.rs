@@ -3112,7 +3112,10 @@ mod tests {
         command(&mut e, "name lead");
         e.handle(Key::Char('u'));
         assert_eq!(e.grid.tracks[0].name, "a", "the name goes back");
-        assert!(e.grid.tracks[0].steps[0].note.is_some(), "but not the note before it");
+        assert!(
+            e.grid.tracks[0].steps[0].note.is_some(),
+            "but not the note before it"
+        );
     }
 
     #[test]

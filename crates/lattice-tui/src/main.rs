@@ -300,7 +300,14 @@ fn run(
         }
         for effect in machine.tick(editor, handle) {
             apply(
-                effect, editor, tracks, mixer, exports, &mut sequencer, machine, handle,
+                effect,
+                editor,
+                tracks,
+                mixer,
+                exports,
+                &mut sequencer,
+                machine,
+                handle,
             );
         }
         sequencer.sync(editor, handle);
@@ -309,7 +316,14 @@ fn run(
         // The tutor checks its lesson as playback starts and stops, and after each key.
         for effect in editor.tutor_tick() {
             if let Flow::Quit = apply(
-                effect, editor, tracks, mixer, exports, &mut sequencer, machine, handle,
+                effect,
+                editor,
+                tracks,
+                mixer,
+                exports,
+                &mut sequencer,
+                machine,
+                handle,
             ) {
                 return Ok(());
             }
@@ -338,7 +352,14 @@ fn run(
                 Ok(ask) => {
                     let said = editor.message.clone();
                     let (refused, flow) = serve(
-                        ask, allow_save, editor, tracks, mixer, exports, &mut sequencer, machine,
+                        ask,
+                        allow_save,
+                        editor,
+                        tracks,
+                        mixer,
+                        exports,
+                        &mut sequencer,
+                        machine,
                         handle,
                     );
                     let answer = match refused {
@@ -394,7 +415,14 @@ fn run(
                 };
                 for effect in effects {
                     match apply(
-                        effect, editor, tracks, mixer, exports, &mut sequencer, machine, handle,
+                        effect,
+                        editor,
+                        tracks,
+                        mixer,
+                        exports,
+                        &mut sequencer,
+                        machine,
+                        handle,
                     ) {
                         Flow::Next => {}
                         Flow::Stop => break,

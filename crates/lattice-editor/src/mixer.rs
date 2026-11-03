@@ -719,6 +719,8 @@ impl Editor {
         };
         if track.instrument.kind != InstKind::Chop {
             track.instrument = Instrument::new(InstKind::Chop);
+            // A face shows the old instrument's settings.
+            track.face = None;
         }
         track.instrument.file = Some(path);
         let pieces = track.steps.len().clamp(1, chop::MAX_PIECES);
@@ -829,6 +831,7 @@ mod tests {
     fn chop_gives_each_step_its_own_piece() {
         let mut e = editor();
         e.grid.tracks[1].steps.truncate(12);
+        e.grid.tracks[1].face = Some(lattice_core::Face::new("Old Synth"));
         e.grid.tracks[1].steps[3].locks.set(lattice_core::Lock {
             fx: None,
             param: 0,
@@ -844,6 +847,7 @@ mod tests {
         assert_eq!(effects, [Effect::TrackChanged(1), Effect::MixerChanged]);
         let track = &e.grid.tracks[1];
         assert_eq!(track.instrument.kind, InstKind::Chop);
+        assert!(track.face.is_none(), "the old instrument's face goes");
         assert_eq!(track.instrument.get(chop::PIECES), 12.0, "a piece a step");
         let pieces: Vec<usize> = (track.steps.iter())
             .map(|s| chop::piece(s.note.unwrap().pitch, 12))
