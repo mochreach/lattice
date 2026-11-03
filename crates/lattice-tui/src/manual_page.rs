@@ -1,20 +1,19 @@
 //! Drawing the manual: its lines as they're laid out, the headings picked out, and Markdown's
 //! `code`, **bold** and links styled rather than shown.
 
-use lattice_editor::{Editor, ManualLine, manual_lines};
+use lattice_editor::{Editor, ManualLine, manual_wrap};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use crate::help_page::wrap;
 use crate::theme::Theme;
 
 pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, theme: &Theme) {
-    let lines = manual_lines();
+    let lines = editor.manual_lines();
     let height = usize::from(area.height.saturating_sub(1)).max(1);
-    // Two columns in, and wrapped only if the terminal's narrower than the manual.
+    // Two columns in, the manual laid out to fit (see `Editor::fit_manual`).
     let room = usize::from(area.width).saturating_sub(4).max(20);
     let top = editor.manual.scroll.min(lines.len().saturating_sub(1));
     let mut rows = vec![];
@@ -52,16 +51,20 @@ fn manual_rows(line: &ManualLine, room: usize, theme: &Theme) -> Vec<Line<'stati
             Style::new().fg(theme.visual),
         ))],
         ManualLine::Text(text) => {
-            // A list or table row's wrapped rows stay under its text.
+            // Laid out to fit, a line is wrapped again only if it's a table too wide to narrow
+            // further; its wrapped rows stay under its text.
+            let first = text.len() - text.trim_start().len();
             let indent = text.len() - text.trim_start_matches([' ', '-', '*', '|']).len();
-            (wrap(text, room).into_iter().enumerate())
-                .map(|(i, row)| {
-                    let lead = if i == 0 { 2 } else { 2 + indent };
-                    let mut spans = vec![Span::raw(" ".repeat(lead))];
-                    spans.extend(inline(&row, theme));
-                    Line::from(spans)
-                })
-                .collect()
+            (manual_wrap(text.trim_start(), room.saturating_sub(first))
+                .into_iter()
+                .enumerate())
+            .map(|(i, row)| {
+                let lead = 2 + if i == 0 { first } else { indent };
+                let mut spans = vec![Span::raw(" ".repeat(lead))];
+                spans.extend(inline(&row, theme));
+                Line::from(spans)
+            })
+            .collect()
         }
     }
 }

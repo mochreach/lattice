@@ -2,7 +2,7 @@
 //! in `docs/manual`, which reads as well on GitHub, and built in here, its paragraphs and tables
 //! laid out again to `MEASURE` columns, so it reads on half a laptop's screen.
 
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex};
 
 use crate::keymap::Action;
 use crate::{Editor, Effect, Mode, Page};
@@ -35,104 +35,143 @@ pub enum ManualLine {
     Code(String),
 }
 
-/// Where the manual is scrolled to, and the page to go back to.
-#[derive(Debug, Clone, Copy, Default)]
+/// Where the manual is scrolled to, how wide it's laid out, and the page to go back to.
+#[derive(Debug, Clone, Copy)]
 pub struct Manual {
     pub scroll: usize,
+    measure: usize,
     back: Page,
 }
 
-/// The contents, then every chapter, numbered.
-pub fn lines() -> &'static [ManualLine] {
-    static LINES: OnceLock<Vec<ManualLine>> = OnceLock::new();
-    LINES.get_or_init(|| {
-        let mut body = vec![];
-        let mut contents = vec![
-            ManualLine::Heading {
-                level: 1,
-                text: "Contents".into(),
-            },
-            ManualLine::Text(String::new()),
-        ];
-        let mut numbers = [0usize; 3];
-        for chapter in CHAPTERS {
-            let mut code = false;
-            // The prose or table being gathered, laid out when it ends.
-            let mut para: Vec<&str> = vec![];
-            let mut table: Vec<&str> = vec![];
-            for line in chapter.lines() {
-                let is_table = !code && line.trim_start().starts_with('|');
-                let continues = !code
-                    && !line.trim().is_empty()
-                    && !is_table
-                    && !line.starts_with('#')
-                    && list_lead(line).is_none()
-                    && para.first().is_some_and(|first| {
-                        // A list item's lines are indented under it; a paragraph's aren't.
-                        let indented = line.starts_with(' ');
-                        indented == list_lead(first).is_some()
-                    });
-                if !continues {
-                    body.extend(paragraph(&para));
-                    para.clear();
-                }
-                if !is_table {
-                    body.extend(lay_out(&table));
-                    table.clear();
-                }
-                if line.starts_with("```") {
-                    code = !code;
-                    continue;
-                }
-                if code {
-                    body.push(ManualLine::Code(line.to_string()));
-                    continue;
-                }
-                if is_table {
-                    table.push(line);
-                    continue;
-                }
-                let level = line.chars().take_while(|&c| c == '#').count();
-                let Some(title) = line.get(level..).and_then(|t| t.strip_prefix(' ')) else {
-                    if line.trim().is_empty() {
-                        body.push(ManualLine::Text(String::new()));
-                    } else {
-                        para.push(line);
-                    }
-                    continue;
-                };
-                if !(1..=3).contains(&level) {
-                    para.push(line);
-                    continue;
-                }
-                // Numbered 3, 3.2, 3.2.1.
-                if let Some(n) = numbers.get_mut(level - 1) {
-                    *n += 1;
-                }
-                for n in numbers.iter_mut().skip(level) {
-                    *n = 0;
-                }
-                let number: Vec<String> =
-                    (numbers.iter().take(level)).map(usize::to_string).collect();
-                // Headings aren't styled within, so they go without Markdown's marks.
-                let title = title.replace(['`', '*'], "");
-                let text = format!("{:<6}{title}", number.join("."));
-                if level <= 2 {
-                    let indent = "    ".repeat(level - 1);
-                    contents.push(ManualLine::Text(format!("{indent}{text}")));
-                }
-                body.push(ManualLine::Heading {
-                    level: level as u8,
-                    text,
-                });
-            }
-            body.extend(paragraph(&para));
-            body.extend(lay_out(&table));
+impl Default for Manual {
+    fn default() -> Self {
+        Manual {
+            scroll: 0,
+            measure: MEASURE,
+            back: Page::default(),
         }
-        contents.push(ManualLine::Text(String::new()));
-        contents.extend(body);
-        contents
-    })
+    }
+}
+
+/// The contents, then every chapter, numbered, laid out to `MEASURE`.
+#[cfg(test)]
+fn lines() -> &'static [ManualLine] {
+    static LINES: std::sync::OnceLock<Vec<ManualLine>> = std::sync::OnceLock::new();
+    LINES.get_or_init(|| lay_out_manual(MEASURE))
+}
+
+/// The manual laid out to `measure` columns: `MEASURE`, or narrower on a narrower screen. The
+/// last width asked for is kept, as the page asks for it on every frame.
+pub fn lines_at(measure: usize) -> Arc<Vec<ManualLine>> {
+    static LAST: Mutex<Option<(usize, Arc<Vec<ManualLine>>)>> = Mutex::new(None);
+    let Ok(mut last) = LAST.lock() else {
+        // Only a panic elsewhere while laying out could poison it; lay out afresh.
+        return Arc::new(lay_out_manual(measure));
+    };
+    match &*last {
+        Some((m, lines)) if *m == measure => Arc::clone(lines),
+        _ => {
+            let lines = Arc::new(lay_out_manual(measure));
+            *last = Some((measure, Arc::clone(&lines)));
+            lines
+        }
+    }
+}
+
+fn lay_out_manual(measure: usize) -> Vec<ManualLine> {
+    let mut body = vec![];
+    let mut contents = vec![
+        ManualLine::Heading {
+            level: 1,
+            text: "Contents".into(),
+        },
+        ManualLine::Text(String::new()),
+    ];
+    let mut numbers = [0usize; 3];
+    for chapter in CHAPTERS {
+        let mut code = false;
+        // The prose or table being gathered, laid out when it ends.
+        let mut para: Vec<&str> = vec![];
+        let mut table: Vec<&str> = vec![];
+        for line in chapter.lines() {
+            let is_table = !code && line.trim_start().starts_with('|');
+            // As in CommonMark, only `1.` can start a list in the middle of a paragraph, so a
+            // line that happens to start `15.` goes on with it.
+            let item = list_lead(line).is_some_and(|lead| {
+                let lead = lead.trim_start();
+                para.is_empty()
+                    || !lead.starts_with(|c: char| c.is_ascii_digit())
+                    || lead.starts_with("1.")
+            });
+            let continues = !code
+                && !line.trim().is_empty()
+                && !is_table
+                && !line.starts_with('#')
+                && !item
+                && para.first().is_some_and(|first| {
+                    // A list item's lines are indented under it; a paragraph's aren't.
+                    let indented = line.starts_with(' ');
+                    indented == list_lead(first).is_some()
+                });
+            if !continues {
+                body.extend(paragraph(&para, measure));
+                para.clear();
+            }
+            if !is_table {
+                body.extend(lay_out(&table, measure));
+                table.clear();
+            }
+            if line.starts_with("```") {
+                code = !code;
+                continue;
+            }
+            if code {
+                body.push(ManualLine::Code(line.to_string()));
+                continue;
+            }
+            if is_table {
+                table.push(line);
+                continue;
+            }
+            let level = line.chars().take_while(|&c| c == '#').count();
+            let Some(title) = line.get(level..).and_then(|t| t.strip_prefix(' ')) else {
+                if line.trim().is_empty() {
+                    body.push(ManualLine::Text(String::new()));
+                } else {
+                    para.push(line);
+                }
+                continue;
+            };
+            if !(1..=3).contains(&level) {
+                para.push(line);
+                continue;
+            }
+            // Numbered 3, 3.2, 3.2.1.
+            if let Some(n) = numbers.get_mut(level - 1) {
+                *n += 1;
+            }
+            for n in numbers.iter_mut().skip(level) {
+                *n = 0;
+            }
+            let number: Vec<String> = (numbers.iter().take(level)).map(usize::to_string).collect();
+            // Headings aren't styled within, so they go without Markdown's marks.
+            let title = title.replace(['`', '*'], "");
+            let text = format!("{:<6}{title}", number.join("."));
+            if level <= 2 {
+                let indent = "    ".repeat(level - 1);
+                contents.push(ManualLine::Text(format!("{indent}{text}")));
+            }
+            body.push(ManualLine::Heading {
+                level: level as u8,
+                text,
+            });
+        }
+        body.extend(paragraph(&para, measure));
+        body.extend(lay_out(&table, measure));
+    }
+    contents.push(ManualLine::Text(String::new()));
+    contents.extend(body);
+    contents
 }
 
 /// `|---|:--:|`.
@@ -157,7 +196,7 @@ fn list_lead(line: &str) -> Option<&str> {
 
 /// A paragraph or list item, its source lines joined and wrapped again to the measure, a list
 /// item's later lines hung under its text.
-fn paragraph(lines: &[&str]) -> Vec<ManualLine> {
+fn paragraph(lines: &[&str], measure: usize) -> Vec<ManualLine> {
     let Some(first) = lines.first() else {
         return vec![];
     };
@@ -167,7 +206,7 @@ fn paragraph(lines: &[&str]) -> Vec<ManualLine> {
         .join(" ");
     let text = joined.get(lead.trim_start().len()..).unwrap_or(&joined);
     let hang = " ".repeat(lead.chars().count());
-    (wrap(text, MEASURE.saturating_sub(hang.len()))
+    (wrap(text, measure.saturating_sub(hang.len()))
         .into_iter()
         .enumerate())
     .map(|(i, row)| ManualLine::Text(format!("{}{row}", if i == 0 { lead } else { &hang })))
@@ -176,7 +215,7 @@ fn paragraph(lines: &[&str]) -> Vec<ManualLine> {
 
 /// A table, its columns lined up as they're shown (without Markdown's marks) and its last
 /// column's cells wrapped if it's wider than the measure.
-fn lay_out(lines: &[&str]) -> Vec<ManualLine> {
+fn lay_out(lines: &[&str], measure: usize) -> Vec<ManualLine> {
     let rows: Vec<Vec<&str>> = (lines.iter())
         .filter(|l| !is_table_rule(l))
         .map(|l| {
@@ -201,7 +240,7 @@ fn lay_out(lines: &[&str]) -> Vec<ManualLine> {
         })
         .collect();
     // `| a | b |`: a bar and a space before each column, a space after, and a bar to end.
-    while widths.iter().map(|w| w + 3).sum::<usize>() + 1 > MEASURE {
+    while widths.iter().map(|w| w + 3).sum::<usize>() + 1 > measure {
         // The widest column that can narrow does.
         let Some(widest) = (widths.iter_mut().zip(&least))
             .filter(|(w, least)| **w > **least)
@@ -287,7 +326,7 @@ fn width(text: &str) -> usize {
 
 /// `text` wrapped between words to `room` columns as shown, never within `code` or a link. Bold
 /// words are bolded one by one, so their rows are bold too.
-fn wrap(text: &str, room: usize) -> Vec<String> {
+pub fn wrap(text: &str, room: usize) -> Vec<String> {
     let mut rows = vec![];
     let mut row = String::new();
     let mut used = 0;
@@ -337,12 +376,45 @@ impl ManualLine {
 }
 
 impl Editor {
+    /// The manual, laid out as wide as it's shown.
+    pub fn manual_lines(&self) -> Arc<Vec<ManualLine>> {
+        lines_at(self.manual.measure)
+    }
+
+    /// Lays the manual out again for a screen `width` columns wide, if that's narrower than
+    /// `MEASURE` (less two columns each side), so its lines are never wrapped twice. Where it's
+    /// scrolled to stays under the same heading.
+    pub fn fit_manual(&mut self, width: usize) {
+        let measure = width.saturating_sub(4).clamp(20, MEASURE);
+        if measure == self.manual.measure {
+            return;
+        }
+        let heading = |l: &ManualLine| matches!(l, ManualLine::Heading { .. });
+        let old = self.manual_lines();
+        let at = self.manual.scroll.min(old.len().saturating_sub(1));
+        let (nth, since) = match (old.iter().take(at + 1)).rposition(heading) {
+            Some(h) => (old.iter().take(h).filter(|l| heading(l)).count(), at - h),
+            None => (usize::MAX, at),
+        };
+        self.manual.measure = measure;
+        let new = self.manual_lines();
+        let start = if nth == usize::MAX {
+            0
+        } else {
+            (new.iter().enumerate())
+                .filter(|(_, l)| heading(l))
+                .nth(nth)
+                .map_or(0, |(i, _)| i)
+        };
+        self.manual.scroll = (start + since).min(new.len().saturating_sub(1));
+    }
+
     /// `:manual [TOPIC]`: opens the manual, coming back to this page, at the contents or at
     /// `topic`: a section about it, else where it's a command, else anywhere it's mentioned.
     /// Again with the same topic, it goes on to the next place.
     pub(crate) fn open_manual(&mut self, topic: &str) -> Result<(), String> {
         let topic = topic.trim().to_lowercase();
-        let lines = lines();
+        let lines = self.manual_lines();
         let mut scroll = 0;
         if !topic.is_empty() {
             let command = format!("`:{}", topic.trim_start_matches(':'));
@@ -380,7 +452,7 @@ impl Editor {
     /// The manual's keys: scrolling, going from heading to heading, and going back. Playing,
     /// the command line and the pages work as anywhere; anything else does nothing.
     pub(crate) fn manual_act(&mut self, action: Action, n: usize) -> Option<Vec<Effect>> {
-        let lines = lines();
+        let lines = self.manual_lines();
         let last = lines.len().saturating_sub(1);
         let scroll = &mut self.manual.scroll;
         let heading = |i: &usize| matches!(lines.get(*i), Some(ManualLine::Heading { .. }));
@@ -522,6 +594,45 @@ mod tests {
     }
 
     #[test]
+    fn fits_a_narrow_screen_and_stays_at_its_heading() {
+        let mut e = Editor::new(
+            lattice_core::Grid {
+                name: "manual".into(),
+                steps_per_beat: 4,
+                beats_per_bar: 4,
+                grouping: vec![],
+                tracks: vec![lattice_core::Track::default()],
+                groups: vec![],
+            },
+            120.0,
+        );
+        crate::command::run(&mut e, "manual gestures and locks").unwrap();
+        let title = e.manual_lines()[e.manual.scroll].text().to_string();
+        e.fit_manual(60);
+        let lines = e.manual_lines();
+        assert_eq!(lines[e.manual.scroll].text(), title);
+        for line in lines.iter() {
+            if let ManualLine::Text(text) = line
+                && !text.starts_with('|')
+            {
+                let words = split(text, ' ');
+                assert!(
+                    width(text) <= 56 || words.iter().filter(|w| !w.is_empty()).count() == 1,
+                    "{text}"
+                );
+            }
+        }
+        // `15.` in the middle of a paragraph goes on with it, as CommonMark has it.
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.text().starts_with("15. Each setting"))
+        );
+        e.fit_manual(200);
+        assert_eq!(e.manual_lines()[e.manual.scroll].text(), title);
+    }
+
+    #[test]
     fn closes_its_code_on_the_line_it_opens() {
         // The page styles a line at a time, so a span of code broken over two shows its marks.
         for (c, chapter) in CHAPTERS.iter().enumerate() {
@@ -570,21 +681,24 @@ mod tests {
                 width(text)
             );
         }
-        let table = lay_out(&[
-            "| Setting | What it does |",
-            "|---------|--------------|",
-            &format!(
-                "| `drift` | {} |",
-                "how far the choirs drift apart ".repeat(4)
-            ),
-        ]);
+        let table = lay_out(
+            &[
+                "| Setting | What it does |",
+                "|---------|--------------|",
+                &format!(
+                    "| `drift` | {} |",
+                    "how far the choirs drift apart ".repeat(4)
+                ),
+            ],
+            MEASURE,
+        );
         assert!(table.len() > 2, "its last column wraps: {table:?}");
         let Some(ManualLine::Text(header)) = table.first() else {
             panic!("{table:?}")
         };
         assert_eq!(width(header), MEASURE, "{header}");
         assert_eq!(
-            paragraph(&["- **one two** three", "  four"]),
+            paragraph(&["- **one two** three", "  four"], MEASURE),
             [ManualLine::Text("- **one** **two** three four".into())]
         );
     }

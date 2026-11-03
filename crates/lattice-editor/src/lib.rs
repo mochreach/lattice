@@ -58,7 +58,7 @@ pub use help::{Help, HelpLine};
 pub use inst_page::{InstCursor, InstLine};
 pub use keymap::{Action, Binding, Key, Keymap, Menu, NoteLayout};
 pub use macros::target_name;
-pub use manual::{Manual, ManualLine, lines as manual_lines};
+pub use manual::{Manual, ManualLine, wrap as manual_wrap};
 pub use mixer::{Field, MixerCursor, PARAM_COLUMNS, Page, Row, Shown, Strip};
 pub use pads::{HARD, MEDIUM, PadMode, SCALES, SOFT, Scale};
 pub use patterns::Next;

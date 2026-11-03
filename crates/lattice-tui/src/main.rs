@@ -333,6 +333,7 @@ fn run(
             splash = None;
         }
         let requests = server.map(ctl::Server::requests).unwrap_or_default();
+        editor.fit_manual(usize::from(terminal.size()?.width));
         let drawn = terminal.draw(|frame| {
             ui::draw(frame, editor, handle.status(), theme, &mut view);
             if let Some(splash) = &splash {

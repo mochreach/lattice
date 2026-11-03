@@ -1222,9 +1222,12 @@ The manual is Markdown in `docs/manual`, a file a chapter, which reads on GitHub
 into the binary with `include_str!` for `:manual`, as Vim's help is. Where the help page lists
 what each key and command is, the manual explains why and how, with examples, drawings of the
 screen, the reasoning behind names and choices, and the music behind them. The page lays the
-paragraphs out again to 80 columns, so it reads on half a laptop's screen, and lines tables up as
-they're shown, narrowing their widest columns to fit; it numbers the headings and lists them as
-contents first, and styles `code`, **bold** and links rather than showing the marks. `:manual TOPIC` goes to a heading that mentions the topic,
+paragraphs out again to 80 columns, so it reads on half a laptop's screen, or narrower on a
+narrower one, measuring words as they're shown rather than with their marks, and lines tables up
+as they're shown, narrowing their widest columns to fit; it numbers the headings and lists them
+as contents first, and styles `code`, **bold** and links rather than showing the marks. As in
+CommonMark, only `1.` starts a list in the middle of a paragraph. `:manual TOPIC` goes to a
+heading that mentions the topic,
 else where it's written as a command, else anywhere; the same again goes on to the next. A test
 fails if any command, any action (by its config name), or any instrument's or effect's setting
 goes unexplained, as the tutor's does for keys, so it can't fall behind.
