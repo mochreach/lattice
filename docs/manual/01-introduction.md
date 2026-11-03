@@ -470,6 +470,47 @@ for none, 1 to start). Recording is in [Recording](09-recording.md).
   down and up from anywhere; `:step STEPS` how far the cursor moves after each note (0 to 64; 0
   stays put, for entering chords).
 
+## Things that look alike
+
+A few jobs can be done more than one way, and each way is there for a reason. Here is which to
+reach for.
+
+**A part that changes from pass to pass: rules or gestures.** A rule changes the whole track on
+the passes it names: `:tr 3 every 4` plays everything a third up every fourth time round, and
+`:rot 1` turns the whole loop. A gesture changes one step: `?50` plays it on half the passes,
+`1:4` on the first of four, `F` only in a fill. Use a rule when the idea is "the same, but
+different", and a gesture when only one note should behave differently. They work together: a
+rule moves the gestures with their steps. See [Rules](04-rules.md) and
+[Gestures and locks](05-gestures.md).
+
+**Saved sounds: presets, chains, faces and macros.** A *preset* is the most: an instrument and
+its settings, its effects, its macros and its face, put on a track at once. A *chain* is only
+the effects, for any strip, a bus too. A *macro* is a knob on the track that turns several
+settings together, and a *face* is how the instrument page shows the track: a title, the
+controls it puts forward, and art. Macros and the face belong to the track. `:inst` keeps the
+macros and effects but takes the face, which belonged to the old instrument. See
+[Presets](07-instruments.md#presets) and [Saved chains](08-mixer-and-effects.md#saved-chains).
+
+**The tempo: `:bpm`, the conductor and `:meter`.** `:bpm` sets the song's own tempo. The
+conductor's `T` gestures change it as the song plays, and `T--` goes back to it. `:meter` doesn't
+mean to change the tempo, but keeps the music the same speed: give a beat fewer steps and the
+same steps make more beats a minute, so the tempo shown goes up. See [Tempo](#tempo) and
+[The meter](06-song.md#the-meter).
+
+**Lengths: a track's, a pattern's and an entry's.** A track's length (`:len`) is how many steps
+it has before it goes round, and tracks of different lengths drift against each other. A
+pattern's length (`:bars`) is how long the pattern plays before it loops or the song moves on:
+by default its longest track, to a whole bar. An entry's repeats (`+` and `-` on the song page)
+are how many times the song plays that pattern before the next. See
+[Polymeter](04-rules.md#polymeter-tracks-of-different-lengths) and
+[How long a pattern plays](06-song.md#how-long-a-pattern-plays-bars).
+
+**Silencing a part: `tm`, `tM`, the song page's `m`, and the pads.** `tm` mutes a track
+everywhere, `tM` in this pattern only, and the song page's `m` for one entry of the song. The
+numpad's mute mode (`+`) is `tm` on a pad, for playing a song live. The conductor's `M2`
+mutes track 2 from a step of the song on, as part of the arrangement. See
+[Mute and solo](03-tracks.md#mute-and-solo).
+
 ## Learning Lattice
 
 There are three ways to learn Lattice, each for a different moment:
