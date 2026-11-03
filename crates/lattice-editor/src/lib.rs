@@ -714,7 +714,12 @@ impl Editor {
 
     /// The frontend has written [`Editor::song`] to `path`.
     pub fn saved(&mut self, path: PathBuf) {
-        self.message = Some(format!("written {}", path.display()));
+        // The file's name, which a whole path pushed off the end of a narrow status line.
+        let name = path.file_name().map_or_else(
+            || path.display().to_string(),
+            |n| n.to_string_lossy().into(),
+        );
+        self.message = Some(format!("written {name}"));
         self.path = Some(path);
         self.saved = Saved {
             grid: self.grid.clone(),

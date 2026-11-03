@@ -1287,6 +1287,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         "bpm" => {
             let bpm = command.decimal(0)?;
             editor.bpm = bpm;
+            editor.message = Some(format!("{bpm} bpm"));
             Ok(vec![Effect::Bpm(bpm)])
         }
         "len" if editor.in_conductor() => {
