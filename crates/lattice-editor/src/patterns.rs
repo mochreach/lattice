@@ -8,7 +8,7 @@ use lattice_core::{
     MAX_STEPS_PER_BEAT, MIN_BPM, Meter, Mix, Pattern, SongGesture, Step,
 };
 
-use crate::{Editor, Effect, Page, changed};
+use crate::{Editor, Effect, Page, PatternId, changed};
 
 /// What the frontend should have the engine do when the playing pattern ends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -223,6 +223,10 @@ impl Editor {
             false => Default::default(),
         };
         let index = self.arrangement.insert(name, lanes, conductor);
+        let id = PatternId(self.next_pattern_id);
+        self.next_pattern_id += 1;
+        self.pattern_ids
+            .insert(index.min(self.pattern_ids.len()), id);
         if self.arrangement.entries.len() < MAX_ENTRIES {
             self.arrangement.entries.push(Entry {
                 pattern: index,
@@ -270,12 +274,8 @@ impl Editor {
         if !self.arrangement.remove(current) {
             return Err(format!("couldn't remove pattern {gone}"));
         }
-        // Copied entries of the patterns after it follow them down; those of it go.
-        self.song.yanked.retain(|e| e.pattern != current);
-        for entry in &mut self.song.yanked {
-            if entry.pattern > current {
-                entry.pattern -= 1;
-            }
+        if current < self.pattern_ids.len() {
+            self.pattern_ids.remove(current);
         }
         self.cue = None;
         self.song_position = None;

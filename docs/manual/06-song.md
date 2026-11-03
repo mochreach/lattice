@@ -291,8 +291,11 @@ song has up to 256 entries.
 `o` adds an entry after the cursor's, playing the same pattern once, and `O` one before; in an
 empty song, which says `nothing to play yet: o adds an entry`, it adds the pattern being edited.
 `d` removes the entries selected, copying them, and `p` puts copied entries back after the
-cursor's (`P` before), so `d` then `p` moves an entry and `y` then `p` repeats a section. The
-cursor stays on its entry as entries around it change length.
+cursor's (`P` before), so `d` then `p` moves an entry and `y` then `p` repeats a section. Copied
+entries hold on to their patterns and muted tracks themselves, not their places, so they paste
+the same after tracks or patterns are added, removed, moved or brought back with `u`; an entry
+whose pattern has gone is left out. The cursor stays on its entry as entries around it change
+length.
 
 `ret` goes to the cursor's entry's pattern, with the grid's cursor on the bar of it the song
 page's cursor was on, and on its track if it was on a track's column. `c` on the entries column

@@ -243,6 +243,11 @@ pub enum Effect {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TrackId(pub u32);
 
+/// Identifies a pattern while patterns are added, removed and brought back by undo, as
+/// [`TrackId`] does a track.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct PatternId(u32);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Cursor {
     pub track: usize,
@@ -366,6 +371,7 @@ struct Snapshot {
     arrangement: Arrangement,
     buses: Buses,
     ids: Vec<TrackId>,
+    pattern_ids: Vec<PatternId>,
     selections: Vec<Selection>,
     primary: usize,
     /// The song page's loop, which goes by entries.
@@ -494,6 +500,9 @@ pub struct Editor {
     /// One per track in `grid`, in the same order.
     ids: Vec<TrackId>,
     next_id: u32,
+    /// One per pattern in `arrangement`, in the same order.
+    pattern_ids: Vec<PatternId>,
+    next_pattern_id: u32,
     /// Tracks with faces whose instrument page column shows all their settings instead.
     inst_opened: std::collections::BTreeSet<TrackId>,
     count: Option<usize>,
@@ -544,10 +553,13 @@ impl Editor {
         let mut arrangement = Arrangement::default();
         give_track(&mut grid, &mut arrangement);
         let tracks = grid.tracks.len() as u32;
+        let patterns = arrangement.patterns.len() as u32;
         Self {
             ids: (0..tracks).map(TrackId).collect(),
             inst_opened: Default::default(),
             next_id: tracks,
+            pattern_ids: (0..patterns).map(PatternId).collect(),
+            next_pattern_id: patterns,
             saved: Saved {
                 grid: grid.clone(),
                 arrangement: arrangement.clone(),
@@ -770,6 +782,12 @@ impl Editor {
         let tracks = grid.tracks.len() as u32;
         self.ids = (self.next_id..self.next_id + tracks).map(TrackId).collect();
         self.next_id += tracks;
+        let patterns = arrangement.patterns.len() as u32;
+        self.pattern_ids = (self.next_pattern_id..self.next_pattern_id + patterns)
+            .map(PatternId)
+            .collect();
+        self.next_pattern_id += patterns;
+        self.song.yanked.clear();
         self.saved = Saved {
             grid: grid.clone(),
             arrangement: arrangement.clone(),
@@ -2209,9 +2227,6 @@ impl Editor {
         self.ids
             .insert(index.min(self.ids.len()), TrackId(self.next_id));
         self.next_id += 1;
-        for entry in &mut self.song.yanked {
-            entry.insert_track(index);
-        }
         self.reconcile();
         true
     }
@@ -2225,9 +2240,6 @@ impl Editor {
         self.arrangement.remove_track(index);
         if index < self.ids.len() {
             self.ids.remove(index);
-        }
-        for entry in &mut self.song.yanked {
-            entry.remove_track(index);
         }
         self.reconcile();
         true
@@ -2244,9 +2256,6 @@ impl Editor {
         if from < self.ids.len() {
             let id = self.ids.remove(from);
             self.ids.insert(to.min(self.ids.len()), id);
-        }
-        for entry in &mut self.song.yanked {
-            entry.move_track(from, to);
         }
         self.reconcile();
         true
@@ -2291,12 +2300,6 @@ impl Editor {
         let entries = self.arrangement.entries.len();
         self.song_position = self.song_position.filter(|&(e, _)| e < entries);
         self.song.looped = self.song.looped.filter(|&(a, b)| a <= b && b < entries);
-        let tracks = self.grid.tracks.len();
-        let every = (1u32 << tracks) - 1;
-        self.song.yanked.retain(|e| e.pattern < patterns);
-        for entry in &mut self.song.yanked {
-            entry.mutes &= every;
-        }
         if self.locking.as_ref().is_some_and(|l| !l.matches(self)) {
             self.locking = None;
         }
@@ -2335,6 +2338,7 @@ impl Editor {
             arrangement: self.arrangement.clone(),
             buses: self.buses.clone(),
             ids: self.ids.clone(),
+            pattern_ids: self.pattern_ids.clone(),
             selections: self.selections.clone(),
             primary: self.primary,
             looped: self.song.looped,
@@ -2381,6 +2385,7 @@ impl Editor {
             arrangement: std::mem::replace(&mut self.arrangement, snapshot.arrangement),
             buses: std::mem::replace(&mut self.buses, snapshot.buses),
             ids: std::mem::replace(&mut self.ids, snapshot.ids),
+            pattern_ids: std::mem::replace(&mut self.pattern_ids, snapshot.pattern_ids),
             selections: std::mem::replace(&mut self.selections, snapshot.selections),
             primary: std::mem::replace(&mut self.primary, snapshot.primary),
             looped: std::mem::replace(&mut self.song.looped, snapshot.looped),

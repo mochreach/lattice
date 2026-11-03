@@ -6,7 +6,16 @@ use std::ops::RangeInclusive;
 
 use lattice_core::{Entry, MAX_ENTRIES, MAX_REPEATS};
 
-use crate::{Action, Editor, Effect, Key, Mode, Page, PromptKind};
+use crate::{Action, Editor, Effect, Key, Mode, Page, PatternId, PromptKind, TrackId};
+
+/// A copied entry, holding on to its pattern and muted tracks by who they are rather than where,
+/// so it pastes the same after they've been added, removed, moved or brought back by undo.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Copied {
+    pattern: PatternId,
+    repeats: u32,
+    muted: Vec<TrackId>,
+}
 
 /// Where an entry goes, relative to the cursor's.
 #[derive(Clone, Copy)]
@@ -258,7 +267,7 @@ impl Editor {
             Action::Yank => {
                 let selected = self.song_entries();
                 if let Some(entries) = self.arrangement.entries.get(selected) {
-                    self.song.yanked = entries.to_vec();
+                    self.song.yanked = self.copy_entries(entries);
                     self.message = Some(match entries.len() {
                         1 => "copied the entry".into(),
                         n => format!("copied {n} entries"),
@@ -268,8 +277,18 @@ impl Editor {
             Action::Paste | Action::PasteInsert if self.song.yanked.is_empty() => {
                 self.message = Some("nothing copied".into());
             }
-            Action::Paste => self.add_entries(Place::After, self.song.yanked.clone()),
-            Action::PasteInsert => self.add_entries(Place::Before, self.song.yanked.clone()),
+            Action::Paste | Action::PasteInsert => {
+                let place = match action {
+                    Action::Paste => Place::After,
+                    _ => Place::Before,
+                };
+                match self.pasted_entries() {
+                    entries if entries.is_empty() => {
+                        self.message = Some("the copied entries' patterns are gone".into());
+                    }
+                    entries => self.add_entries(place, entries),
+                }
+            }
             Action::Open => return self.open_bar(),
             Action::TogglePlay => return self.play_song(false),
             Action::LockSetting => self.toggle_loop(),
@@ -470,6 +489,40 @@ impl Editor {
         effects
     }
 
+    /// `entries`, to copy.
+    fn copy_entries(&self, entries: &[Entry]) -> Vec<Copied> {
+        (entries.iter())
+            .filter_map(|e| {
+                Some(Copied {
+                    pattern: *self.pattern_ids.get(e.pattern)?,
+                    repeats: e.repeats,
+                    muted: (self.ids.iter().enumerate())
+                        .filter(|&(t, _)| e.muted(t))
+                        .map(|(_, &id)| id)
+                        .collect(),
+                })
+            })
+            .collect()
+    }
+
+    /// The entries copied, as they are in the song now: without those whose pattern's gone, or
+    /// mutes for tracks that are.
+    fn pasted_entries(&self) -> Vec<Entry> {
+        (self.song.yanked.iter())
+            .filter_map(|c| {
+                let mut entry = Entry {
+                    pattern: self.pattern_ids.iter().position(|&id| id == c.pattern)?,
+                    repeats: c.repeats,
+                    mutes: 0,
+                };
+                for t in c.muted.iter().filter_map(|&id| self.track_index(id)) {
+                    entry.set_muted(t, true);
+                }
+                Some(entry)
+            })
+            .collect()
+    }
+
     /// Adds `new` after the selected entries or before them, and moves onto the first.
     fn add_entries(&mut self, place: Place, new: Vec<Entry>) {
         let entries = &self.arrangement.entries;
@@ -512,7 +565,7 @@ impl Editor {
         self.checkpoint();
         let gone: Vec<Entry> = self.arrangement.entries.drain(selected.clone()).collect();
         if yank {
-            self.song.yanked = gone;
+            self.song.yanked = self.copy_entries(&gone);
         }
         for at in selected.clone().rev() {
             if let Some((playing, _)) = &mut self.song_position
@@ -545,7 +598,7 @@ pub(crate) struct SongCursor {
     /// In select mode, the bar and column the selection began at.
     anchor: Option<(usize, usize)>,
     /// The entries last copied.
-    pub(crate) yanked: Vec<Entry>,
+    pub(crate) yanked: Vec<Copied>,
     /// The first and last entries of the section the song loops round.
     pub(crate) looped: Option<(usize, usize)>,
 }
@@ -856,22 +909,37 @@ mod tests {
     }
 
     #[test]
-    fn copied_entries_follow_the_tracks_and_patterns() {
+    fn copied_entries_follow_the_tracks_and_patterns_through_undo() {
         let mut e = three_tracks();
-        let entry = |pattern, mutes| Entry {
-            pattern,
-            repeats: 1,
-            mutes,
+        keys(&mut e, "o");
+        e.arrangement.entries[0].mutes = 0b0100;
+        keys(&mut e, "ggy");
+        let pasted = |e: &mut Editor| {
+            keys(e, "p");
+            let entry = e.arrangement.entries[e.song_cursor()];
+            keys(e, "u");
+            (entry.pattern, entry.mutes)
         };
-        e.song.yanked = vec![entry(0, 0b0100), entry(1, 0b1000)];
-        assert!(e.move_track(3, 0));
-        assert_eq!(e.song.yanked, [entry(0, 0b1000), entry(1, 0b0001)]);
-        assert!(e.remove_track(3));
-        assert_eq!(e.song.yanked, [entry(0, 0b0000), entry(1, 0b0001)]);
-        // Pattern 1's the one being edited; removing it takes its entries.
-        e.select_pattern(1);
+        assert!(e.move_track(2, 0));
+        assert_eq!(pasted(&mut e), (0, 0b0001), "the muted track moved first");
+        keys(&mut e, "u");
+        assert_eq!(e.grid.tracks[2].name, "snare", "the move's undone");
+        assert_eq!(pasted(&mut e), (0, 0b0100), "and the mute's back with it");
+        assert!(e.remove_track(2));
+        assert_eq!(pasted(&mut e), (0, 0), "the muted track's gone");
+
+        // A second pattern's entry, copied, then the pattern before it removed.
+        let mut e = three_tracks();
+        crate::command::run(&mut e, "pn").unwrap();
+        keys(&mut e, "gsgey");
+        assert_eq!(e.song.yanked.len(), 1);
+        e.select_pattern(0);
         e.remove_pattern().unwrap();
-        assert_eq!(e.song.yanked, [entry(0, 0)]);
+        // The test song has two patterns; the new one's the third.
+        assert_eq!(pasted(&mut e).0, 1, "its pattern's moved down");
+        keys(&mut e, "u");
+        assert_eq!(e.arrangement.patterns.len(), 3);
+        assert_eq!(pasted(&mut e).0, 2, "and back up");
     }
 
     #[test]
