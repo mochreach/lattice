@@ -1090,7 +1090,9 @@ fn header_lines(
                 };
                 let mut spans = vec![
                     Span::raw(" ".repeat(c.note_width)),
-                    Span::styled(fit(" vel", FIELD), theme.dim),
+                    Span::raw(" "),
+                    Span::styled("v", theme.dim.add_modifier(Modifier::UNDERLINED)),
+                    Span::styled(fit("el", FIELD - 2), theme.dim),
                 ];
                 spans.extend(["g", "G"].into_iter().flat_map(|k| key(k, 3)));
                 for (label, _) in fields {
