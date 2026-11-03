@@ -117,7 +117,7 @@ impl Editor {
             None => DEPTH,
         };
         let (t, fx, param) = self.setting_under_cursor().ok_or(
-            "map works on a track's setting: move onto one on the mixer (gm) or fx page (gf)",
+            "map works on a track's setting: move onto one on the mixer (gm), fx (gf) or instrument (gi) page",
         )?;
         // An existing macro by name or number, or a new one's name.
         let macros = &self.grid.tracks.get(t).ok_or("no such track")?.macros;

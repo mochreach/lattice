@@ -242,7 +242,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:fx-add EFFECT` | add an effect (`delay`, `reverb`, `filter`, `ensemble`, `phaser`, `drive`, `comp` or `pitch`) after the mixer or fx page cursor, or at the end of this track's chain |
 | `:chain-save NAME` | save the strip's chain of effects (on the pattern page, the cursor's track's) as `~/.config/lattice/chains/NAME.toml`, to load on any strip of any song |
 | `:chain-load NAME` | put a saved chain on the strip, in place of its own (its effects' locks go with them); Lattice comes with `shimmer` |
-| `:preset NAME` | put a preset on the track (the instrument page's or the cursor's): its instrument, effects, macros and face, in place of the track's own; Lattice comes with 22: type `:preset ` to see them |
+| `:preset NAME` | put a preset on the track (the instrument page's or the cursor's): its instrument, effects, macros and face, in place of the track's own; Lattice comes with 23: type `:preset ` to see them |
 | `:preset-save NAME` | save the track's instrument, effects and macros, and its face, as `~/.config/lattice/presets/NAME.toml`, giving the track a face titled after `NAME` if it has none |
 | `:face TITLE` | title the track's face |
 | `:face-art [PATH]` | draw the track's face from a text file, up to 8 frames of 8 rows of 31 characters, each after an empty line, giving the track a face titled after the file if it has none; with no file, take the art away |
@@ -270,7 +270,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:n [PATH]`, `:n! [PATH]` | start an empty song: one track of 16 steps, no effects, at the same tempo, to be saved at PATH (or wherever `:w PATH` says); `!` discards unsaved changes |
 | `:q`, `:q!` | quit, refusing if there are unsaved changes; `!` quits anyway (`C-c` asks, and quits if pressed again) |
 | `:track-add [NAME]` (`:ta`) | add a 16-step track after this one (up to 16 tracks; also `ta`) |
-| `:track-remove` (`:trm`), `:track-move ±N` (`:tmv`) | remove this track, move it left or right (also `th` `tl`) |
+| `:track-remove` (`:trm`), `:track-move ±N` (`:tmv`) | remove this track, move it left or right (also `tH` `tL`) |
 
 `:export-sel` and `:export-loop` make samples, so they go in a `samples` folder beside the song,
 numbered (`song-loop-1.wav`, `song-loop-2.wav`, …) so a new one never replaces one a track plays; a
@@ -350,7 +350,7 @@ the feedback send's level, the reverb's decay, or `pitch` at 7 for fifths.
 **Presets** make an instrument into one of its own: `:preset night-bus` puts an instrument, its
 settings, the effects after it and the macros that turn them on a track all at once, in place of
 the track's own, and `:preset-save cold-iron` saves a track's to put on any track of any song.
-Lattice comes with 23, each with its effects, two macros and a face:
+Lattice comes with 23, each with its effects, a macro or two and a face:
 
 - synths: `night-bus` (a dark saw pad in the shimmer, which `dawn` opens), `paper-lanterns` (a slow
   pad through a swaying band-pass), `cathedral` (a square organ in a stone nave), `sodium` (a bright

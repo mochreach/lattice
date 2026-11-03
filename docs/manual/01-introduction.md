@@ -483,8 +483,8 @@ There are three ways to learn Lattice, each for a different moment:
 
 ```
   NORMAL AND SELECT MODE
-  h left             left previous track
-  l right            right next track
+  h left             left previous field, or track
+  l right            right next field, or track
   k up               up previous step
   j down             down next step
   C-u                half_page_up up half a page

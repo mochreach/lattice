@@ -395,8 +395,8 @@ impl Action {
     /// One-line description, for the infobox and help.
     pub fn describe(self) -> &'static str {
         match self {
-            Action::Left => "previous track",
-            Action::Right => "next track",
+            Action::Left => "previous field, or track",
+            Action::Right => "next field, or track",
             Action::Up => "previous step",
             Action::Down => "next step",
             Action::HalfPageUp => "up half a page",
