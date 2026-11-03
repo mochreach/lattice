@@ -440,8 +440,9 @@ last chord has rung, rather than wherever the pattern happens to end.
 **Cue.** `P3` cues pattern 3 for the next bar, as `]p` or `:pattern` would. Like them, it leaves
 the arrangement, so the cued pattern loops from then on. It's for a pattern that should go
 somewhere other than the song's next entry: a loop that breaks out into another section on its
-own. Stopped, it does nothing. The patterns are numbered as they are when the cue is written;
-adding or removing a pattern before pattern 3 doesn't renumber it.
+own. Stopped, it does nothing. A cue follows its pattern: add a pattern before pattern 3 and the
+cue becomes `P4`; remove pattern 3 and the cue goes too. `M` and `S` follow their tracks the same
+way as tracks are added, removed and moved.
 
 **Mute and solo.** `M2` mutes track 2 and `M-2` unmutes it; `S2` and `S-2` solo and unsolo it.
 They set rather than toggle, so a step says what's heard whichever way the track was. They last

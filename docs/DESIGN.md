@@ -968,7 +968,9 @@ gestures are written as they're typed:
 - `M2` mutes track 2 from this step and `M-2` unmutes it; `S2` `S-2` solo and unsolo it. Set
   rather than toggled, so a step says what's heard whichever way the track was.
 
-Patterns and tracks are numbered from 1, as shown. The engine plays the conductor: each step it
+Patterns and tracks are numbered from 1, as shown, and renumbered as patterns and tracks are added,
+removed and moved, so a gesture names the same one (`Arrangement::renumber`); one naming a pattern
+or track removed goes with it. The engine plays the conductor: each step it
 reads the conductor's step for the pattern's step, round its own length (`Engine::conduct`).
 Tempo changes the length of a step from the step that sets it (`Clock::retime`, keeping the
 samples already counted); a step on the way to a slide's takes its share of the way there, so

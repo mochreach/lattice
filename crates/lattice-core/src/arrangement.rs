@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::conductor::Conductor;
+use crate::conductor::{Conductor, SongGesture};
 use crate::song::{Grid, MAX_STEPS, Step, Track};
 use crate::transform::Rule;
 
@@ -356,6 +356,7 @@ impl Arrangement {
                 entry.pattern += 1;
             }
         }
+        self.renumber(|p| Some(if p >= index { p + 1 } else { p }), Some);
         index
     }
 
@@ -376,6 +377,8 @@ impl Arrangement {
                 entry.pattern -= 1;
             }
         }
+        // Cues to it go with it.
+        self.renumber(|p| gone(p, index), Some);
         true
     }
 
@@ -385,6 +388,7 @@ impl Arrangement {
         for entry in &mut self.entries {
             entry.insert_track(index);
         }
+        self.renumber(Some, |t| Some(if t >= index { t + 1 } else { t }));
         for pattern in self.others_mut() {
             let lane = Lane {
                 steps: vec![Step::default(); len],
@@ -402,6 +406,7 @@ impl Arrangement {
         for entry in &mut self.entries {
             entry.remove_track(index);
         }
+        self.renumber(Some, |t| gone(t, index));
         for pattern in self.others_mut() {
             if index < pattern.lanes.len() {
                 pattern.lanes.remove(index);
@@ -414,11 +419,53 @@ impl Arrangement {
         for entry in &mut self.entries {
             entry.move_track(from, to);
         }
+        self.renumber(Some, |t| {
+            Some(if t == from {
+                to
+            } else if from < t && t <= to {
+                t - 1
+            } else if to <= t && t < from {
+                t + 1
+            } else {
+                t
+            })
+        });
         for pattern in self.others_mut() {
             if from < pattern.lanes.len() && to < pattern.lanes.len() {
                 let lane = pattern.lanes.remove(from);
                 pattern.lanes.insert(to, lane);
             }
+        }
+    }
+
+    /// Keeps the conductors' `P`, `M` and `S` gestures pointing at the same patterns and
+    /// tracks, given where each (from 0) is now, or `None`, removing the gesture, if it's gone.
+    fn renumber(
+        &mut self,
+        patterns: impl Fn(usize) -> Option<usize>,
+        tracks: impl Fn(usize) -> Option<usize>,
+    ) {
+        // The gestures number them from 1, as they're shown.
+        let from_one = |n: u8, to: &dyn Fn(usize) -> Option<usize>| match n.checked_sub(1) {
+            Some(i) => to(usize::from(i)).and_then(|i| u8::try_from(i + 1).ok()),
+            // Not one that's ever been made; left as it is.
+            None => Some(n),
+        };
+        let steps = self
+            .patterns
+            .iter_mut()
+            .flat_map(|p| &mut p.conductor.steps);
+        for gesture in steps.flatten() {
+            *gesture = gesture.and_then(|g| match g {
+                SongGesture::Pattern(n) => from_one(n, &patterns).map(SongGesture::Pattern),
+                SongGesture::Mute { track, on } => {
+                    from_one(track, &tracks).map(|track| SongGesture::Mute { track, on })
+                }
+                SongGesture::Solo { track, on } => {
+                    from_one(track, &tracks).map(|track| SongGesture::Solo { track, on })
+                }
+                g => Some(g),
+            });
         }
     }
 
@@ -540,6 +587,15 @@ impl TryFrom<SparseLane> for Lane {
     }
 }
 
+/// Where `i` is now that `removed` is gone, if it isn't the one gone.
+fn gone(i: usize, removed: usize) -> Option<usize> {
+    match i.cmp(&removed) {
+        std::cmp::Ordering::Less => Some(i),
+        std::cmp::Ordering::Equal => None,
+        std::cmp::Ordering::Greater => Some(i - 1),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -561,6 +617,54 @@ mod tests {
                 .collect(),
             groups: vec![],
         }
+    }
+
+    #[test]
+    fn conductor_cues_follow_their_patterns_and_tracks() {
+        let mut a = Arrangement::default();
+        a.insert(None, vec![], Conductor::new(4));
+        let cue = |a: &Arrangement, i: usize| a.patterns[0].conductor.steps[i / 2][i % 2];
+        a.patterns[0].conductor = Conductor::new(4);
+        a.patterns[0].conductor.steps[0] = [
+            Some(SongGesture::Pattern(2)),
+            Some(SongGesture::Mute { track: 3, on: true }),
+        ];
+        a.patterns[0].conductor.steps[1] = [
+            Some(SongGesture::Solo {
+                track: 1,
+                on: false,
+            }),
+            Some(SongGesture::Tempo(140)),
+        ];
+        // A pattern in before the one cued moves it on.
+        assert_eq!(a.insert(None, vec![], Conductor::new(4)), 1);
+        assert_eq!(cue(&a, 0), Some(SongGesture::Pattern(3)));
+        assert!(a.remove(1));
+        assert_eq!(cue(&a, 0), Some(SongGesture::Pattern(2)));
+        assert!(a.remove(1));
+        assert_eq!(cue(&a, 0), None, "a cue to a pattern removed goes too");
+
+        a.insert_track(0, 16);
+        assert_eq!(cue(&a, 1), Some(SongGesture::Mute { track: 4, on: true }));
+        a.move_track(3, 0);
+        assert_eq!(cue(&a, 1), Some(SongGesture::Mute { track: 1, on: true }));
+        assert_eq!(
+            cue(&a, 2),
+            Some(SongGesture::Solo {
+                track: 3,
+                on: false
+            })
+        );
+        a.remove_track(0);
+        assert_eq!(cue(&a, 1), None);
+        assert_eq!(
+            cue(&a, 2),
+            Some(SongGesture::Solo {
+                track: 2,
+                on: false
+            })
+        );
+        assert_eq!(cue(&a, 3), Some(SongGesture::Tempo(140)), "the rest stay");
     }
 
     #[test]
