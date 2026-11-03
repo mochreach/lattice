@@ -67,6 +67,10 @@ What changing it does:
 - Locks on the old instrument's settings go, and so do any macro's hold on them, since those
   settings mean nothing to the new one. The track's effects, their locks, and the macros
   themselves stay, so a macro that turned a filter after the old instrument still turns it.
+- A track that hasn't been given a name of its own takes the instrument's: one still called
+  `track 3`, as `:track-add` left it, or named after the instrument it played before, so a new
+  track becomes `krell` and then `kick` as you try instruments on it. If another track has the
+  name, it's numbered, `kick 2`. A name you chose (`:name bass`) stays.
 - It's one step of undo, so `u` brings back the old instrument as it was.
 
 On the instrument page and the mixer, `c` on the instrument's name opens the command line with

@@ -665,9 +665,13 @@ impl Editor {
         self.checkpoint();
         let mut effects = vec![Effect::MixerChanged];
         for t in tracks {
+            let name = self.instrument_name(t, kind);
             let Some(track) = self.grid.tracks.get_mut(t) else {
                 continue;
             };
+            if let Some(name) = name {
+                track.name = name;
+            }
             track.instrument = Instrument::new(kind);
             track.face = None;
             // The old instrument's settings mean nothing to the new one.
@@ -682,6 +686,28 @@ impl Editor {
             self.mixer.instrument = true;
         }
         Ok(effects)
+    }
+
+    /// A name for track `t` after its instrument, once it's playing `kind`, if it hasn't been
+    /// given one of its own: still `track 3` from `:track-add`, or named after the instrument
+    /// it played before. Another track with the name already gets `krell 2`, and so on.
+    fn instrument_name(&self, t: usize, kind: InstKind) -> Option<String> {
+        let track = self.grid.tracks.get(t)?;
+        let old = track.instrument.kind.name();
+        let numbered = |prefix: &str| {
+            (track.name.strip_prefix(prefix))
+                .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+        };
+        let default = track.name == old || numbered("track ") || numbered(&format!("{old} "));
+        if !default {
+            return None;
+        }
+        let taken = |name: &str| {
+            (self.grid.tracks.iter().enumerate()).any(|(i, other)| i != t && other.name == name)
+        };
+        let names = std::iter::once(kind.name().to_string())
+            .chain((2..=self.grid.tracks.len() + 1).map(|n| format!("{} {n}", kind.name())));
+        names.into_iter().find(|name| !taken(name))
     }
 
     /// `:sample [PATH]`: the tracks play the WAV file at `path`, or the last selection exported,
@@ -1173,6 +1199,27 @@ mod tests {
         keys(&mut e, "gptl");
         command(&mut e, "fx-add delay");
         assert_eq!(e.grid.tracks[1].effects.len(), 1);
+    }
+
+    #[test]
+    fn a_track_with_no_name_of_its_own_takes_its_instruments() {
+        let mut e = editor();
+        e.grid.tracks[0].name = "track 1".into();
+        e.grid.tracks[1].name = "bass".into();
+        command(&mut e, "inst krell");
+        assert_eq!(e.grid.tracks[0].name, "krell");
+        command(&mut e, "inst kick");
+        assert_eq!(
+            e.grid.tracks[0].name, "kick",
+            "named after its last instrument"
+        );
+        keys(&mut e, ")");
+        command(&mut e, "inst kick");
+        assert_eq!(e.grid.tracks[1].name, "bass", "a name of its own stays");
+        e.grid.tracks[1].name = "track 2".into();
+        command(&mut e, "inst snare");
+        command(&mut e, "inst kick");
+        assert_eq!(e.grid.tracks[1].name, "kick 2", "the first is taken");
     }
 
     #[test]
