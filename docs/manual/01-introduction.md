@@ -45,25 +45,38 @@ played by its own instruments and effects, with keys modelled on the Helix text 
 a sample-accurate sequencer, a sound engine written by hand, and rules that reshape a pattern
 each time it comes round, so a loop can change as it plays.
 
-### Why it exists
+### Why Lattice exists
 
-Lattice is maximalist software, and its intended audience is me. I wanted all of the features
-and all of the tools, fast enough to get musical ideas out of my head and into songs. That's
-it. Every choice serves that, so I've been uncompromising about how easy it is for anyone
-else to use: the keys are the ones my hands already know from Helix, and nothing has been
-smoothed over for a newcomer's sake.
+I've always liked the idea of a tracker; they're intuitive and precise, with a wonderful
+complexity bubbling below the surface. I have used both software and hardware trackers,
+spending a lot of time with both Renoise and the Polyend Tracker. Unfortunately, I've
+always come away with a sense of cognitive dissonance, as I would consistently come
+across implementation details that defied my expectations. Now, this is just a "skill
+issue", right? Well, definitely: if I had continued to spend time working with them,
+I would have got to a point where it felt natural to use them. However, in my mind, there
+was the shadow of a piece of software that would match my expectations and enable me to
+enter a state of tracker-induced creative bliss. I wrenched this idea out from deep in my
+id, and thus, Lattice was born.
 
-I couldn't have made this before agentic programming. Software this large, this involved and
-this fast, written for one person, wasn't something one person could build in their spare
-time. Now it is, and I think that's exciting and important: software can be made to fit the
-person who uses it, rather than the other way round.
-
-All the same, I think it's a fascinating piece of software, and an interesting way to make
-music. I hope other people get something from it and enjoy it, and I'm curious to see how
+The intended audience for Lattice is me: every feature and tool has been created to
+satisfy some, potentially unreasonable and fleeting, creative desire. All I care about is
+translating my musical ideas out of my head and into the world. That's it. Every choice
+serves that, so I've been uncompromising about how easy it is for anyone
+else to use. All the same, I think it's a fascinating piece of software, and an interesting
+way to make music. The documentation is very comprehensive; there is a tutor mode, and it's
+made to explain what options are available and what they do, so it is quite usable. I hope
+other people get something from it and enjoy it, and I'm curious to see how
 they use it. But that's the philosophy: Lattice is made for me first.
 
-I'm Chris Wells Wood. I make videos on my YouTube channel,
-[Mo chreach!](https://www.youtube.com/@mochreach), and write at
+An interesting aside here: I have made Lattice with the diligent assistance of AI. Most of
+the code has been written via an LLM. **I could not have made this before agentic programming.**
+Software this complex, feature-rich and performant, written for an audience of one person,
+would have been a preposterous notion until very recently. Now, not only is it possible,
+but it's accessible to most people. I think that presents an exciting and important
+opportunity: go and make software that works for you.
+
+I'm Chris Wells Wood, and if you'd like to hear more from me, I make videos on my YouTube
+channel, [Mo chreach!](https://www.youtube.com/@mochreach), and write at
 [mochreach.dev](https://mochreach.dev).
 
 ### Trackers, from the Amiga on
