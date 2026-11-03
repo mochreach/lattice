@@ -131,17 +131,17 @@ preset's face:
             ⠯⣀⣀⡨⠇ ⠁   ⠁ ⠁         ⡂ ⠕⡄⡂         ⠈⢱  ⡎⠁        ⠈⢿⣿⣿⣿ ⠘⠛⣿⣿⣿⣿⣿⣿⣿⣿⣿⠛⠃ ⣿⣿⣿⡿⠁
       ⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒   ⠂ ⠁⠈⠢⡀      ⡸⠉⠉⡏⠉⠉⢹⠉⠉⢇        ⠙⠿⣿   ⠉⢹⣿⣿⣿⣿⣿⡏⠉   ⣿⠿⠋
       ⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉        ⠈⠢⡀⠠⠨⠩⠩⠠⠠⠠⠠⠠⠄⠄⠄⠄⠄⠍⠍⠅       ⠈    ⢀⣀⣿⣿⣿⣀⡀    ⠁
- 00   monochord ────────────────  krell ────────────────────  Night Bus synth ──────────
- 01    model         nylon         stops         8' 8'        1 dawn           0
- 02    pluck          0.5          drift          0.15        2 haze          0.3
- 03    position       0.15         quill          0.7          attack         0.6s
- 04    decay           3s          decay           4s          release         2s
- 05    tone           0.6          damper         0.8         → reverb filter pitch
- 06    bow             0           body           0.3
- 07   → no effects                 hull          196Hz
- 08                                glass          0.5
- 09                                gain           0.5
- 10                               → no effects
+      monochord ────────────────  krell ────────────────────  Night Bus synth ──────────
+       model         nylon         stops         8' 8'        1 dawn           0
+       pluck          0.5          drift          0.15        2 haze          0.3
+       position       0.15         quill          0.7          attack         0.6s
+       decay           3s          decay           4s          release         2s
+       tone           0.6          damper         0.8         → reverb filter pitch
+       bow             0           body           0.3
+      → no effects                 hull          196Hz
+                                   glass          0.5
+                                   gain           0.5
+                                  → no effects
 ```
 
 From the top:
@@ -154,7 +154,8 @@ From the top:
 - **The art**, up to eight rows of braille: the track's face, or else its engine's own drawing
   (the monochord's string over its bridge, the Krell's Great Machine). It moves with the beat
   and lights up as the track plays; see [the art](#the-art).
-- **The lines**, numbered down the left from `00` like a pattern's rows. Each column is in
+- **The lines**, with `▸` down the left at the cursor's. They aren't numbered as a pattern's
+  rows are, since they're a list, not time. Each column is in
   **parts**: the instrument's name first, then its settings a line each, then the track's
   macros, then its chain of effects.
 
@@ -204,7 +205,7 @@ job here, so the names in the middle column are what a config file binds (see
 | `gp`        | `goto_pattern`              | the pattern                                     |
 
 Counts work as everywhere: `3l` moves three tracks right, `5j` five lines down, and `10C-a` turns
-a setting ten times as far. `h` and `l` keep to the same line number as they cross, so you can
+a setting ten times as far. `h` and `l` keep to the same line as they cross, so you can
 run along the `decay` line of a row of drums; on a shorter column the cursor stops at its last
 line.
 
@@ -1088,11 +1089,11 @@ settings, and again goes back to the face; which faces are open isn't saved. `w`
 wherever the kind of line changes.
 
 ```
- 00   Brittle snare ────────────
- 01   1 crack          0
- 02   2 size           0
- 03   1snap           0.75
- 04   → reverb
+      Brittle snare ────────────
+      1 crack          0
+      2 size           0
+      1 snap          0.75
+      → reverb
 ```
 
 ### Making a face

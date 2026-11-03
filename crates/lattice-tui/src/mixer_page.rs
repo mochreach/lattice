@@ -448,11 +448,12 @@ pub fn settings(
         } else {
             theme.dim
         };
+        // A space after the macro's number, so it doesn't read as part of the name.
         let mark = Span::styled(
-            mark.unwrap_or(' ').to_string(),
+            format!("{} ", mark.unwrap_or(' ')),
             Style::new().fg(theme.visual),
         );
-        [mark, Span::styled(fit(text, PARAM_LABEL - 1), style)]
+        [mark, Span::styled(fit(text, PARAM_LABEL - 2), style)]
     };
     let value_style = |here: bool| {
         if here {

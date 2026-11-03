@@ -22,13 +22,13 @@ use crate::mixer_page::flag;
 use crate::theme::Theme;
 use crate::ui::{ViewState, fit};
 
-/// Width of the line numbers down the left.
+/// Width of the gutter down the left, which points to the cursor's line.
 const LABEL: usize = 5;
 /// Narrowest and widest a column gets.
 const MIN_COLUMN: usize = 24;
 const MAX_COLUMN: usize = 34;
 /// Width of a setting's name.
-const PARAM_LABEL: usize = 11;
+const PARAM_LABEL: usize = 12;
 /// Lines above the columns (the rule, a gap and the tracks' names).
 const ABOVE: usize = 3;
 /// Most and fewest rows of art, and the lines left for the columns below it at least.
@@ -119,12 +119,10 @@ pub fn draw(
     view.inst_top = view.inst_top.min(longest.saturating_sub(room));
 
     for l in (view.inst_top..longest).take(room) {
-        let number = if cursor.line == l {
-            theme.text
-        } else {
-            theme.faint
-        };
-        let mut spans = vec![Span::styled(fit(&format!(" {l:02}"), LABEL), number)];
+        // Not numbered, as the pattern's steps are: these lines are a list, not time. An arrow
+        // shows the cursor's.
+        let gutter = if cursor.line == l { "  ▸" } else { "" };
+        let mut spans = vec![Span::styled(fit(gutter, LABEL), theme.text)];
         for (&(t, track), lines) in columns.iter().zip(&all) {
             let here = cursor.track == t && cursor.line == l;
             let cell = match lines.get(l) {
@@ -282,15 +280,15 @@ fn cell(
             // A macro turning it is marked with its number.
             let mark = macros::mark(&track.macros, None, info.id as u8);
             let (mark, value, label_style, style) = match (lock, mark) {
-                (Some(lock), _) => (Span::styled(" ◆", locked), lock.value, locked, locked),
+                (Some(lock), _) => (Span::styled(" ◆ ", locked), lock.value, locked, locked),
                 (None, Some(m)) => (
-                    Span::styled(format!(" {m}"), Style::new().fg(theme.visual)),
+                    Span::styled(format!(" {m} "), Style::new().fg(theme.visual)),
                     track.instrument.get(info.id),
                     name_style,
                     value_style,
                 ),
                 (None, None) => (
-                    Span::raw("  "),
+                    Span::raw("   "),
                     track.instrument.get(info.id),
                     name_style,
                     value_style,
@@ -298,7 +296,7 @@ fn cell(
             };
             let mut spans = vec![
                 mark,
-                Span::styled(fit(info.name, PARAM_LABEL - 2), label_style),
+                Span::styled(fit(info.name, PARAM_LABEL - 3), label_style),
             ];
             spans.extend(bars::param(info, value, w - PARAM_LABEL, style, theme));
             spans

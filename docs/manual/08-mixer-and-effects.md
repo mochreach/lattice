@@ -135,8 +135,8 @@ track, while it plays:
  chain     synth → drive → delay → pitch
 
  wave           square        attack     ▎   0.002s        decay          0.16s
- sustain    ▋    0.15         release        0.08s        1cutoff         1400Hz▎
- env         ▎  2600Hz        1resonance      0.4         gain       ▎     0.3
+ sustain    ▋    0.15         release        0.08s        1 cutoff        1400Hz▎
+ env         ▎  2600Hz        1 resonance     0.4         gain       ▎     0.3
 ```
 
 ### The overview
@@ -329,20 +329,20 @@ track from there. Here is `mountain-king`'s first track:
  ── TROLL  ─ effects → trolls → master, and → send ───────────────────────────────────────
 
       macros                            A ← in                   B ← A
- 00   1 fury                 0          drive ─────────────────  delay ─────────────────
- 01    cutoff              +0.35▌       1drive         0.25       time         0.326s
- 02    resonance           +0.20         tone         7000Hz▏    1feedback      0.35
- 03    drive.drive         +0.60  ▎      mix           0.6▎       tone         3000Hz
- 04    delay.feedback      +0.30         level         0dB  ▋     mix            1
- 05                                     → B  -9.0 dB             pitch ─────────────────
- 06                                     │                         pitch         12st
- 07                                     │                         fine          0ct
- 08                                     │                         window       0.08s
- 09                                     │                         mix            1
+      1 fury                 0          drive ─────────────────  delay ─────────────────
+       cutoff              +0.35▌       1 drive        0.25       time         0.326s
+       resonance           +0.20         tone         7000Hz▏    1 feedback     0.35
+       drive.drive         +0.60  ▎      mix           0.6▎       tone         3000Hz
+       delay.feedback      +0.30         level         0dB  ▋     mix            1
+                                        → B  -9.0 dB             pitch ─────────────────
+                                        │                         pitch         12st
+                                        │                         fine          0ct
+                                        │                         window       0.08s
+                                        │                         mix            1
  out                                             0dB        ▉             -8dB
 ```
 
-Read it from the top. Lane A takes the track's sound (`A ← in`) and drives it. At line 05 a
+Read it from the top. Lane A takes the track's sound (`A ← in`) and drives it. After it, a
 **send** row, `→ B -9.0 dB`, copies the sound at that point into lane B, 9 dB down; lane B
 (`B ← A`) puts it through a delay and then shifts it up an octave, so the echoes come back an
 octave higher. Along the bottom each lane's **out** is its level into the strip: lane A at
@@ -434,12 +434,12 @@ below the cursor on the grid. The result:
 
 ```
       macros                            A ← in B                 B ← A
- 00                                     ensemble ──────────────  delay ─────────────────
- 01                                      rate         0.6Hz       time         0.375s
- 02                                      depth         0.5        feedback      0.45
- 03                                      mix           0.6▎       tone         4000Hz
- 04                                     → B  -6.0 dB              mix            1
- 05                                     │                        ↺ A  -6.0 dB
+                                        ensemble ──────────────  delay ─────────────────
+                                         rate         0.6Hz       time         0.375s
+                                         depth         0.5        feedback      0.45
+                                         mix           0.6▎       tone         4000Hz
+                                        → B  -6.0 dB              mix            1
+                                        │                        ↺ A  -6.0 dB
  out                                             0dB        ▉             0dB        ▉
 ```
 
@@ -468,14 +468,14 @@ with a little of lane B heard as it is:
 
 ```
       macros                            A ← in B                 B ← A
- 00                                     reverb ────────────────  filter ────────────────
- 01                                      size          0.85  ▎    type          high
- 02                                      decay         0.85  ▍    cutoff       400Hz
+                                        reverb ────────────────  filter ────────────────
+                                         size          0.85  ▎    type          high
+                                         decay         0.85  ▍    cutoff       400Hz
  ...
- 07                                     → B  +0.0 dB             pitch ─────────────────
- 08                                     │                         pitch         12st
+                                        → B  +0.0 dB             pitch ─────────────────
+                                        │                         pitch         12st
  ...
- 12                                     │                        ↺ A  -4.0 dB
+                                        │                        ↺ A  -4.0 dB
  out                                             0dB        ▉             -9dB    ▌
 ```
 
@@ -840,8 +840,8 @@ With `dawn` at 0 the sound is as it was; at 0.5 the cutoff has opened 0.3 of its
 
 ```
  wave            saw          attack         0.005s        decay           0.2s
- sustain         0.5          release         0.1s        1cutoff         1000Hz
- env            3000Hz       1resonance      ▍0.3          gain         ▊  0.2
+ sustain         0.5          release         0.1s        1 cutoff        1000Hz
+ env            3000Hz       1 resonance     ▍0.3          gain         ▊  0.2
 ```
 
 Settings a macro turns are marked with its number on the mixer and fx pages (`1cutoff`), or
@@ -857,9 +857,9 @@ turns is lit in its lane. Here `50^a` on `dawn` has turned it half way:
 
 ```
       macros                            A ← in B                 B ← A
- 00   1 dawn                0.5         ensemble ──────────────  delay ─────────────────
- 01    cutoff              +0.60  ▎      rate         0.6Hz       time         0.375s
- 02    resonance           -0.20         depth         0.5        feedback      0.45
+      1 dawn                0.5         ensemble ──────────────  delay ─────────────────
+       cutoff              +0.60  ▎      rate         0.6Hz       time         0.375s
+       resonance           -0.20         depth         0.5        feedback      0.45
 ```
 
 With no macros, the page says

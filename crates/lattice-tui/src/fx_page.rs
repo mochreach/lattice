@@ -20,13 +20,13 @@ use crate::mixer_page::{flag, route};
 use crate::theme::Theme;
 use crate::ui::{ViewState, fit};
 
-/// Width of the line numbers down the left.
+/// Width of the gutter down the left, which points to the cursor's line.
 const LABEL: usize = 5;
 /// Narrowest and widest a lane gets.
 const MIN_LANE: usize = 22;
 const MAX_LANE: usize = 34;
 /// Width of a setting's name.
-const PARAM_LABEL: usize = 12;
+const PARAM_LABEL: usize = 13;
 /// Width of the macros' column, and of a macro's name in it.
 const MACROS: usize = 34;
 const MACRO_LABEL: usize = 18;
@@ -186,16 +186,16 @@ pub fn draw(
                 let (mark, value, label_style, style) = match lock {
                     Some(lock) => {
                         let mark = Style::new().fg(theme.accent).add_modifier(Modifier::BOLD);
-                        (Span::styled(" ◆", mark), lock.value, mark, mark)
+                        (Span::styled(" ◆ ", mark), lock.value, mark, mark)
                     }
                     None if let Some(m) = macros::mark(track_macros, id.0, id.1) => (
-                        Span::styled(format!(" {m}"), turned),
+                        Span::styled(format!(" {m} "), turned),
                         fx.get(info.id),
                         name_style(here || pointed == Some(id)),
                         value_style(here),
                     ),
                     None => (
-                        Span::raw("  "),
+                        Span::raw("   "),
                         fx.get(info.id),
                         name_style(here),
                         value_style(here),
@@ -203,7 +203,7 @@ pub fn draw(
                 };
                 let mut spans = vec![
                     mark,
-                    Span::styled(fit(info.name, PARAM_LABEL - 2), label_style),
+                    Span::styled(fit(info.name, PARAM_LABEL - 3), label_style),
                 ];
                 spans.extend(bars::param(info, value, bar, style, theme));
                 spans
@@ -305,12 +305,10 @@ pub fn draw(
     };
 
     for l in (view.fx_top..outs).take(room) {
-        let number = if cursor.line == l {
-            theme.text
-        } else {
-            theme.faint
-        };
-        let mut spans = vec![Span::styled(fit(&format!(" {l:02}"), LABEL), number)];
+        // Not numbered, as the pattern's steps are: these lines are a list, not time. An arrow
+        // shows the cursor's.
+        let gutter = if cursor.line == l { "  ▸" } else { "" };
+        let mut spans = vec![Span::styled(fit(gutter, LABEL), theme.text)];
         if macros_width > 0 {
             let line = macro_lines.get(l).copied().unwrap_or(FxLine::Empty);
             spans.extend(macro_cell(line, cursor.macros && cursor.line == l));
@@ -326,6 +324,14 @@ pub fn draw(
         lines.push(Line::from(spans));
     }
 
+    // Where the effects would be, above the out they'd go into, so the chain still reads down.
+    if chain.is_empty() && lanes.len() == 1 {
+        lines.push(Line::styled(
+            " no effects yet: :fx-add adds one, and :fx-send B branches into a new lane",
+            theme.faint,
+        ));
+        lines.push(Line::raw(""));
+    }
     // Each lane's level into the chain's output, below the longest lane.
     let more = if view.fx_top + room < outs {
         "↓"
@@ -349,13 +355,6 @@ pub fn draw(
         spans.push(Span::raw(" "));
     }
     lines.push(Line::from(spans));
-    if chain.is_empty() && lanes.len() == 1 {
-        lines.push(Line::raw(""));
-        lines.push(Line::styled(
-            " no effects yet: :fx-add adds one, and :fx-send B branches into a new lane",
-            theme.faint,
-        ));
-    }
     if macros_width > 0 && macro_lines.is_empty() {
         lines.push(Line::raw(""));
         lines.push(Line::styled(
