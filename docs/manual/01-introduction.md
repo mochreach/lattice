@@ -202,7 +202,9 @@ From the left, the header shows:
 - `pattern as written` or `as playing` (`tab` switches between them), `follow on` or `off`
   (`:follow`), and `click on` or `off` (`:click`).
 
-A narrow terminal cuts the header off at the right, as above; the most used parts come first.
+A narrow terminal leaves fields out, whole, rather than cutting one off part way: `click` goes
+first, then `follow`, `pattern`, `step`, `oct` and `vel`, so the file, the pattern and the tempo
+are the last to go.
 
 ### The page
 

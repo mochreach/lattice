@@ -166,7 +166,9 @@ muted in this pattern only, `S` soloed, `─` muted by the song's entry, `○` `
 looper); its length in steps, and while playing, which pass round it is (`16 · pass 3`); its level
 as a bar from -60 to +6 dB; its pan as a bar from the centre; its rules, one a line, or
 `no rules`; and a meter, a line that lights up as the track plays. Muted tracks, and tracks
-silenced by another's solo, are dimmed. [Chapter 3](03-tracks.md) explains each.
+silenced by another's solo, are dimmed. [Chapter 3](03-tracks.md) explains each. On a short
+screen, under 30 lines or so, the level and pan are left out (the mixer has them), and so is
+`no rules`, to leave more room for the steps; rules a track has still show.
 
 The top line of the screen is the song's: the page, whether it's playing, the song's file (with
 `[+]` for unsaved changes), the pattern (`pat A`), the tempo, then the keyboard octave (`oct`),

@@ -117,8 +117,9 @@ pub fn draw(frame: &mut Frame, area: Rect, editor: &Editor, status: &Status, the
         Span::styled(fit("entries", ENTRY), theme.dim),
     ];
     for (t, track) in tracks.iter().enumerate().skip(first_track).take(shown) {
+        // Cut short to leave a space, so narrow columns' names don't run together.
         header.push(Span::styled(
-            fit(&track.name, cells + 2),
+            format!("{} ", fit(&track.name, cells + 1)),
             Style::new().fg(theme.track(t)),
         ));
     }

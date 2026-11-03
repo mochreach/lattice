@@ -145,7 +145,10 @@ pub fn draw(
             ));
         frame.render_widget(Paragraph::new(lines).block(block), panel);
     }
-    frame.render_widget(Paragraph::new(header(editor, status, theme)), top);
+    frame.render_widget(
+        Paragraph::new(header(editor, status, theme, top.width)),
+        top,
+    );
     view.update_meters(status);
     view.animated = false;
     match editor.page {
@@ -330,7 +333,9 @@ fn where_in_song(editor: &Editor) -> String {
     }
 }
 
-fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
+/// The header: the page and the transport, then the song's fields, as many as fit; a field that
+/// doesn't goes whole, the least needed first, rather than being cut off part way.
+fn header(editor: &Editor, status: &Status, theme: &Theme, width: u16) -> Line<'static> {
     let label = |s: &'static str| Span::styled(s, theme.dim);
     let value = |s: String| Span::styled(s, theme.text.add_modifier(Modifier::BOLD));
     let on_off = |on: bool| if on { "on" } else { "off" };
@@ -364,7 +369,7 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         Page::Help => " HELP ",
         Page::Manual => " MANUAL ",
     };
-    Line::from(vec![
+    let mut spans = vec![
         Span::styled(" LATTICE ", theme.block(theme.accent)),
         Span::styled(page, theme.block(theme.visual)),
         // Padded to the longest page's name, so the transport stays put.
@@ -404,33 +409,89 @@ fn header(editor: &Editor, status: &Status, theme: &Theme) -> Line<'static> {
         } else {
             Span::raw("")
         },
-        Span::raw("   "),
-        value(file),
-        Span::styled(modified, theme.text),
-        label("   pat "),
-        value(editor.pattern_name().into()),
-        Span::styled(where_in_song(editor), theme.text),
-        label("   bpm "),
-        // Playing, the tempo the conductor's set, if it's changed it.
-        value(bpm(if status.playing() {
-            status.tempo()
-        } else {
-            editor.bpm
-        })),
-        label("   oct "),
-        value(editor.octave.to_string()),
-        label("   vel "),
-        value(format!("{:02}", velocity_number(editor.velocity))),
-        label("   step "),
-        value(editor.auto_step.to_string()),
-        label("   pattern "),
-        value(view.into()),
-        label("   follow "),
-        value(on_off(editor.follow).into()),
-        label("   click "),
-        value(on_off(editor.click).into()),
-    ])
+    ];
+    // Each field with how much it's needed: the least needed go first when there isn't room.
+    let fields = [
+        (
+            9,
+            vec![
+                Span::raw("   "),
+                value(file),
+                Span::styled(modified, theme.text),
+            ],
+        ),
+        (
+            8,
+            vec![
+                label("   pat "),
+                value(editor.pattern_name().into()),
+                Span::styled(where_in_song(editor), theme.text),
+            ],
+        ),
+        (
+            7,
+            // Playing, the tempo the conductor's set, if it's changed it.
+            vec![
+                label("   bpm "),
+                value(bpm(if status.playing() {
+                    status.tempo()
+                } else {
+                    editor.bpm
+                })),
+            ],
+        ),
+        (5, vec![label("   oct "), value(editor.octave.to_string())]),
+        (
+            6,
+            vec![
+                label("   vel "),
+                value(format!("{:02}", velocity_number(editor.velocity))),
+            ],
+        ),
+        (
+            4,
+            vec![label("   step "), value(editor.auto_step.to_string())],
+        ),
+        (3, vec![label("   pattern "), value(view.into())]),
+        (
+            2,
+            vec![label("   follow "), value(on_off(editor.follow).into())],
+        ),
+        (
+            1,
+            vec![label("   click "), value(on_off(editor.click).into())],
+        ),
+    ];
+    let wide = |spans: &[Span]| {
+        spans
+            .iter()
+            .map(|s| s.content.chars().count())
+            .sum::<usize>()
+    };
+    let room = usize::from(width).saturating_sub(wide(&spans));
+    let mut kept = vec![true; fields.len()];
+    let mut by_need: Vec<usize> = (0..fields.len()).collect();
+    by_need.sort_by_key(|&i| fields.get(i).map(|f| f.0));
+    let mut total: usize = fields.iter().map(|(_, f)| wide(f)).sum();
+    for i in by_need {
+        if total <= room {
+            break;
+        }
+        if let (Some(keep), Some((_, field))) = (kept.get_mut(i), fields.get(i)) {
+            *keep = false;
+            total -= wide(field);
+        }
+    }
+    for ((_, field), keep) in fields.into_iter().zip(kept) {
+        if keep {
+            spans.extend(field);
+        }
+    }
+    Line::from(spans)
 }
+
+/// Rows of page below which the pattern's header is made shorter, for more steps.
+const COMPACT: u16 = 28;
 
 /// Width of a track's column in a folded group: a hit's glyph.
 const FOLDED: usize = 2;
@@ -800,6 +861,7 @@ fn draw_grid(
         hidden,
         armed,
         conducting.is_some(),
+        area.height < COMPACT,
         theme,
     ));
     let rows = (area.height as usize).saturating_sub(lines.len());
@@ -963,12 +1025,14 @@ fn bracket(label: &str, width: usize, spare: usize, opens: bool, closes: bool) -
 /// Track names with mute (`M`, or `m` in this pattern only) and solo flags, lengths and passes, level and pan, then the rules one
 /// per line, then a meter underlining it all. Arrows by the names show there are more tracks
 /// off to the (left, right).
-/// `armed` is the track armed to record the input, and whether it's recording.
+/// `armed` is the track armed to record the input, and whether it's recording. `compact`, on a
+/// short screen, leaves out the level and pan, which the mixer has, and `no rules`, for the steps.
 fn header_lines(
     columns: &[Column],
     (left, right): (bool, bool),
     armed: Option<(usize, bool)>,
     conducting: bool,
+    compact: bool,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
     let lead = GUTTER + if conducting { CONDUCTOR } else { 0 };
@@ -1042,6 +1106,8 @@ fn header_lines(
                 })
                 .collect(),
         ),
+    ];
+    let mix = [
         // Folded, there's no room for the level and pan; the mixer page has them.
         line(
             columns
@@ -1062,12 +1128,15 @@ fn header_lines(
                 .collect(),
         ),
     ];
-    let rule_rows = columns
+    if !compact {
+        lines.extend(mix);
+    }
+    let rules = columns
         .iter()
         .map(|c| c.track.rules.len())
         .max()
-        .unwrap_or(0)
-        .max(1);
+        .unwrap_or(0);
+    let rule_rows = if compact { rules } else { rules.max(1) };
     for k in 0..rule_rows {
         lines.push(line(
             columns
