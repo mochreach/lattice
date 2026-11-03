@@ -103,12 +103,16 @@ impl ParamInfo {
             let i = (self.clamp(value) - self.min) as usize;
             return names.get(i).map_or_else(String::new, |n| n.to_string());
         }
+        // Enough places to tell the smallest settings apart: a sampler's attack starts at
+        // half a millisecond, which three would round up to 0.001s.
         let digits = if value.abs() >= 100.0 {
             0
         } else if value.abs() >= 10.0 {
             1
-        } else {
+        } else if value.abs() >= 0.01 || value == 0.0 {
             3
+        } else {
+            4
         };
         let text = format!("{value:.digits$}");
         let text = if text.contains('.') {
@@ -258,6 +262,8 @@ mod tests {
         };
         assert_eq!(time.format(0.375), "0.375s");
         assert_eq!(time.format(1.5), "1.5s");
+        assert_eq!(time.format(0.000_5), "0.0005s", "not rounded up to 0.001s");
+        assert_eq!(time.format(0.005), "0.005s");
         assert_eq!(feedback.format(0.45), "0.45");
         assert_eq!(tone.format(4_000.0), "4000Hz");
         assert_eq!(tone.format(12.5), "12.5Hz");

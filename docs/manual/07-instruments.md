@@ -849,8 +849,8 @@ More about the controls:
 - **`slices`** is a choice, 1 to 16, named by its count, so `:set 16` is 16 slices.
 - **`tune`** applies to slices too, so a sliced loop can be pitched as a whole. Each `C-a` moves
   it about half a semitone (a hundredth of 48 semitones); `:set 7` puts it up a fifth exactly.
-- **`attack`** shows as `0.001s` at its smallest, which is 0.5 ms: a tiny fade, there only to
-  stop a click.
+- **`attack`** is `0.0005s` at its smallest, half a millisecond: a tiny fade, there only to stop
+  a click.
 - **`direction`** `reverse` plays each note backwards, from the end of its region or slice.
 
 Two gestures work on a sampler's notes (chapter 5): `<` plays one note the other way round from
