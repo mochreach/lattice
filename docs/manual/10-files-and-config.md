@@ -664,12 +664,13 @@ with `:q!`. So unless Lattice was started with `--allow-agent-save`, `ctl` refus
 would:
 
 - save, open, or quit: `:w`, `:wq`, `:o`, `:q`, and `C-c`;
+- write a WAV file anywhere: `:export`, `:export-sel` and `:export-loop`;
 - throw the song away: `:new!`, `:open!`, `:quit!` and `:tutor!`;
 - save a chain or preset to your config folder: `:chain-save` and `:preset-save`.
 
 ```
 $ lattice ctl cmd 'w'
-Error: saving, opening and quitting need Lattice started with --allow-agent-save
+Error: saving, exporting, opening and quitting need Lattice started with --allow-agent-save
 ```
 
 Everything else works, so an agent can play, edit and listen while you keep the say over your

@@ -613,7 +613,7 @@ see what's on screen and work it: `lattice ctl screen`, `state` (JSON), `keys`, 
 A request is one line and the answer is what comes back. The UI thread checks for requests once
 a frame and answers them after drawing, so `screen` is what was just drawn. Keys and commands go
 through `Editor::handle` and the same effects as typed ones, so they're undoable and show on the
-status line; saving, opening, quitting, saving chains and the commands that throw the song away
+status line; saving, exporting, opening, quitting, saving chains and the commands that throw the song away
 (`new!`, `open!`, `quit!`, `tutor!`) are refused unless Lattice was started with
 `--allow-agent-save`. An MCP server could wrap it later.
 

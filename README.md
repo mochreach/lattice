@@ -583,7 +583,7 @@ lattice ctl cmd 'fx-add delay'      # run a command, as : would
 lattice ctl log 20                  # the end of the log
 ```
 
-What it types goes the same way as your own keys, so `u` undoes it. It can't save, open or quit,
+What it types goes the same way as your own keys, so `u` undoes it. It can't save, export, open or quit,
 or start over with `:new!`, unless Lattice was started with `--allow-agent-save`. With more than
 one Lattice running, `--pid` says which.
 

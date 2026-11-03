@@ -169,13 +169,15 @@ pub fn refuse_effect(effect: &Effect, allow_save: bool) -> Option<&'static str> 
     let writes = matches!(
         effect,
         Effect::Save(_)
+            | Effect::Export(_)
             | Effect::Open(_)
             | Effect::Quit
             | Effect::SaveChain(..)
             | Effect::SavePreset(..)
     );
-    (writes && !allow_save)
-        .then_some("saving, opening and quitting need Lattice started with --allow-agent-save")
+    (writes && !allow_save).then_some(
+        "saving, exporting, opening and quitting need Lattice started with --allow-agent-save",
+    )
 }
 
 /// The screen as text, a line a row, without trailing spaces.
@@ -370,6 +372,16 @@ mod tests {
         assert!(refuse_effect(&Effect::Quit, false).is_some());
         assert!(refuse_effect(&Effect::Quit, true).is_none());
         assert!(refuse_effect(&Effect::TogglePlay, false).is_none());
+        let mut e = Editor::new(crate::demo::song().grid, 120.0);
+        let export = e.run_command("export /tmp/anywhere.wav");
+        assert!(
+            matches!(export.as_slice(), [Effect::Export(_)]),
+            "{export:?}"
+        );
+        assert!(
+            refuse_effect(&export[0], false).is_some(),
+            "export writes anywhere"
+        );
     }
 
     #[test]
