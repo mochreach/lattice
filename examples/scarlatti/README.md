@@ -21,7 +21,8 @@ muted each time:
 2. **A**, first time: the right hand on `krell` alone, all five choirs (`16' to 2'`) drifting out
    of tune with each other over a glass body tuned to G. Its repeated notes are detached, cut a
    little over half way through their steps (`X14`). Under it, an open hat on each beat, and the kick, once a bar,
-   with a pickup into each four bars and a hit on every beat only into the cadences.
+   with a pickup into each four bars, then on every beat through A3 and B4 as each half drives
+   to its close.
 3. **A** again, the `lead` doubling Krell, leaning on the long notes that start its bars (`!`) and
    gliding into its octave leaps (`G6`), and the snare's backbeat in. From bar 24 to 30 its
    ladder opens, a lock sliding in its column: open the lead (`te`) to see it.
@@ -29,7 +30,8 @@ muted each time:
    bass, a note every eighth, rising and falling through the chord the left hand holds (its
    root, third and fifth where it has them, and the octave).
 5. **B** again, everything at once. The lead's ladder opens over the chromatic climb from bar 52
-   to 55. The last pattern, `fine`, is B4 again, a bar longer so the last chord can ring.
+   to 55. The last pattern, `fine`, is B4 again, a bar longer so the last chord can ring, the drums dropping
+   out under it.
 
 The left hand is split across the `bass`, a single saw on Switched with its ladder low and
 screaming, the `tenor` (what's held over the bass, on organ stops) and the `alto` (the odd third
@@ -73,7 +75,8 @@ The rest:
   into each half's last chord (`~101`, `~106`), the second time more (`~86`). Then `X` stops the
   song once the last chord has rung.
 - **Timpani** strike where the bass holds a whole bar, and before each half's last chord strike
-  its two chords and roll into it (`R4`, `R6`), with the kick.
+  its two chords and roll into it (`R4`, `R6`), with the kick, which
+  doubles the last half's chords (ba-boom).
 
 The notes come from the [Mutopia Project](https://www.mutopiaproject.org/)'s edition of K. 455
 (Mutopia-2016/01/25-2104), typeset by Knute Snortum from a source in the Italian Digital Library,
