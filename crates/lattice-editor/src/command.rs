@@ -1117,7 +1117,16 @@ fn save_path(editor: &Editor, typed: &str) -> Result<PathBuf, String> {
             .clone()
             .ok_or_else(|| "no file name yet: :w PATH".into())
     } else {
-        Ok(typed.into())
+        Ok(song_path(typed))
+    }
+}
+
+/// A song's path as typed, `.lattice` added if it has no extension.
+pub(crate) fn song_path(typed: &str) -> PathBuf {
+    let path = PathBuf::from(typed);
+    match path.extension() {
+        Some(_) => path,
+        None => path.with_extension("lattice"),
     }
 }
 

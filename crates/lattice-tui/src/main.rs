@@ -606,7 +606,7 @@ fn apply(
         Effect::Unconduct(track) => Command::Unconduct(track),
         Effect::Fill(on) => Command::Fill(on),
         Effect::Save(path) => {
-            let mut song = editor.song();
+            let mut song = editor.song_to(Some(&path));
             let saved = file::collect(&path, &mut song, &lattice_editor::scratch())
                 .and_then(|moved| file::write(&path, &song).map(|()| moved));
             return match saved {

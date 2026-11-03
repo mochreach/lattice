@@ -654,9 +654,12 @@ impl Editor {
 
     /// The song to save, named after its file.
     pub fn song(&self) -> Song {
-        let name = self
-            .path
-            .as_deref()
+        self.song_to(self.path.as_deref())
+    }
+
+    /// The song to save at `path`, named after that file: `:w PATH` names it anew.
+    pub fn song_to(&self, path: Option<&Path>) -> Song {
+        let name = path
             .and_then(Path::file_stem)
             .map_or_else(|| self.grid.name.clone(), |s| s.to_string_lossy().into());
         Song {
@@ -695,7 +698,7 @@ impl Editor {
     /// `:new [PATH]`: an empty song, of one track of sixteen steps, at the tempo and steps per
     /// beat there are now, to be saved at `path` if it's given.
     pub(crate) fn new_song(&mut self, path: &str) -> Result<Vec<Effect>, String> {
-        let path = (!path.is_empty()).then(|| PathBuf::from(path));
+        let path = (!path.is_empty()).then(|| command::song_path(path));
         if let Some(path) = &path
             && path.exists()
         {
@@ -3071,6 +3074,12 @@ mod tests {
             [Effect::Save("my song.lattice".into())],
             "paths can contain spaces"
         );
+        assert_eq!(
+            command(&mut e, "w my song"),
+            [Effect::Save("my song.lattice".into())],
+            "a song's file is a .lattice"
+        );
+        assert_eq!(e.song_to(Some(Path::new("dir/new.lattice"))).name, "new");
         e.saved("my song.lattice".into());
         assert_eq!(
             command(&mut e, "write"),

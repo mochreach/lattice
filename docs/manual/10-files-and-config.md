@@ -169,8 +169,9 @@ line.
 
 `:w` saves the song to its file and says `written song.lattice`. `:w PATH` saves it to `PATH`
 instead, and from then on the song's file is `PATH`, so the next `:w` goes there too: it's
-"save as". The path is used as typed, so add `.lattice` yourself. A song with no file yet, the
-demo or one from `:new`, needs a path: `:w` alone says `no file name yet: :w PATH`.
+"save as", and the song takes its new file's name. A path with no extension gets `.lattice`
+(`:w sketch` saves `sketch.lattice`), as `:new PATH` does. A song with no file yet, the demo or
+one from `:new`, needs a path: `:w` alone says `no file name yet: :w PATH`.
 
 Saving also gathers up samples. Samples rendered before the song had a file (see
 [where samples go](#where-samples-go)) are in a scratch folder that won't last; saving copies

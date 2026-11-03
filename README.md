@@ -255,7 +255,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:unlock [PARAM]` | clear a setting's locks, or all of them, from the steps the selections reach; along a whole track, its column goes too |
 | `:choke N` | choke group (1–8, 0 for none) for every track the selections reach: within a track group, a hit cuts off the other tracks with the same number, as a closed hat stops an open one |
 | `:mute`, `:solo` | toggle mute or solo for every track the selections reach (also `tm`, `ts`) |
-| `:w [PATH]`, `:wq [PATH]` | save the song (to a `.lattice` file), save and quit |
+| `:w [PATH]`, `:wq [PATH]` | save the song (to a `.lattice` file, added if PATH has no extension), save and quit |
 | `:pattern NAME` (`:pat`) | go to a pattern, by name or number; while playing, it's cued and takes over at the next bar (the header shows `pat A → B`) |
 | `:pattern-new [NAME]` (`:pn`), `:pattern-dup [NAME]` (`:pd`) | add an empty pattern after this one, or a copy of this one, and go to it; it's added to the end of the song, played once. Named A, B, C… unless named |
 | `:pattern-mute` (`:pm`) | mute or unmute every track the selections reach in this pattern only (also `tM`) |
