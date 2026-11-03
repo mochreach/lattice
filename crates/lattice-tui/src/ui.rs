@@ -1528,12 +1528,27 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
     };
     let used: usize = left.iter().map(|s| s.content.chars().count()).sum();
     let room = (width as usize).saturating_sub(used + 1);
-    let hints: String = hints.chars().take(room).collect();
+    let hints = fit_hints(hints, room.saturating_sub(GAP));
     left.push(Span::raw(
         " ".repeat(room - hints.chars().count().min(room)),
     ));
     left.push(Span::styled(hints, style));
     Line::from(left)
+}
+
+/// The least space between the status line's message and its hints.
+const GAP: usize = 2;
+
+/// `hints` in `room`: losing whole hints from the end (`a · b · c`), rather than running into
+/// what's on their left, and cut short only if even the first doesn't fit.
+fn fit_hints(mut hints: String, room: usize) -> String {
+    while hints.chars().count() > room {
+        match hints.rfind(" · ") {
+            Some(end) => hints.truncate(end),
+            None => return hints.chars().take(room).collect(),
+        }
+    }
+    hints
 }
 
 /// The tempo without a fractional part unless it has one: `120`, `122.5`.
@@ -1569,6 +1584,14 @@ fn note_name(pitch: u8) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hints_give_way_to_the_message() {
+        let hints = || "v select · x rows · g goto".to_string();
+        assert_eq!(fit_hints(hints(), 40), "v select · x rows · g goto");
+        assert_eq!(fit_hints(hints(), 20), "v select · x rows");
+        assert_eq!(fit_hints(hints(), 5), "v sel");
+    }
 
     #[test]
     fn lock_columns_carry_values_on_until_the_next() {
