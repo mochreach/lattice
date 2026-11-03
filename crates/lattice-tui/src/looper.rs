@@ -80,7 +80,7 @@ impl Looper {
                 // No more than the passes left, if they're counted.
                 let left = editor.passes_left().map_or(WAITING, |n| n as usize);
                 while self.waiting < WAITING.min(left) {
-                    let take = Take::new(t, self.room(editor, t));
+                    let take = Take::new(t, self.room(editor, t, handle.status().tempo()));
                     if !handle.send(Command::Record(take)) {
                         break;
                     }
@@ -110,12 +110,12 @@ impl Looper {
         self.failed = false;
     }
 
-    /// Frames to leave room for, for a pass of track `t`: a tenth more, in case the tempo
-    /// slows.
-    fn room(&self, editor: &Editor, t: usize) -> usize {
+    /// Frames to leave room for, for a pass of track `t`, at the slowest the conductor could
+    /// play it while `playing` is the tempo now: a tenth more, to be safe.
+    fn room(&self, editor: &Editor, t: usize, playing: f64) -> usize {
         // A track that's gone has nothing to record, and needs only the margin.
         let steps = editor.grid.tracks.get(t).map_or(0, |t| t.steps.len()) as f64;
-        let per_step = 60.0 / (editor.bpm * f64::from(editor.grid.steps_per_beat.max(1)));
+        let per_step = editor.step_seconds(editor.slowest_tempo(playing));
         (steps * per_step * f64::from(self.sample_rate) * 1.1) as usize + 1024
     }
 

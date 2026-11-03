@@ -467,7 +467,8 @@ impl Playhead {
                 now
             }
         };
-        let step = 60.0 / (editor.bpm * f64::from(editor.grid.steps_per_beat.max(1)));
+        // At the tempo playing, which the conductor may have changed.
+        let step = editor.step_seconds(status.tempo());
         Some(Transport {
             positions,
             into_step: (now.duration_since(since).as_secs_f64() / step).min(0.99),

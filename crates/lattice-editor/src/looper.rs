@@ -69,6 +69,22 @@ impl Editor {
         self.armed = None;
     }
 
+    /// How long a step lasts, in seconds, at `bpm`.
+    pub fn step_seconds(&self, bpm: f64) -> f64 {
+        60.0 / (bpm.max(1.0) * f64::from(self.grid.steps_per_beat.max(1)))
+    }
+
+    /// The slowest the song could play a pass at: the slower of its own tempo and `playing`
+    /// (the conductor's now), or any tempo a conductor sets or slides to.
+    pub fn slowest_tempo(&self, playing: f64) -> f64 {
+        (self.arrangement.patterns.iter())
+            .flat_map(|p| &p.conductor.steps)
+            .flatten()
+            .filter_map(|g| g.and_then(|g| g.tempo()))
+            .map(f64::from)
+            .fold(self.bpm.min(playing), f64::min)
+    }
+
     /// How many more passes the armed track's to record, if it's not to keep going.
     pub fn passes_left(&self) -> Option<u32> {
         self.armed.and_then(|a| a.passes)
@@ -161,6 +177,19 @@ mod tests {
             groups: vec![],
         };
         Editor::new(grid, 120.0)
+    }
+
+    #[test]
+    fn a_pass_is_given_room_for_the_slowest_tempo_it_could_take() {
+        let mut e = editor();
+        assert_eq!(e.slowest_tempo(120.0), 120.0);
+        assert_eq!(e.slowest_tempo(90.0), 90.0, "the conductor's slowed it");
+        let current = e.arrangement.current;
+        e.arrangement.patterns[current].conductor = lattice_core::Conductor::new(4);
+        e.arrangement.patterns[current].conductor.steps[2][0] =
+            Some(lattice_core::SongGesture::Slide(60));
+        assert_eq!(e.slowest_tempo(120.0), 60.0, "and will slide to 60");
+        assert_eq!(e.step_seconds(60.0), 0.25);
     }
 
     fn run(e: &mut Editor, line: &str) {

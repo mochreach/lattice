@@ -49,7 +49,8 @@ not entered.
 
 A recorded note goes on the **nearest** step, which is what other sequencers call quantising:
 rounding each note to the grid. A note played just after a step starts rounds back onto it; one
-played just before the next step rounds on to that one.
+played just before the next step rounds on to that one. How long a step lasts is taken from the
+tempo playing, so under a conductor's `T` or `~` notes still land where they were played.
 
 Because a step that has already played can't be played again, Lattice treats the two cases
 differently:
@@ -232,7 +233,8 @@ Each pass, as it ends:
 The passes record back to back, with no gap, so nothing you play across the loop point is lost.
 Since the recording is a pass of the track, measured in the track's own steps, the loop is
 always exactly in time with the song, and goes on following the tempo, as any chop track does.
-Room is kept for a pass and a tenth more, in case the tempo slows while it records.
+Room is kept for a pass at the slowest tempo the conductor could take it to, and a tenth more,
+so a conductor's `T60` in a faster song doesn't cut the take short.
 
 ### Overdubbing
 
