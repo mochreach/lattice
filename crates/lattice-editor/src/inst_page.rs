@@ -210,12 +210,18 @@ impl Editor {
         let tracks = self.grid.tracks.len();
         let line = |line| InstCursor { line, ..cursor };
         match action {
-            Action::Left => self.move_inst(InstCursor {
+            // `(` `)` go from track to track as on the mixer, and so do `h` `l` here.
+            Action::Left | Action::RotateBackward => self.move_inst(InstCursor {
                 track: cursor.track.saturating_sub(n),
                 ..cursor
             }),
-            Action::Right => self.move_inst(InstCursor {
+            Action::Right | Action::RotateForward => self.move_inst(InstCursor {
                 track: (cursor.track + n).min(tracks.saturating_sub(1)),
+                ..cursor
+            }),
+            Action::FirstTrack => self.move_inst(InstCursor { track: 0, ..cursor }),
+            Action::LastTrack => self.move_inst(InstCursor {
+                track: tracks.saturating_sub(1),
                 ..cursor
             }),
             Action::Up => self.move_inst(line(cursor.line.saturating_sub(n))),
@@ -343,6 +349,14 @@ mod tests {
         assert_eq!(e.page, Page::Instrument);
         assert_eq!(e.inst_cursor(), InstCursor { track: 1, line: 1 });
         assert_eq!(e.inst_line(), Some(InstLine::Param(0)));
+        // From track to track as on the mixer.
+        keys(&mut e, "gh");
+        assert_eq!(e.inst_cursor().track, 0);
+        keys(&mut e, ")");
+        assert_eq!(e.inst_cursor().track, 1);
+        keys(&mut e, "gl");
+        assert_eq!(e.inst_cursor().track, e.grid.tracks.len() - 1);
+        keys(&mut e, "gh)");
         assert_eq!(
             e.shown().unwrap().slot,
             None,

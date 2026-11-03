@@ -182,6 +182,8 @@ job here, so the names in the middle column are what a config file binds (see
 |-------------|-----------------------------|-------------------------------------------------|
 | `gi`        | `goto_instrument`           | open the page, on the cursor's track            |
 | `h` `l`     | `left` `right`              | the track before or after, on the same line     |
+| `(` `)`     | `rotate_backward` `rotate_forward` | the same, as on the mixer                |
+| `gh` `gl`   | `first_track` `last_track`  | the first or last track                         |
 | `j` `k`     | `down` `up`                 | down or up the column                           |
 | `w` `b`     | `next_note` `prev_note`     | to the next or previous part                    |
 | `gg` `ge`   | `first_step` `last_step`    | to the name, or the chain                       |
