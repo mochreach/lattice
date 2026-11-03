@@ -10,7 +10,7 @@ use lattice_core::FxKind;
 use crate::param::{ParamInfo, Smoothed};
 use crate::processor::{Event, EventKind, Processor, Segment, segments};
 
-pub use lattice_core::fx::reverb::{DECAY, MAX_PREDELAY, MIX, PREDELAY, SIZE, TONE};
+pub use lattice_core::fx::reverb::{DECAY, LOWCUT, MAX_PREDELAY, MIX, PREDELAY, SIZE, TONE};
 
 const PARAMS: &[ParamInfo] = FxKind::Reverb.params();
 
@@ -105,6 +105,9 @@ pub struct Reverb {
     /// The input's low-pass, so the plate doesn't hiss: its coefficient and state.
     bandwidth: f32,
     input_low: f32,
+    /// The input's high-pass (the low cut): its coefficient, and the low end it takes away.
+    lowcut: f32,
+    input_bass: f32,
     diffusers: [Stage; 4],
     halves: [Half; 2],
     /// What each half feeds the other, from the last sample.
@@ -141,6 +144,8 @@ impl Reverb {
             predelay: Line::new((MAX_PREDELAY * sample_rate) as usize + 4),
             bandwidth: 1.0 - (-TAU * 10_000.0 / sample_rate).exp(),
             input_low: 0.0,
+            lowcut: 0.0,
+            input_bass: 0.0,
             diffusers: [
                 stage(142.0, false),
                 stage(107.0, false),
@@ -185,6 +190,7 @@ impl Reverb {
             DECAY => self.decay.set(value),
             TONE => self.damping = 1.0 - (-TAU * value / self.sample_rate).exp(),
             PREDELAY => self.predelay_time.set(value * self.sample_rate),
+            LOWCUT => self.lowcut = 1.0 - (-TAU * value / self.sample_rate).exp(),
             _ => self.mix.set(value),
         }
     }
@@ -205,7 +211,8 @@ impl Reverb {
                 .predelay
                 .delay(input, self.predelay_time.tick().max(1.0));
             self.input_low += self.bandwidth * (x - self.input_low);
-            let mut x = self.input_low;
+            self.input_bass += self.lowcut * (self.input_low - self.input_bass);
+            let mut x = self.input_low - self.input_bass;
             for (i, d) in self.diffusers.iter_mut().enumerate() {
                 let g = if i < 2 { 0.75 } else { 0.625 };
                 // The input diffusers keep their length whatever the size, as in a real plate.
@@ -330,6 +337,32 @@ mod tests {
     fn predelay_keeps_the_front_clear() {
         let (.., left, _) = tail(&[(PREDELAY, 0.1)], 1);
         assert!(left[..4_000].iter().all(|x| x.abs() < 1e-6));
+    }
+
+    #[test]
+    fn the_low_cut_keeps_the_bass_out_of_the_plate() {
+        // A second of a 60 Hz boom, then what rings on after it.
+        let ring = |lowcut: f32| {
+            let mut values: Vec<f32> = PARAMS.iter().map(|p| p.default).collect();
+            values[MIX as usize] = 1.0;
+            values[DECAY as usize] = 0.9;
+            values[LOWCUT as usize] = lowcut;
+            let mut reverb = Reverb::with_values(48_000.0, &values);
+            let mut left: Vec<f32> = (0..96_000)
+                .map(|i| {
+                    if i < 48_000 {
+                        (TAU * 60.0 * i as f32 / 48_000.0).sin()
+                    } else {
+                        0.0
+                    }
+                })
+                .collect();
+            let mut right = left.clone();
+            reverb.process(&[], &mut left, &mut right);
+            left[48_000..].iter().map(|x| x * x).sum::<f32>()
+        };
+        let (open, cut) = (ring(20.0), ring(300.0));
+        assert!(cut < open * 0.1, "{cut} against {open}");
     }
 
     #[test]

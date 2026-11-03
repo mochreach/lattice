@@ -779,7 +779,8 @@ There are six effects so far, each usable on any track or bus:
   one-pole low-pass (tone), mix and an output level. It's scaled so a full-scale input still
   peaks at 1. It isn't oversampled yet, so it aliases when pushed hard on bright material.
 - **`reverb`:** a plate after Dattorro ("Effect Design, Part 1", 1997). The input is
-  pre-delayed (up to 250 ms), low-passed at 10 kHz and smeared by four all-passes, then fed into
+  pre-delayed (up to 250 ms), low-passed at 10 kHz, high-passed by its low cut (20 Hz to 1 kHz,
+  so a kick or a timpani sent in doesn't pile up a boom) and smeared by four all-passes, then fed into
   a tank of two halves that feed each other, each a wandering all-pass, a delay, a damping
   low-pass (tone), an all-pass and another delay. The output is tapped from seven points in the
   tank, differently for each side, which is what makes it stereo. Size scales the tank's lengths

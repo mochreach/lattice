@@ -186,11 +186,14 @@ pub mod reverb {
     /// A gap before the reverb, keeping the sound's front clear of it.
     pub const PREDELAY: u32 = 3;
     pub const MIX: u32 = 4;
+    /// Below this, the input's cut before it reaches the plate, so a kick or a timpani sent into
+    /// a long plate doesn't pile up a boom.
+    pub const LOWCUT: u32 = 5;
 
     /// The longest pre-delay, in seconds.
     pub const MAX_PREDELAY: f32 = 0.25;
 
-    pub(super) const PARAMS: [ParamInfo; 5] = [
+    pub(super) const PARAMS: [ParamInfo; 6] = [
         param(SIZE, "size", (0.0, 1.0, 0.5), "", Curve::Linear),
         param(DECAY, "decay", (0.0, 0.98, 0.6), "", Curve::Linear),
         param(TONE, "tone", (500.0, 16_000.0, 6_000.0), "Hz", Curve::Log),
@@ -202,6 +205,7 @@ pub mod reverb {
             Curve::Linear,
         ),
         param(MIX, "mix", (0.0, 1.0, 0.3), "", Curve::Linear),
+        param(LOWCUT, "lowcut", (20.0, 1_000.0, 20.0), "Hz", Curve::Log),
     ];
 }
 
