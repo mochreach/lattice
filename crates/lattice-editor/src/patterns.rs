@@ -267,10 +267,16 @@ impl Editor {
         if self.arrangement.patterns.len() == 1 {
             return Err("a song needs a pattern".into());
         }
-        self.checkpoint();
         let current = self.arrangement.current;
         let gone = self.pattern_name().to_string();
-        let effects = self.select_pattern(current.saturating_sub(1).max(usize::from(current == 0)));
+        // Off it first, as the pattern being edited can't be removed. There are at least two,
+        // so the one before it, or after it if it's the first, is there.
+        let next = current.saturating_sub(1).max(usize::from(current == 0));
+        if current >= self.arrangement.patterns.len() || next >= self.arrangement.patterns.len() {
+            return Err(format!("couldn't remove pattern {gone}"));
+        }
+        self.checkpoint();
+        let effects = self.select_pattern(next);
         if !self.arrangement.remove(current) {
             return Err(format!("couldn't remove pattern {gone}"));
         }
