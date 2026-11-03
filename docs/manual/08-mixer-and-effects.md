@@ -99,7 +99,8 @@ soloing use the same gliding gain as the level, so they fade in and out rather t
 Effects on the buses keep running, so a reverb tail rings out after its track is muted.
 
 `tm` and `ts` (or `:mute` and `:solo`) mute and solo on the pattern page and the mixer;
-the [tracks chapter](03-tracks.md) covers them, with pattern mutes and the conductor's.
+the [tracks chapter](03-tracks.md) covers them, with pattern mutes and the conductor's. Here
+`:name`, `:len` and `:track-add`, `:track-remove` and `:track-move` go to the strip's track.
 
 ### Meters
 

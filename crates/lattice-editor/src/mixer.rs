@@ -809,12 +809,48 @@ impl Editor {
     /// The tracks `:level`, `:pan`, `:send`, `:mute`, `:solo` and `:inst` change: on the mixer
     /// page, the cursor's strip; on the pattern page, every track the selections reach.
     pub(crate) fn mix_targets(&self) -> Result<Vec<usize>, String> {
-        if self.page == Page::Pattern {
-            return Ok(self.selected_tracks());
+        match self.page {
+            Page::Pattern => return Ok(self.selected_tracks()),
+            Page::Song => {
+                let (_, columns) = self.song_selection();
+                let tracks: Vec<usize> = columns.filter_map(|c| c.checked_sub(1)).collect();
+                return match tracks.is_empty() {
+                    true => Err("move onto a track's column first".into()),
+                    false => Ok(tracks),
+                };
+            }
+            _ => {}
         }
         match self.strip(self.mixer_cursor().strip) {
             Strip::Track(i) => Ok(vec![i]),
             _ => Err("buses only have a level and effects".into()),
+        }
+    }
+
+    /// The track a command such as `:name` goes to: the one under the page's cursor, the
+    /// mixer's strip, the instrument page's track or the song page's column. `None` on a bus,
+    /// or on the song page's entries.
+    pub(crate) fn page_track(&self) -> Option<usize> {
+        match self.page {
+            Page::Mixer | Page::Fx | Page::Instrument => {
+                match self.strip(self.mixer_cursor().strip) {
+                    Strip::Track(t) => Some(t),
+                    _ => None,
+                }
+            }
+            Page::Song => self.song_column().checked_sub(1),
+            _ => Some(self.cursor().track),
+        }
+    }
+
+    /// Puts the page's cursor on track `track`, after it's been added or moved.
+    pub(crate) fn point_page_at(&mut self, track: usize) {
+        self.select_point(track, self.cursor().step);
+        match self.page {
+            Page::Mixer | Page::Fx => self.mixer.strip = track,
+            Page::Instrument => self.inst.track = track,
+            Page::Song => self.song.column = track + 1,
+            _ => {}
         }
     }
 

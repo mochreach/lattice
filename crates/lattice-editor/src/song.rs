@@ -686,6 +686,8 @@ mod tests {
         e.handle(Key::Esc);
         keys(&mut e, "gs");
         assert_eq!(e.grid.tracks.len(), 4);
+        // Each added track took the cursor's column; back to the entries.
+        e.song.column = 0;
         e
     }
 

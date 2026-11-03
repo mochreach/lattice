@@ -3155,6 +3155,38 @@ mod tests {
     }
 
     #[test]
+    fn track_commands_go_to_the_track_the_page_is_on() {
+        let mut e = editor();
+        for k in ['g', 'm', 'l'] {
+            e.handle(Key::Char(k));
+        }
+        command(&mut e, "name strip");
+        assert_eq!(
+            (
+                e.grid.tracks[0].name.as_str(),
+                e.grid.tracks[1].name.as_str()
+            ),
+            ("a", "strip"),
+            "the mixer's strip, not the pattern cursor's track"
+        );
+        command(&mut e, "track-add");
+        assert_eq!(e.mixer_cursor().strip, 2, "the new track's strip, after it");
+        for k in ['g', 's'] {
+            e.handle(Key::Char(k));
+        }
+        command(&mut e, "mute");
+        assert!(
+            e.grid.tracks.iter().all(|t| !t.mix.mute),
+            "the entries' column"
+        );
+        e.handle(Key::Char('l'));
+        e.handle(Key::Char('l'));
+        command(&mut e, "mute");
+        let muted: Vec<bool> = e.grid.tracks.iter().map(|t| t.mix.mute).collect();
+        assert_eq!(muted[..3], [false, true, false], "the song page's column");
+    }
+
+    #[test]
     fn quit_and_open_refuse_to_lose_changes() {
         let mut e = editor();
         assert_eq!(command(&mut e, "q"), [Effect::Quit], "nothing to lose");

@@ -148,8 +148,9 @@ positive number and left for a negative one, as far as the end: `:track-move -3`
 
 ## Naming and length
 
-`:name NAME` renames the cursor's track. The name is the song's, the same in every pattern, and
-the header shows it in capitals. It's how the track is known elsewhere too: on the mixer and
+`:name NAME` renames the cursor's track: on the mixer, fx and instrument pages the strip's, and
+on the song page the column's. The name is the song's, the same in every pattern, and the header
+shows it in capitals. It's how the track is known elsewhere too: on the mixer and
 instrument pages, and in the song page's mutes. Spaces are allowed: `:name open hat`.
 
 `:len N` sets the cursor's track's length in this pattern, from 1 to 256 steps. Lengthening adds
@@ -450,12 +451,11 @@ A few points:
 | `:group-name NAME`  |        | rename the cursor's track's group                     |
 
 The mix commands, `:mute`, `:solo`, `:pattern-mute` and `:choke` act on every track the
-selections reach; the others on the cursor's track. In the conductor's column, `:len` sets the
-conductor's length ([chapter 6](06-song.md#the-conductor)).
+selections reach (on the song page, the columns its selection reaches); the others on the
+cursor's track, or the strip's or column's on the other pages. In the conductor's column, `:len`
+sets the conductor's length ([chapter 6](06-song.md#the-conductor)).
 
 ## Notes and oddities
 
-- `:name` isn't an undo step of its own: `u` straight after it undoes the change before as well,
-  and puts the old name back with it.
 - Tracks are numbered by position, so moving a track changes its colour, and which track a
   conductor's `M2` or the pads' mute mode means.

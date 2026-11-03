@@ -1164,7 +1164,8 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
     let Some(command) = parse(line, false).map_err(|problem| problem.message)? else {
         return Ok(vec![]);
     };
-    let track = editor.cursor().track;
+    // The track under the page's cursor, for the commands that change one track.
+    let track = editor.page_track().ok_or("move onto a track first");
 
     match command.spec.name {
         "quit" if editor.modified() => Err(UNSAVED_QUIT.into()),
@@ -1246,6 +1247,8 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         "len" => {
             let len: usize = command.int(0)?;
+            let track = track?;
+            track_mut(editor, track)?;
             editor.checkpoint();
             track_mut(editor, track)?.steps.resize(len, Step::default());
             editor.clamp_selection();
@@ -1325,6 +1328,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         "name" => {
             let name = command.text(0)?.into();
+            let track = track?;
             track_mut(editor, track)?;
             editor.checkpoint();
             track_mut(editor, track)?.name = name;
@@ -1422,31 +1426,38 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                     .find(|name| tracks.iter().all(|t| t.name != *name))
                     .unwrap_or_default();
             }
+            // After the track under the cursor, or at the end from a bus.
+            let at = track.map_or(tracks.len(), |t| t + 1);
             editor.checkpoint();
             let track = Track {
                 name,
                 steps: vec![Step::default(); NEW_TRACK_STEPS],
                 ..Track::default()
             };
-            if !editor.insert_track(editor.cursor().track + 1, track) {
+            if !editor.insert_track(at, track) {
                 return Err("can't add a track there".into());
             }
-            editor.select_point(editor.cursor().track + 1, editor.cursor().step);
+            editor.point_page_at(at);
             Ok(vec![Effect::TracksChanged])
         }
         "track-remove" => {
             if editor.grid.tracks.len() == 1 {
                 return Err("can't remove the only track".into());
             }
+            let track = track?;
+            track_mut(editor, track)?;
             editor.checkpoint();
             if !editor.remove_track(track) {
                 return Err("no such track".into());
             }
-            editor.select_point(track, editor.cursor().step);
+            let left = editor.grid.tracks.len().saturating_sub(1);
+            editor.point_page_at(track.min(left));
             Ok(vec![Effect::TracksChanged])
         }
         "track-move" => {
             let by: isize = command.int(0)?;
+            let track = track?;
+            track_mut(editor, track)?;
             let to = track
                 .saturating_add_signed(by)
                 .min(editor.grid.tracks.len().saturating_sub(1));
@@ -1457,7 +1468,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             if !editor.move_track(track, to) {
                 return Err("no such track".into());
             }
-            editor.select_point(to, editor.cursor().step);
+            editor.point_page_at(to);
             Ok(vec![Effect::TracksChanged])
         }
         name @ ("rot" | "drift" | "rev" | "tr") => {
@@ -1467,6 +1478,8 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                 "tr" => Transform::Transpose(command.int(0)?),
                 _ => Transform::Reverse,
             };
+            let track = track?;
+            track_mut(editor, track)?;
             editor.checkpoint();
             track_mut(editor, track)?.rules.push(Rule {
                 transform,
@@ -1475,14 +1488,17 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![Effect::TrackChanged(track)])
         }
         "pop" => {
+            let track = track?;
+            if track_mut(editor, track)?.rules.is_empty() {
+                return Err("no rules to remove".into());
+            }
             editor.checkpoint();
-            track_mut(editor, track)?
-                .rules
-                .pop()
-                .ok_or("no rules to remove")?;
+            track_mut(editor, track)?.rules.pop();
             Ok(vec![Effect::TrackChanged(track)])
         }
         "clear" => {
+            let track = track?;
+            track_mut(editor, track)?;
             editor.checkpoint();
             track_mut(editor, track)?.rules.clear();
             Ok(vec![Effect::TrackChanged(track)])
