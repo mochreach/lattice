@@ -14,6 +14,11 @@ pub struct Tracks {
     /// The engine's tracks, in order, and the instrument each has, as far as the commands sent
     /// so far go.
     engine: Vec<(TrackId, Instrument)>,
+    /// The engine's pattern changes seen when last told, by [`Tracks::follow_swaps`].
+    swaps: u64,
+    /// Tracks added since the engine last changed pattern, as far as the UI has seen. One added
+    /// in the moment it changes joins with the old pattern's steps, so they're sent again.
+    joined: Vec<TrackId>,
 }
 
 impl Tracks {
@@ -33,6 +38,8 @@ impl Tracks {
                 .zip(&editor.grid.tracks)
                 .map(|(&id, track)| (id, track.instrument.clone()))
                 .collect(),
+            swaps: 0,
+            joined: vec![],
         }
     }
 
@@ -81,6 +88,44 @@ impl Tracks {
     /// command queue filled up.
     pub fn hush(&mut self, editor: &Editor, handle: &mut Handle) -> bool {
         self.hush_with(editor, |command| handle.send(command))
+    }
+
+    /// Call every frame with the engine's pattern changes seen so far. If there's been one since
+    /// tracks were added, sends those tracks' steps again with it: the engine may have changed
+    /// pattern before it added them, and given them the old pattern's steps. Returns false if
+    /// the command queue filled up; they're sent on the next call.
+    pub fn follow_swaps(&mut self, editor: &Editor, swaps: u64, handle: &mut Handle) -> bool {
+        self.follow_swaps_with(editor, swaps, |command| handle.send(command))
+    }
+
+    fn follow_swaps_with(
+        &mut self,
+        editor: &Editor,
+        swaps: u64,
+        mut send: impl FnMut(Command) -> bool,
+    ) -> bool {
+        if swaps == self.swaps {
+            return true;
+        }
+        let ids = editor.track_ids();
+        while let Some(&id) = self.joined.last() {
+            // A track removed since has nothing to send.
+            if let Some(index) = ids.iter().position(|&i| i == id)
+                && let Some(track) = editor.grid.tracks.get(index)
+            {
+                let track = Box::new(track.clone());
+                if !send(Command::SetTrack {
+                    index,
+                    track,
+                    swaps,
+                }) {
+                    return false;
+                }
+            }
+            self.joined.pop();
+        }
+        self.swaps = swaps;
+        true
     }
 
     fn hush_with(&mut self, editor: &Editor, mut send: impl FnMut(Command) -> bool) -> bool {
@@ -132,6 +177,7 @@ impl Tracks {
                         return false;
                     }
                     self.engine.insert(index, (id, track.instrument.clone()));
+                    self.joined.push(id);
                 }
             }
         }
@@ -313,5 +359,30 @@ mod tests {
             tracks.engine[last + 1].1,
             editor.grid.tracks[last].instrument
         );
+    }
+
+    #[test]
+    fn tracks_added_as_the_pattern_changes_get_its_steps() {
+        let mut editor = editor();
+        let mut tracks = Tracks::new(&editor, 48_000.0);
+        let mut engine = editor.track_ids().to_vec();
+        let before = engine.clone();
+        command(&mut editor, "ta");
+        sync(&mut tracks, &editor, &mut engine);
+        let added = engine.iter().position(|id| !before.contains(id)).unwrap();
+        let mut sent = vec![];
+        let mut follow = |tracks: &mut Tracks, swaps| {
+            assert!(tracks.follow_swaps_with(&editor, swaps, |command| {
+                match command {
+                    Command::SetTrack { index, swaps, .. } => sent.push((index, swaps)),
+                    other => panic!("unexpected {other:?}"),
+                }
+                true
+            }));
+        };
+        follow(&mut tracks, 0);
+        follow(&mut tracks, 1);
+        follow(&mut tracks, 2);
+        assert_eq!(sent, [(added, 1)], "sent once, after the first change");
     }
 }

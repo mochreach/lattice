@@ -311,6 +311,9 @@ fn run(
             );
         }
         sequencer.sync(editor, handle);
+        if !tracks.follow_swaps(editor, sequencer.swaps(), handle) {
+            editor.message = Some("audio engine is busy; tracks out of step".into());
+        }
         // Watched every frame, so it sees each step start within a frame of it.
         editor.set_transport(playhead.transport(handle.status(), editor, Instant::now()));
         // The tutor checks its lesson as playback starts and stops, and after each key.
