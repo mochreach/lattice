@@ -540,7 +540,8 @@ leaves you where you were. `:wq` quits only if the save worked. Opening another 
 starting a new one (`:new`) and starting the tutor refuse in the same way, each with its own `!`
 to go ahead.
 
-`C-c` (`quit`) quits at once, without asking, even with unsaved changes. Save first.
+`C-c` (`quit`) quits as `:q` does, but if there are unsaved changes it says so, and pressing it
+again straight away quits anyway, as `:q!` does.
 
 Lattice shouldn't crash, but if it does, it saves the song first if it had unsaved changes, as
 `song.rescue.lattice` beside its file (or `rescue.lattice` beside the log, if it was never

@@ -498,6 +498,8 @@ pub struct Editor {
     inst_opened: std::collections::BTreeSet<TrackId>,
     count: Option<usize>,
     pending: Option<Pending>,
+    /// `C-c` was refused for unsaved changes on the last key, so pressing it again quits.
+    quit_warned: bool,
     /// One clip per selection copied.
     clipboard: Vec<Clip>,
     /// Whole tracks copied, instruments and all.
@@ -612,6 +614,7 @@ impl Editor {
             primary: 0,
             count: None,
             pending: None,
+            quit_warned: false,
             clipboard: Vec::new(),
             track_clipboard: Vec::new(),
             undo: Vec::new(),
@@ -923,7 +926,12 @@ impl Editor {
         // Only note keys hold: they're plain keys, so their releases match. An edit's preview,
         // `C-a` say, stays brief, as Ctrl might come up first.
         let holds = self.releases && self.plays(key);
+        let warned = self.quit_warned;
         let mut effects = self.handle_key(key);
+        // Only the very next key can be the second `C-c`.
+        if warned {
+            self.quit_warned = false;
+        }
         // Leaving the mixer leaves locking, putting the settings back.
         if !matches!(self.page, Page::Mixer | Page::Fx | Page::Instrument) && self.locking.is_some()
         {
@@ -1671,6 +1679,12 @@ impl Editor {
                     View::Source => View::Live,
                     View::Live => View::Source,
                 }
+            }
+            // As `:q`, but a second press quits anyway, as `:q!` does.
+            Action::Quit if self.modified() && !self.quit_warned => {
+                self.quit_warned = true;
+                self.message =
+                    Some("unsaved changes: C-c again to quit anyway, or :w to save".into());
             }
             Action::Quit => return vec![Effect::Quit],
         }
@@ -3083,6 +3097,12 @@ mod tests {
         );
         assert_eq!(command(&mut e, "quit!"), [Effect::Quit]);
         assert_eq!(command(&mut e, "q!"), [Effect::Quit]);
+        // `C-c` asks once, and quits if pressed again straight away.
+        assert_eq!(e.handle(Key::Ctrl('c')), []);
+        assert!(e.message.as_ref().unwrap().starts_with("unsaved changes"));
+        e.handle(Key::Char('j'));
+        assert_eq!(e.handle(Key::Ctrl('c')), [], "not straight away");
+        assert_eq!(e.handle(Key::Ctrl('c')), [Effect::Quit]);
         command(&mut e, "open!");
         assert_eq!(e.message.as_deref(), Some("expected a path"));
     }

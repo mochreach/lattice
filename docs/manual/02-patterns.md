@@ -831,7 +831,7 @@ while the rest plays. Edits are heard on the next pass over the step, even mid-l
 | `gi`      | `goto_instrument` | the instrument page                                       |
 | `gf`      | `goto_effects`    | the effects page                                          |
 | `gp`      | `goto_pattern`    | back to the pattern page                                  |
-| `C-c`     | `quit`            | quit, at once                                             |
+| `C-c`     | `quit`            | quit; again to quit with unsaved changes                  |
 
 Playing the song, rather than looping this pattern, is in [chapter 6](06-song.md).
 

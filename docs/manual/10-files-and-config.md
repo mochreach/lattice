@@ -215,8 +215,8 @@ ahead.
 
 ### Quitting
 
-`:q` quits, and refuses if there are unsaved changes; `:q!` quits anyway. `C-c` quits at once,
-even with unsaved changes, without asking.
+`:q` quits, and refuses if there are unsaved changes; `:q!` quits anyway. `C-c` is the same
+from a key: with unsaved changes it says so, and a second `C-c` straight away quits anyway.
 
 ### If Lattice crashes
 
@@ -583,7 +583,7 @@ Insert mode shares the arrows, `pageup` `pagedown` `home` `end`, `esc`, the play
 | `R`       | `toggle_record`  | record on or off                        |
 | `tab`     | `toggle_view`    | the pattern as written, or as playing   |
 | `L`       | `lock_setting`   | mixer: lock the settings changed        |
-| `C-c`     | `quit`           | quit at once, without asking            |
+| `C-c`     | `quit`           | quit; again to lose unsaved changes     |
 
 ## Lattice's other files
 
