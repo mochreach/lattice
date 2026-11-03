@@ -5,8 +5,13 @@ decompile it and reimplement it by teatime; that's how good agents have got. I'l
 the bother: here's the source. Take it, change it, make it yours. Go and make software that
 works for you.
 
-The paragraph above is the spirit. The terms below are the letter, and they're the MIT licence,
-word for word, so your lawyer and your package manager both know where they stand.
+And that's the one thing I ask: make it yours. Lattice is customised for me, its audience of
+one. If you build on it, especially to sell, shape it for your own audience and your own market,
+and give it your own name and face. Don't hand people my software with the serial numbers filed
+off.
+
+The paragraphs above are the spirit. The terms below are the letter: the MIT licence, word for
+word, with one condition added about Lattice's name and the things that make it mine.
 
 ---
 
@@ -26,3 +31,14 @@ NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPO
 NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
 DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Additional condition. This licence does not grant any right to Lattice's name or identity. Any
+work based on the Software that you distribute to others must not:
+
+1. be called "Lattice", or by a name likely to be confused with it, or suggest that it is
+   Lattice or is endorsed by Chris Wells Wood;
+2. include the Software's artwork: its splash screen and its hand-drawn instrument art
+   (crates/lattice-core/src/art and crates/lattice-tui/src/splash.rs); or
+3. include the Software's manual (docs/manual) or its tutor's lessons.
+
+You may say, truthfully, that your work is based on Lattice.

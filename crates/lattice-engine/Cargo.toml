@@ -3,7 +3,7 @@ name = "lattice-engine"
 description = "Real-time sequencer and sound engine for Lattice."
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 authors.workspace = true
 
 [dependencies]

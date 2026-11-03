@@ -3,7 +3,7 @@ name = "lattice-tui"
 description = "Terminal frontend for Lattice."
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 authors.workspace = true
 
 [[bin]]

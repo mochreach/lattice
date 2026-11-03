@@ -108,4 +108,5 @@ cargo clippy --all-targets
 ## Licence
 
 The ["If This Isn't Open Source You'll Just Decompile and Reimplement It" Licence](LICENCE),
-which is the MIT licence with a word of explanation on top.
+which is the MIT licence with one condition: build on it all you like, but make it your own,
+without Lattice's name, art or manual.
