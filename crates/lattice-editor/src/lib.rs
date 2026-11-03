@@ -790,6 +790,14 @@ impl Editor {
         self.mode = Mode::Normal;
         self.count = None;
         self.pending = None;
+        // The cursors start afresh, as on a song just opened; the clipboards are kept, to copy
+        // from one song to another.
+        self.mixer = MixerCursor::default();
+        self.fx = FxCursor::default();
+        self.inst = InstCursor::default();
+        self.open.clear();
+        self.field = StepField::Note;
+        self.typing = Default::default();
         self.undo.clear();
         self.redo.clear();
         self.reconcile();
@@ -3103,6 +3111,19 @@ mod tests {
             command(&mut e, "wq other.lattice"),
             [Effect::Save("other.lattice".into()), Effect::Quit]
         );
+    }
+
+    #[test]
+    fn a_new_song_starts_its_cursors_afresh() {
+        let mut e = editor();
+        keys(&mut e, "te");
+        e.field = StepField::Velocity;
+        keys(&mut e, "gm");
+        keys(&mut e, "jj");
+        command(&mut e, "new!");
+        assert_eq!(e.field, StepField::Note);
+        assert!(e.open.is_empty());
+        assert_eq!(e.mixer_cursor(), MixerCursor::default());
     }
 
     #[test]
