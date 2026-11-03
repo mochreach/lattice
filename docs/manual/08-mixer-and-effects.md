@@ -394,6 +394,7 @@ The fx page's cursor is on a lane and a line, as the pattern's is on a track and
 | `^a`, `+` `=` | `note_up`, `longer`                 | turn what's under the cursor up            |
 | `^x`, `-`     | `note_down`, `shorter`              | turn it down                               |
 | `c`           | `change`                            | `:set ` on a value; else `:fx-add `        |
+| `o`           | `open_below`                        | `:fx-add `, for an effect after the cursor |
 | `d`           | `delete`                            | remove an effect (on its name), send, lane |
 | `L`           | `lock_setting`                      | lock settings, as on the mixer             |
 | `gm` `gp`     | `goto_mixer`, `goto_pattern`        | the mixer, the pattern                     |
@@ -428,7 +429,8 @@ ge                  down to the outs
 ```
 
 `:fx-add` puts the new effect after the cursor's row, or at the end of the lane if the cursor is
-below the lane's last row, and `:fx-send` the same. The result:
+below the lane's last row, and `:fx-send` the same. `o` starts typing one, as it opens a step
+below the cursor on the grid. The result:
 
 ```
       macros                            A ← in B                 B ← A

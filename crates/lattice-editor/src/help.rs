@@ -35,6 +35,22 @@ const PAGES: &[(&str, &str)] = &[
         "C-a C-x adjust · c set · L … L lock changes on the selected steps · :fx-add · d remove",
     ),
     (
+        "fx (gf)",
+        "j k lines · h l lanes, left of A the macros · w b effects · ( ) strip · m mute · s solo",
+    ),
+    (
+        "",
+        "C-a C-x turn · c set, or :fx-add · o add an effect after · d remove · L lock",
+    ),
+    (
+        "instrument (gi)",
+        "h l tracks · j k lines · w b parts · C-a C-x turn · c set · ret face, or the fx page",
+    ),
+    (
+        "",
+        "i a play it on the keyboard · d remove a macro · L lock · m mute · s solo",
+    ),
+    (
         "song (gs)",
         "j k bars · w b entries · h l tracks · C-a C-x pattern · + - repeats · o O add",
     ),

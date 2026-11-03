@@ -327,8 +327,8 @@ B if there isn't one. A send into its own lane or one to its left is **feedback*
 again 256 samples later and kept to 0 dB or below, so it dies away. Each lane ends in an **out**,
 its level into the strip, along the bottom. `j` `k` move line by line, so `^a` `^x` (or `c`)
 turn each setting, send or out as you pass it, `w` `b` jump from effect to effect past their
-settings, and `h` `l` move across the lanes on the same line. `:fx-add` adds an effect after the
-cursor's, and `d` on an effect's name or a send removes it, or on an out, the whole lane. `L`
+settings, and `h` `l` move across the lanes on the same line. `:fx-add` (or `o`, which starts
+typing it) adds an effect after the cursor's, and `d` on an effect's name or a send removes it, or on an out, the whole lane. `L`
 locks settings as on the mixer. `(` `)` change strip, and `gm` and `gp` go to the mixer and the
 pattern.
 

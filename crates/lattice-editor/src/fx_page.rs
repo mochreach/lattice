@@ -318,12 +318,10 @@ impl Editor {
                     | FxLine::Target { .. } => "set ",
                     _ => "fx-add ",
                 };
-                self.open_prompt(PromptKind::Command);
-                if let Mode::Command(prompt) = &mut self.mode {
-                    prompt.line = line.into();
-                    prompt.typed = prompt.line.clone();
-                }
+                self.prompt_with(line);
             }
+            // A new effect after the cursor's, as `o` opens a step below it on the grid.
+            Action::OpenBelow => self.prompt_with("fx-add "),
             // The strip, locking and the rest work as on the mixer.
             _ => {
                 let effects = self.mixer_act(action, n);
@@ -332,6 +330,15 @@ impl Editor {
             }
         }
         Some(vec![])
+    }
+
+    /// Opens the command line with `line` typed, for the rest to be added.
+    fn prompt_with(&mut self, line: &str) {
+        self.open_prompt(PromptKind::Command);
+        if let Mode::Command(prompt) = &mut self.mode {
+            prompt.line = line.into();
+            prompt.typed = prompt.line.clone();
+        }
     }
 
     /// The send's or out's level under the fx cursor, and the range it can take, in dB; or the
@@ -634,6 +641,17 @@ mod tests {
 
         keys(&mut e, "u");
         assert_eq!(e.grid.tracks[0].effects.lanes().len(), 2, "undone");
+    }
+
+    #[test]
+    fn o_adds_an_effect_after_the_cursors() {
+        let mut e = editor();
+        keys(&mut e, "gf:fx-add delay\n:fx-add reverb\nbo");
+        assert!(matches!(&e.mode, Mode::Command(p) if p.line == "fx-add "));
+        keys(&mut e, "filter\n");
+        let kinds: Vec<_> = e.grid.tracks[0].effects.iter().map(|f| f.kind).collect();
+        use lattice_core::FxKind;
+        assert_eq!(kinds, [FxKind::Delay, FxKind::Filter, FxKind::Reverb]);
     }
 
     #[test]
