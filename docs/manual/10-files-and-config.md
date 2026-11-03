@@ -389,7 +389,9 @@ and leaves the rest: `[keys.normal.g]` with `a = ":pattern A"` adds `ga` to goto
 `:pattern A`. Menus can't hold menus.
 
 Insert mode takes only actions, as its other keys play notes; a command there is a mistake. A
-piano key goes on playing its note whatever it's bound to, so bind keys the piano doesn't use.
+piano key bound there does its action instead of playing its note, on the pattern page and the
+instrument page alike, so `q = "escape"` gives up the note `q` played for a way out of insert
+mode under the left hand.
 
 Keys are written as Helix writes them:
 

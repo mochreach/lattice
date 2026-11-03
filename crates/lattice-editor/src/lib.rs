@@ -1129,6 +1129,10 @@ impl Editor {
         {
             return effects;
         }
+        // A key bound in insert mode is the player's choice over the note it would play.
+        if let Some(&action) = self.keymap.insert.get(&key) {
+            return self.act(action, 1);
+        }
         if let Some(pitch) = self.piano_pitch(key) {
             let track = self.cursor().track;
             let cursors: Vec<Cursor> = self.selections.iter().map(|s| s.cursor).collect();
@@ -1156,10 +1160,7 @@ impl Editor {
             effects.push(Effect::Preview { track, pitch });
             return effects;
         }
-        match self.keymap.insert.get(&key).copied() {
-            Some(action) => self.act(action, 1),
-            None => vec![],
-        }
+        vec![]
     }
 
     fn open_prompt(&mut self, kind: PromptKind) {
@@ -3124,6 +3125,18 @@ mod tests {
         assert_eq!(e.field, StepField::Note);
         assert!(e.open.is_empty());
         assert_eq!(e.mixer_cursor(), MixerCursor::default());
+    }
+
+    #[test]
+    fn a_key_bound_in_insert_mode_beats_the_note_it_played() {
+        let mut e = editor();
+        e.keymap.bind_insert(Key::Char('q'), "escape").unwrap();
+        keys(&mut e, "iq");
+        assert_eq!(e.mode, Mode::Normal);
+        assert!(e.grid.tracks[0].steps[0].note.is_none());
+        // The rest still play.
+        notes(&mut e, "z");
+        assert!(e.grid.tracks[0].steps[0].note.is_some());
     }
 
     #[test]

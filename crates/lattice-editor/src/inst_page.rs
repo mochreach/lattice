@@ -158,7 +158,9 @@ impl Editor {
     /// records it at the playhead; the rest move and turn, with `C-a` `C-x` as in normal mode.
     pub(crate) fn play_key(&mut self, key: Key) -> Vec<Effect> {
         let track = self.inst_cursor().track;
-        if let Some(pitch) = self.piano_pitch(key) {
+        if let Some(pitch) = self.piano_pitch(key)
+            && !self.keymap.insert.contains_key(&key)
+        {
             return (self.record_note(key, &[track], pitch, 0))
                 .unwrap_or_else(|| vec![Effect::Preview { track, pitch }]);
         }
