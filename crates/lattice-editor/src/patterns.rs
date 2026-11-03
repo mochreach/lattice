@@ -600,6 +600,24 @@ mod tests {
     }
 
     #[test]
+    fn going_to_another_pattern_changes_nothing() {
+        let mut e = editor();
+        run(&mut e, "pattern-new");
+        e.saved("song.lattice".into());
+        run(&mut e, "pattern A");
+        assert_eq!(e.arrangement.current, 0);
+        assert!(!e.modified(), "only another pattern open");
+        run(&mut e, "bpm 100");
+        assert!(e.modified());
+        run(&mut e, "bpm 120");
+        run(&mut e, "pattern B");
+        assert!(!e.modified(), "and back again");
+        e.handle(Key::Char('i'));
+        e.handle(Key::Char('z'));
+        assert!(e.modified(), "a note in it");
+    }
+
+    #[test]
     fn the_conductors_mutes_are_heard_until_the_song_stops_or_the_player_takes_over() {
         let mut e = editor();
         e.conducted_mix(0, Some(true), None);

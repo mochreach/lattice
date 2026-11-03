@@ -642,14 +642,28 @@ impl Editor {
     }
 
     /// Whether the song differs from when it was last saved or opened, tracks added, removed
-    /// and moved included. Undoing back to that point counts as unmodified.
+    /// and moved included. Undoing back to that point counts as unmodified, and so does only
+    /// going to another pattern.
     pub fn modified(&self) -> bool {
         // The tutor's song is only for practice.
         !self.tutoring()
-            && (self.grid != self.saved.grid
-                || self.arrangement != self.saved.arrangement
+            && (!self.same_patterns()
                 || self.buses != self.saved.buses
                 || self.bpm != self.saved.bpm)
+    }
+
+    /// Whether the tracks and patterns are as saved, whichever pattern is being edited.
+    fn same_patterns(&self) -> bool {
+        let saved = &self.saved;
+        if self.arrangement.current == saved.arrangement.current {
+            return self.grid == saved.grid && self.arrangement == saved.arrangement;
+        }
+        // The pattern being edited has its lanes in the tracks, so to compare, put back the
+        // one that was when it was saved.
+        let (mut grid, mut arrangement) = (self.grid.clone(), self.arrangement.clone());
+        arrangement.select(&mut grid, saved.arrangement.current)
+            && grid == saved.grid
+            && arrangement == saved.arrangement
     }
 
     /// The song to save, named after its file.

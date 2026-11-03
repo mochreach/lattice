@@ -189,7 +189,8 @@ saved. Lattice compares the song with the copy it last saved or opened, so undoi
 point takes the `[+]` away again. A song with no file is called `[scratch]`, as in Helix.
 
 The click is saved with the song, but turning it on or off alone doesn't add a `[+]`. It's
-saved the next time something else is.
+saved the next time something else is. Nor does going to another pattern: the file remembers
+which pattern was open, but that's saved only along with a change.
 
 ### Opening
 
