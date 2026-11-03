@@ -118,12 +118,17 @@ pub fn draw(
     ])
     .areas(frame.area());
     // The tutor's lesson sits under the page.
-    let lesson = editor
-        .tutor_view()
-        .map(|view| tutor_lines(&view, grid.width, theme));
+    // Half the page, or two thirds for a long lesson; past that the explanation is cut short,
+    // never what the lesson asks you to do.
+    let room = grid.height / 2;
+    let room = (grid.height * 2 / 3).max(room);
+    let lesson = editor.tutor_view().map(|view| {
+        let (lines, task) = tutor_lines(&view, grid.width, theme);
+        fit_lesson(lines, task, usize::from(room.saturating_sub(2)), theme)
+    });
     let (grid, panel) = match &lesson {
         Some(lines) => {
-            let height = (lines.len() as u16 + 2).min(grid.height / 2);
+            let height = (lines.len() as u16 + 2).min(room);
             let [grid, panel] =
                 Layout::vertical([Constraint::Fill(1), Constraint::Length(height)]).areas(grid);
             (grid, Some(panel))
@@ -1258,14 +1263,17 @@ fn draw_lesson_done(
 
 /// A tutor lesson's paragraphs, wrapped to fit inside its box, with keys and commands (in
 /// `backticks`) picked out.
-fn tutor_lines(view: &TutorView, width: u16, theme: &Theme) -> Vec<Line<'static>> {
+/// The lesson's lines, wrapped to `width`, and the line its last paragraph, the task, starts on.
+fn tutor_lines(view: &TutorView, width: u16, theme: &Theme) -> (Vec<Line<'static>>, usize) {
     let room = usize::from(width.saturating_sub(4)).max(20);
     let code = Style::new().fg(theme.accent).add_modifier(Modifier::BOLD);
     let mut lines = vec![];
+    let mut task = 0;
     for (i, paragraph) in view.text.iter().enumerate() {
         if i > 0 {
             lines.push(Line::default());
         }
+        task = lines.len();
         let mut in_code = false;
         for row in crate::help_page::wrap(paragraph, room) {
             let mut spans = vec![Span::raw(" ")];
@@ -1279,6 +1287,27 @@ fn tutor_lines(view: &TutorView, width: u16, theme: &Theme) -> Vec<Line<'static>
             lines.push(Line::from(spans));
         }
     }
+    (lines, task)
+}
+
+/// A lesson's lines in `rows`: if they don't fit, the explanation is cut short with `…`, keeping
+/// the task, its last paragraph, whole.
+fn fit_lesson(
+    mut lines: Vec<Line<'static>>,
+    task: usize,
+    rows: usize,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    if lines.len() <= rows || task == 0 {
+        return lines;
+    }
+    let tail = lines.split_off(task.min(lines.len()));
+    // The explanation's lines that fit, then `…` and the blank line before the task.
+    let keep = rows.saturating_sub(tail.len() + 2);
+    lines.truncate(keep);
+    lines.push(Line::styled(" …", theme.dim));
+    lines.push(Line::default());
+    lines.extend(tail);
     lines
 }
 
