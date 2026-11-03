@@ -239,6 +239,8 @@ pub struct EffectSlot {
     events: Vec<Event>,
     /// Each parameter's setting, to go back to when a step's lock ends.
     base: [f32; MAX_PARAMS],
+    /// Samples since it last had sound in or out.
+    quiet: u32,
 }
 
 impl EffectSlot {
@@ -249,6 +251,7 @@ impl EffectSlot {
             base: defaults(processor.params()),
             processor,
             events: Vec::with_capacity(MAX_EVENTS),
+            quiet: 0,
         })
     }
 
@@ -286,18 +289,41 @@ fn effects() -> Effects {
     Vec::with_capacity(MAX_EFFECTS)
 }
 
+/// How long an effect goes on running once it's had no sound in or out: longer than the
+/// longest gap between a delay's echoes.
+const REST_SECONDS: f64 = 3.0;
+
+/// Below this, -120dB, a sample is silent.
+const SILENT: f32 = 1e-6;
+
+fn silent(samples: &[f32]) -> bool {
+    samples.iter().all(|s| s.abs() < SILENT)
+}
+
 /// Runs a block through the effects: each in turn, or through the lanes and sends of their
-/// routing.
+/// routing. An effect that's had no sound in or out for `rest` samples, and has no events,
+/// sleeps until sound comes in again: silence in is silence out, and most effects cost as much
+/// to run on silence as on sound.
 fn run_chain(
     effects: &mut [Box<EffectSlot>],
     routing: &mut Option<Box<Routing>>,
     left: &mut [f32],
     right: &mut [f32],
+    rest: u32,
 ) {
     let run = |slot: &mut EffectSlot, left: &mut [f32], right: &mut [f32]| {
+        let quiet_in = silent(left) && silent(right);
+        if quiet_in && slot.quiet >= rest && slot.events.is_empty() {
+            return;
+        }
         sort_by_offset(&mut slot.events);
         slot.processor.process(&slot.events, left, right);
         slot.events.clear();
+        slot.quiet = if quiet_in && silent(left) && silent(right) {
+            slot.quiet.saturating_add(left.len() as u32)
+        } else {
+            0
+        };
     };
     match routing {
         None => effects.iter_mut().for_each(|slot| run(slot, left, right)),
@@ -1920,6 +1946,7 @@ impl Engine {
         }
 
         // Render and mix.
+        let rest = (self.clock.sample_rate() * REST_SECONDS) as u32;
         left.fill(0.0);
         right.fill(0.0);
         let (sl, sr) = (
@@ -1948,7 +1975,7 @@ impl Engine {
             tr.fill(0.0);
             t.instrument.process(&t.events, tl, tr);
             t.events.clear();
-            run_chain(&mut t.effects, &mut t.routing, tl, tr);
+            run_chain(&mut t.effects, &mut t.routing, tl, tr, rest);
             // A track gone wrong goes quiet, rather than taking the buses and their tails with it.
             silence_non_finite(tl);
             silence_non_finite(tr);
@@ -1978,13 +2005,13 @@ impl Engine {
                 gl.fill(0.0);
                 gr.fill(0.0);
             }
-            run_chain(&mut group.effects, &mut group.routing, gl, gr);
+            run_chain(&mut group.effects, &mut group.routing, gl, gr, rest);
             let peak = apply_gain(&mut group.gain, gl, gr);
             peaks.fetch_max(peak.to_bits(), Ordering::Relaxed);
             mix_into(left, gl);
             mix_into(right, gr);
         }
-        run_chain(&mut self.send_effects, &mut self.send_routing, sl, sr);
+        run_chain(&mut self.send_effects, &mut self.send_routing, sl, sr, rest);
         let peak = apply_gain(&mut self.send_gain, sl, sr);
         self.status.bus_peaks[0].fetch_max(peak.to_bits(), Ordering::Relaxed);
         mix_into(left, sl);
@@ -1994,6 +2021,7 @@ impl Engine {
             &mut self.master_routing,
             left,
             right,
+            rest,
         );
         let peak = apply_gain(&mut self.master_gain, left, right);
         self.status.bus_peaks[1].fetch_max(peak.to_bits(), Ordering::Relaxed);
@@ -3725,6 +3753,36 @@ mod tests {
         );
         render_stereo(&mut engine, 1);
         assert!(engine.master_effects[2].events.is_empty(), "delivered");
+    }
+
+    #[test]
+    fn an_effect_rings_out_before_it_sleeps() {
+        use lattice_core::{Fx, FxKind, fx::delay};
+        let rate = 1_000.0;
+        let mut fx = Fx::new(FxKind::Delay);
+        fx.values[delay::TIME as usize] = delay::MAX_TIME;
+        fx.values[delay::FEEDBACK as usize] = 0.0;
+        let mut effects = vec![EffectSlot::with_values(
+            crate::fx::build(&fx, rate),
+            &fx.values,
+        )];
+        let rest = (f64::from(rate) * REST_SECONDS) as u32;
+        let mut heard = vec![];
+        for block in 0..100 {
+            let mut left = [0.0; 100];
+            if block == 0 {
+                left[0] = 1.0;
+            }
+            let mut right = left;
+            run_chain(&mut effects, &mut None, &mut left, &mut right, rest);
+            if !super::silent(&left) {
+                heard.push(block);
+            }
+        }
+        // The impulse, and its echo two seconds on, in the 20th block of a tenth of a second.
+        assert_eq!(heard.first(), Some(&0));
+        assert!(heard.contains(&20), "the echo is heard: {heard:?}");
+        assert!(effects[0].quiet >= rest, "asleep since");
     }
 
     #[test]

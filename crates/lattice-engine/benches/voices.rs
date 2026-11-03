@@ -93,27 +93,36 @@ mod all {
                 })
                 .collect();
             let report = budget(processor.as_mut(), &notes);
-            println!("{:>10}: {report:>6.0}x real time", kind.name());
+            // Long after its notes have ended, as most tracks are most of the time.
+            let mut idle = instrument::build(&Instrument::new(kind), SAMPLE_RATE, None);
+            let idle = budget(idle.as_mut(), &[]);
+            println!(
+                "{:>10}: {report:>6.0}x real time, idle {idle:>8.0}x",
+                kind.name()
+            );
         }
         for kind in FxKind::ALL {
             let mut processor = fx::build(&Fx::new(kind), SAMPLE_RATE);
+            let report = effect_budget(processor.as_mut(), 1.0);
+            let mut idle = fx::build(&Fx::new(kind), SAMPLE_RATE);
+            let idle = effect_budget(idle.as_mut(), 0.0);
             println!(
-                "{:>10}: {:>6.0}x real time",
-                kind.name(),
-                effect_budget(processor.as_mut())
+                "{:>10}: {report:>6.0}x real time, on silence {idle:>8.0}x",
+                kind.name()
             );
         }
         println!("    engine: {:>8.1}x real time", engine_budget());
     }
 
-    fn effect_budget(effect: &mut dyn Processor) -> f64 {
+    /// Runs `effect` on noise, at `level`: 0 for silence.
+    fn effect_budget(effect: &mut dyn Processor, level: f32) -> f64 {
         let blocks = SECONDS * SAMPLE_RATE as usize / BLOCK;
         let mut seed = 1u32;
         let mut noise = || {
             seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             (seed >> 8) as f32 / (1 << 24) as f32 - 0.5
         };
-        let input: Vec<f32> = (0..BLOCK).map(|_| noise()).collect();
+        let input: Vec<f32> = (0..BLOCK).map(|_| noise() * level).collect();
         let (mut left, mut right) = (input.clone(), input.clone());
         let start = Instant::now();
         for _ in 0..blocks {

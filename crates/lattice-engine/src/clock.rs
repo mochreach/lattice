@@ -31,6 +31,10 @@ impl Clock {
         }
     }
 
+    pub fn sample_rate(&self) -> f64 {
+        self.sample_rate
+    }
+
     /// Changes tempo from the next step on, without moving that step.
     pub fn set_bpm(&mut self, bpm: f64) {
         self.origin = self.step_position(self.next_step);

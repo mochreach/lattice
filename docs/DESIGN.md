@@ -579,7 +579,11 @@ designed in from the start.
 - **Control rate.** Expensive maths (filter `tan()`, envelope stages) runs every 16 samples,
   counted from an absolute sample clock so output doesn't depend on buffer size.
 - **Denormals flushed to zero** at the start of every callback (MXCSR on x86, FPCR on ARM).
-- **Silence skipping.** Idle instruments do almost no work.
+- **Silence skipping.** Idle instruments do almost no work. An effect sleeps once it's had
+  no sound in or out for three seconds (longer than the longest gap between a delay's echoes)
+  and no events, and wakes when sound comes in: most effects cost as much on silence as on
+  sound, so a song's chains used to cost as much stopped as playing. The benchmark reports each
+  instrument idle and each effect on silence.
 - **Benchmarks:** `cargo bench -p lattice-engine` reports what share of one core each
   instrument needs. Run it on every target machine.
 - **The UI draws only while something moves.** It draws every frame (16 ms) while the song
