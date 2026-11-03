@@ -239,7 +239,9 @@ const LESSONS: &[Lesson] = &[
                keyboard's bottom two rows are a piano: `z` is C, `s` C#, `x` D and so on, \
                with the B below on `\\`, and the octave above from `q`, on into the next \
                from `i`. Each note moves the cursor down a step; {clear_advance} clears one \
-               instead. {keyboard_octave_up} and {keyboard_octave_down} change the keyboard's \
+               instead. With every letter a note, the arrow keys move without entering one, \
+               so `down` skips a step and leaves it as it was; `space` still plays and stops. \
+               {keyboard_octave_up} and {keyboard_octave_down} change the keyboard's \
                octave, in any mode and on any page, and {escape} goes back to normal mode.\n\nGo to the top of the LEAD track, put four notes in it, then go \
                back to normal mode.",
         teaches: &[
