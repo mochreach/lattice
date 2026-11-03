@@ -124,6 +124,9 @@ fn main() -> Result<()> {
     mixer.sync(&editor, &mut handle);
     if args.iter().any(|a| a == "--no-click") {
         editor.click = false;
+    }
+    // The engine starts with the click on; the song, or `--no-click`, may want it off.
+    if !editor.click {
         handle.send(Command::SetClick(false));
     }
     editor.show_keys = args.iter().any(|a| a == "--show-keys");

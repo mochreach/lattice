@@ -1109,6 +1109,7 @@ fn song() -> Song {
         },
         arrangement: Arrangement::default(),
         buses: Buses::default(),
+        click: true,
     }
 }
 

@@ -448,6 +448,8 @@ pub struct Editor {
     pub scale: usize,
     pub root: u8,
     pub follow: bool,
+    /// Whether the metronome clicks, saved with the song. Changing it alone doesn't count as an
+    /// unsaved change: it's how the player listens, not the music.
     pub click: bool,
     /// Whether the frontend shows the keys as they're pressed, for screencasts.
     pub show_keys: bool,
@@ -648,6 +650,7 @@ impl Editor {
             grid: self.grid.clone(),
             arrangement: self.arrangement.clone(),
             buses: self.buses.clone(),
+            click: self.click,
         }
     }
 
@@ -702,6 +705,7 @@ impl Editor {
             },
             arrangement: Default::default(),
             buses: Default::default(),
+            click: self.click,
         };
         let effects = self.replace_song(song, path.clone());
         self.page = Page::Pattern;
@@ -745,6 +749,7 @@ impl Editor {
         self.song = Default::default();
         self.buses = song.buses;
         self.bpm = song.bpm;
+        self.click = song.click;
         self.path = path;
         self.selections = vec![Selection::default()];
         self.primary = 0;
@@ -759,6 +764,7 @@ impl Editor {
             Effect::TracksChanged,
             Effect::MixerChanged,
             Effect::Bpm(self.bpm),
+            Effect::Click(self.click),
         ]
     }
 
@@ -3058,6 +3064,7 @@ mod tests {
         let before = e.track_ids().to_vec();
         let mut song = editor().song();
         song.bpm = 140.0;
+        song.click = false;
         song.grid.tracks.truncate(1);
         let effects = e.load(song, "new.lattice".into());
         assert_eq!(
@@ -3065,9 +3072,11 @@ mod tests {
             [
                 Effect::TracksChanged,
                 Effect::MixerChanged,
-                Effect::Bpm(140.0)
+                Effect::Bpm(140.0),
+                Effect::Click(false)
             ]
         );
+        assert!(!e.click && !e.song().click, "the song keeps its click off");
         assert_eq!(e.grid.tracks.len(), 1);
         assert!(
             !before.contains(&e.track_ids()[0]),

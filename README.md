@@ -220,7 +220,7 @@ word that can no longer be right is underlined, and what was expected is shown o
 | `:len N` | track length (1–256); in the conductor, its length |
 | `:bpm N`, `:step N`, `:oct N` | tempo, auto-step, keyboard octave |
 | `:help` (`:h`) | the help page: every key and command |
-| `:click`, `:follow` | toggle the metronome, following the playhead |
+| `:click`, `:follow` | toggle the metronome (saved with the song), following the playhead |
 | `:rec` | toggle recording, like `R` |
 | `:layout NAME` | how notes lie on the keyboard in insert mode: `piano`, `wicki`, `fourths` or `scale` |
 | `:vel N`, `:scale NAME [ROOT]` | the velocity notes are played and entered at (1–127); the scale the numpad's pads play outside a group |

@@ -511,4 +511,15 @@ pub struct Song {
     pub arrangement: Arrangement,
     #[serde(default, skip_serializing_if = "Buses::is_default")]
     pub buses: Buses,
+    /// Whether the metronome clicks while the song plays.
+    #[serde(default = "click_on", skip_serializing_if = "is_on")]
+    pub click: bool,
+}
+
+fn click_on() -> bool {
+    true
+}
+
+fn is_on(on: &bool) -> bool {
+    *on
 }

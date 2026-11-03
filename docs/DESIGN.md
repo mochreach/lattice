@@ -1267,7 +1267,8 @@ samples can be moved, or checked in, together; the editor only ever sees absolut
 Songs are saved as RON in `.lattice` files, written by `lattice_core::to_ron` and read by
 `from_ron`, which also rejects songs the editor and engine can't handle (no tracks, lengths outside
 1–256, and so on). A file holds the `Song`: its tempo, its grid of tracks, and its arrangement:
-the patterns and the order they play in. The tracks carry the steps of the pattern being edited,
+the patterns and the order they play in. It also keeps whether the metronome clicks, written as
+`click: false` only when it doesn't, so a finished piece can open without one. The tracks carry the steps of the pattern being edited,
 and each other pattern has a lane per track, written on one line each. Tracks are written
 sparsely, as a length and a map from step index to the steps that aren't empty, and fields at
 their defaults (velocity 100, length 1, a rule that always applies) are left out, so a file reads

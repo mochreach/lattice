@@ -241,4 +241,5 @@
         send: (effects: [(kind: Reverb, params: {"size": 0.95, "decay": 0.88, "tone": 6000.0, "predelay": 0.05, "mix": 1.0})]),
         master: (effects: [(kind: Drive, params: {"drive": 0.2, "tone": 9000.0, "mix": 0.35}), (kind: Comp, params: {"threshold": -16.0, "ratio": 3.0, "attack": 0.01, "release": 0.2, "makeup": 3.0})]),
     ),
+    click: false,
 )

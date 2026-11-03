@@ -295,6 +295,7 @@ mod tests {
                 },
                 master: Bus::default(),
             },
+            click: true,
         }
     }
 
@@ -302,6 +303,17 @@ mod tests {
     fn round_trips() {
         let song = song();
         let text = to_ron(&song).unwrap();
+        assert_eq!(from_ron(&text).unwrap(), song, "{text}");
+    }
+
+    #[test]
+    fn keeps_the_click_off() {
+        let song = Song {
+            click: false,
+            ..song()
+        };
+        let text = to_ron(&song).unwrap();
+        assert!(text.contains("click: false"), "{text}");
         assert_eq!(from_ron(&text).unwrap(), song, "{text}");
     }
 
@@ -326,6 +338,7 @@ mod tests {
             "{text}"
         );
         assert!(!text.contains("None"), "{text}");
+        assert!(!text.contains("click"), "{text}");
         assert!(text.contains("level: -3.5,\n"), "{text}");
         assert!(text.contains("mute: true,\n"), "{text}");
         assert!(text.contains("(kind: Delay),"), "{text}");

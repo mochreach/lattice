@@ -796,6 +796,7 @@ pub fn song() -> Song {
             ],
         },
         buses: buses(),
+        click: true,
     }
 }
 

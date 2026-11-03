@@ -100,6 +100,7 @@ fn new_song() -> Song {
         grid: demo::blank(),
         arrangement: Default::default(),
         buses: demo::buses(),
+        click: true,
     }
 }
 
