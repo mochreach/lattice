@@ -83,6 +83,7 @@ impl Editor {
         track.face = Some(preset.face);
         let track_name = track.name.clone();
         self.retain_locks(t, |lock| same && lock.fx.is_none());
+        self.live_lock = None;
         self.fx = Default::default();
         self.mixer.effect = 0;
         self.message = Some(format!("{track_name} is {title} ({name})"));

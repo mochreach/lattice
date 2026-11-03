@@ -1013,6 +1013,27 @@ mod tests {
     }
 
     #[test]
+    fn the_lock_being_recorded_follows_its_effect() {
+        let mut e = editor();
+        let lock = LockColumn {
+            fx: Some(1),
+            param: 0,
+        }
+        .lock(0.5, Change::Set);
+        e.live_lock = Some((e.ids[0], lock));
+        e.chain_changed(crate::Strip::Track(0), 0, true);
+        assert_eq!(e.live_lock.map(|(_, l)| l.fx), Some(Some(2)), "moved along");
+        e.chain_changed(crate::Strip::Track(0), 3, false);
+        assert_eq!(
+            e.live_lock.map(|(_, l)| l.fx),
+            Some(Some(2)),
+            "one after it"
+        );
+        e.chain_changed(crate::Strip::Track(0), 2, false);
+        assert_eq!(e.live_lock, None, "gone with its effect");
+    }
+
+    #[test]
     fn locks_follow_their_effects_and_go_with_the_instrument() {
         let mut e = editor();
         for line in [

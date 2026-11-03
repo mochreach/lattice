@@ -788,6 +788,10 @@ impl Editor {
             .collect();
         self.next_pattern_id += patterns;
         self.song.yanked.clear();
+        // Nothing's being recorded into the new song yet.
+        self.take = None;
+        self.held.clear();
+        self.live_lock = None;
         self.saved = Saved {
             grid: grid.clone(),
             arrangement: arrangement.clone(),
@@ -2213,7 +2217,6 @@ impl Editor {
         self.map_selections(|e, s| e.clamped(s.anchor, s.cursor));
     }
 
-    /// Adds a track at `index`, with a new id.
     /// Adds a track at `index`, with a new id. False, changing nothing, if `index` is past the
     /// end.
     #[must_use]
@@ -2261,7 +2264,6 @@ impl Editor {
         true
     }
 
-    /// Where the track with `id` is now, if it's still there.
     /// `te`: keeps the tracks the selections reach open, showing their fields after the cursor
     /// leaves; again, closes them.
     fn toggle_open(&mut self) {
@@ -2286,6 +2288,7 @@ impl Editor {
         t == self.cursor().track || self.ids.get(t).is_some_and(|id| self.open.contains(id))
     }
 
+    /// Where the track with `id` is now, if it's still there.
     pub(crate) fn track_index(&self, id: TrackId) -> Option<usize> {
         self.ids.iter().position(|&i| i == id)
     }
@@ -2307,7 +2310,6 @@ impl Editor {
         self.live_lock = self.live_lock.filter(|(id, _)| ids.contains(id));
     }
 
-    /// Saves the current state for undo. Call before every change to the song.
     /// Every track a selection reaches, in order.
     pub(crate) fn selected_tracks(&self) -> Vec<usize> {
         let mut tracks: Vec<usize> = self
@@ -2331,6 +2333,7 @@ impl Editor {
         self.redo.clear();
     }
 
+    /// Saves the current state for undo. Call before every change to the song.
     pub(crate) fn checkpoint(&mut self) {
         self.take = None;
         self.undo.push(Snapshot {

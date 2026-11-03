@@ -798,9 +798,22 @@ impl Editor {
         inserted: bool,
     ) -> Vec<Effect> {
         let mut effects = vec![Effect::MixerChanged];
-        if let Strip::Track(t) = strip
-            && (self.shift_locks(t, index, inserted) | self.shift_targets(t, index, inserted))
+        let Strip::Track(t) = strip else {
+            return effects;
+        };
+        // The lock being recorded follows its effect too, or ends with it.
+        if let Some((id, lock)) = &mut self.live_lock
+            && self.ids.get(t) == Some(id)
+            && let Some(fx) = lock.fx.filter(|&fx| fx != lattice_core::MACRO)
+            && usize::from(fx) >= index
         {
+            match inserted {
+                true => lock.fx = fx.checked_add(1),
+                false if usize::from(fx) == index => self.live_lock = None,
+                false => lock.fx = Some(fx - 1),
+            }
+        }
+        if self.shift_locks(t, index, inserted) | self.shift_targets(t, index, inserted) {
             effects.push(Effect::TrackChanged(t));
         }
         effects
