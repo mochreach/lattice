@@ -10,8 +10,10 @@ use ron::extensions::Extensions;
 use ron::ser::PrettyConfig;
 
 use crate::arrangement::MAX_STEPS_PER_BEAT;
+use crate::conductor::{MAX_BPM, MIN_BPM};
 use crate::group::MAX_GROUPS;
-use crate::song::{Grid, MAX_CHOKE, MAX_DB, MAX_TRACKS, Song, Track};
+use crate::macros::{check_macros, setting_info};
+use crate::song::{Grid, MAX_CHOKE, MAX_DB, MAX_LOCKS, MAX_TRACKS, Song, Track};
 
 /// Nesting below which values go on one line: each step, note and rule of a track fits on its
 /// own line, and each lane of another pattern on one.
@@ -58,8 +60,11 @@ pub fn from_ron(text: &str) -> Result<Song, FileError> {
 /// Catches what the types allow but the editor and engine don't. Track lengths are checked as
 /// tracks are read.
 fn check(song: &Song) -> Result<(), String> {
-    if !(song.bpm.is_finite() && song.bpm > 0.0) {
-        return Err(format!("bpm must be above 0, not {}", song.bpm));
+    if !(f64::from(MIN_BPM)..=f64::from(MAX_BPM)).contains(&song.bpm) {
+        return Err(format!(
+            "bpm goes from {MIN_BPM} to {MAX_BPM}, not {}",
+            song.bpm
+        ));
     }
     song.buses.send.check("send")?;
     song.buses.master.check("master")?;
@@ -130,6 +135,19 @@ fn check_track(track: &Track) -> Result<(), String> {
     if let Err(e) = track.effects.check() {
         return Err(format!("track {:?}'s effects: {e}", track.name));
     }
+    if let Err(e) = check_macros(&track.macros, &track.instrument, &track.effects) {
+        return Err(format!("track {:?}: {e}", track.name));
+    }
+    let info =
+        |fx, param| setting_info(&track.instrument, &track.effects, &track.macros, fx, param);
+    if track.columns.len() > MAX_LOCKS
+        || (track.columns.iter()).any(|c| info(c.fx, c.param).is_none())
+    {
+        return Err(format!(
+            "track {:?}: lock columns must be of settings it has, at most {MAX_LOCKS}",
+            track.name
+        ));
+    }
     for (i, step) in track.steps.iter().enumerate() {
         if let Some(note) = step.note
             && (note.pitch > 127 || note.velocity > 127)
@@ -138,6 +156,25 @@ fn check_track(track: &Track) -> Result<(), String> {
                 "track {:?}, step {i}: pitch and velocity go up to 127",
                 track.name
             ));
+        }
+        for lock in step.locks.iter() {
+            let Some(info) = info(lock.fx, lock.param) else {
+                return Err(format!(
+                    "track {:?}, step {i}: a lock of a setting it hasn't",
+                    track.name
+                ));
+            };
+            // A reset's value goes unused.
+            let fine = match lock.change {
+                crate::Change::Reset => lock.value.is_finite(),
+                _ => (info.min..=info.max).contains(&lock.value),
+            };
+            if !fine {
+                return Err(format!(
+                    "track {:?}, step {i}: {} goes from {} to {}, not {}",
+                    track.name, info.name, info.min, info.max, lock.value
+                ));
+            }
         }
     }
     Ok(())
@@ -432,5 +469,40 @@ mod tests {
             .replace("\"feedback\"", "\"wobble\"");
         let err = from_ron(&text).unwrap_err().to_string();
         assert!(err.contains("no \"wobble\" setting"), "{err}");
+    }
+
+    #[test]
+    fn rejects_values_no_command_could_set() {
+        let rejects = |bad: Song, says: &str| {
+            let err = from_ron(&to_ron(&bad).unwrap()).unwrap_err().to_string();
+            assert!(err.contains(says), "{err}");
+        };
+        let mut bad = song();
+        bad.grid.tracks[0].steps[2].locks.set(
+            crate::LockColumn {
+                fx: Some(0),
+                param: 1,
+            }
+            .lock(f32::NAN, crate::Change::Set),
+        );
+        rejects(bad, "step 2");
+        let mut bad = song();
+        bad.grid.tracks[0].steps[2].locks.set(
+            crate::LockColumn {
+                fx: Some(9),
+                param: 1,
+            }
+            .lock(0.5, crate::Change::Set),
+        );
+        rejects(bad, "a lock of a setting it hasn't");
+        let mut bad = song();
+        bad.grid.tracks[0].macros[0].value = f32::NAN;
+        rejects(bad, "macro growl goes from 0 to 1");
+        let mut bad = song();
+        bad.grid.tracks[0].macros[0].targets[0].depth = 2.0;
+        rejects(bad, "depths go from -1 to 1");
+        let mut bad = song();
+        bad.bpm = 1e12;
+        rejects(bad, "bpm goes from 20 to 400");
     }
 }

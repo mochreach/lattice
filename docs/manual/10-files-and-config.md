@@ -125,16 +125,22 @@ saved with its full path. Either way, the file itself isn't in the song: keep it
 ### Checking a song
 
 Opening a song checks it as well as reading it, and refuses one the editor or engine couldn't
-play: a tempo of 0, a track of no steps or more than 256, more than 16 tracks, steps per beat
-out of range, a level above +6 dB, a choke group above 8, groups that overlap, patterns of more
-than 256 bars, entries for patterns that don't exist. The status line says what's wrong and
-where:
+play, or holds a value no command could have set: a tempo outside 20 to 400 BPM, a track of no
+steps or more than 256, more than 16 tracks, steps per beat out of range, a level above +6 dB, a
+choke group above 8, groups that overlap, patterns of more than 256 bars, entries for patterns
+that don't exist, a setting, lock or macro out of its range (or not a number at all, as `NaN`),
+a lock or macro of a setting the track hasn't. A preset is checked the same way. The status line
+says what's wrong and where:
 
 ```
  NORMAL  can't open bad.lattice: 5:1: Unexpected missing field named `grid` in `Song`
 ```
 
 Opened from the command line (`lattice bad.lattice`), Lattice stops with the same message.
+
+Should a bad value get past all that, the engine silences any track whose sound stops being a
+number, so one track gone wrong goes quiet rather than taking the buses, and the reverb's and
+delay's tails, with it.
 
 ### Saved songs may break
 

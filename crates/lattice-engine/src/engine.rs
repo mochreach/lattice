@@ -1949,6 +1949,9 @@ impl Engine {
             t.instrument.process(&t.events, tl, tr);
             t.events.clear();
             run_chain(&mut t.effects, &mut t.routing, tl, tr);
+            // A track gone wrong goes quiet, rather than taking the buses and their tails with it.
+            silence_non_finite(tl);
+            silence_non_finite(tr);
             t.strip.set(&mix, any_solo);
             // Groups are checked to be in range as they're set, so a track goes to the master
             // only when it's in none.
@@ -2002,6 +2005,8 @@ impl Engine {
         self.click_events.clear();
         mix_into(left, cl);
         mix_into(right, cr);
+        silence_non_finite(left);
+        silence_non_finite(right);
         for sample in left.iter_mut().chain(right.iter_mut()) {
             *sample = sample.tanh();
         }
@@ -2597,6 +2602,13 @@ fn apply_gain(gain: &mut Smoothed, left: &mut [f32], right: &mut [f32]) -> f32 {
         peak = peak.max(l.abs()).max(r.abs());
     }
     peak
+}
+
+/// Zeroes any sample that's NaN or infinite.
+fn silence_non_finite(buf: &mut [f32]) {
+    for s in buf.iter_mut().filter(|s| !s.is_finite()) {
+        *s = 0.0;
+    }
 }
 
 fn mix_into(out: &mut [f32], src: &[f32]) {
@@ -3713,6 +3725,13 @@ mod tests {
         );
         render_stereo(&mut engine, 1);
         assert!(engine.master_effects[2].events.is_empty(), "delivered");
+    }
+
+    #[test]
+    fn a_non_finite_sample_is_silenced() {
+        let mut buf = [0.5, f32::NAN, f32::INFINITY, -0.25, f32::NEG_INFINITY];
+        silence_non_finite(&mut buf);
+        assert_eq!(buf, [0.5, 0.0, 0.0, -0.25, 0.0]);
     }
 
     #[test]

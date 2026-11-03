@@ -9,7 +9,9 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::chain::FxChain;
 use crate::device::{Curve, ParamInfo};
+use crate::instrument::Instrument;
 use crate::song::Lock;
 
 /// Most macros a track has.
@@ -40,6 +42,60 @@ pub const DEPTH_INFO: ParamInfo = ParamInfo {
     unit: "",
     curve: Curve::Linear,
 };
+
+/// The setting `fx` and `param` name for a track or preset with these: an instrument's, an
+/// effect's, or a macro's own. `None` if it isn't there.
+pub fn setting_info(
+    instrument: &Instrument,
+    effects: &FxChain,
+    macros: &[Macro],
+    fx: Option<u8>,
+    param: u8,
+) -> Option<&'static ParamInfo> {
+    let params = match fx {
+        Some(MACRO) => return (usize::from(param) < macros.len()).then_some(&MACRO_INFO),
+        None => instrument.params(),
+        Some(fx) => effects.get(usize::from(fx))?.params(),
+    };
+    params.get(usize::from(param))
+}
+
+/// Checks the macros of a track or preset with this instrument and these effects: how many there
+/// are, their values and depths, and that what they turn is there.
+pub fn check_macros(
+    macros: &[Macro],
+    instrument: &Instrument,
+    effects: &FxChain,
+) -> Result<(), String> {
+    if macros.len() > MAX_MACROS {
+        return Err(format!("at most {MAX_MACROS} macros"));
+    }
+    for m in macros {
+        if !(0.0..=1.0).contains(&m.value) {
+            return Err(format!(
+                "macro {} goes from 0 to 1, not {}",
+                m.name, m.value
+            ));
+        }
+        if m.targets.len() > MAX_TARGETS {
+            return Err(format!("macro {} turns more than {MAX_TARGETS}", m.name));
+        }
+        for t in &m.targets {
+            if t.fx == Some(MACRO)
+                || setting_info(instrument, effects, macros, t.fx, t.param).is_none()
+            {
+                return Err(format!("macro {} turns a setting that isn't there", m.name));
+            }
+            if !(-1.0..=1.0).contains(&t.depth) {
+                return Err(format!(
+                    "macro {}'s depths go from -1 to 1, not {}",
+                    m.name, t.depth
+                ));
+            }
+        }
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Macro {

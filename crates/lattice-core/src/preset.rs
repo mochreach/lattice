@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::chain::{FxChain, FxLane};
 use crate::fx::{Fx, FxKind};
 use crate::instrument::{InstKind, Instrument};
-use crate::macros::{MAX_MACROS, MAX_TARGETS, Macro, Target};
+use crate::macros::{Macro, Target, check_macros};
 
 /// The most of the instrument's settings a face puts forward, beside its macros.
 pub const MAX_CONTROLS: usize = 6;
@@ -93,26 +93,7 @@ impl Preset {
     pub fn check(&self) -> Result<(), String> {
         self.face.check(self.instrument.kind)?;
         self.effects.check()?;
-        if self.macros.len() > MAX_MACROS {
-            return Err(format!("at most {MAX_MACROS} macros"));
-        }
-        let params = self.instrument.params().len();
-        for m in &self.macros {
-            if m.targets.len() > MAX_TARGETS {
-                return Err(format!("macro {} turns more than {MAX_TARGETS}", m.name));
-            }
-            for t in &m.targets {
-                let there = match t.fx {
-                    None => usize::from(t.param) < params,
-                    Some(fx) => (self.effects.get(usize::from(fx)))
-                        .is_some_and(|fx| usize::from(t.param) < fx.params().len()),
-                };
-                if !there {
-                    return Err(format!("macro {} turns a setting that isn't there", m.name));
-                }
-            }
-        }
-        Ok(())
+        check_macros(&self.macros, &self.instrument, &self.effects)
     }
 }
 
