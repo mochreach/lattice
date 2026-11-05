@@ -723,6 +723,32 @@ they wait for one. A replay can replay another register, but one that replays it
 a few rounds (`a replays itself without end`). Like everything in registers, recorded keys last
 until Lattice quits.
 
+#### On an F key
+
+Keys can go into an F key instead of a register: `QF4`, the keys, `Q`. Then **F4 on its own**
+presses them all again, with no `q` before it; `3F4` three times, and `qF4` works too. It's for
+what you do over and over in a session, where even `qa` is a key too many. I wanted it for
+binding knobs: with `:midi-learn this ret` on F4, each knob is F4 on a setting, then a turn.
+
+```
+QF4                      start recording into F4
+:midi-learn this ret     the command, and ret to run it
+Q                        stop: recorded 17 keys into F4: F4 presses them
+```
+
+A recorded F key comes before anything the config binds it to, until Lattice quits, when
+recordings go; recording nothing into it (`QF4Q`) hands it back to the binding. For one that
+lasts, bind the F key in the config file instead, which works for any command or action (see
+[keys](10-files-and-config.md)):
+
+```toml
+[keys.normal]
+F4 = ":midi-learn this"
+```
+
+F keys only hold keys, never steps or tracks, so `"` doesn't list them; `Q` and `q` do, while
+they wait. They work in normal mode, on every page.
+
 ### Filling with a note: `r`
 
 `r` then a piano key fills every selected step with that note, empty steps included: the note at

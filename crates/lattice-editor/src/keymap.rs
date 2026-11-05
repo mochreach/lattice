@@ -30,6 +30,8 @@ pub enum Key {
     PadOp(char),
     /// A note played on a MIDI keyboard, by its pitch.
     Note(u8),
+    /// A function key, `F1` to `F12`.
+    F(u8),
 }
 
 impl Key {
@@ -68,6 +70,12 @@ impl Key {
             "pagedown" => Key::PageDown,
             "home" => Key::Home,
             "end" => Key::End,
+            _ if let Some(n) = (name.strip_prefix('F'))
+                .and_then(|n| n.parse::<u8>().ok())
+                .filter(|n| (1..=12).contains(n)) =>
+            {
+                Key::F(n)
+            }
             _ => match name.strip_prefix("pad") {
                 Some(rest) if !rest.is_empty() => match single(rest)? {
                     c @ '0'..='9' => Key::Pad(c as u8 - b'0'),
@@ -133,6 +141,7 @@ impl fmt::Display for Key {
             Key::Pad(n) => write!(f, "pad{n}"),
             Key::PadOp(c) => write!(f, "pad{c}"),
             Key::Note(pitch) => write!(f, "note {pitch}"),
+            Key::F(n) => write!(f, "F{n}"),
         }
     }
 }
@@ -1069,6 +1078,9 @@ mod tests {
             assert_eq!(Key::parse(name), Some(key), "{name}");
         }
         assert_eq!(Key::parse("hyper-x"), None);
+        assert_eq!(Key::parse("F4"), Some(Key::F(4)));
+        assert_eq!(Key::F(12).to_string(), "F12");
+        assert_eq!(Key::parse("F13"), None);
         assert_eq!(Key::parse(""), None);
     }
 

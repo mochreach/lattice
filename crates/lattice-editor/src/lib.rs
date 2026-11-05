@@ -550,8 +550,10 @@ pub struct Editor {
     registers: registers::Registers,
     /// The register `"` picked for the next action.
     picked_register: Option<char>,
-    /// The register keys are being recorded into, and those recorded so far.
-    recording: Option<(char, Vec<Key>)>,
+    /// The register or F key keys are being recorded into, and those recorded so far.
+    recording: Option<(replay::Slot, Vec<Key>)>,
+    /// The keys recorded into each F key, by its number, which it presses again.
+    fkeys: std::collections::BTreeMap<u8, Vec<Key>>,
     /// How many replays deep the keys being handled are.
     replaying: usize,
     /// The key just handled failed, which stops a replay.
@@ -680,6 +682,7 @@ impl Editor {
             registers: Default::default(),
             picked_register: None,
             recording: None,
+            fkeys: Default::default(),
             replaying: 0,
             key_failed: false,
             undo: Vec::new(),
@@ -1227,6 +1230,13 @@ impl Editor {
         {
             self.count = None;
             return effects;
+        }
+        // An F key keys have been recorded into presses them, before what it's bound to.
+        if let Key::F(n) = key
+            && self.fkeys.contains_key(&n)
+        {
+            let times = self.count.take().unwrap_or(1);
+            return self.replay(key, times);
         }
         // Pages with no notes to select have `s` solo, as `m` mutes on every page.
         if matches!(self.page, Page::Mixer | Page::Fx | Page::Instrument) && key == Key::Char('s') {

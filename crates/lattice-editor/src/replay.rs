@@ -6,6 +6,12 @@
 //! A replay is one undo step, and stops at the first key that fails, as Vim's do: a command
 //! that errors, a key that does nothing on the page, or a move that can't go any further. So
 //! `100qa` on "do this, then move to the next track" stops at the last track.
+//!
+//! Keys can be recorded into an F key too, `QF4`, and then the F key alone presses them, so
+//! what's done often is one key away. They're kept apart from the registers, as an F key only
+//! ever holds keys.
+
+use std::fmt;
 
 use crate::keymap::{Action, Key};
 use crate::registers::names_register;
@@ -32,10 +38,46 @@ pub(crate) fn describe_keys(keys: &[Key], width: usize) -> String {
     }
 }
 
+/// Where keys are recorded: a register, or an F key.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Slot {
+    Register(char),
+    F(u8),
+}
+
+impl Slot {
+    /// The one `key` names, after `Q` or `q`.
+    fn named(key: Key) -> Option<Slot> {
+        match key {
+            Key::Char(c) if names_register(c) => Some(Slot::Register(c)),
+            Key::F(n) => Some(Slot::F(n)),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for Slot {
+    /// `a`, or `F4`.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Slot::Register(c) => write!(f, "{c}"),
+            Slot::F(n) => write!(f, "F{n}"),
+        }
+    }
+}
+
 impl Editor {
-    /// The register keys are being recorded into, if they are.
-    pub fn recording_keys(&self) -> Option<char> {
-        self.recording.as_ref().map(|(c, _)| *c)
+    /// The register or F key keys are being recorded into, if they are: `a`, `F4`.
+    pub fn recording_keys(&self) -> Option<String> {
+        self.recording.as_ref().map(|(slot, _)| slot.to_string())
+    }
+
+    /// The keys recorded into `slot`.
+    fn keys_in(&self, slot: Slot) -> Vec<Key> {
+        match slot {
+            Slot::Register(c) => (self.registers.get(&c)).map_or(vec![], |r| r.keys.clone()),
+            Slot::F(n) => self.fkeys.get(&n).cloned().unwrap_or_default(),
+        }
     }
 
     /// Notes `key` as pressed, if recording; the keys a replay presses aren't.
@@ -50,42 +92,56 @@ impl Editor {
     /// `Q`: stops recording, keeping the keys in the register, or waits for the register to
     /// start recording into.
     pub(crate) fn record_keys(&mut self) {
-        let Some((register, mut keys)) = self.recording.take() else {
+        let Some((slot, mut keys)) = self.recording.take() else {
             self.pending = Some(crate::Pending::Record);
             return;
         };
         // The key that stopped it.
         keys.pop();
+        let press = match slot {
+            Slot::F(_) => format!(": {slot} presses them"),
+            Slot::Register(_) => String::new(),
+        };
         self.message = Some(match keys.len() {
-            1 => format!("recorded 1 key into {register}"),
-            n => format!("recorded {n} keys into {register}"),
+            1 => format!("recorded 1 key into {slot}{press}"),
+            n => format!("recorded {n} keys into {slot}{press}"),
         });
-        self.registers.entry(register).or_default().keys = keys;
-    }
-
-    /// The key after `Q`: starts recording into the register it names.
-    pub(crate) fn start_recording(&mut self, key: Key) {
-        match key {
-            Key::Char(c) if names_register(c) => {
-                self.recording = Some((c, vec![]));
-                self.message = Some(format!("recording keys into {c}: Q stops"));
+        match slot {
+            Slot::Register(c) => self.registers.entry(c).or_default().keys = keys,
+            // Nothing recorded leaves the F key to what it's bound to.
+            Slot::F(n) if keys.is_empty() => {
+                self.fkeys.remove(&n);
             }
-            Key::Esc => {}
-            _ => self.message = Some("a register is a letter or a digit".into()),
+            Slot::F(n) => {
+                self.fkeys.insert(n, keys);
+            }
         }
     }
 
-    /// The key after `q`: presses the keys recorded in the register it names, `n` times.
+    /// The key after `Q`: starts recording into the register or F key it names.
+    pub(crate) fn start_recording(&mut self, key: Key) {
+        match Slot::named(key) {
+            Some(slot) => {
+                self.recording = Some((slot, vec![]));
+                self.message = Some(format!("recording keys into {slot}: Q stops"));
+            }
+            None if key == Key::Esc => {}
+            None => self.message = Some("keys go into a letter, a digit or an F key".into()),
+        }
+    }
+
+    /// The key after `q`, or a recorded F key: presses the keys recorded in the register or F
+    /// key it names, `n` times.
     pub(crate) fn replay(&mut self, key: Key, n: usize) -> Vec<Effect> {
-        let register = match key {
-            Key::Char(c) if names_register(c) => c,
-            Key::Esc => return vec![],
-            _ => {
-                self.message = Some("a register is a letter or a digit".into());
+        let register = match Slot::named(key) {
+            Some(slot) => slot,
+            None if key == Key::Esc => return vec![],
+            None => {
+                self.message = Some("keys are in a letter, a digit or an F key".into());
                 return vec![];
             }
         };
-        let keys = (self.registers.get(&register)).map_or(vec![], |r| r.keys.clone());
+        let keys = self.keys_in(register);
         if keys.is_empty() {
             self.message = Some(format!("no keys in {register}: Q{register} records them"));
             self.key_failed = true;
@@ -128,14 +184,25 @@ impl Editor {
         let held = (self.registers.iter())
             .filter(|(_, r)| replay && !r.keys.is_empty())
             .map(|(c, r)| (c.to_string(), describe_keys(&r.keys, 30)));
+        // The F keys either way, as recording into one replaces what it presses.
+        let pressed =
+            (self.fkeys.iter()).map(|(n, keys)| (format!("F{n}"), describe_keys(keys, 30)));
         let pick = match replay {
             true => "replay the keys in a register",
             false => "record keys into a register",
         };
+        let f = match replay {
+            true => "replay, as the F key alone does",
+            false => "record keys for the F key to press",
+        };
         Infobox {
             title: if replay { "replay keys" } else { "record keys" }.into(),
             items: held
-                .chain([("a–z 0–9".to_string(), pick.to_string())])
+                .chain(pressed)
+                .chain([
+                    ("a–z 0–9".to_string(), pick.to_string()),
+                    ("F1–F12".to_string(), f.to_string()),
+                ])
                 .collect(),
         }
     }
@@ -237,6 +304,31 @@ mod tests {
         keys(&mut e, "ggQa>ggQ");
         keys(&mut e, "3qa");
         assert_eq!(pitches(&e, 0)[0], Some(108), "raised four octaves in all");
+    }
+
+    #[test]
+    fn an_f_key_presses_the_keys_recorded_into_it() {
+        let mut e = editor();
+        notes(&mut e, "zzzz");
+        keys(&mut e, "ggQ");
+        e.handle(Key::F(4));
+        assert_eq!(e.recording_keys().as_deref(), Some("F4"));
+        keys(&mut e, ">jQ");
+        assert_eq!(
+            e.message.as_deref(),
+            Some("recorded 2 keys into F4: F4 presses them")
+        );
+        e.handle(Key::F(4));
+        keys(&mut e, "2");
+        e.handle(Key::F(4));
+        assert_eq!(pitches(&e, 0)[..4], [Some(72); 4]);
+        // As qF4 does, and an F key with nothing in it is left to its binding, here none.
+        keys(&mut e, "ggq");
+        e.handle(Key::F(4));
+        assert_eq!(pitches(&e, 0)[0], Some(84));
+        e.message = None;
+        e.handle(Key::F(5));
+        assert_eq!(e.message, None);
     }
 
     #[test]

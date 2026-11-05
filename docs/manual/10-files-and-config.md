@@ -410,6 +410,7 @@ Keys are written as Helix writes them:
 | enter, escape and so on  | `ret`, `esc`, `backspace`, `del`, `tab`                          |
 | the arrows               | `up`, `down`, `left`, `right`                                    |
 | the page keys            | `pageup`, `pagedown`, `home`, `end`                              |
+| the function keys        | `F1` to `F12`, none bound to start with                          |
 
 TOML lets a key be written bare only if it's letters, digits, `-` and `_`, so quote any other:
 `"%" = "select_all"`, `"A-;" = "flip"`. Shifted letters are written in capitals; there's no

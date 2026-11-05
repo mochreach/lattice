@@ -1266,7 +1266,10 @@ replay is one undo step. It stops at the first key that fails (`Editor::key_fail
 or filter that errors, `does_nothing`, or a move (`Action::moves`) that leaves every page's cursor
 where it was, which `Editor::act` checks only while replaying. That's what makes `100qa` safe on
 "edit, then next track". Replays nest, to a depth of `MAX_DEPTH`, so keys that replay themselves
-end.
+end. Keys can also go into an F key (`QF4`; `replay::Slot` is a register or an F key), kept in
+`Editor::fkeys` rather than a register, as an F key only holds keys. In normal mode a recorded F
+key replays itself, with any count, before the keymap's binding for it, so one key does what's
+done often; with nothing recorded, the config's binding (`F4 = ":midi-learn this"`) has it.
 
 ### The command line's suggestions and history
 

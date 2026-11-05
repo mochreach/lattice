@@ -530,7 +530,8 @@ const LESSONS: &[Lesson] = &[
                until {record_keys} again; {replay_keys} then the letter presses them all over, \
                and a count before it repeats them. Moves, edits and whole command lines all go \
                in, so you can record a change once and make it everywhere. A replay is one \
-               undo, and stops at a move that can't go any further.\n\nPut the cursor on step \
+               undo, and stops at a move that can't go any further. Record into an F key \
+               instead, `QF4`, and F4 alone presses them.\n\nPut the cursor on step \
                04 of the BASS track. Record into register a: raise that note an octave, then \
                move down a step. Stop, and replay it three times for the other notes of the run.",
         teaches: &[Action::RecordKeys, Action::ReplayKeys],

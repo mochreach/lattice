@@ -25,6 +25,7 @@ pub fn convert(event: KeyEvent) -> Option<Key> {
         KeyCode::PageDown => Key::PageDown,
         KeyCode::Home => Key::Home,
         KeyCode::End => Key::End,
+        KeyCode::F(n) => Key::F(n),
         _ => return None,
     })
 }
