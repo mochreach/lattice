@@ -140,7 +140,8 @@ impl Editor {
         }
     }
 
-    /// Where every page's cursor is, to tell a move that went nowhere.
+    /// Where every page's cursor is, down to the field on the pattern page, to tell a move
+    /// that went nowhere.
     fn position(&self) -> String {
         format!(
             "{:?}",
@@ -148,12 +149,15 @@ impl Editor {
                 self.page,
                 &self.selections,
                 self.primary,
+                self.field,
+                &self.open,
                 self.mixer,
                 self.fx,
                 self.inst,
                 self.song.bar,
                 self.song.column,
-                self.help.scroll,
+                self.help,
+                self.manual,
             )
         )
     }
@@ -213,6 +217,26 @@ mod tests {
                 tracks - 1
             ))
         );
+    }
+
+    #[test]
+    fn a_move_between_fields_is_a_move() {
+        let mut e = editor();
+        // Into the first track's fields and back out onto the second.
+        keys(&mut e, "Q1lQ");
+        let field = e.field;
+        keys(&mut e, "q1");
+        assert_ne!(e.field, field);
+        assert!(e.message.is_none(), "{:?}", e.message);
+    }
+
+    #[test]
+    fn a_jump_already_made_doesnt_stop_a_replay() {
+        let mut e = editor();
+        notes(&mut e, "zzzz");
+        keys(&mut e, "ggQa>ggQ");
+        keys(&mut e, "3qa");
+        assert_eq!(pitches(&e, 0)[0], Some(108), "raised four octaves in all");
     }
 
     #[test]

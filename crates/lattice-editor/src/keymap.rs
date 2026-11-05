@@ -393,7 +393,8 @@ impl Action {
 
     /// What a config file calls it: the variant in snake case, as Helix names its commands
     /// (`goto_mixer`, `toggle_pattern_mute`).
-    /// Whether it moves the cursor, so a replay can tell when it couldn't.
+    /// Whether it moves the cursor, so a replay can tell when it couldn't. Not a jump, to the
+    /// top say, which is never wrong to make again.
     pub(crate) fn moves(self) -> bool {
         matches!(
             self,
@@ -405,10 +406,6 @@ impl Action {
                 | Action::HalfPageDown
                 | Action::PageUp
                 | Action::PageDown
-                | Action::FirstStep
-                | Action::LastStep
-                | Action::FirstTrack
-                | Action::LastTrack
                 | Action::NextBeat
                 | Action::PrevBeat
                 | Action::NextBar
