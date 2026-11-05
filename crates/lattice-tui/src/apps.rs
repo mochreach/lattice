@@ -24,6 +24,9 @@ use rtrb::Producer;
 use crate::devices::BUFFER;
 use crate::log::{HEALTH, log};
 
+/// What cpal calls the streams it plays, before their process's id.
+const CPAL: &str = "cpal-pulseaudio-";
+
 /// How often the app's stream is looked for while it's recorded.
 const LOOK: Duration = Duration::from_millis(250);
 
@@ -150,14 +153,18 @@ impl Connection {
 
     /// The streams apps are playing, other than Lattice's.
     fn playing(&mut self) -> Result<Vec<Stream>> {
-        let ours = std::process::id().to_string();
+        let pid = std::process::id().to_string();
+        // cpal names Lattice's own stream after it, and PipeWire leaves off its process id.
+        let ours = format!("{CPAL}{pid}");
         let inputs: protocol::SinkInputInfoList = self.ask(Command::GetSinkInputInfoList)?;
         let streams = inputs.into_iter().filter_map(|input| {
             let prop = |p| input.props.get(p).and_then(text);
-            if prop(Prop::ApplicationProcessId).as_deref() == Some(ours.as_str()) {
+            let app = prop(Prop::ApplicationName).or_else(|| prop(Prop::ApplicationProcessBinary));
+            if prop(Prop::ApplicationProcessId).as_deref() == Some(pid.as_str())
+                || app.as_deref() == Some(ours.as_str())
+            {
                 return None;
             }
-            let app = prop(Prop::ApplicationName).or_else(|| prop(Prop::ApplicationProcessBinary));
             Some(Stream {
                 index: input.index,
                 sink: input.sink_index,
@@ -182,7 +189,7 @@ impl Connection {
 /// What to call an app: cpal's, another Lattice's say, by its program and process, as cpal
 /// names them all by process alone.
 fn named(app: String) -> String {
-    let program = (app.strip_prefix("cpal-pulseaudio-")).and_then(|pid| {
+    let program = (app.strip_prefix(CPAL)).and_then(|pid| {
         Some((
             std::fs::read_to_string(format!("/proc/{pid}/comm")).ok()?,
             pid,
