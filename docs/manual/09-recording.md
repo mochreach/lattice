@@ -283,7 +283,7 @@ corner, numbered, the one in use marked `●`, and kept up to date as devices co
 :input scarlett       the one whose name has "scarlett" in it, in any case
 :input 0              the system's default (or :input default)
 :input                says which is in use, "input: the default (Built-in Audio)",
-                      and leaves :input  open with the list, to pick another or esc
+                      and leaves the list up until the next key
 ```
 
 A part of a name that matches several devices is refused

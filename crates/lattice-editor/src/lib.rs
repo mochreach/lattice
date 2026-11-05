@@ -544,6 +544,8 @@ pub struct Editor {
     pending: Option<Pending>,
     /// `C-c` was refused for unsaved changes on the last key, so pressing it again quits.
     quit_warned: bool,
+    /// The devices `:input` or `:output` on its own left listed, until the next key.
+    listing: Option<Direction>,
     /// What `/` last looked for on the help page or the manual.
     search: search::Search,
     /// What's been copied, by register: see [`registers`].
@@ -678,6 +680,7 @@ impl Editor {
             count: None,
             pending: None,
             quit_warned: false,
+            listing: None,
             search: search::Search::default(),
             registers: Default::default(),
             picked_register: None,
@@ -1041,6 +1044,7 @@ impl Editor {
         let holds = self.releases && self.plays(key);
         let warned = self.quit_warned;
         self.stop_turning();
+        self.listing = None;
         let mut effects = self.handle_key(key);
         // Only the very next key can be the second `C-c`.
         if warned {

@@ -153,13 +153,12 @@ impl Editor {
     }
 
     pub(crate) fn device_infobox(&self) -> Option<Infobox> {
-        let direction = self.choosing_device()?;
+        let direction = self.choosing_device().or(self.listing)?;
         Some(self.devices(direction).infobox(direction))
     }
 
-    /// `:input` and `:output`: with nothing typed, says which is in use and opens the command
-    /// line again on `:input `, so the list shows to pick from; otherwise asks the frontend to
-    /// switch to the device picked.
+    /// `:input` and `:output`: with nothing typed, says which is in use and leaves the list up
+    /// until the next key; otherwise asks the frontend to switch to the device picked.
     pub(crate) fn choose_device(
         &mut self,
         direction: Direction,
@@ -169,10 +168,7 @@ impl Editor {
         let typed = typed.trim();
         if typed.is_empty() {
             self.message = Some(format!("{}: {}", direction.name(), devices.current()));
-            self.open_prompt(PromptKind::Command);
-            if let Mode::Command(prompt) = &mut self.mode {
-                prompt.line = format!("{} ", direction.name());
-            }
+            self.listing = Some(direction);
             return Ok(vec![]);
         }
         let id = devices.pick(typed, direction)?;
@@ -251,11 +247,10 @@ mod tests {
         }
         e.handle(Key::Enter);
         assert_eq!(e.message.as_deref(), Some("input: Monitor of Speaker"));
-        assert_eq!(
-            e.choosing_device(),
-            Some(Direction::Input),
-            "the list's left up"
-        );
+        assert_eq!(e.mode, Mode::Normal);
+        assert_eq!(e.infobox().unwrap().title, "inputs", "the list's left up");
+        e.handle(Key::Char('j'));
+        assert_eq!(e.infobox(), None, "until the next key");
     }
 
     #[test]
