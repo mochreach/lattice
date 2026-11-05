@@ -149,8 +149,12 @@ preset's face:
 From the top:
 
 - **The rule**, `instruments`, with `‹` and `›` when there are more tracks off to the left or
-  right. The columns scroll sideways to keep the cursor's track in view; each is 24 to 34
-  characters wide, as many as fit.
+  right, or above and below. Each column is 24 to 34 characters wide, as many as fit across.
+  In a tall window, the tracks that don't fit across go in rows under the first, each with its
+  names, art and lines, so a tall, narrow terminal shows every instrument at once rather than a
+  row of four with the rest of the screen empty; the rows scroll up and down to keep the
+  cursor's track in view. When even one whole row won't fit, there's just the one, scrolled
+  sideways to the cursor's track and down to its line.
 - **The tracks' names**, in each track's colour, with `M` or `S` when it's muted or soloed. A
   track the song has muted in the entry playing is marked `─` and dimmed, as on every page.
 - **The art**, up to eight rows of braille: the track's face, or else its engine's own drawing

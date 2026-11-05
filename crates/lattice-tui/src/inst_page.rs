@@ -29,7 +29,7 @@ const MIN_COLUMN: usize = 24;
 const MAX_COLUMN: usize = 34;
 /// Width of a setting's name.
 const PARAM_LABEL: usize = 12;
-/// Lines above the columns (the rule, a gap and the tracks' names).
+/// Lines above the art (the rule, a gap and the tracks' names).
 const ABOVE: usize = 3;
 /// Most and fewest rows of art, and the lines left for the columns below it at least.
 const MAX_ART: usize = lattice_core::ART_ROWS;
@@ -52,40 +52,159 @@ pub fn draw(
         return;
     }
 
-    // As many columns as fit, scrolled to keep the cursor's in view.
-    let shown = (width.saturating_sub(LABEL) / MIN_COLUMN).clamp(1, tracks);
-    if cursor.track < view.inst_left {
-        view.inst_left = cursor.track;
-    } else if cursor.track >= view.inst_left + shown {
-        view.inst_left = cursor.track + 1 - shown;
-    }
-    view.inst_left = view.inst_left.min(tracks.saturating_sub(shown));
-    let columns: Vec<(usize, &Track)> = (editor.grid.tracks.iter().enumerate())
-        .skip(view.inst_left)
-        .take(shown)
+    // As many columns across as fit.
+    let across = (width.saturating_sub(LABEL) / MIN_COLUMN).clamp(1, tracks);
+    let column_width = (width.saturating_sub(LABEL) / across).clamp(MIN_COLUMN, MAX_COLUMN);
+    let all: Vec<Vec<InstLine>> = (0..tracks).map(|t| editor.inst_lines(t)).collect();
+    // The tracks in rows, `across` to a row, and how many lines each row's longest column has.
+    let rows: Vec<Vec<usize>> = (0..tracks)
+        .collect::<Vec<_>>()
+        .chunks(across)
+        .map(<[usize]>::to_vec)
         .collect();
-    let column_width = (width.saturating_sub(LABEL) / shown).clamp(MIN_COLUMN, MAX_COLUMN);
-    let all: Vec<Vec<InstLine>> = columns.iter().map(|&(t, _)| editor.inst_lines(t)).collect();
-    let longest = all.iter().map(Vec::len).max().unwrap_or(0);
-
-    let left = if view.inst_left > 0 { "‹" } else { "─" };
-    let right = if view.inst_left + shown < tracks {
-        " ›"
-    } else {
-        ""
+    let longest = |row: &[usize]| {
+        (row.iter())
+            .filter_map(|&t| all.get(t).map(Vec::len))
+            .max()
+            .unwrap_or(0)
     };
+    let lengths: Vec<usize> = rows.iter().map(|row| longest(row)).collect();
+    let height = (area.height as usize).saturating_sub(ABOVE - 1);
+
+    // In a tall window, the tracks that don't fit across go in rows under the first, each
+    // whole, with as much art as lets the longest fit. Otherwise there's one row, scrolled
+    // sideways to the cursor's track and down to its line.
+    let art_in_rows = (MIN_ART..=MAX_ART)
+        .rev()
+        .find(|&art| rows.len() > 1 && lengths.iter().all(|&l| 1 + art + l <= height));
+    let row_height = |r: usize, art: usize| 1 + art + lengths.get(r).copied().unwrap_or(0);
+    // Which rows are shown, the art's rows, and the first line shown of each column.
+    let (shown, art, top): (Vec<Vec<usize>>, usize, usize) = match art_in_rows {
+        Some(art) => {
+            let cursor_row = cursor.track / across;
+            let mut first = (view.inst_left / across).min(cursor_row);
+            // Rows from `first` to `last`, a blank line between each, fit.
+            let fits = |first: usize, last: usize| {
+                (first..=last)
+                    .map(|r| row_height(r, art) + 1)
+                    .sum::<usize>()
+                    <= height + 1
+            };
+            while first < cursor_row && !fits(first, cursor_row) {
+                first += 1;
+            }
+            let mut last = first;
+            while last + 1 < rows.len() && fits(first, last + 1) {
+                last += 1;
+            }
+            // At the end, back up a row while that still fits, so no room's left unused.
+            while first > 0 && last + 1 == rows.len() && fits(first - 1, last) {
+                first -= 1;
+            }
+            view.inst_left = first * across;
+            view.inst_top = 0;
+            (rows.get(first..=last).unwrap_or_default().to_vec(), art, 0)
+        }
+        None => {
+            if cursor.track < view.inst_left {
+                view.inst_left = cursor.track;
+            } else if cursor.track >= view.inst_left + across {
+                view.inst_left = cursor.track + 1 - across;
+            }
+            view.inst_left = view.inst_left.min(tracks.saturating_sub(across));
+            let row: Vec<usize> = (view.inst_left..tracks).take(across).collect();
+            let longest = longest(&row);
+            // The art as tall as leaves room for the lines.
+            let height = height.saturating_sub(1);
+            let art = match (height.saturating_sub(BELOW_ART) / 2).min(MAX_ART) {
+                rows if rows >= MIN_ART => rows,
+                _ => 0,
+            };
+            let room = height.saturating_sub(art).max(1);
+            if cursor.line < view.inst_top {
+                view.inst_top = cursor.line;
+            } else if cursor.line >= view.inst_top + room {
+                view.inst_top = cursor.line + 1 - room;
+            }
+            view.inst_top = view.inst_top.min(longest.saturating_sub(room));
+            (vec![row], art, view.inst_top)
+        }
+    };
+
+    let first = shown
+        .first()
+        .and_then(|row| row.first())
+        .copied()
+        .unwrap_or(0);
+    let last = shown
+        .last()
+        .and_then(|row| row.last())
+        .copied()
+        .unwrap_or(0);
+    let left = if first > 0 { "‹" } else { "─" };
+    let right = if last + 1 < tracks { " ›" } else { "" };
     let title = format!("─{left} instruments{right} ");
-    let mut lines = vec![
-        Line::from(vec![
-            Span::raw(" "),
-            Span::styled(title.clone(), theme.text.add_modifier(Modifier::BOLD)),
-            Span::styled(
-                "─".repeat(width.saturating_sub(title.chars().count() + 1)),
-                theme.faint,
-            ),
-        ]),
-        Line::raw(""),
-    ];
+    let rule = Line::from(vec![
+        Span::raw(" "),
+        Span::styled(title.clone(), theme.text.add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "─".repeat(width.saturating_sub(title.chars().count() + 1)),
+            theme.faint,
+        ),
+    ]);
+    frame.render_widget(Paragraph::new(rule), area);
+
+    let mut y = area.y + (ABOVE - 1) as u16;
+    for row in &shown {
+        // In rows, each is as long as its longest column; alone, it has the rest of the page.
+        let lines = match art_in_rows {
+            Some(_) => longest(row),
+            None => usize::from(area.bottom().saturating_sub(y)).saturating_sub(1 + art),
+        };
+        let rect = Rect::new(area.x, y, area.width, (1 + art + lines) as u16).intersection(area);
+        let row = Row {
+            tracks: row,
+            column_width,
+            art,
+            top,
+        };
+        draw_row(frame, rect, editor, status, theme, view, &row, &all);
+        y = rect.bottom() + 1;
+    }
+}
+
+/// One row of the page's columns.
+struct Row<'a> {
+    tracks: &'a [usize],
+    column_width: usize,
+    /// Rows of art under the names.
+    art: usize,
+    /// The first of each column's lines shown.
+    top: usize,
+}
+
+/// A row of columns in `area`: the tracks' names, their art, and as many of their lines as fit.
+#[expect(clippy::too_many_arguments, reason = "the page's state, passed down")]
+fn draw_row(
+    frame: &mut Frame,
+    area: Rect,
+    editor: &Editor,
+    status: &Status,
+    theme: &Theme,
+    view: &mut ViewState,
+    row: &Row,
+    all: &[Vec<InstLine>],
+) {
+    let cursor = editor.inst_cursor();
+    let column_width = row.column_width;
+    let art = row.art;
+    let columns: Vec<(usize, &Track)> = (row.tracks.iter())
+        .filter_map(|&t| editor.grid.tracks.get(t).map(|track| (t, track)))
+        .collect();
+    let longest = (row.tracks.iter())
+        .filter_map(|&t| all.get(t).map(Vec::len))
+        .max()
+        .unwrap_or(0);
 
     // Each track's name, in its colour, with its mute or solo.
     let mut spans = vec![Span::raw(" ".repeat(LABEL))];
@@ -99,33 +218,25 @@ pub fn draw(
             Style::new().fg(flag_colour).add_modifier(Modifier::BOLD),
         ));
     }
-    lines.push(Line::from(spans));
+    let mut lines = vec![Line::from(spans)];
 
-    // The faces' art, or the engines', under their names, as tall as leaves room for the lines.
-    let height = (area.height as usize).saturating_sub(ABOVE);
-    let art = match (height.saturating_sub(BELOW_ART) / 2).min(MAX_ART) {
-        rows if rows >= MIN_ART => rows,
-        _ => 0,
-    };
+    // The faces' art, or the engines', under their names.
     lines.extend((0..art).map(|_| Line::raw("")));
 
-    // As many lines as fit, scrolled to keep the cursor's in view.
-    let room = height.saturating_sub(art).max(1);
-    if cursor.line < view.inst_top {
-        view.inst_top = cursor.line;
-    } else if cursor.line >= view.inst_top + room {
-        view.inst_top = cursor.line + 1 - room;
-    }
-    view.inst_top = view.inst_top.min(longest.saturating_sub(room));
-
-    for l in (view.inst_top..longest).take(room) {
+    let room = (area.height as usize).saturating_sub(1 + art).max(1);
+    for l in (row.top..longest).take(room) {
         // Not numbered, as the pattern's steps are: these lines are a list, not time. An arrow
-        // shows the cursor's.
-        let gutter = if cursor.line == l { "  ▸" } else { "" };
+        // shows the cursor's, in the cursor's row.
+        let here_row = row.tracks.contains(&cursor.track);
+        let gutter = if here_row && cursor.line == l {
+            "  ▸"
+        } else {
+            ""
+        };
         let mut spans = vec![Span::styled(fit(gutter, LABEL), theme.text)];
-        for (&(t, track), lines) in columns.iter().zip(&all) {
+        for &(t, track) in &columns {
             let here = cursor.track == t && cursor.line == l;
-            let cell = match lines.get(l) {
+            let cell = match all.get(t).and_then(|lines| lines.get(l)) {
                 Some(&line) => cell(track, status, theme, t, line, here, column_width),
                 None => vec![],
             };
@@ -205,13 +316,7 @@ pub fn draw(
             frame: art_frame,
         };
         let x = area.x + (LABEL + k * column_width) as u16 + 1;
-        let rect = Rect::new(
-            x,
-            area.y + ABOVE as u16,
-            column_width as u16 - 3,
-            art as u16,
-        )
-        .intersection(area);
+        let rect = Rect::new(x, area.y + 1, column_width as u16 - 3, art as u16).intersection(area);
         face::draw(frame.buffer_mut(), rect, face, &feel, theme, time);
     }
 }

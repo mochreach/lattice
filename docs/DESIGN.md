@@ -1190,7 +1190,10 @@ instrument's name, its settings, the track's macros, and its chain (`InstLine`).
 the first line of each part. Like the fx page, it's a view of the mixer's cursor: moving puts the
 mixer's on the track's instrument and the setting under the cursor, so nudging, `:set`, `:map`,
 `L` and recorded locks go through the mixer's code. Macros are set directly, and `enter` on the
-chain opens the fx page. The TUI scrolls the columns sideways to keep the cursor's track in view.
+chain opens the fx page. The TUI lays the columns in rows, as many across as fit, when the window's
+tall enough for each row to be whole with some art (`inst_page::draw`), scrolling a row at a time to
+the cursor's; otherwise it shows one row, scrolled sideways to the cursor's track and down to its
+line.
 A track with a face (see below) shows it instead, unless `enter` on its title opened it
 (`Editor::inst_opened`, by `TrackId`): its macros come first, then the settings the face puts
 forward, so `InstLine::Param` holds a setting's id rather than its place in the list, and `w` `b`
