@@ -152,8 +152,9 @@ From the top:
   right, or above and below. Each column is 24 to 34 characters wide, as many as fit across.
   In a tall window, the tracks that don't fit across go in rows under the first, each with its
   names, art and lines, so a tall, narrow terminal shows every instrument at once rather than a
-  row of four with the rest of the screen empty; the rows scroll up and down to keep the
-  cursor's track in view. When even one whole row won't fit, there's just the one, scrolled
+  row of four with the rest of the screen empty. It shows as many rows as fit wherever the
+  cursor is, the same number on every screen, shrinking the art to fit another row rather
+  than showing fewer, and scrolls a row at a time to keep the cursor's track in view. When even one whole row won't fit, there's just the one, scrolled
   sideways to the cursor's track and down to its line.
 - **The tracks' names**, in each track's colour, with `M` or `S` when it's muted or soloed. A
   track the song has muted in the entry playing is marked `─` and dimmed, as on every page.

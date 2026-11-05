@@ -72,38 +72,45 @@ pub fn draw(
     let height = (area.height as usize).saturating_sub(ABOVE - 1);
 
     // In a tall window, the tracks that don't fit across go in rows under the first, each
-    // whole, with as much art as lets the longest fit. Otherwise there's one row, scrolled
-    // sideways to the cursor's track and down to its line.
-    let art_in_rows = (MIN_ART..=MAX_ART)
-        .rev()
-        .find(|&art| rows.len() > 1 && lengths.iter().all(|&l| 1 + art + l <= height));
+    // whole. As many rows are shown as always fit, wherever the cursor is, and then the art is
+    // as tall as lets them: more of the instruments rather than more of their art, and the same
+    // number of rows on every screen. Otherwise there's one row, scrolled sideways to the
+    // cursor's track and down to its line.
     let row_height = |r: usize, art: usize| 1 + art + lengths.get(r).copied().unwrap_or(0);
+    // Rows `first` on, `count` of them, with a blank line between each, fit.
+    let fits = |first: usize, count: usize, art: usize| {
+        (first..first + count)
+            .map(|r| row_height(r, art) + 1)
+            .sum::<usize>()
+            <= height + 1
+    };
+    let always_fit = |count: usize, art: usize| {
+        (0..=rows.len().saturating_sub(count)).all(|first| fits(first, count, art))
+    };
+    let in_rows = (rows.len() > 1)
+        .then(|| {
+            (1..=rows.len())
+                .rev()
+                .find(|&count| always_fit(count, MIN_ART))
+        })
+        .flatten()
+        .and_then(|count| {
+            let art = (MIN_ART..=MAX_ART)
+                .rev()
+                .find(|&art| always_fit(count, art))?;
+            Some((count, art))
+        });
     // Which rows are shown, the art's rows, and the first line shown of each column.
-    let (shown, art, top): (Vec<Vec<usize>>, usize, usize) = match art_in_rows {
-        Some(art) => {
+    let (shown, art, top): (Vec<Vec<usize>>, usize, usize) = match in_rows {
+        Some((count, art)) => {
             let cursor_row = cursor.track / across;
-            let mut first = (view.inst_left / across).min(cursor_row);
-            // Rows from `first` to `last`, a blank line between each, fit.
-            let fits = |first: usize, last: usize| {
-                (first..=last)
-                    .map(|r| row_height(r, art) + 1)
-                    .sum::<usize>()
-                    <= height + 1
-            };
-            while first < cursor_row && !fits(first, cursor_row) {
-                first += 1;
-            }
-            let mut last = first;
-            while last + 1 < rows.len() && fits(first, last + 1) {
-                last += 1;
-            }
-            // At the end, back up a row while that still fits, so no room's left unused.
-            while first > 0 && last + 1 == rows.len() && fits(first - 1, last) {
-                first -= 1;
-            }
+            let first = (view.inst_left / across)
+                .clamp((cursor_row + 1).saturating_sub(count), cursor_row)
+                .min(rows.len().saturating_sub(count));
             view.inst_left = first * across;
             view.inst_top = 0;
-            (rows.get(first..=last).unwrap_or_default().to_vec(), art, 0)
+            let shown = rows.get(first..first + count).unwrap_or_default().to_vec();
+            (shown, art, 0)
         }
         None => {
             if cursor.track < view.inst_left {
@@ -157,7 +164,7 @@ pub fn draw(
     let mut y = area.y + (ABOVE - 1) as u16;
     for row in &shown {
         // In rows, each is as long as its longest column; alone, it has the rest of the page.
-        let lines = match art_in_rows {
+        let lines = match in_rows {
             Some(_) => longest(row),
             None => usize::from(area.bottom().saturating_sub(y)).saturating_sub(1 + art),
         };
