@@ -28,6 +28,8 @@ pub enum Key {
     Pad(u8),
     /// The numpad's `.` `/` `*` `-` `+`.
     PadOp(char),
+    /// A note played on a MIDI keyboard, by its pitch.
+    Note(u8),
 }
 
 impl Key {
@@ -130,6 +132,7 @@ impl fmt::Display for Key {
             Key::End => f.write_str("end"),
             Key::Pad(n) => write!(f, "pad{n}"),
             Key::PadOp(c) => write!(f, "pad{c}"),
+            Key::Note(pitch) => write!(f, "note {pitch}"),
         }
     }
 }

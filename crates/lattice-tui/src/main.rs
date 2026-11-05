@@ -28,6 +28,7 @@ mod keys;
 mod log;
 mod looper;
 mod manual_page;
+mod midi;
 mod mixer;
 mod mixer_page;
 mod presets;
@@ -416,10 +417,38 @@ fn run(
             }
         }
 
-        if !event::poll(FRAME)? {
+        let keyed = wait(FRAME, &mut machine.midi)?;
+        let played = machine.midi.take();
+        if !keyed && played.is_empty() {
             continue;
         }
         stirred = Instant::now();
+        if !played.is_empty() {
+            editor.set_transport(playhead.transport(handle.status(), editor, stirred));
+        }
+        for message in played {
+            let effects = match message {
+                midi::Message::NoteOn { pitch, velocity } => editor.play_note(pitch, velocity),
+                midi::Message::NoteOff { pitch } => editor.stop_note(pitch),
+            };
+            for effect in effects {
+                if let Flow::Quit = apply(
+                    effect,
+                    editor,
+                    tracks,
+                    mixer,
+                    exports,
+                    &mut sequencer,
+                    machine,
+                    handle,
+                ) {
+                    return Ok(());
+                }
+            }
+        }
+        if !keyed {
+            continue;
+        }
         // Handle everything that's waiting before drawing again.
         loop {
             if let Event::Key(event) = event::read()?
@@ -468,6 +497,24 @@ fn run(
             if !event::poll(Duration::ZERO)? {
                 break;
             }
+        }
+    }
+}
+
+/// Waits up to `frame` for a key, saying whether one's come. While a MIDI port's listened to,
+/// it stops for a MIDI message too, looking every millisecond, so a note played on a keyboard
+/// isn't held up for a frame.
+fn wait(frame: Duration, midi: &mut midi::Midi) -> Result<bool> {
+    if !midi.listening() {
+        return Ok(event::poll(frame)?);
+    }
+    let start = Instant::now();
+    loop {
+        if event::poll(Duration::from_millis(1))? {
+            return Ok(true);
+        }
+        if midi.waiting() || start.elapsed() >= frame {
+            return Ok(false);
         }
     }
 }
@@ -649,10 +696,14 @@ fn apply(
             held: false,
         },
         Effect::Lock { track, lock } => Command::Lock { track, lock },
-        Effect::Hold { track, pitch } => Command::Preview {
+        Effect::Hold {
             track,
             pitch,
-            velocity: editor.velocity,
+            velocity,
+        } => Command::Preview {
+            track,
+            pitch,
+            velocity,
             held: true,
         },
         Effect::Repeat {

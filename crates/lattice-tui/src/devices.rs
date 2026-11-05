@@ -26,6 +26,7 @@ use toml::{Table, Value};
 use crate::audio::{self, Output};
 use crate::config;
 use crate::looper::Looper;
+use crate::midi::Midi;
 
 /// Frames a buffer, where the device lets it be set: low enough to play along to, and PulseAudio
 /// would otherwise buffer a couple of seconds.
@@ -245,6 +246,7 @@ pub struct Machine {
     host: cpal::Host,
     pub output: Output,
     pub looper: Looper,
+    pub midi: Midi,
     settings: Settings,
     /// Where they're remembered; `None` if there's nowhere.
     path: Option<PathBuf>,
@@ -274,6 +276,7 @@ impl Machine {
             host,
             output,
             looper,
+            midi: Midi::new(),
             settings,
             path,
             finder: Finder::new(),
@@ -286,14 +289,18 @@ impl Machine {
         Ok((machine, handle))
     }
 
-    /// Called every frame: keeps the lists of devices fresh while they're chosen, and runs the
-    /// looper.
+    /// Called every frame: keeps the lists of devices fresh while they're chosen, listens to
+    /// MIDI ports as they come, and runs the looper.
     pub fn tick(
         &mut self,
         editor: &mut Editor,
         handle: &mut Handle,
     ) -> Vec<lattice_editor::Effect> {
         self.finder.tick(editor);
+        if let Some(said) = self.midi.scan(std::time::Instant::now()) {
+            editor.message = Some(said);
+            editor.midi_inputs = self.midi.names();
+        }
         self.looper.tick(editor, handle, &self.host)
     }
 

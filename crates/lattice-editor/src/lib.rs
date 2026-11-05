@@ -184,11 +184,12 @@ pub enum Effect {
         track: usize,
         pitch: u8,
     },
-    /// Audition a note until a [`Effect::Release`] for it: a note key played while the frontend
-    /// reports key releases ([`Editor::releases`]).
+    /// Audition a note until a [`Effect::Release`] for it, at `velocity`: a note key played
+    /// while the frontend reports key releases ([`Editor::releases`]), or a MIDI keyboard's.
     Hold {
         track: usize,
         pitch: u8,
+        velocity: u8,
     },
     /// Audition a note again on every step that's a multiple of `every`, in time, until a
     /// [`Effect::Release`] for it; `now` also plays it at once.
@@ -432,6 +433,8 @@ pub struct Editor {
     /// The audio devices, as the frontend found them.
     pub inputs: Devices,
     pub outputs: Devices,
+    /// The MIDI ports listened to, by name, as the frontend found them.
+    pub midi_inputs: Vec<String>,
     saved: Saved,
     pub mode: Mode,
     pub view: View,
@@ -468,6 +471,9 @@ pub struct Editor {
     pub auto_step: usize,
     /// How hard notes are played and entered.
     pub velocity: u8,
+    /// How hard the MIDI keyboard's note being handled was played, which it's entered and
+    /// heard at rather than [`Editor::velocity`].
+    touch: Option<u8>,
     /// What the numpad's pads do.
     pub pad_mode: PadMode,
     /// The scale pads play outside a group, as an index into [`SCALES`], and its root above C.
@@ -596,6 +602,7 @@ impl Editor {
                 .map(|p| p.to_string())
                 .collect(),
             inputs: Devices::default(),
+            midi_inputs: vec![],
             outputs: Devices::default(),
             mode: Mode::Normal,
             view: View::Source,
@@ -617,6 +624,7 @@ impl Editor {
             octave: 4,
             auto_step: 1,
             velocity: DEFAULT_VELOCITY,
+            touch: None,
             pad_mode: PadMode::Play,
             scale: 0,
             root: 0,
@@ -1011,6 +1019,31 @@ impl Editor {
         }
     }
 
+    /// A note played on a MIDI keyboard, at `velocity` (1 to 127). In insert mode it goes in
+    /// as a piano key's note would, at the velocity it was played, or is recorded; otherwise
+    /// it's only heard, on the track the piano keys would play. Either way it sounds until
+    /// [`Editor::stop_note`].
+    pub fn play_note(&mut self, pitch: u8, velocity: u8) -> Vec<Effect> {
+        let key = Key::Note(pitch);
+        self.touch = Some(velocity);
+        // On a field, the keyboard's notes would type nothing, so they're only heard.
+        let effects = if self.mode == Mode::Insert && self.on_field().is_none() {
+            self.message = None;
+            self.insert_key(key)
+        } else {
+            let track = self.played_track();
+            vec![Effect::Preview { track, pitch }]
+        };
+        let effects = self.hold_previews(key, effects);
+        self.touch = None;
+        effects
+    }
+
+    /// A MIDI keyboard's note has come up.
+    pub fn stop_note(&mut self, pitch: u8) -> Vec<Effect> {
+        self.release(Key::Note(pitch))
+    }
+
     /// Holds a note key's previews until it comes up, ending any it was still holding.
     fn hold_previews(&mut self, key: Key, effects: Vec<Effect>) -> Vec<Effect> {
         let mut out = self.release_previews(key, false);
@@ -1020,7 +1053,12 @@ impl Editor {
                     if let Some(&id) = self.ids.get(track) {
                         self.sounding.push((key, id, pitch, false));
                     }
-                    Effect::Hold { track, pitch }
+                    let velocity = self.touch.unwrap_or(self.velocity);
+                    Effect::Hold {
+                        track,
+                        pitch,
+                        velocity,
+                    }
                 }
                 Effect::Repeat { track, pitch, .. } => {
                     if let Some(&id) = self.ids.get(track) {
@@ -1174,8 +1212,10 @@ impl Editor {
 
     /// The pitch a piano key plays at the keyboard octave.
     fn piano_pitch(&self, key: Key) -> Option<u8> {
-        let Key::Char(c) = key else {
-            return None;
+        let c = match key {
+            Key::Char(c) => c,
+            Key::Note(pitch) => return Some(pitch).filter(|&p| p <= 127),
+            _ => return None,
         };
         let semitone = *self.keymap.piano.get(&c)?;
         let pitch = (i16::from(self.octave) + 1) * 12 + semitone;
@@ -1212,7 +1252,7 @@ impl Editor {
                 {
                     step.note = Some(Note {
                         pitch,
-                        velocity: self.velocity,
+                        velocity: self.touch.unwrap_or(self.velocity),
                         length: 1,
                     });
                 }
@@ -3850,7 +3890,11 @@ mod tests {
     fn note_keys_hold_their_notes_until_they_come_up() {
         let mut e = editor();
         e.releases = true;
-        let hold = |pitch| Effect::Hold { track: 0, pitch };
+        let hold = |pitch| Effect::Hold {
+            track: 0,
+            pitch,
+            velocity: DEFAULT_VELOCITY,
+        };
         let release = |pitch| Effect::Release { track: 0, pitch };
         // A chord: each note held by its own key.
         assert!(keys(&mut e, "iz").contains(&hold(60)));
@@ -3876,5 +3920,40 @@ mod tests {
             track: 0,
             pitch: 62
         }));
+    }
+
+    #[test]
+    fn a_midi_keyboard_enters_notes_as_played_and_holds_them() {
+        let mut e = editor();
+        let hold = |pitch, velocity| Effect::Hold {
+            track: 0,
+            pitch,
+            velocity,
+        };
+        // In normal mode it's only heard, held until it comes up, whatever the terminal.
+        assert_eq!(e.play_note(67, 30), [hold(67, 30)]);
+        assert!(e.grid.tracks[0].steps[0].note.is_none());
+        assert_eq!(
+            e.stop_note(67),
+            [Effect::Release {
+                track: 0,
+                pitch: 67
+            }]
+        );
+        // In insert mode it goes in at the velocity it was played, at its own pitch, whatever
+        // the keyboard octave, and moves on.
+        keys(&mut e, "i");
+        let effects = e.play_note(40, 110);
+        assert!(effects.contains(&hold(40, 110)), "{effects:?}");
+        let note = e.grid.tracks[0].steps[0].note.unwrap();
+        assert_eq!((note.pitch, note.velocity), (40, 110));
+        assert_eq!(e.cursor().step, 1);
+        // The piano keys go on at the player's velocity.
+        e.play_note(41, 5);
+        keys(&mut e, "z");
+        assert_eq!(
+            e.grid.tracks[0].steps[2].note.unwrap().velocity,
+            DEFAULT_VELOCITY
+        );
     }
 }

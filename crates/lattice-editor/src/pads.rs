@@ -429,7 +429,8 @@ mod tests {
             e.handle(Key::Pad(1)),
             [Effect::Hold {
                 track: 0,
-                pitch: 60
+                pitch: 60,
+                velocity: crate::DEFAULT_VELOCITY
             }]
         );
     }

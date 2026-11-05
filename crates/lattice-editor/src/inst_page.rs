@@ -17,7 +17,7 @@
 //! locks work as there. `enter` on the chain, or `gf` anywhere, opens the track's fx page.
 
 use crate::keymap::{Action, Binding};
-use crate::mixer::{Page, Row};
+use crate::mixer::{Page, Row, Strip};
 use crate::{Editor, Effect, Key, Mode, PromptKind};
 
 /// Where the instrument page's cursor is: a track's column, and a line down it.
@@ -140,6 +140,10 @@ impl Editor {
     pub(crate) fn played_track(&self) -> usize {
         match self.page {
             Page::Instrument => self.inst_cursor().track,
+            Page::Mixer | Page::Fx => match self.strip(self.mixer_cursor().strip) {
+                Strip::Track(i) => i,
+                _ => self.cursor().track,
+            },
             _ => self.cursor().track,
         }
     }

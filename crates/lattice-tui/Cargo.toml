@@ -14,6 +14,7 @@ path = "src/main.rs"
 anyhow = "1"
 assert_no_alloc = "1.1"
 cpal = "0.18"
+midir = "0.11"
 lattice-core.workspace = true
 lattice-editor.workspace = true
 lattice-engine.workspace = true

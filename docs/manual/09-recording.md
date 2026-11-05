@@ -3,7 +3,7 @@
 Most of a pattern is written a step at a time, but some parts are better played. This chapter
 covers the ways of getting a performance into Lattice: recording notes live as the song plays,
 the numpad's performance pads, the looper that records audio from your interface, the audio
-devices it all goes through, and what there is (and isn't yet) for MIDI and foot pedals.
+devices it all goes through, and MIDI keyboards and foot pedals.
 
 ## Recording notes live
 
@@ -352,14 +352,55 @@ frames that don't fit are dropped rather than holding the audio up, and the log 
 
 ## MIDI and controllers
 
+### MIDI keyboards
+
+Plug in a MIDI keyboard and play: there's nothing to set up. Lattice listens to every port that
+sends MIDI, as it appears, and lets go of one that's unplugged, so a keyboard plugged in while
+the song plays is heard at once. The status line says so as it happens:
+
+```
+ midi in: KeyStep 37
+```
+
+and `midi in: KeyStep 37 gone` when it's unplugged. `:midi` says which keyboards and
+controllers Lattice is listening to, or that there are none. It listens on every channel, so a
+keyboard plays whatever channel it's set to. Ports with **Through** in their name are left
+alone: a MIDI Through port hands back whatever is sent to it, and listening to one is the first
+step towards a feedback loop.
+
+A keyboard's notes do what the piano keys' do, with two differences. A note plays **at its own
+pitch**, as the keyboard has its own octave buttons, so `{` `}` and `:oct` don't move it; and it
+plays **at the velocity it was played**, rather than `:vel`'s:
+
+- **In insert mode**, a note goes in at the cursor and the cursor moves on, as a piano key's
+  does, with the velocity it was played at in its `vel` field. On a lock or gesture field, where
+  a note would type nothing, it's only heard.
+- **Recording**, with record armed and the song playing, a note goes in at the playhead, as long
+  as it was held and as hard as it was played.
+- **Anywhere else**, in normal mode and on every page, a note is only heard, so you can play
+  along without changing anything. It plays the track the piano keys would: the cursor's on the
+  pattern page, the cursor's column on the instrument page, and the cursor's strip on the mixer
+  and fx pages.
+
+Every note sounds for as long as its key is down, whatever the terminal; a note held longer than
+15 seconds is let go, as a held piano key's is, in case its key-up never comes. A track sounds
+eight notes at once at most, so a ninth in a chord takes the place of the first.
+
+This is what a MIDI keyboard was always going to fix. A terminal says when a key goes down, and
+only some say when it comes up (see [Auditioning](02-patterns.md#auditioning)); none says how
+hard it was struck. A MIDI keyboard says both, for every note.
+
+**Timing.** Lattice draws the screen about sixty times a second and, between frames, waits for
+the computer's keyboard. While it's listening to a MIDI port it also looks for MIDI every
+millisecond, so a note isn't held up until the next frame: it reaches the engine within about a
+millisecond, and is heard after the audio device's own latency, as everything is.
+
 ### Not yet
 
-Lattice doesn't yet take MIDI input, from keyboards, pad controllers or foot pedals, or send
-MIDI out. Both are planned. A MIDI keyboard would solve the terminal's problem with key
-releases, giving every note its true length and velocity; and MIDI controllers and **foot
-pedals** are to be able to start and stop the transport, turn record on and off, and start and
-stop the looper, so that a player with their hands on an instrument can record a loop with
-their foot, as on a loop pedal.
+Lattice doesn't yet take controls from MIDI controllers or foot pedals, or send MIDI out. Both
+are on their way. MIDI controllers and **foot pedals** are to be able to start and stop the
+transport, turn record on and off, and start and stop the looper, so that a player with their
+hands on an instrument can record a loop with their foot, as on a loop pedal.
 
 ### Foot switches today
 

@@ -399,6 +399,12 @@ pub const COMMANDS: &[Spec] = &[
         describe: "arm this track to record a new loop over the one it plays",
     },
     Spec {
+        name: "midi",
+        alias: None,
+        params: &[],
+        describe: "the MIDI keyboards and controllers Lattice is listening to",
+    },
+    Spec {
         name: "input",
         alias: None,
         params: &[optional_text("DEVICE", "device")],
@@ -1331,6 +1337,15 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         "disarm" => {
             editor.disarm();
+            Ok(vec![])
+        }
+        "midi" => {
+            editor.message = Some(match editor.midi_inputs.as_slice() {
+                [] => {
+                    "no MIDI keyboard or controller: plug one in and Lattice listens to it".into()
+                }
+                names => format!("midi in: {}", names.join(", ")),
+            });
             Ok(vec![])
         }
         "input" => editor.choose_device(Direction::Input, command.text(0)?),

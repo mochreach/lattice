@@ -287,9 +287,12 @@ const LESSONS: &[Lesson] = &[
         title: "Recording",
         text: "{toggle_record} arms recording, and starts insert mode. Then notes played while \
                the song plays go in where the playhead is, rather than at the cursor, after a \
-               count-in.\n\nArm recording, go back to normal mode, and disarm it.",
+               count-in. A MIDI keyboard plays too, once it's plugged in: its notes go in and \
+               are recorded as the piano keys' are, at the velocity they're played, and \
+               elsewhere they're only heard. `:midi` says which keyboards Lattice hears.\n\nArm \
+               recording, go back to normal mode, and disarm it.",
         teaches: &[Action::ToggleRecord],
-        commands: &[],
+        commands: &["midi"],
         setup: nothing,
         watch: |e| e.record,
         done: |e, t| t.seen && !e.record,

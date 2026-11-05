@@ -121,7 +121,7 @@ impl Editor {
             self.checkpoint();
             self.take = Some(pass);
         }
-        let velocity = self.velocity;
+        let velocity = self.touch.unwrap_or(self.velocity);
         for &(track, step, _, from) in &notes {
             let Some(s) = (self.grid.tracks.get_mut(track)).and_then(|t| t.steps.get_mut(step))
             else {
