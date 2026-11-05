@@ -275,15 +275,18 @@ Lattice through the same headphones.
 ### :input and :output
 
 `:input` chooses the device the looper records, or the app (below), and `:output` the device
-you hear Lattice through. Type `:input ` (with its space) and the devices are listed in the
-corner, numbered, the one in use marked `●`, and kept up to date as devices come and go:
+you hear Lattice through. Type `:input ` (with its space) and the devices are suggested above
+it, each with its number, kept up to date as devices come and go; `tab` fills one in. Enter
+`:input` on its own and it says which is in use, and leaves them all listed in the corner,
+numbered, the one in use marked `●`, until the next key. I keep the two apart, so that the list
+doesn't sit under the suggestions while you type:
 
 ```
 :input 2              the second in the list
 :input scarlett       the one whose name has "scarlett" in it, in any case
 :input 0              the system's default (or :input default)
 :input                says which is in use, "input: the default (Built-in Audio)",
-                      and leaves the list up until the next key
+                      and lists them all until the next key
 ```
 
 A part of a name that matches several devices is refused

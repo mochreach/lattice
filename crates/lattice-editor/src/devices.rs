@@ -153,7 +153,8 @@ impl Editor {
     }
 
     pub(crate) fn device_infobox(&self) -> Option<Infobox> {
-        let direction = self.choosing_device().or(self.listing)?;
+        // Only once `:input` on its own is entered: while it's typed, the suggestions list them.
+        let direction = self.listing?;
         Some(self.devices(direction).infobox(direction))
     }
 
@@ -228,15 +229,15 @@ mod tests {
         for c in "input".chars() {
             e.handle(Key::Char(c));
         }
-        assert_eq!(e.infobox(), None, "not while the command's name is typed");
         e.handle(Key::Char(' '));
-        let infobox = e.infobox().unwrap();
-        assert_eq!(infobox.title, "inputs");
-        assert_eq!(infobox.items[0].1, "  default: Digital Microphone");
         assert_eq!(
-            infobox.items[3],
-            ("3".into(), "● Monitor of Speaker".into())
+            e.infobox(),
+            None,
+            "the suggestions list them while it's typed"
         );
+        let suggested = e.completions();
+        assert_eq!(suggested[2].text, "Monitor of Speaker");
+        assert_eq!(suggested[2].describe, "device 3, in use");
         assert_eq!(
             e.choose_device(Direction::Input, "1"),
             Ok(vec![Effect::Device(Direction::Input, Some("a".into()))])
@@ -248,7 +249,13 @@ mod tests {
         e.handle(Key::Enter);
         assert_eq!(e.message.as_deref(), Some("input: Monitor of Speaker"));
         assert_eq!(e.mode, Mode::Normal);
-        assert_eq!(e.infobox().unwrap().title, "inputs", "the list's left up");
+        let infobox = e.infobox().unwrap();
+        assert_eq!(infobox.title, "inputs");
+        assert_eq!(infobox.items[0].1, "  default: Digital Microphone");
+        assert_eq!(
+            infobox.items[3],
+            ("3".into(), "● Monitor of Speaker".into())
+        );
         e.handle(Key::Char('j'));
         assert_eq!(e.infobox(), None, "until the next key");
     }
@@ -272,11 +279,17 @@ mod tests {
         for c in ":input ".chars() {
             e.handle(Key::Char(c));
         }
-        assert_eq!(e.infobox().unwrap().items[4].1, "  app: Firefox");
         let first = &e.completions()[0];
         assert_eq!(
             (first.text.as_str(), first.describe.as_str()),
             ("app: Firefox", "device 4")
+        );
+        e.handle(Key::Esc);
+        e.choose_device(Direction::Input, "").unwrap();
+        assert_eq!(
+            e.infobox().unwrap().items[4].1,
+            "  app: Firefox",
+            "listed after them"
         );
         assert_eq!(
             e.choose_device(Direction::Input, "firefox"),

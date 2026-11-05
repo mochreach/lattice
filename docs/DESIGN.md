@@ -406,7 +406,9 @@ input through the interface.
 `:input` and `:output` choose the devices. The frontend (`devices.rs`) finds them on a thread of
 its own, as asking takes some tens of milliseconds, once at the start and every second while
 `:input ` or `:output ` is on the command line, and hands the lists to the editor (`Devices`),
-whose infobox shows them numbered; the command picks by number or by part of a name, and the
+whose suggestions show them while the command's typed, and whose infobox lists them all,
+numbered, once it's entered on its own, until the next key (`listing`); the command picks by
+number or by part of a name, and the
 frontend switches. The input's switched by dropping its stream, to be opened on the new device
 when it's next wanted. The output's switched by stopping its stream and starting one on the new
 device at the same rate: the engine sits behind a mutex that only the stream playing it locks, so

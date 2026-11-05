@@ -341,7 +341,14 @@ fn files(command: &str) -> Option<Option<&'static str>> {
 
 fn devices(devices: &crate::Devices) -> Vec<(String, String)> {
     let mut found: Vec<_> = (devices.found.iter().enumerate())
-        .map(|(i, d)| (d, (d.name.clone(), format!("device {}", i + 1))))
+        .map(|(i, d)| {
+            let in_use = if devices.chosen.as_ref() == Some(&d.id) {
+                ", in use"
+            } else {
+                ""
+            };
+            (d, (d.name.clone(), format!("device {}{in_use}", i + 1)))
+        })
         .collect();
     // Apps first, where they're seen: they're listed after the devices, past the ten shown.
     found.sort_by_key(|(d, _)| !d.id.starts_with(crate::APP));

@@ -909,7 +909,8 @@ const LESSONS: &[Lesson] = &[
                one pass and stops, `:arm 4` four. `:arm!` records a new loop over the old one, \
                and `:disarm` disarms. \
                `:input` chooses what to record from: type `:input ` and the devices are \
-               listed, then a number or part of a name picks one. Apps playing are listed too, \
+               suggested, or enter `:input` alone to list them all, then a number or part of a \
+               name picks one. Apps playing are listed too, \
                `app: Firefox`, to record just that app's sound. `:output` chooses what you \
                hear. If what you play comes back late or early, `:latency 20` moves it by \
                milliseconds, or `:latency -20`.\n\nArm the chop track.",
