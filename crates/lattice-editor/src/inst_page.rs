@@ -157,7 +157,10 @@ impl Editor {
             return;
         };
         let name = &track.name;
-        self.message = Some(format!("playing {name} on the keyboard; esc stops"));
+        self.message = Some(match self.unheard(self.inst_cursor().track) {
+            Some(why) => format!("playing {name} on the keyboard, but it's {why}; esc stops"),
+            None => format!("playing {name} on the keyboard; esc stops"),
+        });
     }
 
     /// A key while playing on the instrument page: a piano key plays the cursor's track, or

@@ -1048,6 +1048,9 @@ impl Editor {
         {
             effects.extend(self.cancel_locking());
         }
+        if self.plays(key) {
+            self.say_unheard(&effects);
+        }
         if holds {
             self.hold_previews(key, effects)
         } else {
@@ -1071,9 +1074,23 @@ impl Editor {
             let track = self.played_track();
             vec![Effect::Preview { track, pitch }]
         };
+        self.say_unheard(&effects);
         let effects = self.hold_previews(key, effects);
         self.touch = None;
         effects
+    }
+
+    /// Says when a note played goes to a track that can't be heard, or it seems to go nowhere:
+    /// a muted MIDI track sends nothing.
+    fn say_unheard(&mut self, effects: &[Effect]) {
+        for effect in effects {
+            if let Effect::Preview { track, .. } = *effect
+                && let Some(why) = self.unheard(track)
+                && let Some(t) = self.grid.tracks.get(track)
+            {
+                self.message = Some(format!("{} is {why}, so not heard", t.name));
+            }
+        }
     }
 
     /// A MIDI keyboard's note has come up.

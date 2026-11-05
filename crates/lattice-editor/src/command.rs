@@ -1244,6 +1244,14 @@ fn mix_tracks(editor: &Editor) -> Result<Vec<usize>, String> {
     Ok(tracks)
 }
 
+/// `tracks` for a message: the track's name if there's one, or how many.
+fn named(editor: &Editor, tracks: &[usize]) -> String {
+    match tracks {
+        [t] => (editor.grid.tracks.get(*t)).map_or_else(|| "1 track".into(), |t| t.name.clone()),
+        tracks => format!("{} tracks", tracks.len()),
+    }
+}
+
 /// Track `track`, for a command that changes it.
 fn track_mut(editor: &mut Editor, track: usize) -> Result<&mut Track, String> {
     editor
@@ -1297,6 +1305,8 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                     track.pattern_mute = on;
                 }
             }
+            let what = if on { "muted" } else { "playing again" };
+            editor.message = Some(format!("{} {what} in this pattern", named(editor, &tracks)));
             Ok(tracks.into_iter().map(Effect::TrackChanged).collect())
         }
         "bars" => {
@@ -1506,6 +1516,13 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                 }
             })?;
             effects.extend(unconducted);
+            let what = match (solo, on) {
+                (true, true) => "soloed",
+                (true, false) => "unsoloed",
+                (false, true) => "muted",
+                (false, false) => "unmuted",
+            };
+            editor.message = Some(format!("{} {what}", named(editor, &tracks)));
             Ok(effects)
         }
         "set" => {

@@ -153,6 +153,20 @@ impl Editor {
         Some(mix)
     }
 
+    /// Why track `t` can't be heard, notes played live or not, if it can't: muted, or another
+    /// track soloed.
+    pub(crate) fn unheard(&self, t: usize) -> Option<&'static str> {
+        let mix = self.heard_mix(t)?;
+        let any_solo = (0..self.grid.tracks.len())
+            .filter_map(|t| self.heard_mix(t))
+            .any(|mix| mix.solo);
+        match () {
+            _ if mix.mute => Some("muted"),
+            _ if any_solo && !mix.solo => Some("silent while another track's soloed"),
+            _ => None,
+        }
+    }
+
     /// The player's muting or soloing track `t` themselves: the conductor's mute and solo on
     /// it are over, if it had any.
     pub(crate) fn unconduct(&mut self, t: usize) -> Option<Effect> {
@@ -702,6 +716,25 @@ mod tests {
         e.handle(Key::Char('i'));
         e.handle(Key::Char('z'));
         assert!(e.modified(), "a note in it");
+    }
+
+    #[test]
+    fn muting_says_so_and_so_do_notes_played_on_a_track_unheard() {
+        let mut e = editor();
+        let name = e.grid.tracks[0].name.clone();
+        e.handle(Key::Char('m'));
+        assert_eq!(e.message, Some(format!("{name} muted")));
+        e.message = None;
+        e.handle(Key::Char('i'));
+        e.handle(Key::Char('z'));
+        assert_eq!(e.message, Some(format!("{name} is muted, so not heard")));
+        e.handle(Key::Esc);
+        e.handle(Key::Char('m'));
+        assert_eq!(e.message, Some(format!("{name} unmuted")));
+        // Another track soloed silences it too.
+        e.grid.tracks[1].mix.solo = true;
+        assert_eq!(e.unheard(0), Some("silent while another track's soloed"));
+        assert_eq!(e.unheard(1), None);
     }
 
     #[test]

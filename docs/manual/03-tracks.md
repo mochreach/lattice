@@ -236,6 +236,13 @@ straight back in mid-phrase, and its effects ring out, a delay's echoes dying aw
 stopping. Because the send is taken after the strip's level, a muted track sends nothing either.
 A mute is saved with the song, and undone with `u`.
 
+One key is easy to press by mistake, so the message box says what it did: `bass muted`,
+`bass unmuted`, as do `ts` and `tM`. And a note played live, from the piano keys or a MIDI
+keyboard, on a track that can't be heard says why: `midi 2 is muted, so not heard`, or
+`silent while another track's soloed`. That matters most on a MIDI track, which sends nothing
+at all while it's muted, so the synth it plays stays silent and nothing on it says why. I found
+that out when a stray `m` left my OP-XY playing only one of two tracks.
+
 ### Solo: `ts`, or `s`
 
 `ts` solos the tracks the selections reach, or unsolos them; `:solo` does the same. On the
