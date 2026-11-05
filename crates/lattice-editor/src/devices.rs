@@ -157,8 +157,9 @@ impl Editor {
         Some(self.devices(direction).infobox(direction))
     }
 
-    /// `:input` and `:output`: with nothing typed, says which is in use; otherwise asks the
-    /// frontend to switch to the device picked.
+    /// `:input` and `:output`: with nothing typed, says which is in use and opens the command
+    /// line again on `:input `, so the list shows to pick from; otherwise asks the frontend to
+    /// switch to the device picked.
     pub(crate) fn choose_device(
         &mut self,
         direction: Direction,
@@ -168,6 +169,10 @@ impl Editor {
         let typed = typed.trim();
         if typed.is_empty() {
             self.message = Some(format!("{}: {}", direction.name(), devices.current()));
+            self.open_prompt(PromptKind::Command);
+            if let Mode::Command(prompt) = &mut self.mode {
+                prompt.line = format!("{} ", direction.name());
+            }
             return Ok(vec![]);
         }
         let id = devices.pick(typed, direction)?;
@@ -240,8 +245,17 @@ mod tests {
             e.choose_device(Direction::Input, "1"),
             Ok(vec![Effect::Device(Direction::Input, Some("a".into()))])
         );
-        e.choose_device(Direction::Input, "").unwrap();
+        e.handle(Key::Esc);
+        for c in ":input".chars() {
+            e.handle(Key::Char(c));
+        }
+        e.handle(Key::Enter);
         assert_eq!(e.message.as_deref(), Some("input: Monitor of Speaker"));
+        assert_eq!(
+            e.choosing_device(),
+            Some(Direction::Input),
+            "the list's left up"
+        );
     }
 
     #[test]
