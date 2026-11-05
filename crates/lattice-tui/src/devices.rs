@@ -23,6 +23,7 @@ use lattice_editor::{Device, Devices, Direction, Editor};
 use lattice_engine::{Command, Handle};
 use toml::{Table, Value};
 
+use crate::apps;
 use crate::audio::{self, Output};
 use crate::config;
 use crate::looper::Looper;
@@ -31,7 +32,7 @@ use crate::midi_out;
 
 /// Frames a buffer, where the device lets it be set: low enough to play along to, and PulseAudio
 /// would otherwise buffer a couple of seconds.
-const BUFFER: u32 = 512;
+pub const BUFFER: u32 = 512;
 
 /// How often the devices are looked for again while they're being chosen, as they come and go.
 const REFRESH: Duration = Duration::from_secs(1);
@@ -115,7 +116,7 @@ fn find(host: &cpal::Host, direction: Direction) -> Devices {
         Direction::Input => host.input_devices(),
         Direction::Output => host.output_devices(),
     };
-    let found = devices.map_or_else(
+    let mut found = devices.map_or_else(
         |_| vec![],
         |devices| {
             devices
@@ -130,6 +131,10 @@ fn find(host: &cpal::Host, direction: Direction) -> Devices {
                 .collect()
         },
     );
+    // What apps are playing can be recorded too.
+    if direction == Direction::Input {
+        found.extend(apps::list());
+    }
     Devices {
         found,
         default: device(host, direction, None).ok().map(|d| d.to_string()),
@@ -175,6 +180,16 @@ impl Finder {
         while let Ok((direction, mut devices)) = self.found.try_recv() {
             let shown = editor.devices_mut(direction);
             devices.chosen = shown.chosen.take();
+            // An app chosen stays listed while it's quiet, as it's recorded once it plays.
+            if let Some(chosen) = &devices.chosen
+                && let Some(app) = apps::app(chosen)
+                && !devices.found.iter().any(|d| &d.id == chosen)
+            {
+                devices.found.push(Device {
+                    id: chosen.clone(),
+                    name: format!("{} (not playing)", apps::name(app)),
+                });
+            }
             *shown = devices;
         }
         let Some(direction) = editor.choosing_device() else {
@@ -317,10 +332,17 @@ impl Machine {
         let way = direction.name();
         let switched = match direction {
             Direction::Output => self.output.switch(&self.host, id.clone()),
-            Direction::Input => device(&self.host, direction, id.as_deref()).map(|device| {
-                self.looper.switch(id.clone());
-                device.to_string()
-            }),
+            Direction::Input => match id.as_deref().and_then(apps::app) {
+                // Found when it's recorded, as it may not be playing yet.
+                Some(app) => {
+                    self.looper.switch(id.clone());
+                    Ok(format!("{}, just its sound", apps::name(app)))
+                }
+                None => device(&self.host, direction, id.as_deref()).map(|device| {
+                    self.looper.switch(id.clone());
+                    device.to_string()
+                }),
+            },
         };
         let name = match switched {
             Ok(name) => name,

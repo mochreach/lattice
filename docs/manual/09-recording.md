@@ -274,9 +274,9 @@ Lattice through the same headphones.
 
 ### :input and :output
 
-`:input` chooses the device the looper records, and `:output` the device you hear Lattice
-through. Type `:input ` (with its space) and the devices are listed in the corner, numbered, the
-one in use marked `●`, and kept up to date as devices come and go:
+`:input` chooses the device the looper records, or the app (below), and `:output` the device
+you hear Lattice through. Type `:input ` (with its space) and the devices are listed in the
+corner, numbered, the one in use marked `●`, and kept up to date as devices come and go:
 
 ```
 :input 2              the second in the list
@@ -312,6 +312,35 @@ names your desktop gives them, falling back to ALSA where there's no PulseAudio;
 is dozens of cards, plug-ins and raw devices under names that don't say what they are. Elsewhere
 it uses the system's own audio (CoreAudio on a Mac, WASAPI on Windows). A stereo input is
 recorded in stereo; a mono one is heard in both sides.
+
+### Recording an app
+
+The looper can also record another program's sound: a browser playing a record you want to
+sample, a soft synth, a video. Apps playing now are listed after the devices, as
+`app: Firefox`, and suggested first as you type, so `:input firefox` picks it. Lattice then
+records that app and nothing else: not the other apps, and not Lattice itself.
+
+That's the difference from the `Monitor of …` inputs, which PulseAudio and PipeWire give every
+output. A monitor hears everything going to that output, so recording your headphones' monitor
+while a loop plays records Lattice playing the loop too, and each overdub doubles what came before.
+Recording the app gets only the app's stream. It's the trick pavucontrol uses to give each app its
+own level meter: listen to the output's monitor, but ask the server for one stream only.
+
+An app has a stream only while it plays, and browsers close theirs a few seconds after they go
+quiet, so an app shows up in the list once it's playing. Lattice knows it by name, not by stream.
+Once chosen, it stays listed while quiet, as `app: Firefox (not playing)`, and it's remembered in
+`audio.toml` like a device (`input = "app:Firefox"`). While the input's open, Lattice looks every
+quarter of a second for the app's stream, and records whichever it has. So pausing a video and
+playing it again, or a new tab, carries on recording. Arming a track while the app is quiet says
+`Firefox isn't playing: it's recorded once it does`, and the pass is silent until it plays.
+
+Other programs that play through cpal, the audio library Lattice uses, are named by their program
+and process number, so a second Lattice shows as `app: lattice 935040`. That's a way to record one
+song's sound into another, with each still playing on its own.
+
+Apps can only be recorded on Linux, through PulseAudio or PipeWire. An app's sound is lined up as
+an instrument's is: what you play along on a soft synth lands on the beat you played it to. If it
+lands early or late, `:latency` moves it, for that app alone.
 
 ### Latency
 

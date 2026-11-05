@@ -20,7 +20,10 @@ impl Direction {
     }
 }
 
-/// An audio device the frontend found.
+/// What the id of an input that records an app's own sound, rather than a device's, starts with.
+pub const APP: &str = "app:";
+
+/// An audio device the frontend found, or an app it can record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Device {
     /// What the frontend knows it by, kept from one run to the next.
@@ -239,5 +242,39 @@ mod tests {
         );
         e.choose_device(Direction::Input, "").unwrap();
         assert_eq!(e.message.as_deref(), Some("input: Monitor of Speaker"));
+    }
+
+    #[test]
+    fn apps_playing_are_listed_after_the_devices_but_suggested_first() {
+        let grid = Grid {
+            name: "test".into(),
+            steps_per_beat: 4,
+            beats_per_bar: 4,
+            grouping: vec![],
+            tracks: vec![Track::default()],
+            groups: vec![],
+        };
+        let mut e = Editor::new(grid, 120.0);
+        e.inputs = devices();
+        e.inputs.found.push(Device {
+            id: format!("{APP}Firefox"),
+            name: "app: Firefox".into(),
+        });
+        for c in ":input ".chars() {
+            e.handle(Key::Char(c));
+        }
+        assert_eq!(e.infobox().unwrap().items[4].1, "  app: Firefox");
+        let first = &e.completions()[0];
+        assert_eq!(
+            (first.text.as_str(), first.describe.as_str()),
+            ("app: Firefox", "device 4")
+        );
+        assert_eq!(
+            e.choose_device(Direction::Input, "firefox"),
+            Ok(vec![Effect::Device(
+                Direction::Input,
+                Some("app:Firefox".into())
+            )])
+        );
     }
 }

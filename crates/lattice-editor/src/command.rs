@@ -441,7 +441,7 @@ pub const COMMANDS: &[Spec] = &[
         name: "input",
         alias: None,
         params: &[optional_text("DEVICE", "device")],
-        describe: "the device the looper records: a number from the list, or part of a name",
+        describe: "the device the looper records, or an app playing: a number from the list, or part of a name",
     },
     Spec {
         name: "output",

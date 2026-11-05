@@ -415,6 +415,17 @@ to the old. Devices are remembered by cpal's `DeviceId`, with `:latency` for eac
 `audio.toml` beside the config; Lattice writes that file, and leaves the hand-written config
 alone.
 
+The input can also be an app's own sound (`apps.rs`, Linux only), which cpal can't record, so
+Lattice speaks PulseAudio's protocol itself, through the `pulseaudio` crate cpal uses: the sink
+inputs (apps' playback streams) are listed with a blocking connection of its own, and an app is
+recorded by a record stream on its sink's monitor with `direct_on_input` set to its stream, which
+gets that stream and nothing else played there. An app's id is `app:` and its name (the
+editor's `APP`), as its stream comes and goes whenever it stops and starts. So a thread follows
+it, listing the streams four times a second and moving the record stream to whichever the app has,
+the one playing first; each writes into the same ring buffer, behind a mutex, as only the engine's
+end of it is on the audio thread. The apps are listed after the devices, so the devices' numbers
+hold still, and are suggested first.
+
 On Linux the host is PulseAudio's (PipeWire serves it too) where there is one, as through ALSA the
 devices are dozens of cards, plugins and raw `hw:` devices under names that don't say what they
 are. Left to itself, PulseAudio buffers about two seconds, so streams ask for 512-frame buffers

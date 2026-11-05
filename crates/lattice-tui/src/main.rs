@@ -9,6 +9,7 @@
         clippy::indexing_slicing
     )
 )]
+mod apps;
 mod audio;
 mod bars;
 mod chains;

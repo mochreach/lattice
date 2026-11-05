@@ -56,7 +56,7 @@ mod suggest;
 mod tutor;
 
 pub use command::{COMMANDS, Kind, Param, Problem, Spec, Value};
-pub use devices::{Device, Devices, Direction};
+pub use devices::{APP, Device, Devices, Direction};
 pub use export::{Export, Part, SAMPLES, file_name, scratch};
 pub use fx_page::{FxCursor, FxLine};
 pub use help::{Help, HelpLine};

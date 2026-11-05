@@ -15,6 +15,7 @@ use lattice_editor::{Direction, Editor, Effect};
 use lattice_engine::{Command, Handle, Sample, Take};
 use rtrb::{Consumer, RingBuffer};
 
+use crate::apps::{self, Capture};
 use crate::devices;
 use crate::export::write_wav;
 use crate::log::{HEALTH, log};
@@ -23,13 +24,19 @@ use crate::samples;
 /// Takes waiting in the engine at once: the one recording and the one to follow it.
 const WAITING: usize = 2;
 
+/// What's recorded: a device, or an app's sound.
+enum Input {
+    Device { _stream: cpal::Stream },
+    App { _capture: Capture },
+}
+
 pub struct Looper {
     sample_rate: f32,
     /// The latency the input stream measures, in frames, for the output stream to add to its
     /// own.
     input_latency: Arc<AtomicU64>,
     /// Keeps the input open; dropping it closes it.
-    input: Option<cpal::Stream>,
+    input: Option<Input>,
     /// Why the input couldn't be opened, so it's not tried again until the track's armed anew.
     failed: bool,
     /// The device to record, by id; `None` for the system's default.
@@ -62,7 +69,12 @@ impl Looper {
             self.failed = false;
         } else if self.input.is_none() && !self.failed {
             let latency = Arc::clone(&self.input_latency);
-            match open_input(host, self.device.as_deref(), self.sample_rate, latency) {
+            let device = self.device.as_deref();
+            let opened = match device.and_then(apps::app) {
+                Some(app) => open_app(app, self.sample_rate, latency, editor),
+                None => open_input(host, device, self.sample_rate, latency),
+            };
+            match opened {
                 Ok((stream, input)) => {
                     handle.send(Command::SetInput(input));
                     self.input = Some(stream);
@@ -163,7 +175,7 @@ fn open_input(
     id: Option<&str>,
     rate: f32,
     latency: Arc<AtomicU64>,
-) -> Result<(cpal::Stream, Consumer<f32>)> {
+) -> Result<(Input, Consumer<f32>)> {
     let device = devices::device(host, Direction::Input, id)?;
     let config = devices::config(&device, Direction::Input, Some(rate as u32))?;
     let channels = usize::from(config.channels).max(1);
@@ -197,7 +209,28 @@ fn open_input(
     )?;
     stream.play()?;
     log!("input: {device}, {rate} Hz, {channels} channels, buffer {buffer:?}");
-    Ok((stream, input))
+    Ok((Input::Device { _stream: stream }, input))
+}
+
+/// Starts recording `app`'s sound, saying so if it isn't playing yet.
+fn open_app(
+    app: &str,
+    rate: f32,
+    latency: Arc<AtomicU64>,
+    editor: &mut Editor,
+) -> Result<(Input, Consumer<f32>)> {
+    let (frames, input) = RingBuffer::new(rate as usize * 2);
+    let (capture, playing) = apps::record(app, rate, latency, frames)?;
+    if !playing {
+        // Under what arming the track said.
+        let quiet = format!("{app} isn't playing: it's recorded once it does");
+        editor.message = Some(match editor.message.take() {
+            Some(said) => format!("{said}\n{quiet}"),
+            None => quiet,
+        });
+    }
+    log!("input: {app}, {rate} Hz");
+    Ok((Input::App { _capture: capture }, input))
 }
 
 #[cfg(test)]

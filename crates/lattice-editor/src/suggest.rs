@@ -340,9 +340,12 @@ fn files(command: &str) -> Option<Option<&'static str>> {
 }
 
 fn devices(devices: &crate::Devices) -> Vec<(String, String)> {
-    (devices.found.iter().enumerate())
-        .map(|(i, d)| (d.name.clone(), format!("device {}", i + 1)))
-        .collect()
+    let mut found: Vec<_> = (devices.found.iter().enumerate())
+        .map(|(i, d)| (d, (d.name.clone(), format!("device {}", i + 1))))
+        .collect();
+    // Apps first, where they're seen: they're listed after the devices, past the ten shown.
+    found.sort_by_key(|(d, _)| !d.id.starts_with(crate::APP));
+    found.into_iter().map(|(_, choice)| choice).collect()
 }
 
 /// The `choices` that match `typed`, best first, and in their own order otherwise.
