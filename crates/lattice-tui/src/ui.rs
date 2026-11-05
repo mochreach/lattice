@@ -179,8 +179,13 @@ pub fn draw(
     {
         draw_lesson_done(frame, grid, &view, next, theme);
     }
-    if let Some(infobox) = editor.infobox() {
-        draw_infobox(frame, grid, &infobox, theme);
+    // The message sits in the corner, above the keys that can follow a prefix if they're up.
+    let below = match editor.infobox() {
+        Some(infobox) => draw_infobox(frame, grid, &infobox, theme),
+        None => grid.bottom(),
+    };
+    if let Some(message) = &editor.message {
+        draw_message(frame, grid, below, message, theme);
     }
     if let Mode::Command(prompt) = &editor.mode {
         let completions = editor.completions();
@@ -277,8 +282,8 @@ fn draw_completions(
 }
 
 /// Like Helix's: the keys that can follow a prefix key, in the bottom-right corner above the
-/// status line.
-fn draw_infobox(frame: &mut Frame, area: Rect, infobox: &Infobox, theme: &Theme) {
+/// status line. Returns the row its top is on.
+fn draw_infobox(frame: &mut Frame, area: Rect, infobox: &Infobox, theme: &Theme) -> u16 {
     let key_width = infobox
         .items
         .iter()
@@ -312,6 +317,43 @@ fn draw_infobox(frame: &mut Frame, area: Rect, infobox: &Infobox, theme: &Theme)
         Paragraph::new(lines).block(
             Block::bordered()
                 .title(format!(" {} ", infobox.title))
+                .border_style(theme.dim)
+                .padding(Padding::horizontal(1)),
+        ),
+        corner,
+    );
+    corner.y
+}
+
+/// The widest a message's lines are, so a long one wraps rather than covering the page.
+const MESSAGE_WIDTH: usize = 48;
+
+/// What the last key or command did, or why it didn't, in a box in the bottom-right corner of
+/// `area` with its bottom on row `bottom`, wrapped to fit, until the next key clears it.
+fn draw_message(frame: &mut Frame, area: Rect, bottom: u16, message: &str, theme: &Theme) {
+    // Inside the border and padding, and clear of the page's left edge.
+    let room = usize::from(area.width.saturating_sub(6)).min(MESSAGE_WIDTH);
+    let room_above = bottom.saturating_sub(area.y);
+    if room < 8 || room_above < 3 {
+        return;
+    }
+    let lines: Vec<Line> = (message.lines())
+        .flat_map(|line| crate::help_page::wrap(line, room))
+        .map(|line| Line::from(Span::styled(line, Style::new().fg(theme.accent))))
+        .collect();
+    let content = lines.iter().map(Line::width).max().unwrap_or(0);
+    let width = (content as u16 + 4).min(area.width);
+    let height = (lines.len() as u16 + 2).min(room_above);
+    let corner = Rect {
+        x: area.right().saturating_sub(width + 1),
+        y: bottom.saturating_sub(height),
+        width,
+        height,
+    };
+    frame.render_widget(Clear, corner);
+    frame.render_widget(
+        Paragraph::new(lines).block(
+            Block::bordered()
                 .border_style(theme.dim)
                 .padding(Padding::horizontal(1)),
         ),
@@ -1586,12 +1628,8 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             theme.text,
         ));
     }
-    if let Some(message) = &editor.message {
-        left.push(Span::styled(
-            format!(" {message}"),
-            Style::new().fg(theme.accent),
-        ));
-    } else if let Some(count) = editor.count() {
+    // The message has a box of its own, in the corner above (see `draw_message`).
+    if let Some(count) = editor.count() {
         left.push(Span::styled(format!(" {count}"), theme.text));
     }
 
@@ -1721,7 +1759,7 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
     Line::from(left)
 }
 
-/// The least space between the status line's message and its hints.
+/// The least space between what's on the status line's left and its hints.
 const GAP: usize = 2;
 
 /// `hints` in `room`: losing whole hints from the end (`a · b · c`), rather than running into
@@ -1785,7 +1823,7 @@ mod tests {
     }
 
     #[test]
-    fn hints_give_way_to_the_message() {
+    fn hints_give_way_to_what_s_on_their_left() {
         let hints = || "v select · x rows · g goto".to_string();
         assert_eq!(fit_hints(hints(), 40), "v select · x rows · g goto");
         assert_eq!(fit_hints(hints(), 20), "v select · x rows");

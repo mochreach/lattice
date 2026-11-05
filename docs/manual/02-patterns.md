@@ -188,7 +188,8 @@ so that most actions get a single key. The mode is shown at the bottom left.
 | command | `:`      | type a command; `ret` runs it, `esc` cancels                         |
 
 The right of the status line lists the keys that matter most in the mode you're in. Messages,
-what an action did or why it didn't, appear after the mode in the accent colour.
+what an action did or why it didn't, appear in the accent colour in a box in the bottom-right
+corner, above the status line, until the next key.
 
 Prefix keys (`g`, `]`, `[`, `t`, `f`, `r`) wait for a second key, and show what can follow in a box
 in the corner:

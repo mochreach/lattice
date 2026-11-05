@@ -252,14 +252,12 @@ tutor's lesson.
 
 ### The status line
 
-The status line, along the bottom, has three parts:
+The status line, along the bottom, has two parts:
 
 - On the left, the **mode**: `NORMAL`, `SELECT`, `INSERT`, or `PLAY` while the instrument page
-  plays the keyboard. On the command line, the mode gives way to the line being typed.
-- After the mode, a **message**: what the last key or command did, or what went wrong, in the
-  accent colour (`hushed`, `written song.lattice`, `nothing to undo`). It clears on the next
-  key. With several selections it also says which is primary and how many there are
-  (`2/5 sels`), and while you type a count, the count.
+  plays the keyboard. On the command line, the mode gives way to the line being typed. With
+  several selections it also says which is primary and how many there are (`2/5 sels`), and
+  while you type a count, the count.
 - On the right, **hints**: the keys that matter most on this page and in this mode. On the
   pattern page in normal mode they're
   `v select · x rows · g goto · ] next · i insert · d delete · : command`; in select mode, the
@@ -267,7 +265,21 @@ The status line, along the bottom, has three parts:
   the mixer's keys.
 
 ```
- NORMAL  unsaved changes: :w to save them, or :q! to quit anyway       v select · x rows · …
+ NORMAL                         v select · x rows · g goto · ] next · i insert · d delete · …
+```
+
+Above it, in the bottom-right corner, a **message** says what the last key or command did, or
+what went wrong, in the accent colour (`hushed`, `written song.lattice`, `nothing to undo`). It
+clears on the next key. It used to sit on the status line, after the mode, but a long one
+crowded out the hints, and in a narrow window there was no room for either; in a box of its
+own it wraps onto as many lines as it needs, and the status line keeps its room for the keys.
+
+```
+                                       ┌──────────────────────────────────────────────────┐
+                                       │ unsaved changes: :w to save them, or :q! to quit │
+                                       │ anyway                                           │
+                                       └──────────────────────────────────────────────────┘
+ NORMAL                         v select · x rows · g goto · ] next · i insert · d delete · …
 ```
 
 ## Modes
