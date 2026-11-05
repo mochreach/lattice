@@ -405,6 +405,30 @@ const LESSONS: &[Lesson] = &[
         solution: "ghggv3jytl5jp",
     },
     Lesson {
+        title: "Registers",
+        text: "Copying again replaces what you copied, unless you put it somewhere of its own. \
+               {select_register} then a letter or digit picks a register for the next copy or \
+               paste, so `\"ay` copies into register a and `\"ap` pastes from it, while plain \
+               {yank} and {paste} carry on with their own. {select_register} alone shows what \
+               each register holds.\n\nCopy the KICK track's first beat into register a, then \
+               copy anything else the usual way, and paste from register a onto the HAT track \
+               at step 12.",
+        teaches: &[Action::SelectRegister],
+        commands: &[],
+        setup: nothing,
+        watch: never,
+        done: |e, _| {
+            let (Some(kick), Some(hat)) = (track(e, "KICK"), track(e, "HAT")) else {
+                return false;
+            };
+            let holds = |c| (e.registers.get(&c)).is_some_and(|r| !r.steps.is_empty());
+            holds('a')
+                && holds(crate::registers::DEFAULT)
+                && (0..4).all(|s| note(kick, s).is_some_and(|n| note(hat, 12 + s) == Some(n)))
+        },
+        solution: "ghggv3j\"aytl;y9j\"ap",
+    },
+    Lesson {
         title: "Many selections",
         text: "You can have many cursors at once: Lattice keeps several \
                selections, each with its own cursor, and every key you press acts at all of \

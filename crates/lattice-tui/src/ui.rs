@@ -1628,7 +1628,11 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             theme.text,
         ));
     }
-    // The message has a box of its own, in the corner above (see `draw_message`).
+    // The message has a box of its own, in the corner above (see `draw_message`). A register
+    // and a count wait for the action they're for.
+    if let Some(register) = editor.picked_register() {
+        left.push(Span::styled(format!(" \"{register}"), theme.text));
+    }
     if let Some(count) = editor.count() {
         left.push(Span::styled(format!(" {count}"), theme.text));
     }

@@ -572,25 +572,29 @@ impl Editor {
             clips.push(values);
         }
         let steps = clips.iter().map(Vec::len).sum::<usize>();
-        self.field_clipboard = clips;
-        self.message = Some(format!("copied {steps} values"));
+        self.register_mut().fields = clips;
+        self.message = Some(format!("copied {steps} values{}", self.copied_into()));
     }
 
     /// `p` on a field: writes the values copied from a field down from each selection's first
     /// step, `n` times, as `p` does steps.
     pub(crate) fn paste_field(&mut self, field: StepField, n: usize) -> Vec<Effect> {
-        if self.field_clipboard.iter().all(Vec::is_empty) {
-            self.message = Some("no values copied: y in a field copies them".into());
+        let copied = self
+            .register()
+            .map(|r| r.fields.clone())
+            .unwrap_or_default();
+        if copied.iter().all(Vec::is_empty) {
+            self.message = Some(format!(
+                "{}: y in a field copies them",
+                self.nothing_to_paste("values")
+            ));
             return vec![];
         }
         self.checkpoint();
         let mut tracks = vec![];
         for (i, s) in self.selections.clone().iter().enumerate() {
             let region = s.region();
-            let Some(clip) = (self.field_clipboard.get(i))
-                .or(self.field_clipboard.last())
-                .cloned()
-            else {
+            let Some(clip) = (copied.get(i)).or(copied.last()).cloned() else {
                 continue;
             };
             let t = region.first_track;

@@ -221,6 +221,8 @@ pub enum Action {
     PasteInsert,
     /// Fill the selection with the next note played.
     Replace,
+    /// Pick a register, by the next key, for the next copy or paste.
+    SelectRegister,
     Undo,
     Redo,
     NoteUp,
@@ -343,6 +345,7 @@ impl Action {
         Action::Paste,
         Action::PasteInsert,
         Action::Replace,
+        Action::SelectRegister,
         Action::Undo,
         Action::Redo,
         Action::NoteUp,
@@ -463,6 +466,7 @@ impl Action {
             Action::Paste => "paste",
             Action::PasteInsert => "paste, pushing the rest down",
             Action::Replace => "fill with a note",
+            Action::SelectRegister => "pick a register for the next copy or paste",
             Action::Undo => "undo",
             Action::Redo => "redo",
             Action::NoteUp => "note up a semitone",
@@ -830,6 +834,7 @@ impl Default for Keymap {
                 (Char('p'), Paste),
                 (Char('P'), PasteInsert),
                 (Char('r'), Replace),
+                (Char('"'), SelectRegister),
                 (Char('u'), Undo),
                 (Char('U'), Redo),
                 (Ctrl('a'), NoteUp),

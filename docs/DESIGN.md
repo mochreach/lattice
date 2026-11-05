@@ -989,7 +989,7 @@ back on the notes, as do `th` `tl`. Edits go to the field only while every selec
 cursor's track (`Editor::on_field`); across tracks they take whole steps, as before. A field's
 values are numbers from 00 to 99 (`fields::Value`), read and written through the setting's curve
 or the note's velocity, so typing, nudging, copying and `&`'s fill work the same way on every
-field. Copying a field fills its own clipboard, of values rather than steps, so `p` can put a
+field. Copying a field fills the register's values, rather than its steps, so `p` can put a
 cutoff column's values into a resonance column. In insert mode digits type into the field
 instead of playing the piano, two to a step. The engine publishes each track's locks in force every
 block (`Status::locks`, one atomic per lock: a present bit, the effect, the setting and the
@@ -1236,6 +1236,18 @@ editor asks with `Effect::LoadPreset` and `Effect::SavePreset`, as for chains. `
 likewise asks with `Effect::LoadFaceArt`, and `Editor::put_face_art` checks the art fits before it
 replaces the face's. The built-in chains
 are `lattice_core::CHAINS` and `built_in_chain`, so `PRESETS` and `preset` mean these.
+
+### Registers
+
+Everything that copies goes into a register (`lattice-editor/src/registers.rs`), Vim and Helix's
+named clipboards: `"` then a letter or digit picks one for the next action (`Editor::picked_register`),
+and without one it's the default, `"`. A register keeps the last of each kind copied into it
+(`Register`: each selection's steps, a field's values, tracks, and the song's entries), as the
+separate clipboards it replaced did, so `ty` then `y` still leaves both to paste. Picking survives
+a count and a prefix key (`3"atp`), and is dropped once the action after it has run
+(`Editor::normal_key`). While `"` waits, the infobox lists what each register holds. Registers
+aren't saved; entries are copied by pattern id, which a new song doesn't share, so opening one
+forgets them.
 
 ### The command line's suggestions and history
 

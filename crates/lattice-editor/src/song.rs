@@ -312,15 +312,19 @@ impl Editor {
             Action::Yank => {
                 let selected = self.song_entries();
                 if let Some(entries) = self.arrangement.entries.get(selected) {
-                    self.song.yanked = self.copy_entries(entries);
+                    let copied = self.copy_entries(entries);
+                    let into = self.copied_into();
                     self.message = Some(match entries.len() {
-                        1 => "copied the entry".into(),
-                        n => format!("copied {n} entries"),
+                        1 => format!("copied the entry{into}"),
+                        n => format!("copied {n} entries{into}"),
                     });
+                    self.register_mut().entries = copied;
                 }
             }
-            Action::Paste | Action::PasteInsert if self.song.yanked.is_empty() => {
-                self.message = Some("nothing copied".into());
+            Action::Paste | Action::PasteInsert
+                if self.register().is_none_or(|r| r.entries.is_empty()) =>
+            {
+                self.message = Some(self.nothing_to_paste("entries"));
             }
             Action::Paste | Action::PasteInsert => {
                 let place = match action {
@@ -556,7 +560,11 @@ impl Editor {
     /// The entries copied, as they are in the song now: without those whose pattern's gone, or
     /// mutes for tracks that are.
     fn pasted_entries(&self) -> Vec<Entry> {
-        (self.song.yanked.iter())
+        let copied = self
+            .register()
+            .map(|r| r.entries.as_slice())
+            .unwrap_or_default();
+        (copied.iter())
             .filter_map(|c| {
                 let mut entry = Entry {
                     pattern: self.pattern_ids.iter().position(|&id| id == c.pattern)?,
@@ -614,7 +622,8 @@ impl Editor {
         let playing_gone = (self.song_position).is_some_and(|(p, _)| selected.contains(&p));
         let gone: Vec<Entry> = self.arrangement.entries.drain(selected.clone()).collect();
         if yank {
-            self.song.yanked = self.copy_entries(&gone);
+            let copied = self.copy_entries(&gone);
+            self.register_mut().entries = copied;
         }
         for at in selected.clone().rev() {
             if let Some((playing, _)) = &mut self.song_position
@@ -650,8 +659,6 @@ pub(crate) struct SongCursor {
     pub(crate) column: usize,
     /// In select mode, the bar and column the selection began at.
     anchor: Option<(usize, usize)>,
-    /// The entries last copied.
-    pub(crate) yanked: Vec<Copied>,
     /// The first and last entries of the section the song loops round.
     pub(crate) looped: Option<(usize, usize)>,
 }
@@ -1015,7 +1022,7 @@ mod tests {
         let mut e = three_tracks();
         crate::command::run(&mut e, "pn").unwrap();
         keys(&mut e, "gsgey");
-        assert_eq!(e.song.yanked.len(), 1);
+        assert_eq!(e.register().unwrap().entries.len(), 1);
         e.select_pattern(0);
         e.remove_pattern().unwrap();
         // The test song has two patterns; the new one's the third.

@@ -48,6 +48,7 @@ mod patterns;
 mod presets;
 mod rearrange;
 mod record;
+mod registers;
 mod search;
 mod song;
 mod suggest;
@@ -368,6 +369,8 @@ enum Pending {
     Field,
     /// `r`: the next piano key fills the selection.
     Replace,
+    /// `"`: the next key picks a register.
+    Register,
 }
 
 /// What the infobox shows while a key is pending.
@@ -394,7 +397,7 @@ struct Snapshot {
 }
 
 /// What one selection copied: a column of steps per track.
-type Clip = Vec<Vec<Step>>;
+pub(crate) type Clip = Vec<Vec<Step>>;
 
 /// The song as last saved or opened, to tell whether it's been modified since.
 #[derive(Debug, Clone)]
@@ -473,8 +476,6 @@ pub struct Editor {
     conducted: Vec<(TrackId, Option<bool>, Option<bool>)>,
     /// What's been typed into a field so far.
     typing: fields::Typing,
-    /// Values copied from a field, one list per selection, `None` where there was none.
-    field_clipboard: Vec<Vec<Option<fields::Value>>>,
     /// The lock last recorded from the mixer, and its track, to nudge on from.
     live_lock: Option<(TrackId, Lock)>,
     /// The lesson, while the tutor's running.
@@ -540,10 +541,10 @@ pub struct Editor {
     quit_warned: bool,
     /// What `/` last looked for on the help page or the manual.
     search: search::Search,
-    /// One clip per selection copied.
-    clipboard: Vec<Clip>,
-    /// Whole tracks copied, instruments and all.
-    track_clipboard: Vec<Track>,
+    /// What's been copied, by register: see [`registers`].
+    registers: registers::Registers,
+    /// The register `"` picked for the next action.
+    picked_register: Option<char>,
     undo: Vec<Snapshot>,
     redo: Vec<Snapshot>,
 }
@@ -635,7 +636,6 @@ impl Editor {
             field: StepField::Note,
             conducted: vec![],
             typing: Default::default(),
-            field_clipboard: vec![],
             live_lock: None,
             tutor: None,
             octave: 4,
@@ -666,8 +666,8 @@ impl Editor {
             pending: None,
             quit_warned: false,
             search: search::Search::default(),
-            clipboard: Vec::new(),
-            track_clipboard: Vec::new(),
+            registers: Default::default(),
+            picked_register: None,
             undo: Vec::new(),
             redo: Vec::new(),
         }
@@ -831,7 +831,7 @@ impl Editor {
             .map(PatternId)
             .collect();
         self.next_pattern_id += patterns;
-        self.song.yanked.clear();
+        self.forget_entries();
         // Nothing's being recorded into the new song yet.
         self.take = None;
         self.held.clear();
@@ -950,6 +950,7 @@ impl Editor {
                         .collect(),
                 })
             }
+            Pending::Register => Some(self.registers_infobox()),
             Pending::Replace => Some(Infobox {
                 title: "replace".into(),
                 items: vec![
@@ -1129,7 +1130,21 @@ impl Editor {
     }
 
     fn normal_key(&mut self, key: Key) -> Vec<Effect> {
+        let picking = self.pending == Some(Pending::Register);
+        let effects = self.normal_key_now(key);
+        // A register's picked for the one action after it, however long its count or prefix.
+        if !picking && self.pending.is_none() && self.count.is_none() {
+            self.picked_register = None;
+        }
+        effects
+    }
+
+    fn normal_key_now(&mut self, key: Key) -> Vec<Effect> {
         match self.pending.take() {
+            Some(Pending::Register) => {
+                self.pick_register(key);
+                return vec![];
+            }
             Some(Pending::Replace) => {
                 // Octave keys work while choosing the note.
                 if let Some(&action @ (Action::KeyboardOctaveUp | Action::KeyboardOctaveDown)) =
@@ -1179,6 +1194,8 @@ impl Editor {
             return self.act(Action::ToggleSolo, 1);
         }
         match self.keymap.normal.get(&key).cloned() {
+            // Keep the count for the action after the register, as for a menu's.
+            Some(Binding::Action(Action::SelectRegister)) => self.act(Action::SelectRegister, 1),
             // Keep the count for the menu's action.
             Some(Binding::Menu(_)) => {
                 self.pending = Some(Pending::Menu(key));
@@ -1503,6 +1520,10 @@ impl Editor {
             Action::PlaySong => return self.play_song(true),
             Action::PlayFromHere => return self.play_song(false),
             Action::Hush => return self.hush(),
+            Action::SelectRegister => {
+                self.pending = Some(Pending::Register);
+                return vec![];
+            }
             _ => {}
         }
         if self.page == Page::Mixer
@@ -1757,9 +1778,13 @@ impl Editor {
             }
             Action::Yank => {
                 self.yank();
-                self.message = Some(match self.clipboard.as_slice() {
-                    [clip] => format!("copied {} steps", clip.iter().map(Vec::len).sum::<usize>()),
-                    clips => format!("copied {} selections", clips.len()),
+                let into = self.copied_into();
+                self.message = Some(match self.register_mut().steps.as_slice() {
+                    [clip] => format!(
+                        "copied {} steps{into}",
+                        clip.iter().map(Vec::len).sum::<usize>()
+                    ),
+                    clips => format!("copied {} selections{into}", clips.len()),
                 });
             }
             Action::Paste => return self.paste(Place::Over, n),
@@ -1778,7 +1803,8 @@ impl Editor {
             | Action::KeyboardOctaveDown
             | Action::PlaySong
             | Action::PlayFromHere
-            | Action::Hush => {}
+            | Action::Hush
+            | Action::SelectRegister => {}
             Action::NextPattern => return self.step_pattern(n as isize),
             Action::PrevPattern => return self.step_pattern(-(n as isize)),
             Action::ToggleMute => return self.run_command("mute"),
@@ -1848,15 +1874,17 @@ impl Editor {
 
     /// Copies every track the selections reach.
     fn yank_tracks(&mut self) {
-        self.track_clipboard = self
+        let tracks: Vec<Track> = self
             .selected_tracks()
             .into_iter()
             .filter_map(|t| self.grid.tracks.get(t).cloned())
             .collect();
-        self.message = Some(match self.track_clipboard.len() {
-            1 => "copied 1 track".into(),
-            n => format!("copied {n} tracks"),
+        let into = self.copied_into();
+        self.message = Some(match tracks.len() {
+            1 => format!("copied 1 track{into}"),
+            n => format!("copied {n} tracks{into}"),
         });
+        self.register_mut().tracks = tracks;
     }
 
     /// Copies, then removes, every track the selections reach, leaving the cursor on the track
@@ -1881,11 +1909,15 @@ impl Editor {
 
     /// Pastes the copied tracks after or before the cursor's track, and moves onto the first.
     fn paste_tracks(&mut self, place: Place) -> Vec<Effect> {
-        if self.track_clipboard.is_empty() {
-            self.message = Some("no tracks copied".into());
+        let copied = self
+            .register()
+            .map(|r| r.tracks.clone())
+            .unwrap_or_default();
+        if copied.is_empty() {
+            self.message = Some(self.nothing_to_paste("tracks"));
             return vec![];
         }
-        if self.grid.tracks.len() + self.track_clipboard.len() > MAX_TRACKS {
+        if self.grid.tracks.len() + copied.len() > MAX_TRACKS {
             self.message = Some(format!("at most {MAX_TRACKS} tracks"));
             return vec![];
         }
@@ -1896,7 +1928,7 @@ impl Editor {
         };
         self.checkpoint();
         let at = at.min(self.grid.tracks.len());
-        for (i, track) in self.track_clipboard.clone().into_iter().enumerate() {
+        for (i, track) in copied.into_iter().enumerate() {
             // Each goes in after the one before, so there's room.
             let _ = self.insert_track(at + i, track);
         }
@@ -2154,7 +2186,7 @@ impl Editor {
 
     /// Copies each selection's steps as its own clip, as Helix yanks one value per selection.
     fn yank(&mut self) {
-        self.clipboard = self
+        self.register_mut().steps = self
             .selections
             .iter()
             .map(|s| {
@@ -2197,12 +2229,9 @@ impl Editor {
     /// steps there; `Place::Insert` pushes them down first, and what's pushed past the end of the
     /// track falls off. Steps off the grid are skipped.
     fn paste(&mut self, place: Place, n: usize) -> Vec<Effect> {
-        if self
-            .clipboard
-            .iter()
-            .all(|clip| clip.iter().all(Vec::is_empty))
-        {
-            self.message = Some("nothing to paste".into());
+        let clips = self.register().map(|r| r.steps.clone()).unwrap_or_default();
+        if clips.iter().all(|clip| clip.iter().all(Vec::is_empty)) {
+            self.message = Some(self.nothing_to_paste("steps"));
             return vec![];
         }
         self.checkpoint();
@@ -2216,7 +2245,7 @@ impl Editor {
         order.sort_by_key(|(_, region)| std::cmp::Reverse(region.first_step));
         for (i, region) in order {
             // The last clip goes to any selections past the clips.
-            let Some(clip) = self.clipboard.get(i).or(self.clipboard.last()) else {
+            let Some(clip) = clips.get(i).or(clips.last()) else {
                 continue;
             };
             let rows = clip.first().map_or(0, Vec::len);
@@ -2546,11 +2575,11 @@ mod tests {
         Editor::new(grid, 120.0)
     }
 
-    fn keys(e: &mut Editor, s: &str) -> Vec<Effect> {
+    pub(crate) fn keys(e: &mut Editor, s: &str) -> Vec<Effect> {
         s.chars().flat_map(|c| e.handle(Key::Char(c))).collect()
     }
 
-    fn pitches(e: &Editor, track: usize) -> Vec<Option<u8>> {
+    pub(crate) fn pitches(e: &Editor, track: usize) -> Vec<Option<u8>> {
         e.grid.tracks[track]
             .steps
             .iter()
@@ -2559,7 +2588,7 @@ mod tests {
     }
 
     /// Enters notes from the top of a track, then returns to normal mode.
-    fn notes(e: &mut Editor, piano: &str) {
+    pub(crate) fn notes(e: &mut Editor, piano: &str) {
         keys(e, "i");
         keys(e, piano);
         e.handle(Key::Esc);

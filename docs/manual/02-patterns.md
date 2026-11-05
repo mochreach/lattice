@@ -589,6 +589,7 @@ the selection, so you can repeat them.
 | `y`                 | `yank`                  | copy the selected steps                          |
 | `p`                 | `paste`                 | paste over the steps from the start              |
 | `P`                 | `paste_insert`          | paste at the start, pushing the steps there down |
+| `"`                 | `select_register`       | pick a register for the next copy or paste       |
 | `r` then a note key | `replace`               | fill every selected step with that note          |
 | `C-a`               | `note_up`               | notes up a semitone                              |
 | `C-x`               | `note_down`             | notes down a semitone                            |
@@ -652,6 +653,38 @@ used for the rest. So `y` on one selection and `p` on four puts the same steps i
 
 The clipboard is Lattice's own, not the system's, and it's kept until you copy again. Steps,
 values copied from a field, and whole tracks (`ty`) each have their own.
+
+### Registers: `"`
+
+Copying again replaces what you copied before. To keep something, put it in a **register**: `"`
+then a letter or a digit picks one for the next copy, paste or delete (`select_register`). `"ay`
+copies into register `a`, and `"ap` pastes from it, however much you've copied since; plain `y`
+and `p` go on using the default register, `"`, and never touch `a`. It's how Vim and Helix do it,
+and the same keys.
+
+A register works for everything that copies or pastes: steps, a field's values, whole tracks
+(`"aty`, `"atp`) and the song's entries. It keeps the last of each kind put in it, so copying
+steps into `a` doesn't lose the tracks copied there before. A count goes either side, `3"ap` or
+`"a3p`. `d` and `c` copy into the register picked too, so `"bd` moves steps into `b`.
+
+`"` on its own shows what each register holds, in the box in the corner, before you pick one;
+`esc` cancels:
+
+```
+┌ registers ──────────────────────────┐
+│ "        8 steps                    │
+│ a        4 steps · 1 track: BASS    │
+│ k        16 steps                   │
+│ a–z 0–9  pick a register            │
+└─────────────────────────────────────┘
+```
+
+A register you paste from that holds nothing of the kind says so (`no steps in "k`). Registers
+last until Lattice quits; they aren't saved with the song.
+
+I always liked registers in Vim, for keeping a phrase to hand while copying other things about:
+a fill in `f`, a bass run in `b`. What I never liked was reaching for `"`, but keeping Helix's
+keys means your fingers already know them.
 
 ### Filling with a note: `r`
 
