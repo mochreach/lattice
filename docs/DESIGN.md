@@ -1269,7 +1269,9 @@ where it was, which `Editor::act` checks only while replaying. That's what makes
 end. Keys can also go into an F key (`QF4`; `replay::Slot` is a register or an F key), kept in
 `Editor::fkeys` rather than a register, as an F key only holds keys. In normal mode a recorded F
 key replays itself, with any count, before the keymap's binding for it, so one key does what's
-done often; with nothing recorded, the config's binding (`F4 = ":midi-learn this"`) has it.
+done often; with nothing recorded, the config's binding (`F4 = ":midi-learn this"`) has it. In
+insert mode, where letters are notes, it presses them in normal mode, where they were recorded,
+and goes back to inserting after (`Editor::replay_while_playing`).
 
 ### The command line's suggestions and history
 

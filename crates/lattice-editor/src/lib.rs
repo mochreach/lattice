@@ -1158,6 +1158,9 @@ impl Editor {
             (Key::Char(c @ '1'..='9'), Mode::Insert) if self.in_folded_group() => {
                 return self.pad(c as u8 - b'0', key);
             }
+            (Key::F(n), Mode::Insert) if self.fkeys.contains_key(&n) => {
+                return self.replay_while_playing(key);
+            }
             _ => {}
         }
         match self.mode {

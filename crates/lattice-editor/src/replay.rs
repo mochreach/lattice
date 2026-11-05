@@ -15,7 +15,7 @@ use std::fmt;
 
 use crate::keymap::{Action, Key};
 use crate::registers::names_register;
-use crate::{Editor, Effect, Infobox};
+use crate::{Editor, Effect, Infobox, Mode};
 
 /// How deep replays can call replays, so keys that replay themselves can't go on for ever.
 const MAX_DEPTH: usize = 8;
@@ -179,6 +179,18 @@ impl Editor {
         effects
     }
 
+    /// A recorded F key in insert mode, playing: presses its keys as in normal mode, where
+    /// they were recorded, so a letter doesn't play a note, then goes back to playing, unless
+    /// they went somewhere else themselves.
+    pub(crate) fn replay_while_playing(&mut self, key: Key) -> Vec<Effect> {
+        self.mode = Mode::Normal;
+        let effects = self.replay(key, 1);
+        if self.mode == Mode::Normal {
+            self.mode = Mode::Insert;
+        }
+        effects
+    }
+
     /// While `Q` or `q` waits for a register: the keys each holds.
     pub(crate) fn keys_infobox(&self, replay: bool) -> Infobox {
         let held = (self.registers.iter())
@@ -329,6 +341,25 @@ mod tests {
         e.message = None;
         e.handle(Key::F(5));
         assert_eq!(e.message, None);
+    }
+
+    #[test]
+    fn an_f_key_presses_its_keys_while_playing_as_in_normal_mode() {
+        let mut e = editor();
+        keys(&mut e, "Q");
+        e.handle(Key::F(2));
+        keys(&mut e, ":bpm 90");
+        e.handle(Key::Enter);
+        keys(&mut e, "Q:bpm 120");
+        e.handle(Key::Enter);
+        keys(&mut e, "gii");
+        assert_eq!(e.mode, crate::Mode::Insert);
+        e.handle(Key::F(2));
+        assert_eq!(
+            e.bpm, 90.0,
+            "the command ran, rather than its letters playing"
+        );
+        assert_eq!(e.mode, crate::Mode::Insert, "and it's playing again");
     }
 
     #[test]

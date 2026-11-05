@@ -747,7 +747,10 @@ F4 = ":midi-learn this"
 ```
 
 F keys only hold keys, never steps or tracks, so `"` doesn't list them; `Q` and `q` do, while
-they wait. They work in normal mode, on every page.
+they wait. They work on every page, in normal mode and while playing: in insert mode, or playing
+on the instrument page, an F key presses its keys as in normal mode, where they were recorded,
+so `:midi-learn` isn't played as notes, and then you're playing again. So you can play a part,
+press F4 on a setting, turn the knob, and play on.
 
 ### Filling with a note: `r`
 
