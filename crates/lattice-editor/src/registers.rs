@@ -27,6 +27,9 @@ pub(crate) struct Register {
     pub(crate) entries: Vec<Copied>,
     /// Keys recorded with `Q`.
     pub(crate) keys: Vec<Key>,
+    /// Whether a field's values went in after the steps, so `p` on a field pastes them rather
+    /// than the steps.
+    pub(crate) values_last: bool,
 }
 
 pub(crate) type Registers = BTreeMap<char, Register>;
@@ -93,6 +96,12 @@ impl Editor {
     /// What's in the register the next paste uses.
     pub(crate) fn register(&self) -> Option<&Register> {
         self.registers.get(&self.register_name())
+    }
+
+    /// Whether `p` on a field pastes a field's values: if they were copied after any steps.
+    pub(crate) fn pastes_values(&self) -> bool {
+        self.register()
+            .is_none_or(|r| r.values_last || r.steps.iter().flatten().all(Vec::is_empty))
     }
 
     /// The register the next copy goes into.
@@ -196,6 +205,23 @@ mod tests {
         let tracks = e.grid.tracks.len();
         keys(&mut e, "\"atp");
         assert_eq!(e.grid.tracks.len(), tracks + 1);
+    }
+
+    #[test]
+    fn a_field_pastes_whichever_was_copied_last() {
+        let mut e = editor();
+        notes(&mut e, "zc");
+        // Steps copied, then pasted with the cursor on the velocity.
+        keys(&mut e, "ggyljjp");
+        assert_eq!(pitches(&e, 0)[2], Some(60));
+        // Then a velocity copied: p in the field pastes it, not the steps.
+        keys(&mut e, "ggy");
+        assert_eq!(e.message.as_deref(), Some("copied 1 values"));
+        keys(&mut e, "jjjjp");
+        assert_eq!(pitches(&e, 0)[4], None, "no step pasted");
+        // Back on the note to copy the step, then into the velocity to paste it.
+        keys(&mut e, "gghyljjjjp");
+        assert_eq!(pitches(&e, 0)[4], Some(60), "steps again once copied again");
     }
 
     #[test]

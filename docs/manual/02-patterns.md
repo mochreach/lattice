@@ -809,11 +809,17 @@ one track, the editing keys act on the field alone, leaving the notes as they ar
 | `d` `A-d`   | clear the values (with `d`, copying them); a velocity goes back to `:vel`'s |
 | `c`         | clear the values (copying them) and start inserting                         |
 | `y`         | copy the values, step by step (`copied 8 values`)                           |
-| `p` `P`     | paste the copied values down from each selection's start                    |
+| `p` `P`     | paste the copied values down from each selection's start, or the steps      |
+|             | if steps were copied since                                                  |
 | `&`         | fill each selection evenly between the values at its ends                   |
 | `r`         | says to type the value in insert mode instead                               |
 
 If the selections reach other tracks, edits go back to acting on whole steps.
+
+`p` in a field pastes whatever went into the register last, steps or values. So after copying a
+step on the notes, `p` pastes it whole wherever in the track's fields the cursor is; only once
+you've copied a field's values does `p` in a field paste those instead. Without that, copying a
+step, moving down with the cursor still on the velocity and pressing `p` would do nothing.
 
 `&` **fills** a field evenly: it takes the values at the first and last steps of each selection
 and sets every step between to a value on the straight line from one to the other. It needs a

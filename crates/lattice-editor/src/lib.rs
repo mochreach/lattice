@@ -1642,7 +1642,9 @@ impl Editor {
                     self.yank_field(field);
                     return vec![];
                 }
-                Action::Paste | Action::PasteInsert => return self.paste_field(field, n),
+                Action::Paste | Action::PasteInsert if self.pastes_values() => {
+                    return self.paste_field(field, n);
+                }
                 Action::Replace => {
                     self.message = Some("in a field, i and two digits set its value".into());
                     return vec![];
@@ -2225,6 +2227,7 @@ impl Editor {
 
     /// Copies each selection's steps as its own clip, as Helix yanks one value per selection.
     fn yank(&mut self) {
+        self.register_mut().values_last = false;
         self.register_mut().steps = self
             .selections
             .iter()

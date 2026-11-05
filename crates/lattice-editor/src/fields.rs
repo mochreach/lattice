@@ -572,12 +572,14 @@ impl Editor {
             clips.push(values);
         }
         let steps = clips.iter().map(Vec::len).sum::<usize>();
-        self.register_mut().fields = clips;
+        let register = self.register_mut();
+        register.fields = clips;
+        register.values_last = true;
         self.message = Some(format!("copied {steps} values{}", self.copied_into()));
     }
 
     /// `p` on a field: writes the values copied from a field down from each selection's first
-    /// step, `n` times, as `p` does steps.
+    /// step, `n` times, as `p` does steps. Steps copied since are pasted as steps instead.
     pub(crate) fn paste_field(&mut self, field: StepField, n: usize) -> Vec<Effect> {
         let copied = self
             .register()

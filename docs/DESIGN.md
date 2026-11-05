@@ -990,7 +990,9 @@ cursor's track (`Editor::on_field`); across tracks they take whole steps, as bef
 values are numbers from 00 to 99 (`fields::Value`), read and written through the setting's curve
 or the note's velocity, so typing, nudging, copying and `&`'s fill work the same way on every
 field. Copying a field fills the register's values, rather than its steps, so `p` can put a
-cutoff column's values into a resonance column. In insert mode digits type into the field
+cutoff column's values into a resonance column. The register notes which went in last
+(`Register::values_last`), and `p` in a field pastes the steps when they were, so a step copied on the
+notes still pastes with the cursor left on its velocity. In insert mode digits type into the field
 instead of playing the piano, two to a step. The engine publishes each track's locks in force every
 block (`Status::locks`, one atomic per lock: a present bit, the effect, the setting and the
 value's bits), and the mixer page shows those values while they hold, so its knobs move with the
