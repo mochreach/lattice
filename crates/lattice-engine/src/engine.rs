@@ -24,6 +24,7 @@ use crate::click::Click;
 use crate::clock::Clock;
 use crate::denormal;
 use crate::looper::{Looper, Take};
+use crate::midi_out::Sent;
 use crate::param::Smoothed;
 use crate::processor::{Event, EventKind, Processor, Shape, frames};
 use crate::routing::Routing;
@@ -32,6 +33,13 @@ use lattice_core::macros;
 
 /// Largest block rendered in one go. Longer host buffers are split.
 pub(crate) const MAX_BLOCK: usize = 256;
+
+/// MIDI clock's pulses a beat, and its messages.
+const PULSES_PER_BEAT: usize = 24;
+const CLOCK_PULSE: u8 = 0xf8;
+const CLOCK_START: u8 = 0xfa;
+const CLOCK_STOP: u8 = 0xfc;
+
 /// Events per track per block; more are dropped rather than allocating.
 const MAX_EVENTS: usize = 128;
 /// Notes a track can hold at once before the oldest is cut.
@@ -204,6 +212,10 @@ pub enum Command {
     /// Read the audio input from here: interleaved stereo frames at the engine's rate. The old
     /// input goes back to be freed.
     SetInput(Consumer<f32>),
+    /// Send MIDI clock here: 24 pulses a beat, following the tempo, with start as the song
+    /// starts and stop as it stops, each stamped with when it's heard. The old queue goes back
+    /// to be freed.
+    SetClockOut(Producer<Sent>),
     /// Record a pass of the input into a take: see [`crate::looper`]. Two can wait at once;
     /// more are sent straight back, unfinished, through [`Handle::recorded`], as all takes are.
     Record(Box<Take>),
@@ -725,6 +737,7 @@ enum Garbage {
     Conductor(Box<Conductor>),
     Take(Box<Take>),
     Input(Consumer<f32>),
+    ClockOut(Producer<Sent>),
     Sample(Option<Arc<Sample>>),
 }
 
@@ -1256,6 +1269,13 @@ pub struct Engine {
     frames: u64,
     /// When the next frame rendered is heard, for MIDI out; 0 when nothing's said.
     heard_at: u64,
+    /// When the block being rendered is heard.
+    block_at: u64,
+    /// Where MIDI clock goes, if anywhere, and the pulses of the step playing still to send, by
+    /// the frame they're due: see [`Command::SetClockOut`].
+    clock_out: Option<Producer<Sent>>,
+    pulses: [u64; PULSES_PER_BEAT],
+    pulses_len: usize,
     looper: Looper,
     takes: Producer<Box<Take>>,
     /// The playing pattern's conductor, and what it's told the UI thread.
@@ -1348,6 +1368,10 @@ impl Engine {
             latency_offset: 0,
             frames: 0,
             heard_at: 0,
+            block_at: 0,
+            clock_out: None,
+            pulses: [0; PULSES_PER_BEAT],
+            pulses_len: 0,
             looper: Looper::default(),
             takes: takes_tx,
             conductor: Conductor::default(),
@@ -1379,6 +1403,8 @@ impl Engine {
         self.count_in = u64::from(bars) * self.beats_per_bar * self.steps_per_beat;
         self.status.playing.store(true, Ordering::Relaxed);
         self.clock.restart();
+        // The step cut short takes its pulses with it: the song's first beat starts afresh.
+        self.pulses_len = 0;
     }
 
     /// The latency the host measures, in frames: from the engine rendering a frame to its being
@@ -1398,6 +1424,9 @@ impl Engine {
 
     /// Stops playback, releasing every sequenced note.
     pub fn stop(&mut self) {
+        if self.playing {
+            self.send_clock(self.frames, CLOCK_STOP);
+        }
         let (takes, garbage) = (&mut self.takes, &mut self.garbage);
         self.looper.stop(true, |t| send_take(takes, garbage, t));
         for t in &mut self.tracks {
@@ -1444,11 +1473,16 @@ impl Engine {
     /// whatever the buffer size.
     pub fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
         denormal::flush_to_zero();
+        // Commands can send MIDI clock, at the block's start.
+        if self.heard_at != 0 {
+            self.block_at = self.heard_at;
+        }
         self.run_commands();
         let nanos_per_frame = 1e9 / self.clock.sample_rate();
         for (l, r) in left.chunks_mut(MAX_BLOCK).zip(right.chunks_mut(MAX_BLOCK)) {
             if self.heard_at != 0 {
-                crate::midi_out::BLOCK_AT.store(self.heard_at, Ordering::Relaxed);
+                self.block_at = self.heard_at;
+                crate::midi_out::BLOCK_AT.store(self.block_at, Ordering::Relaxed);
                 self.heard_at += (l.len() as f64 * nanos_per_frame) as u64;
             }
             self.process_block(l, r);
@@ -1699,6 +1733,11 @@ impl Engine {
                         self.discard(Garbage::Input(old));
                     }
                 }
+                Command::SetClockOut(out) => {
+                    if let Some(old) = self.clock_out.replace(out) {
+                        self.discard(Garbage::ClockOut(old));
+                    }
+                }
                 Command::Record(take) => {
                     if let Err(take) = self.looper.arm(take) {
                         send_take(&mut self.takes, &mut self.garbage, take);
@@ -1915,6 +1954,56 @@ impl Engine {
         }
     }
 
+    /// Works out when the MIDI clock's pulses come in step `step`, starting at frame `at`: 24 a
+    /// beat, spread evenly over its steps, so each beat starts with one however many steps it
+    /// has. From the step's length now, so they follow the tempo as it changes.
+    fn time_pulses(&mut self, step: u64, at: u64) {
+        if self.clock_out.is_none() {
+            return;
+        }
+        let per_beat = self.steps_per_beat.max(1);
+        let in_beat = step % per_beat;
+        let pulses = PULSES_PER_BEAT as u64;
+        // The pulses whose place in the beat, k / 24, is in this step's share of it.
+        let first = (pulses * in_beat).div_ceil(per_beat);
+        let end = (pulses * (in_beat + 1)).div_ceil(per_beat);
+        let length = self.clock.samples_per_step();
+        let mut len = 0;
+        for (slot, k) in self.pulses.iter_mut().zip(first..end) {
+            let into = (k * per_beat) as f64 / pulses as f64 - in_beat as f64;
+            *slot = at + (into * length).round() as u64;
+            len += 1;
+        }
+        self.pulses_len = len;
+    }
+
+    /// Sends the MIDI clock's pulses due before frame `until`; with `all`, as a step starts, any
+    /// left too, at `until`, so a tempo speeding up never loses one.
+    fn send_pulses(&mut self, until: u64, all: bool) {
+        let len = self.pulses_len.min(PULSES_PER_BEAT);
+        let due = (self.pulses.iter().take(len))
+            .take_while(|&&frame| all || frame < until)
+            .count();
+        for i in 0..due {
+            if let Some(&frame) = self.pulses.get(i) {
+                self.send_clock(frame.min(until), CLOCK_PULSE);
+            }
+        }
+        self.pulses.copy_within(due..len, 0);
+        self.pulses_len = len - due;
+    }
+
+    /// Sends a clock message, timed for frame `frame` of the block rendering.
+    fn send_clock(&mut self, frame: u64, message: u8) {
+        let Some(out) = &mut self.clock_out else {
+            return;
+        };
+        let into = frame.saturating_sub(self.frames) as f64 * 1e9 / self.clock.sample_rate();
+        let at = self.block_at + into as u64;
+        // Full, nothing's reading it: there's no one to hear.
+        let _ = out.push(Sent::new(at, &[message]));
+    }
+
     /// Sends something back to the UI thread to be freed.
     fn discard(&mut self, garbage: Garbage) {
         if let Err(PushError::Full(garbage)) = self.garbage.push(garbage) {
@@ -1945,11 +2034,14 @@ impl Engine {
                 if self.playing {
                     self.play_due(self.frames + pos as u64);
                 }
+                let at = self.frames + pos as u64;
+                self.send_pulses(at, true);
                 let step = self.clock.step();
                 self.clock.take_step();
                 if self.playing {
                     self.sequence_step(pos as u32);
                 }
+                self.time_pulses(step, at);
                 self.repeat_previews(step, pos as u32);
                 continue;
             }
@@ -1963,6 +2055,7 @@ impl Engine {
         if self.playing {
             self.play_due(self.frames + len as u64);
         }
+        self.send_pulses(self.frames + len as u64, false);
 
         for t in &mut self.tracks {
             let events = &mut t.events;
@@ -2111,6 +2204,10 @@ impl Engine {
             return;
         }
         self.status.count_in.store(0, Ordering::Relaxed);
+        if self.step_index == 0 {
+            // Before the step's first pulse, which marks the gear's first beat.
+            self.send_clock(self.frames + u64::from(offset), CLOCK_START);
+        }
         // An `X` on the step before: the song ends as it does.
         if self.stopping {
             self.stop();
@@ -3376,6 +3473,52 @@ mod tests {
             (0..1_000).filter(|&p| holds(&step, p, 3, 0, false)).count(),
             0
         );
+    }
+
+    #[test]
+    fn midi_clock_pulses_24_a_beat_and_starts_with_the_song() {
+        let grid = Grid {
+            name: "empty".into(),
+            steps_per_beat: 4,
+            beats_per_bar: 4,
+            grouping: vec![],
+            tracks: vec![],
+            groups: vec![],
+        };
+        let (mut engine, mut handle) = Engine::new(48_000.0, 120.0, &grid, vec![]);
+        let (tx, mut rx) = RingBuffer::new(1024);
+        handle.send(Command::SetClockOut(tx));
+        // Free-running part way into a step, as it does before the song plays.
+        engine.process(&mut [0.0; 100], &mut [0.0; 100]);
+        while rx.pop().is_ok() {}
+        handle.send(Command::Play { count_in: 0 });
+        let (mut left, mut right) = (vec![0.0; 256], vec![0.0; 256]);
+        // Heard a second after it's rendered, counted in nanoseconds.
+        let mut heard = 1_000_000_000;
+        for _ in 0..(48_000 / 256) {
+            engine.set_heard_at(heard);
+            engine.process(&mut left, &mut right);
+            heard += 256 * 1_000_000_000 / 48_000;
+        }
+        handle.send(Command::Stop);
+        engine.set_heard_at(heard);
+        engine.process(&mut left, &mut right);
+        let sent: Vec<_> = std::iter::from_fn(|| rx.pop().ok()).collect();
+        let (first, rest) = sent.split_first().unwrap();
+        assert_eq!(first.bytes(), [CLOCK_START]);
+        let stop = rest.iter().position(|s| s.bytes() == [CLOCK_STOP]).unwrap();
+        // The clock carries on after, as the gear's tempo follows it stopped too.
+        let pulses: Vec<u64> = (rest[..stop].iter())
+            .filter(|s| s.bytes() == [CLOCK_PULSE])
+            .map(|s| s.at)
+            .collect();
+        // Half a second a beat, for a second.
+        assert_eq!(pulses.len(), 48, "{sent:?}");
+        assert_eq!(pulses[0], first.at, "the first beat starts with the song");
+        for (a, b) in pulses.iter().zip(&pulses[1..]) {
+            let gap = (b - a) as f64 / 1e9;
+            assert!((gap - 0.5 / 24.0).abs() < 0.000_05, "{gap}");
+        }
     }
 
     #[test]

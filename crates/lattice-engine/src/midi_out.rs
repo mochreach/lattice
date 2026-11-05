@@ -33,6 +33,14 @@ pub struct Sent {
 }
 
 impl Sent {
+    /// `bytes`, the first three of them, to send `at`.
+    pub(crate) fn new(at: u64, bytes: &[u8]) -> Self {
+        Self {
+            at,
+            ..Self::now(bytes)
+        }
+    }
+
     fn now(bytes: &[u8]) -> Self {
         let mut sent = Sent {
             at: 0,
@@ -54,8 +62,14 @@ impl Sent {
     }
 }
 
-/// The messages from one MIDI track, for the frontend to send.
+/// The messages from one MIDI track, or the clock, for the frontend to send.
 pub type Messages = Consumer<Sent>;
+
+/// A queue for the engine's MIDI clock: its end for [`crate::Command::SetClockOut`], and the
+/// frontend's.
+pub fn clock_queue() -> (Producer<Sent>, Messages) {
+    RingBuffer::new(CAPACITY)
+}
 
 /// A MIDI track's instrument.
 pub struct MidiOut {

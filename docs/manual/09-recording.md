@@ -471,3 +471,45 @@ play.
 Lattice plays other gear too: a track whose instrument is `midi` sends its notes, locks and
 program changes to a synth, a drum machine or another program, in time with the song. `:port`
 chooses where; see [MIDI tracks](07-instruments.md#midi-tracks-playing-other-gear-midi).
+
+### Clock: `:clock`
+
+Some gear plays patterns of its own: a drum machine, an arpeggiator, a sequencer, a delay timed
+to the beat. MIDI clock keeps it in time with Lattice, and starts and stops it with the song.
+
+```
+:clock digitakt       send clock to the Digitakt
+:clock 2              to port 2, as :port lists them
+:clock lattice        to Lattice's own port, for a DAW or another program
+:clock                say where it goes
+:clock digitakt       again: stop sending it there
+:clock none           stop sending it anywhere
+```
+
+It can go to as many ports as you like at once. As with `:port`, a port is named by any part of
+its name, and gear plugged in later is found by it; `:clock ` lists the ports, marking the ones
+with clock on. The ports are kept in `midi.toml`, beside the controls, as they belong to the
+studio rather than the song:
+
+```toml
+[clock]
+ports = ["Digitakt", "lattice"]
+```
+
+**What's sent.** MIDI clock is 24 pulses a beat, which the gear counts to find the tempo and
+where the beat is. Lattice sends them all the time, playing or not, so the gear's tempo follows
+the song's even while it's stopped; with them it sends **start** as the song's first step plays,
+after any count-in, so the gear's first beat is the song's, and **stop** as it stops. A beat
+is the meter's (see [the meter](06-song.md#the-meter)), so in 6/8, with three steps a beat,
+each step is eight pulses.
+
+**Tempo.** The pulses follow the tempo playing, a step at a time: `:bpm`, and the conductor's
+`T140` and its slides, `~140` (see [the conductor](06-song.md#the-conductor)), so gear
+following a slide speeds up with Lattice.
+
+**Timing.** Each pulse is timed as a MIDI track's notes are, for the moment Lattice's own sound
+is heard, so the gear's beat lands with Lattice's. A pulse is worked out from the step it falls
+in, rather than counted on from the last, so they never drift from the steps, however long the
+song plays.
+
+I don't send song position, so gear started by Lattice starts from its own beginning.

@@ -178,31 +178,47 @@ fn controls_path() -> Option<PathBuf> {
     config::default_path().map(|p| p.with_file_name("midi.toml"))
 }
 
-/// Reads the controls' bindings into the editor, saying on the status line what's wrong with
-/// any it can't use. No file is no bindings.
-pub fn load_controls(editor: &mut Editor) {
+/// Reads the controls' bindings, and where the clock goes, into the editor, saying on the status
+/// line what's wrong with any it can't use. No file is no bindings and no clock.
+pub fn load(editor: &mut Editor) {
     let Some(path) = controls_path() else {
         return;
     };
     let Ok(text) = std::fs::read_to_string(&path) else {
         return;
     };
+    let table = match text.parse::<Table>() {
+        Ok(table) => table,
+        Err(e) => {
+            editor.message = Some(format!("{}: {}", path.display(), e.message()));
+            return;
+        }
+    };
     let mut problems = vec![];
     let mut entries = vec![];
-    match text.parse::<Table>() {
-        Ok(table) => match table.get("controls") {
-            Some(Value::Table(controls)) => {
-                for (control, target) in controls {
-                    match target {
-                        Value::String(target) => entries.push((control.clone(), target.clone())),
-                        _ => problems.push(format!("{control:?}: what it does goes in quotes")),
-                    }
+    match table.get("controls") {
+        Some(Value::Table(controls)) => {
+            for (control, target) in controls {
+                match target {
+                    Value::String(target) => entries.push((control.clone(), target.clone())),
+                    _ => problems.push(format!("{control:?}: what it does goes in quotes")),
                 }
             }
-            Some(_) => problems.push("[controls] should be a table".into()),
-            None => {}
-        },
-        Err(e) => problems.push(e.message().to_string()),
+        }
+        Some(_) => problems.push("[controls] should be a table".into()),
+        None => {}
+    }
+    match table.get("clock").and_then(|clock| clock.get("ports")) {
+        Some(Value::Array(ports)) => {
+            for port in ports {
+                match port {
+                    Value::String(port) => editor.clock_ports.push(port.clone()),
+                    _ => problems.push(format!("{port}: a port's name goes in quotes")),
+                }
+            }
+        }
+        Some(_) => problems.push("the clock's ports should be a list".into()),
+        None => {}
     }
     problems.extend(editor.set_controls(&entries));
     if let Some(first) = problems.first() {
@@ -210,19 +226,23 @@ pub fn load_controls(editor: &mut Editor) {
     }
 }
 
-/// Keeps the controls' bindings, control and target as written, in the order they were bound.
-pub fn save_controls(entries: &[(String, String)]) -> Result<PathBuf> {
+/// Keeps the controls' bindings, control and target as written, in the order they were bound,
+/// and the ports the clock goes to.
+pub fn save(entries: &[(String, String)], clock: &[String]) -> Result<PathBuf> {
     let path = controls_path().ok_or_else(|| anyhow::anyhow!("nowhere to keep them: no HOME"))?;
     let mut text = String::from(
-        "# What MIDI controllers' pedals, buttons, pads and knobs do. :midi-learn writes it, \
-         and it can be edited.\n# A control is \"cc N\" or \"note N\"; what it does is an \
-         action's name, a :command, or \"macro N\".\n[controls]\n",
+        "# What MIDI controllers' pedals, buttons, pads and knobs do, and where the clock goes. \
+         :midi-learn and :clock write it, and it can be edited.\n# A control is \"cc N\" or \
+         \"note N\"; what it does is an action's name, a :command, or \"macro N\".\n\
+         [controls]\n",
     );
     for (control, target) in entries {
         let control = Value::String(control.clone());
         let target = Value::String(target.clone());
         text += &format!("{control} = {target}\n");
     }
+    let ports = Value::Array(clock.iter().cloned().map(Value::String).collect());
+    text += &format!("\n[clock]\nports = {ports}\n");
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }

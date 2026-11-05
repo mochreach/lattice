@@ -1,6 +1,7 @@
 //! MIDI tracks: tracks whose instrument is gear outside Lattice, played over MIDI. `:port`
 //! chooses the gear, and makes a track a MIDI track if it isn't; `:cc` gives it a controller to
 //! send. Of a MIDI track's 128 controllers, only those it's been given are shown, or locked.
+//! `:clock` sends MIDI clock to gear that plays along with patterns of its own.
 
 use lattice_core::instrument::midi::{CC, cc};
 use lattice_core::{InstKind, Track};
@@ -74,6 +75,43 @@ impl Editor {
             false => format!("{who}, once it's plugged in"),
         });
         Ok(effects)
+    }
+
+    /// `:clock [PORT]`: sends MIDI clock to `PORT`, by its number or any part of its name,
+    /// `lattice` for Lattice's own, or stops sending it there if it's sent already; `none`
+    /// stops it everywhere, and alone, says where it goes.
+    pub(crate) fn toggle_clock(&mut self, port: &str) -> Result<Vec<Effect>, String> {
+        let port = port.trim();
+        if port.is_empty() {
+            self.message = Some(match self.clock_ports.as_slice() {
+                [] => "no MIDI clock: :clock PORT sends it".into(),
+                ports => format!("clock goes to {}", ports.join(", ")),
+            });
+            return Ok(vec![]);
+        }
+        if port == "none" {
+            self.clock_ports.clear();
+            self.message = Some("no MIDI clock".into());
+            return Ok(vec![Effect::MidiClock(vec![])]);
+        }
+        let port = match port.parse::<usize>() {
+            Ok(n) => (n.checked_sub(1).and_then(|i| self.midi_outputs.get(i)))
+                .ok_or_else(|| format!("there's no port {n}: :port lists them"))?
+                .clone(),
+            Err(_) => port.to_string(),
+        };
+        let lower = port.to_lowercase();
+        match (self.clock_ports.iter()).position(|p| p.to_lowercase() == lower) {
+            Some(i) => {
+                self.clock_ports.remove(i);
+                self.message = Some(format!("clock no longer goes to {port}"));
+            }
+            None => {
+                self.message = Some(format!("clock goes to {port}"));
+                self.clock_ports.push(port);
+            }
+        }
+        Ok(vec![Effect::MidiClock(self.clock_ports.clone())])
     }
 
     /// `:cc N [VALUE]`: the MIDI tracks send controller `N` at `VALUE`, 0 to 127; with `none`,
@@ -169,6 +207,28 @@ mod tests {
             "one undo each"
         );
         assert_eq!(e.page, Page::Pattern);
+    }
+
+    #[test]
+    fn clock_goes_to_each_port_named_until_named_again() {
+        let mut e = editor();
+        crate::command::run(&mut e, "clock 2").unwrap();
+        let effects = crate::command::run(&mut e, "clock lattice").unwrap();
+        assert_eq!(
+            effects,
+            [Effect::MidiClock(vec![
+                "KeyStep 37".into(),
+                "lattice".into()
+            ])]
+        );
+        crate::command::run(&mut e, "clock keystep 37").unwrap();
+        assert_eq!(e.clock_ports, ["lattice"]);
+        assert_eq!(
+            e.message.as_deref(),
+            Some("clock no longer goes to keystep 37")
+        );
+        crate::command::run(&mut e, "clock none").unwrap();
+        assert!(e.clock_ports.is_empty());
     }
 
     #[test]

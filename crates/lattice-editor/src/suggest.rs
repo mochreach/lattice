@@ -137,6 +137,17 @@ impl Editor {
                 .map(|(i, name)| (name.clone(), format!("port {}", i + 1)))
                 .chain([("none".into(), "Lattice's own port".into())])
                 .collect(),
+            ("clock", 0) => (self.midi_outputs.iter().enumerate())
+                .map(|(i, name)| {
+                    let on = (self.clock_ports.iter()).any(|p| p.eq_ignore_ascii_case(name));
+                    let what = if on { "clock on" } else { "port" };
+                    (name.clone(), format!("{what} {}", i + 1))
+                })
+                .chain([
+                    ("lattice".into(), "Lattice's own port".into()),
+                    ("none".into(), "no clock".into()),
+                ])
+                .collect(),
             ("lock" | "unlock", 0) => suggest_settings(track),
             ("lock", 1) => match before.first() {
                 Some(setting) => words(&suggest_choices(track, setting)),

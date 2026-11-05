@@ -214,6 +214,9 @@ pub enum Effect {
     Fill(bool),
     /// The MIDI controls bound have changed: keep them, control and target as written.
     MidiControls(Vec<(String, String)>),
+    /// The MIDI ports clock goes to have changed, by name or part of one: send it there, and
+    /// keep them.
+    MidiClock(Vec<String>),
     /// The key holding this note has come up: end it.
     Release {
         track: usize,
@@ -444,6 +447,8 @@ pub struct Editor {
     pub midi_outputs: Vec<String>,
     /// What the MIDI controllers' controls are bound to.
     controls: midi::Controls,
+    /// The MIDI ports clock goes to, by name or part of one.
+    pub clock_ports: Vec<String>,
     saved: Saved,
     pub mode: Mode,
     pub view: View,
@@ -614,6 +619,7 @@ impl Editor {
             midi_inputs: vec![],
             midi_outputs: vec![],
             controls: midi::Controls::default(),
+            clock_ports: vec![],
             outputs: Devices::default(),
             mode: Mode::Normal,
             view: View::Source,

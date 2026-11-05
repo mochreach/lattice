@@ -411,6 +411,15 @@ pub const COMMANDS: &[Spec] = &[
         describe: "play the track on MIDI gear, by its port's number or any part of its name, or none for Lattice's own port; alone, lists the ports",
     },
     Spec {
+        name: "clock",
+        alias: None,
+        params: &[optional_text(
+            "[PORT]",
+            "port's number or name, lattice, or none",
+        )],
+        describe: "send MIDI clock, start and stop to a port, or stop sending it there; none stops it everywhere, and alone, says where it goes",
+    },
+    Spec {
         name: "cc",
         alias: None,
         params: &[
@@ -1382,6 +1391,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![])
         }
         "port" => editor.set_port(command.text(0).unwrap_or_default()),
+        "clock" => editor.toggle_clock(command.text(0).unwrap_or_default()),
         "cc" => {
             let value = command.text(1).unwrap_or_default();
             editor.set_cc(command.int(0)?, value)

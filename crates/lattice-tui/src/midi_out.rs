@@ -1,7 +1,8 @@
 //! MIDI out. Each MIDI track's instrument stamps what it plays with when it's heard (see
 //! [`lattice_engine::midi_out`]); a thread of its own sends each message then, to the port the
 //! track names, or to Lattice's own port if it names none. Ports are looked for again each
-//! second, so gear plugged in while Lattice runs is played as soon as it's there.
+//! second, so gear plugged in while Lattice runs is played as soon as it's there. The engine's
+//! MIDI clock goes the same way, to every port `:clock` names.
 
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Mutex, OnceLock};
@@ -30,8 +31,18 @@ static EPOCH: OnceLock<Instant> = OnceLock::new();
 static OUT: OnceLock<Mutex<Out>> = OnceLock::new();
 
 struct Out {
-    tracks: Sender<(Messages, Option<String>)>,
+    orders: Sender<Order>,
     ports: Vec<String>,
+}
+
+/// What the thread's told.
+enum Order {
+    /// Send a track's messages to its port, by name, or to Lattice's own.
+    Track(Messages, Option<String>),
+    /// Send the engine's clock to the clock's ports.
+    Clock(Messages),
+    /// The clock's ports, by name, `lattice` for Lattice's own.
+    ClockPorts(Vec<String>),
 }
 
 /// Starts counting time, before the audio does, and the thread that sends, which opens
@@ -39,7 +50,7 @@ struct Out {
 pub fn start() {
     EPOCH.get_or_init(Instant::now);
     OUT.get_or_init(|| {
-        let (tracks, receiver) = channel();
+        let (orders, receiver) = channel();
         let started = std::thread::Builder::new()
             .name("midi out".into())
             .spawn(move || run(receiver));
@@ -47,7 +58,7 @@ pub fn start() {
             log!("can't send MIDI: {e}");
         }
         Mutex::new(Out {
-            tracks,
+            orders,
             ports: vec![],
         })
     });
@@ -62,13 +73,27 @@ pub fn heard_at(at: Instant) -> u64 {
     (at.saturating_duration_since(*epoch).as_nanos() as u64).max(1)
 }
 
-/// Sends a track's messages to `port`, by its name or part of it, or Lattice's own.
-pub fn play(messages: Messages, port: Option<String>) {
+fn order(order: Order) {
     // Not started, as in tests, there's nowhere to send it.
     if let Some(Ok(out)) = OUT.get().map(Mutex::lock) {
         // The thread's gone only if it couldn't start, which it's said.
-        let _ = out.tracks.send((messages, port));
+        let _ = out.orders.send(order);
     }
+}
+
+/// Sends a track's messages to `port`, by its name or part of it, or Lattice's own.
+pub fn play(messages: Messages, port: Option<String>) {
+    order(Order::Track(messages, port));
+}
+
+/// Sends the engine's MIDI clock to the clock's ports.
+pub fn clock(messages: Messages) {
+    order(Order::Clock(messages));
+}
+
+/// Sends clock to `ports`, by name or part of one, `lattice` for Lattice's own.
+pub fn clock_to(ports: Vec<String>) {
+    order(Order::ClockPorts(ports));
 }
 
 /// Gives the thread time to send what's left, the notes off of tracks just dropped, before
@@ -84,10 +109,19 @@ pub fn ports() -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// A track sending.
+/// A track sending, or the clock.
 struct Track {
     messages: Messages,
-    port: Option<String>,
+    to: To,
+}
+
+/// Where a message goes.
+#[derive(Debug, Clone, PartialEq)]
+enum To {
+    /// A port, by name, or Lattice's own.
+    Port(Option<String>),
+    /// Each of the clock's ports.
+    Clock,
 }
 
 /// A port being sent to.
@@ -97,7 +131,7 @@ struct Port {
 }
 
 /// Sends what's come due, for as long as Lattice runs.
-fn run(receiver: Receiver<(Messages, Option<String>)>) {
+fn run(receiver: Receiver<Order>) {
     let own = MidiOutput::new(CLIENT)
         .map_err(|e| e.to_string())
         .and_then(|out| out.create_virtual("out").map_err(|e| e.to_string()));
@@ -109,48 +143,78 @@ fn run(receiver: Receiver<(Messages, Option<String>)>) {
         }
     };
     let mut tracks: Vec<Track> = vec![];
+    let mut clock_ports: Vec<Option<String>> = vec![];
     let mut ports: Vec<Port> = vec![];
-    // Messages taken from the tracks, to send when they're due: when, which port, what.
-    let mut waiting: Vec<(u64, Option<String>, Sent)> = vec![];
+    // Messages taken from the tracks, to send when they're due: when, where, what.
+    let mut waiting: Vec<(u64, To, Sent)> = vec![];
     let mut scanned: Option<Instant> = None;
     loop {
-        tracks.extend((receiver.try_iter()).map(|(messages, port)| Track { messages, port }));
+        for order in receiver.try_iter() {
+            match order {
+                Order::Track(messages, port) => tracks.push(Track {
+                    messages,
+                    to: To::Port(port),
+                }),
+                Order::Clock(messages) => tracks.push(Track {
+                    messages,
+                    to: To::Clock,
+                }),
+                Order::ClockPorts(named) => {
+                    clock_ports = (named.into_iter())
+                        .map(|p| (!p.eq_ignore_ascii_case(CLIENT)).then_some(p))
+                        .collect();
+                    scanned = None;
+                }
+            }
+        }
         let now = Instant::now();
         if scanned.is_none_or(|at| now.duration_since(at) >= SCAN) {
             scanned = Some(now);
-            scan(&tracks, &mut ports);
+            let wanted = (tracks.iter())
+                .filter_map(|t| match &t.to {
+                    To::Port(port) => port.as_deref(),
+                    To::Clock => None,
+                })
+                .chain(clock_ports.iter().filter_map(Option::as_deref));
+            scan(wanted, &mut ports);
         }
         // Gone once its instrument's dropped, and its last notes off taken.
         tracks.retain_mut(|track| {
             let gone = track.messages.is_abandoned();
             while let Ok(sent) = track.messages.pop() {
-                waiting.push((sent.at, track.port.clone(), sent));
+                waiting.push((sent.at, track.to.clone(), sent));
             }
             !gone
         });
         waiting.sort_by_key(|w| w.0);
         let due = heard_at(Instant::now());
         let until = waiting.partition_point(|w| w.0 <= due);
-        for (_, port, sent) in waiting.drain(..until) {
-            let connection = match &port {
-                None => own.as_mut(),
-                Some(wanted) => (ports.iter_mut())
-                    .find(|p| matches(&p.name, wanted))
-                    .map(|p| &mut p.connection),
+        for (_, to, sent) in waiting.drain(..until) {
+            let to = match to {
+                To::Port(port) => vec![port],
+                To::Clock => clock_ports.clone(),
             };
-            if let Some(connection) = connection
-                && let Err(e) = connection.send(sent.bytes())
-            {
-                log!("midi out: {e}");
+            for port in to {
+                let connection = match &port {
+                    None => own.as_mut(),
+                    Some(wanted) => (ports.iter_mut())
+                        .find(|p| matches(&p.name, wanted))
+                        .map(|p| &mut p.connection),
+                };
+                if let Some(connection) = connection
+                    && let Err(e) = connection.send(sent.bytes())
+                {
+                    log!("midi out: {e}");
+                }
             }
         }
         std::thread::sleep(TICK);
     }
 }
 
-/// Connects to the ports the tracks name that have appeared, lets go of those gone, and notes
+/// Connects to the ports `wanted` names that have appeared, lets go of those gone, and notes
 /// every port there is for `:port`.
-fn scan(tracks: &[Track], ports: &mut Vec<Port>) {
+fn scan<'a>(wanted: impl Iterator<Item = &'a str>, ports: &mut Vec<Port>) {
     let Ok(lister) = MidiOutput::new(CLIENT) else {
         return;
     };
@@ -171,7 +235,7 @@ fn scan(tracks: &[Track], ports: &mut Vec<Port>) {
         }
         here
     });
-    for wanted in tracks.iter().filter_map(|t| t.port.as_deref()) {
+    for wanted in wanted {
         if ports.iter().any(|p| matches(&p.name, wanted)) {
             continue;
         }

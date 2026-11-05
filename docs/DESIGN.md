@@ -453,6 +453,14 @@ sampler; a processor dropped (replaced, removed, or at quit) sends note offs for
 playing, and a muted one stops sending notes. Rendering to a file builds MIDI tracks that send
 nothing.
 
+**Clock** comes from the engine, which knows the tempo to the sample: a ring buffer it's given
+once (`Command::SetClockOut`), drained by the same thread, which sends it to each port `:clock`
+names. Pulses are worked out per step rather than counted on, 24 a beat spread over the beat's
+steps, from the step's length as it starts, so they follow tempo changes and slides and never
+drift from the steps; a tempo speeding up mid-step sends any pulses left as the next step
+starts, so a beat always has 24. Start goes out on the song's first step, after the count-in,
+before its pulse; stop as it stops. Pulses go out while stopped too, so gear shows the tempo.
+
 ## Track groups
 
 A group is a named run of adjacent tracks, such as a drum kit with one drum on each track. Each

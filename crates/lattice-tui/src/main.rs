@@ -151,7 +151,12 @@ fn main() -> Result<()> {
     editor.chains = chains::names();
     editor.presets = presets::names();
 
-    midi::load_controls(&mut editor);
+    midi::load(&mut editor);
+    midi_out::clock_to(editor.clock_ports.clone());
+    let (clock, ticks) = lattice_engine::midi_out::clock_queue();
+    if handle.send(lattice_engine::Command::SetClockOut(clock)) {
+        midi_out::clock(ticks);
+    }
     let mut theme = Theme::detect();
     if let Some(path) = named.clone().or_else(config::default_path)
         && let Some(problem) = config::load(&path, named.is_some(), &mut editor.keymap, &mut theme)
@@ -738,8 +743,18 @@ fn apply(
         Effect::Unconduct(track) => Command::Unconduct(track),
         Effect::Fill(on) => Command::Fill(on),
         Effect::MidiControls(entries) => {
-            if let Err(e) = midi::save_controls(&entries) {
+            if let Err(e) = midi::save(&entries, &editor.clock_ports) {
                 editor.message = Some(format!("can't keep the MIDI controls: {e:#}"));
+            }
+            return Flow::Next;
+        }
+        Effect::MidiClock(ports) => {
+            midi_out::clock_to(ports.clone());
+            let entries: Vec<_> = (editor.controls().iter())
+                .map(|(c, t)| (c.to_string(), t.to_string()))
+                .collect();
+            if let Err(e) = midi::save(&entries, &ports) {
+                editor.message = Some(format!("can't keep where the clock goes: {e:#}"));
             }
             return Flow::Next;
         }

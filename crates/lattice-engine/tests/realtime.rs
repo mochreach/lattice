@@ -184,7 +184,9 @@ fn rendering_never_allocates() {
         Some(sample),
     ));
     let (mut engine, mut handle) = Engine::new(48_000.0, 174.0, &grid, vec![synth]);
+    let (clock, mut ticks) = lattice_engine::midi_out::clock_queue();
     // Commands are handled inside the no-allocation zone too.
+    handle.send(Command::SetClockOut(clock));
     handle.send(Command::Play { count_in: 0 });
     handle.send(Command::SetBpm(140.0));
     handle.send(Command::Fill(true));
@@ -510,6 +512,10 @@ fn rendering_never_allocates() {
     assert!(
         bytes.iter().any(|m| m.bytes() == [0x91, 60, 100]),
         "the MIDI track played on its channel: {bytes:?}"
+    );
+    assert!(
+        ticks.pop().is_ok_and(|t| t.bytes() == [0xfa]),
+        "the clock starts"
     );
     assert!(recorded.iter().any(|t| t.complete && !t.is_empty()));
     assert!(left.iter().all(|&x| x == 0.0), "muted by the end");

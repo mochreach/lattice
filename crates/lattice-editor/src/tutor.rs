@@ -598,11 +598,12 @@ const LESSONS: &[Lesson] = &[
                filter), `:inst krell` gives it an alien harpsichord, and \
                `:sample kick.wav` plays a sound file on it. \
                `:port minilogue` plays a synth of your own over MIDI instead, its notes and \
-               locks going out to it, and `:cc 74 40` sends it a controller. \
+               locks going out to it, `:cc 74 40` sends it a controller, and \
+               `:clock digitakt` keeps a drum machine in time. \
                `:fx-add delay` adds an effect: `delay`, `reverb`, `filter`, `ensemble`, \
                `phaser`, `drive`, `comp` or `pitch`.\n\nAdd a reverb to the LEAD track.",
         teaches: &[Action::GotoInstrument],
-        commands: &["inst", "sample", "port", "cc", "fx-add"],
+        commands: &["inst", "sample", "port", "cc", "clock", "fx-add"],
         setup: nothing,
         watch: never,
         done: |e, _| {
