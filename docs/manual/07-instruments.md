@@ -154,8 +154,9 @@ From the top:
   names, art and lines, so a tall, narrow terminal shows every instrument at once rather than a
   row of four with the rest of the screen empty. It shows as many rows as fit wherever the
   cursor is, the same number on every screen, shrinking the art to fit another row rather
-  than showing fewer, and scrolls a row at a time to keep the cursor's track in view. When even one whole row won't fit, there's just the one, scrolled
-  sideways to the cursor's track and down to its line.
+  than showing fewer, and scrolls a row at a time to keep the cursor's track in view. When
+  even one whole row won't fit, there's just the one, scrolled sideways to the cursor's track
+  and down to its line.
 - **The tracks' names**, in each track's colour, with `M` or `S` when it's muted or soloed. A
   track the song has muted in the entry playing is marked `─` and dimmed, as on every page.
 - **The art**, up to eight rows of braille: the track's face, or else its engine's own drawing
