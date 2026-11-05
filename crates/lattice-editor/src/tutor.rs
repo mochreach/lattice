@@ -289,10 +289,12 @@ const LESSONS: &[Lesson] = &[
                the song plays go in where the playhead is, rather than at the cursor, after a \
                count-in. A MIDI keyboard plays too, once it's plugged in: its notes go in and \
                are recorded as the piano keys' are, at the velocity they're played, and \
-               elsewhere they're only heard. `:midi` says which keyboards Lattice hears.\n\nArm \
+               elsewhere they're only heard. `:midi` says which keyboards Lattice hears, and \
+               `:midi-learn toggle_record` binds the next pedal, button or knob you move to \
+               an action (or a `:command`, or `macro 1`).\n\nArm \
                recording, go back to normal mode, and disarm it.",
         teaches: &[Action::ToggleRecord],
-        commands: &["midi"],
+        commands: &["midi", "midi-learn"],
         setup: nothing,
         watch: |e| e.record,
         done: |e, t| t.seen && !e.record,

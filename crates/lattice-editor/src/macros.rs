@@ -50,11 +50,11 @@ impl Editor {
         })
     }
 
-    fn macro_of(&self, t: usize, m: usize) -> Option<&Macro> {
+    pub(crate) fn macro_of(&self, t: usize, m: usize) -> Option<&Macro> {
         self.grid.tracks.get(t)?.macros.get(m)
     }
 
-    fn macro_of_mut(&mut self, t: usize, m: usize) -> Option<&mut Macro> {
+    pub(crate) fn macro_of_mut(&mut self, t: usize, m: usize) -> Option<&mut Macro> {
         self.grid.tracks.get_mut(t)?.macros.get_mut(m)
     }
 

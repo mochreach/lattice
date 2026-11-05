@@ -1,14 +1,22 @@
 //! MIDI in. Every port that sends MIDI is listened to as it appears, so a keyboard plugged in
 //! while Lattice runs plays at once; one unplugged is let go. Its messages come to the UI thread,
-//! which plays and enters notes as the piano keys do (see [`Editor::play_note`]).
+//! which plays and enters notes as the piano keys do (see [`Editor::play_note`]), and does what
+//! the controls are bound to (see [`Editor::control`]). The bindings are kept in `midi.toml`,
+//! beside the config.
 //!
 //! [`Editor::play_note`]: lattice_editor::Editor::play_note
+//! [`Editor::control`]: lattice_editor::Editor::control
 
+use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant};
 
+use anyhow::Result;
+use lattice_editor::Editor;
 use midir::{Ignore, MidiInput, MidiInputConnection};
+use toml::{Table, Value};
 
+use crate::config;
 use crate::log::log;
 
 /// How often to look for ports come and gone.
@@ -24,6 +32,8 @@ pub enum Message {
     NoteOn { pitch: u8, velocity: u8 },
     /// A key up.
     NoteOff { pitch: u8 },
+    /// A controller number, from a pedal, button or knob, moved to `value`, 0 to 127.
+    Control { number: u8, value: u8 },
 }
 
 impl Message {
@@ -39,6 +49,10 @@ impl Message {
             // A note on at no velocity is how many keyboards say a key's come up.
             0x90 if velocity > 0 => Some(Message::NoteOn { pitch, velocity }),
             0x80 | 0x90 => Some(Message::NoteOff { pitch }),
+            0xb0 => Some(Message::Control {
+                number: data1 & 0x7f,
+                value: data2 & 0x7f,
+            }),
             _ => None,
         }
     }
@@ -157,6 +171,63 @@ impl Midi {
         }
         (!said.is_empty()).then(|| format!("midi in: {}", said.join(", ")))
     }
+}
+
+/// Where the MIDI controls' bindings are kept: `midi.toml`, beside the config.
+fn controls_path() -> Option<PathBuf> {
+    config::default_path().map(|p| p.with_file_name("midi.toml"))
+}
+
+/// Reads the controls' bindings into the editor, saying on the status line what's wrong with
+/// any it can't use. No file is no bindings.
+pub fn load_controls(editor: &mut Editor) {
+    let Some(path) = controls_path() else {
+        return;
+    };
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let mut problems = vec![];
+    let mut entries = vec![];
+    match text.parse::<Table>() {
+        Ok(table) => match table.get("controls") {
+            Some(Value::Table(controls)) => {
+                for (control, target) in controls {
+                    match target {
+                        Value::String(target) => entries.push((control.clone(), target.clone())),
+                        _ => problems.push(format!("{control:?}: what it does goes in quotes")),
+                    }
+                }
+            }
+            Some(_) => problems.push("[controls] should be a table".into()),
+            None => {}
+        },
+        Err(e) => problems.push(e.message().to_string()),
+    }
+    problems.extend(editor.set_controls(&entries));
+    if let Some(first) = problems.first() {
+        editor.message = Some(format!("{}: {first}", path.display()));
+    }
+}
+
+/// Keeps the controls' bindings, control and target as written, in the order they were bound.
+pub fn save_controls(entries: &[(String, String)]) -> Result<PathBuf> {
+    let path = controls_path().ok_or_else(|| anyhow::anyhow!("nowhere to keep them: no HOME"))?;
+    let mut text = String::from(
+        "# What MIDI controllers' pedals, buttons, pads and knobs do. :midi-learn writes it, \
+         and it can be edited.\n# A control is \"cc N\" or \"note N\"; what it does is an \
+         action's name, a :command, or \"macro N\".\n[controls]\n",
+    );
+    for (control, target) in entries {
+        let control = Value::String(control.clone());
+        let target = Value::String(target.clone());
+        text += &format!("{control} = {target}\n");
+    }
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(&path, text)?;
+    Ok(path)
 }
 
 /// Whether to listen to the port `name`. Not a loopback, which would hand Lattice back what it

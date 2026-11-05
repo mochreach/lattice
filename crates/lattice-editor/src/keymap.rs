@@ -545,7 +545,7 @@ impl Binding {
 
     /// What a config file binds a key to: an action's name, a command line after a `:`, or
     /// `none` for nothing.
-    fn parse(target: &str) -> Result<Option<Binding>, String> {
+    pub(crate) fn parse(target: &str) -> Result<Option<Binding>, String> {
         if target == "none" {
             return Ok(None);
         }

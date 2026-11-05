@@ -604,6 +604,7 @@ Besides songs and the config, Lattice keeps a few files of its own:
 |-----------------------------------------|----------------------------------------------------|
 | `~/.config/lattice/config.toml`         | keys and colours (above)                           |
 | `~/.config/lattice/audio.toml`          | the audio devices, and `:latency` for each input   |
+| `~/.config/lattice/midi.toml`           | MIDI controls bound with `:midi-learn`             |
 | `~/.config/lattice/chains/NAME.toml`    | effect chains saved with `:chain-save`             |
 | `~/.config/lattice/presets/NAME.toml`   | presets saved with `:preset-save`                  |
 | `~/.local/state/lattice/lattice.log`    | what happened this run; the last run's is `.log.1` |

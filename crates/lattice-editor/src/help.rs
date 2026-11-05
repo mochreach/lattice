@@ -183,6 +183,15 @@ impl Editor {
         ));
         lines.extend(by_action(self.keymap.insert.iter().map(|(k, a)| (*k, *a))));
 
+        // The MIDI controls bound, in the order they were.
+        if !self.controls().is_empty() {
+            lines.push(HelpLine::Blank);
+            lines.push(heading("midi controls"));
+            for (control, target) in self.controls() {
+                lines.push(item(control.to_string(), target.to_string()));
+            }
+        }
+
         lines.push(HelpLine::Blank);
         lines.push(heading("pages"));
         for (page, keys) in PAGES {

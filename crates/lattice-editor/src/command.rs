@@ -405,6 +405,15 @@ pub const COMMANDS: &[Spec] = &[
         describe: "the MIDI keyboards and controllers Lattice is listening to",
     },
     Spec {
+        name: "midi-learn",
+        alias: None,
+        params: &[optional_text(
+            "[TARGET]",
+            "action, :command, macro N or none",
+        )],
+        describe: "bind the next MIDI control moved to an action, a :command, macro N, or none to unbind it; alone, stops",
+    },
+    Spec {
         name: "input",
         alias: None,
         params: &[optional_text("DEVICE", "device")],
@@ -1340,12 +1349,22 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![])
         }
         "midi" => {
+            let bound = match editor.controls().len() {
+                0 => String::new(),
+                1 => "; 1 control bound".into(),
+                n => format!("; {n} controls bound"),
+            };
             editor.message = Some(match editor.midi_inputs.as_slice() {
-                [] => {
-                    "no MIDI keyboard or controller: plug one in and Lattice listens to it".into()
-                }
-                names => format!("midi in: {}", names.join(", ")),
+                [] => format!(
+                    "no MIDI keyboard or controller: plug one in and Lattice listens to it{bound}"
+                ),
+                names => format!("midi in: {}{bound}", names.join(", ")),
             });
+            Ok(vec![])
+        }
+        "midi-learn" => {
+            let target = command.text(0).ok().map(str::to_string);
+            editor.midi_learn(target.as_deref())?;
             Ok(vec![])
         }
         "input" => editor.choose_device(Direction::Input, command.text(0)?),
@@ -1597,7 +1616,7 @@ mod tests {
         assert_eq!(names("tr")[0], "tr");
         assert_eq!(names("q")[..2], ["quit", "quit!"]);
         assert_eq!(names("wq")[0], "write-quit", "aliases match exactly");
-        assert_eq!(names("dr"), ["drift", "disarm"]);
+        assert_eq!(names("dr"), ["drift", "disarm", "midi-learn"]);
         assert!(names("fl").starts_with(&["follow"]));
         assert_eq!(names("zz"), Vec::<&str>::new());
         assert_eq!(complete("rv")[0].spec.name, "rev");

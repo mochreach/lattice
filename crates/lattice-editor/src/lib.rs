@@ -35,6 +35,7 @@ mod inst_page;
 mod keymap;
 mod locks;
 mod manual;
+mod midi;
 pub use fields::{StepField, number_velocity, velocity_number};
 pub use locks::{ColumnLabel, lock_text};
 mod looper;
@@ -60,6 +61,7 @@ pub use inst_page::{InstCursor, InstLine};
 pub use keymap::{Action, Binding, Key, Keymap, Menu, NoteLayout};
 pub use macros::target_name;
 pub use manual::{Manual, ManualLine, width as manual_width, wrap as manual_wrap};
+pub use midi::{Control, Target};
 pub use mixer::{Field, MixerCursor, PARAM_COLUMNS, Page, Row, Shown, Strip};
 pub use pads::{HARD, MEDIUM, PadMode, SCALES, SOFT, Scale};
 pub use patterns::Next;
@@ -209,6 +211,8 @@ pub enum Effect {
     Unconduct(usize),
     /// A fill starts, or ends.
     Fill(bool),
+    /// The MIDI controls bound have changed: keep them, control and target as written.
+    MidiControls(Vec<(String, String)>),
     /// The key holding this note has come up: end it.
     Release {
         track: usize,
@@ -435,6 +439,8 @@ pub struct Editor {
     pub outputs: Devices,
     /// The MIDI ports listened to, by name, as the frontend found them.
     pub midi_inputs: Vec<String>,
+    /// What the MIDI controllers' controls are bound to.
+    controls: midi::Controls,
     saved: Saved,
     pub mode: Mode,
     pub view: View,
@@ -603,6 +609,7 @@ impl Editor {
                 .collect(),
             inputs: Devices::default(),
             midi_inputs: vec![],
+            controls: midi::Controls::default(),
             outputs: Devices::default(),
             mode: Mode::Normal,
             view: View::Source,
@@ -1002,6 +1009,7 @@ impl Editor {
         // `C-a` say, stays brief, as Ctrl might come up first.
         let holds = self.releases && self.plays(key);
         let warned = self.quit_warned;
+        self.stop_turning();
         let mut effects = self.handle_key(key);
         // Only the very next key can be the second `C-c`.
         if warned {

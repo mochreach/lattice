@@ -395,17 +395,66 @@ the computer's keyboard. While it's listening to a MIDI port it also looks for M
 millisecond, so a note isn't held up until the next frame: it reaches the engine within about a
 millisecond, and is heard after the audio device's own latency, as everything is.
 
-### Not yet
+### Pedals, buttons, pads and knobs: `:midi-learn`
 
-Lattice doesn't yet take controls from MIDI controllers or foot pedals, or send MIDI out. Both
-are on their way. MIDI controllers and **foot pedals** are to be able to start and stop the
-transport, turn record on and off, and start and stop the looper, so that a player with their
-hands on an instrument can record a loop with their foot, as on a loop pedal.
+A MIDI controller's controls can do anything a key can, which is what makes a **foot pedal** a
+loop pedal: with your hands on an instrument, a foot starts the song, arms the looper and turns
+record on and off. Bind a control by learning it:
 
-### Foot switches today
+```
+:midi-learn toggle_record
+```
+
+and then move the control, press the pedal, say. The status line says what's been bound:
+
+```
+ cc 64 does toggle_record
+```
+
+What a control can be bound to is what a key can, and one thing more:
+
+- **an action**, by its name, as in the config file (see
+  [every action, by name](10-files-and-config.md#every-action-by-name)): `toggle_play`,
+  `toggle_record`, `play_fill`, `hush`;
+- **a command**, after a `:`: `:midi-learn :arm 1` makes the next control moved arm the
+  cursor's track to record one pass of the looper, and `:midi-learn :disarm` another disarm it;
+- **a macro**, `macro 1` to `macro 8` and on: a knob or a fader turns that macro, by its number,
+  on the track the piano keys play. Turned with record armed and the song playing, it's locked
+  on the steps as they play, as turning one on the mixer page is (see
+  [Macros](08-mixer-and-effects.md#macros)).
+
+`:midi-learn none` unbinds the next control moved, and `:midi-learn` on its own stops learning
+without binding anything.
+
+A pedal, button or pad acts **once, as it goes down**: a pedal sends a stream of messages as
+it's pressed, and Lattice acts on the first one past halfway (64 of 127) and nothing more until
+it's let go. A fill bound to a pedal (`play_fill`) plays for as long as the pedal's down, as it
+does on its key. A **latching** pedal, one that sends "down" on one press and "up" on the next,
+acts on every other press, so set it to momentary if it has a switch for it, as most do.
+
+A note bound to a control, a pad's say, does what it's bound to rather than play. Controls are
+told apart by their number, not their channel, so a control does the same whatever channel the
+controller sends it on.
+
+The bindings are kept in `~/.config/lattice/midi.toml`, which `:midi-learn` writes and which can
+be edited by hand. A control is `cc` and its number, for a pedal, button or knob, or `note` and
+its number, for a pad:
+
+```toml
+[controls]
+"cc 64" = "toggle_record"     # the sustain pedal records
+"cc 67" = ":arm 1"            # the soft pedal arms the looper for a pass
+"note 36" = "toggle_play"     # the first pad plays and stops
+"cc 21" = "macro 1"           # the first knob turns the track's first macro
+```
+
+`:midi` says how many controls are bound, and the help page (`:help`) lists them under
+**midi controls**.
+
+### Foot switches that type keys
 
 Many USB foot switches don't speak MIDI at all: they pretend to be a keyboard and type a key.
-Those work with Lattice now. Set the pedal to type a key Lattice already knows, such as `R` for
+Those work with Lattice too. Set the pedal to type a key Lattice already knows, such as `R` for
 record or `space` for play, or bind a key it can type to a command in the config file (see
 [files and configuration](10-files-and-config.md)):
 
@@ -416,3 +465,7 @@ C-l = ":arm 1"        # a pedal sending Ctrl-L arms the track for one pass
 
 `R` and `space` work in insert mode as well as normal mode, so a pedal on them works while you
 play.
+
+### Not yet
+
+Lattice doesn't yet send MIDI out, to play other instruments; that's on its way.

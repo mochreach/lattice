@@ -46,7 +46,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
-use lattice_editor::{Editor, Effect, Key, Mode, PromptKind, Transport};
+use lattice_editor::{Control, Editor, Effect, Key, Mode, PromptKind, Transport};
 use lattice_engine::{Command, Handle, Status};
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{
@@ -149,6 +149,7 @@ fn main() -> Result<()> {
     editor.chains = chains::names();
     editor.presets = presets::names();
 
+    midi::load_controls(&mut editor);
     let mut theme = Theme::detect();
     if let Some(path) = named.clone().or_else(config::default_path)
         && let Some(problem) = config::load(&path, named.is_some(), &mut editor.keymap, &mut theme)
@@ -427,9 +428,18 @@ fn run(
             editor.set_transport(playhead.transport(handle.status(), editor, stirred));
         }
         for message in played {
+            // A note bound to a control does that rather than play.
             let effects = match message {
-                midi::Message::NoteOn { pitch, velocity } => editor.play_note(pitch, velocity),
-                midi::Message::NoteOff { pitch } => editor.stop_note(pitch),
+                midi::Message::NoteOn { pitch, velocity } => editor
+                    .control(Control::Note(pitch), velocity)
+                    .unwrap_or_else(|| editor.play_note(pitch, velocity)),
+                midi::Message::NoteOff { pitch } => editor
+                    .control(Control::Note(pitch), 0)
+                    .unwrap_or_else(|| editor.stop_note(pitch)),
+                // An unbound control does nothing.
+                midi::Message::Control { number, value } => editor
+                    .control(Control::Cc(number), value)
+                    .unwrap_or_default(),
             };
             for effect in effects {
                 if let Flow::Quit = apply(
@@ -721,6 +731,12 @@ fn apply(
         Effect::Release { track, pitch } => Command::Release { track, pitch },
         Effect::Unconduct(track) => Command::Unconduct(track),
         Effect::Fill(on) => Command::Fill(on),
+        Effect::MidiControls(entries) => {
+            if let Err(e) = midi::save_controls(&entries) {
+                editor.message = Some(format!("can't keep the MIDI controls: {e:#}"));
+            }
+            return Flow::Next;
+        }
         Effect::Save(path) => {
             let mut song = editor.song_to(Some(&path));
             let saved = file::collect(&path, &mut song, &lattice_editor::scratch())
