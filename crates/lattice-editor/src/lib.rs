@@ -49,6 +49,7 @@ mod presets;
 mod rearrange;
 mod record;
 mod registers;
+mod replay;
 mod search;
 mod song;
 mod suggest;
@@ -371,6 +372,10 @@ enum Pending {
     Replace,
     /// `"`: the next key picks a register.
     Register,
+    /// `Q`: the next key picks the register to record keys into.
+    Record,
+    /// `q`: the next key picks the register whose keys to replay, so many times.
+    Replay(usize),
 }
 
 /// What the infobox shows while a key is pending.
@@ -545,6 +550,12 @@ pub struct Editor {
     registers: registers::Registers,
     /// The register `"` picked for the next action.
     picked_register: Option<char>,
+    /// The register keys are being recorded into, and those recorded so far.
+    recording: Option<(char, Vec<Key>)>,
+    /// How many replays deep the keys being handled are.
+    replaying: usize,
+    /// The key just handled failed, which stops a replay.
+    key_failed: bool,
     undo: Vec<Snapshot>,
     redo: Vec<Snapshot>,
 }
@@ -668,6 +679,9 @@ impl Editor {
             search: search::Search::default(),
             registers: Default::default(),
             picked_register: None,
+            recording: None,
+            replaying: 0,
+            key_failed: false,
             undo: Vec::new(),
             redo: Vec::new(),
         }
@@ -951,6 +965,8 @@ impl Editor {
                 })
             }
             Pending::Register => Some(self.registers_infobox()),
+            Pending::Record => Some(self.keys_infobox(false)),
+            Pending::Replay(_) => Some(self.keys_infobox(true)),
             Pending::Replace => Some(Infobox {
                 title: "replace".into(),
                 items: vec![
@@ -1016,6 +1032,7 @@ impl Editor {
     }
 
     pub fn handle(&mut self, key: Key) -> Vec<Effect> {
+        self.record_key(key);
         // Only note keys hold: they're plain keys, so their releases match. An edit's preview,
         // `C-a` say, stays brief, as Ctrl might come up first.
         let holds = self.releases && self.plays(key);
@@ -1044,6 +1061,7 @@ impl Editor {
     /// [`Editor::stop_note`].
     pub fn play_note(&mut self, pitch: u8, velocity: u8) -> Vec<Effect> {
         let key = Key::Note(pitch);
+        self.record_key(key);
         self.touch = Some(velocity);
         // On a field, the keyboard's notes would type nothing, so they're only heard.
         let effects = if self.mode == Mode::Insert && self.on_field().is_none() {
@@ -1145,6 +1163,11 @@ impl Editor {
                 self.pick_register(key);
                 return vec![];
             }
+            Some(Pending::Record) => {
+                self.start_recording(key);
+                return vec![];
+            }
+            Some(Pending::Replay(n)) => return self.replay(key, n),
             Some(Pending::Replace) => {
                 // Octave keys work while choosing the note.
                 if let Some(&action @ (Action::KeyboardOctaveUp | Action::KeyboardOctaveDown)) =
@@ -1217,6 +1240,7 @@ impl Editor {
     pub(crate) fn does_nothing(&mut self, action: Action) {
         let key = tutor::keys_for(&self.keymap, action).into_iter().next();
         let key = key.unwrap_or_else(|| action.name());
+        self.key_failed = true;
         self.message = Some(format!(
             "{key} does nothing on the {} page",
             self.page.name()
@@ -1357,7 +1381,10 @@ impl Editor {
                     self.remember(&prompt.line);
                     match command::run(self, &prompt.line) {
                         Ok(effects) => return effects,
-                        Err(message) => self.message = Some(message),
+                        Err(message) => {
+                            self.message = Some(message);
+                            self.key_failed = true;
+                        }
                     }
                 } else {
                     match self.filter(&prompt) {
@@ -1365,6 +1392,7 @@ impl Editor {
                         Err(message) => {
                             self.set_selections(prompt.saved, prompt.saved_primary);
                             self.message = Some(message);
+                            self.key_failed = true;
                         }
                     }
                 }
@@ -1504,7 +1532,7 @@ impl Editor {
             .collect()
     }
 
-    fn act(&mut self, action: Action, n: usize) -> Vec<Effect> {
+    fn act_now(&mut self, action: Action, n: usize) -> Vec<Effect> {
         // The same on every page.
         match action {
             Action::KeyboardOctaveUp => {
@@ -1522,6 +1550,14 @@ impl Editor {
             Action::Hush => return self.hush(),
             Action::SelectRegister => {
                 self.pending = Some(Pending::Register);
+                return vec![];
+            }
+            Action::RecordKeys => {
+                self.record_keys();
+                return vec![];
+            }
+            Action::ReplayKeys => {
+                self.pending = Some(Pending::Replay(n));
                 return vec![];
             }
             _ => {}
@@ -1804,7 +1840,9 @@ impl Editor {
             | Action::PlaySong
             | Action::PlayFromHere
             | Action::Hush
-            | Action::SelectRegister => {}
+            | Action::SelectRegister
+            | Action::RecordKeys
+            | Action::ReplayKeys => {}
             Action::NextPattern => return self.step_pattern(n as isize),
             Action::PrevPattern => return self.step_pattern(-(n as isize)),
             Action::ToggleMute => return self.run_command("mute"),
@@ -1940,6 +1978,7 @@ impl Editor {
     pub fn run_command(&mut self, line: &str) -> Vec<Effect> {
         command::run(self, line).unwrap_or_else(|message| {
             self.message = Some(message);
+            self.key_failed = true;
             vec![]
         })
     }

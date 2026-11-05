@@ -590,6 +590,8 @@ the selection, so you can repeat them.
 | `p`                 | `paste`                 | paste over the steps from the start              |
 | `P`                 | `paste_insert`          | paste at the start, pushing the steps there down |
 | `"`                 | `select_register`       | pick a register for the next copy or paste       |
+| `Q`                 | `record_keys`           | record keys into a register, or stop             |
+| `q`                 | `replay_keys`           | replay the keys in a register                    |
 | `r` then a note key | `replace`               | fill every selected step with that note          |
 | `C-a`               | `note_up`               | notes up a semitone                              |
 | `C-x`               | `note_down`             | notes down a semitone                            |
@@ -685,6 +687,41 @@ last until Lattice quits; they aren't saved with the song.
 I always liked registers in Vim, for keeping a phrase to hand while copying other things about:
 a fill in `f`, a bass run in `b`. What I never liked was reaching for `"`, but keeping Helix's
 keys means your fingers already know them.
+
+### Recorded keys: `Q` and `q`
+
+`Q` then a letter or digit starts recording the keys you press into that register
+(`record_keys`), and `Q` again stops (`recorded 6 keys into a`). `q` then the register presses
+them all again (`replay_keys`); a count first repeats them, so `3qa` replays `a` three times.
+While recording, the status line says `@a` after the mode.
+
+They're Vim's and Helix's macros, but in Lattice a macro is one of a track's knobs, so these are
+recorded keys. Everything goes in exactly as you pressed it: moves, modes, notes from the computer
+keyboard or a MIDI keyboard, and whole command lines, what you typed and `ret`. So a replay can
+run commands as well as edit, and changing something on one track can be done on every other by
+recording it once. For example, to give the cursor's track a delay and turn it down, then do the
+same to the next six:
+
+```
+Qa                       start recording into a
+:fx-add delay ret        add a delay to the track
+:level -6 ret            and set its level
+tl                       go on to the next track
+Q                        stop
+6qa                      do it all again, six times over
+```
+
+A replay is one undo step, however much it did, so `u` takes it all back. It stops at the first
+key that fails, as in Vim: a command that goes wrong, a key that does nothing on the page, or a
+move that can't go any further. That makes a large count safe: `100qa` above stops at the last
+track, when `tl` can't move on, rather than adding delay after delay to it. The message says
+which time round it stopped and why (`replay 4 of 100 stopped: a move went as far as it can`).
+
+Recorded keys go in the register alongside anything copied into it, and `"` lists them
+(`a  keys :fx-add delay<ret>:v…`); `Q` and `q` show the same box, of the registers' keys, while
+they wait for one. A replay can replay another register, but one that replays itself stops after
+a few rounds (`a replays itself without end`). Like everything in registers, recorded keys last
+until Lattice quits.
 
 ### Filling with a note: `r`
 

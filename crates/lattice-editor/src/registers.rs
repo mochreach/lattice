@@ -25,6 +25,8 @@ pub(crate) struct Register {
     pub(crate) tracks: Vec<Track>,
     /// The song's entries.
     pub(crate) entries: Vec<Copied>,
+    /// Keys recorded with `Q`.
+    pub(crate) keys: Vec<Key>,
 }
 
 pub(crate) type Registers = BTreeMap<char, Register>;
@@ -55,6 +57,12 @@ impl Register {
                 n => format!("{n} entries"),
             });
         }
+        if !self.keys.is_empty() {
+            parts.push(format!(
+                "keys {}",
+                crate::replay::describe_keys(&self.keys, 24)
+            ));
+        }
         parts.join(" · ")
     }
 }
@@ -67,7 +75,7 @@ fn plural(n: usize, what: &str) -> String {
 }
 
 /// Whether `c` names a register: a letter, a digit, or `"` for the default.
-fn names_register(c: char) -> bool {
+pub(crate) fn names_register(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == DEFAULT
 }
 

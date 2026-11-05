@@ -523,6 +523,34 @@ const LESSONS: &[Lesson] = &[
         solution: ":bpm 128<ret>",
     },
     Lesson {
+        title: "Recording keys",
+        text: "{record_keys} then a letter records the keys you press into that register, \
+               until {record_keys} again; {replay_keys} then the letter presses them all over, \
+               and a count before it repeats them. Moves, edits and whole command lines all go \
+               in, so you can record a change once and make it everywhere. A replay is one \
+               undo, and stops at a move that can't go any further.\n\nPut the cursor on step \
+               04 of the BASS track. Record into register a: raise that note an octave, then \
+               move down a step. Stop, and replay it three times for the other notes of the run.",
+        teaches: &[Action::RecordKeys, Action::ReplayKeys],
+        commands: &[],
+        setup: fill_run,
+        watch: never,
+        done: |e, t| {
+            let now = track(e, "BASS");
+            let was = index(e, "BASS").and_then(|b| t.start.tracks.get(b));
+            let (Some(now), Some(was)) = (now, was) else {
+                return false;
+            };
+            let recorded = (e.registers.get(&'a')).is_some_and(|r| !r.keys.is_empty());
+            recorded
+                && run().all(|s| match (note(now, s), note(was, s)) {
+                    (Some(Some(now)), Some(Some(was))) => now.pitch == was.pitch + 12,
+                    _ => false,
+                })
+        },
+        solution: "ghtltlgg4jQa>jQ3qa",
+    },
+    Lesson {
         title: "Mute and solo",
         text: "Some keys open a menu of what can follow, shown in the corner. {toggle_mute} \
                mutes the tracks the selections reach (`m` alone does too, on every page), and \

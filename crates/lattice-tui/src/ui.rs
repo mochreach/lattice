@@ -1628,6 +1628,13 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             theme.text,
         ));
     }
+    // Recording keys, as Helix shows a macro being recorded.
+    if let Some(register) = editor.recording_keys() {
+        left.push(Span::styled(
+            format!(" @{register}"),
+            Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
+        ));
+    }
     // The message has a box of its own, in the corner above (see `draw_message`). A register
     // and a count wait for the action they're for.
     if let Some(register) = editor.picked_register() {

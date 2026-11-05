@@ -1249,6 +1249,17 @@ a count and a prefix key (`3"atp`), and is dropped once the action after it has 
 aren't saved; entries are copied by pattern id, which a new song doesn't share, so opening one
 forgets them.
 
+Recorded keys (`replay.rs`), Vim and Helix's macros under another name, as a macro in Lattice is
+a track's knob, go in a register too (`Register::keys`). `Editor::handle` and `play_note` note
+each key while recording, except those a replay presses; `Q` stops by dropping itself from the
+end. `qa` feeds the keys back through `Editor::handle`, releasing each note as it goes so none
+hang, `n` times, and truncates the undo stack to the snapshot taken before the first edit, so a
+replay is one undo step. It stops at the first key that fails (`Editor::key_failed`): a command
+or filter that errors, `does_nothing`, or a move (`Action::moves`) that leaves every page's cursor
+where it was, which `Editor::act` checks only while replaying. That's what makes `100qa` safe on
+"edit, then next track". Replays nest, to a depth of `MAX_DEPTH`, so keys that replay themselves
+end.
+
 ### The command line's suggestions and history
 
 `Editor::completions` suggests for the word being typed (`lattice-editor/src/suggest.rs`): the

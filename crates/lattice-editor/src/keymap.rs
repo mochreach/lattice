@@ -223,6 +223,10 @@ pub enum Action {
     Replace,
     /// Pick a register, by the next key, for the next copy or paste.
     SelectRegister,
+    /// Record keys into a register, by the next key, or stop recording.
+    RecordKeys,
+    /// Replay the keys recorded in a register, by the next key.
+    ReplayKeys,
     Undo,
     Redo,
     NoteUp,
@@ -346,6 +350,8 @@ impl Action {
         Action::PasteInsert,
         Action::Replace,
         Action::SelectRegister,
+        Action::RecordKeys,
+        Action::ReplayKeys,
         Action::Undo,
         Action::Redo,
         Action::NoteUp,
@@ -387,6 +393,33 @@ impl Action {
 
     /// What a config file calls it: the variant in snake case, as Helix names its commands
     /// (`goto_mixer`, `toggle_pattern_mute`).
+    /// Whether it moves the cursor, so a replay can tell when it couldn't.
+    pub(crate) fn moves(self) -> bool {
+        matches!(
+            self,
+            Action::Left
+                | Action::Right
+                | Action::Up
+                | Action::Down
+                | Action::HalfPageUp
+                | Action::HalfPageDown
+                | Action::PageUp
+                | Action::PageDown
+                | Action::FirstStep
+                | Action::LastStep
+                | Action::FirstTrack
+                | Action::LastTrack
+                | Action::NextBeat
+                | Action::PrevBeat
+                | Action::NextBar
+                | Action::PrevBar
+                | Action::NextNote
+                | Action::PrevNote
+                | Action::PrevTrack
+                | Action::NextTrack
+        )
+    }
+
     pub fn name(self) -> String {
         let mut name = String::new();
         for (i, c) in format!("{self:?}").chars().enumerate() {
@@ -467,6 +500,8 @@ impl Action {
             Action::PasteInsert => "paste, pushing the rest down",
             Action::Replace => "fill with a note",
             Action::SelectRegister => "pick a register for the next copy or paste",
+            Action::RecordKeys => "record keys into a register, or stop",
+            Action::ReplayKeys => "replay the keys in a register",
             Action::Undo => "undo",
             Action::Redo => "redo",
             Action::NoteUp => "note up a semitone",
@@ -835,6 +870,8 @@ impl Default for Keymap {
                 (Char('P'), PasteInsert),
                 (Char('r'), Replace),
                 (Char('"'), SelectRegister),
+                (Char('Q'), RecordKeys),
+                (Char('q'), ReplayKeys),
                 (Char('u'), Undo),
                 (Char('U'), Redo),
                 (Ctrl('a'), NoteUp),
