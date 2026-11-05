@@ -164,6 +164,7 @@ mod tests {
             effects: Default::default(),
             choke: 0,
             macros: vec![],
+            knobs: vec![],
             rules,
         }
     }

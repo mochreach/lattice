@@ -5,7 +5,8 @@
 //! turns and how far; a setting a macro turns is marked with the macro's number in its lane, and lit while the cursor
 //! is on it in the macros' column.
 
-use lattice_core::macros::{self, MACRO_INFO};
+use lattice_core::knob;
+use lattice_core::macros::MACRO_INFO;
 use lattice_core::{FxLane, Kind, Locks, MIN_DB, is_feedback};
 use lattice_editor::{Editor, FxLine, Strip, target_name};
 use lattice_engine::Status;
@@ -65,6 +66,10 @@ pub fn draw(
             .tracks
             .get(t)
             .map_or(&[][..], |t| t.macros.as_slice()),
+        _ => &[],
+    };
+    let track_knobs = match strip {
+        Strip::Track(t) => (editor.grid.tracks.get(t)).map_or(&[][..], |t| t.knobs.as_slice()),
         _ => &[],
     };
     // The setting the cursor's on in the macros' column, to light in its lane.
@@ -188,7 +193,7 @@ pub fn draw(
                         let mark = Style::new().fg(theme.accent).add_modifier(Modifier::BOLD);
                         (Span::styled(" ◆ ", mark), lock.value, mark, mark)
                     }
-                    None if let Some(m) = macros::mark(track_macros, id.0, id.1) => (
+                    None if let Some(m) = knob::mark(track_knobs, track_macros, id.0, id.1) => (
                         Span::styled(format!(" {m} "), turned),
                         fx.get(info.id),
                         name_style(here || pointed == Some(id)),

@@ -250,6 +250,7 @@ mod tests {
             effects: Default::default(),
             choke: 0,
             macros: vec![],
+            knobs: vec![],
             rules: vec![],
         };
         let grid = Grid {

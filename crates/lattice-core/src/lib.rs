@@ -25,6 +25,7 @@ pub mod fx;
 pub mod gesture;
 pub mod group;
 pub mod instrument;
+pub mod knob;
 pub mod macros;
 pub mod preset;
 pub mod song;
@@ -45,6 +46,7 @@ pub use fx::{Bus, Buses, Fx, FxKind, MAX_EFFECTS};
 pub use gesture::{Gesture, MAX_SPEED, TICKS};
 pub use group::{Group, MAX_GROUPS};
 pub use instrument::{DRUM_ROOT, InstKind, Instrument};
+pub use knob::{KNOB_MARK, Knob};
 pub use macros::{MACRO, MAX_MACROS, MAX_TARGETS, Macro, Target as MacroTarget};
 pub use preset::{
     ART_FRAMES, ART_ROWS, ART_WIDTH, Face, MAX_CONTROLS, PRESETS, Preset, SavedPreset, preset,

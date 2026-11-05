@@ -433,9 +433,9 @@ pub const COMMANDS: &[Spec] = &[
         alias: None,
         params: &[optional_text(
             "[TARGET]",
-            "action, :command, macro N or none",
+            "action, :command, macro N, this or none",
         )],
-        describe: "bind the next MIDI control moved to an action, a :command, macro N, or none to unbind it; alone, stops",
+        describe: "bind the next MIDI control moved to an action, a :command, macro N, this setting (in this song), or none to unbind it; alone, stops",
     },
     Spec {
         name: "input",
@@ -1383,11 +1383,16 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![])
         }
         "midi" => {
-            let bound = match editor.controls().len() {
+            let mut bound = match editor.controls().len() {
                 0 => String::new(),
                 1 => "; 1 control bound".into(),
                 n => format!("; {n} controls bound"),
             };
+            match editor.knobs().len() {
+                0 => {}
+                1 => bound.push_str("; 1 knob on a setting"),
+                n => bound.push_str(&format!("; {n} knobs on settings")),
+            }
             let out = match editor.midi_outputs.as_slice() {
                 [] => String::new(),
                 names => format!("; out: {}", names.join(", ")),

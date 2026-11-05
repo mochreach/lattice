@@ -6,7 +6,8 @@
 use std::time::{Duration, Instant};
 
 use lattice_core::art;
-use lattice_core::macros::{self, MACRO_INFO};
+use lattice_core::knob;
+use lattice_core::macros::MACRO_INFO;
 use lattice_core::{Kind, Locks, Track};
 use lattice_editor::{Editor, InstLine, Strip};
 use lattice_engine::Status;
@@ -389,8 +390,8 @@ fn cell(
         }
         InstLine::Param(p) if let Some(info) = track.instrument.params().get(p) => {
             let lock = (locks.iter()).find(|l| l.fx.is_none() && u32::from(l.param) == info.id);
-            // A macro turning it is marked with its number.
-            let mark = macros::mark(&track.macros, None, info.id as u8);
+            // A knob turning it is marked, or a macro, with its number.
+            let mark = knob::mark(&track.knobs, &track.macros, None, info.id as u8);
             let (mark, value, label_style, style) = match (lock, mark) {
                 (Some(lock), _) => (Span::styled(" ◆ ", locked), lock.value, locked, locked),
                 (None, Some(m)) => (

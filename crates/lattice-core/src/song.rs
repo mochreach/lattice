@@ -9,6 +9,7 @@ use crate::fx::{Buses, Fx};
 use crate::gesture::Gesture;
 use crate::group::Group;
 use crate::instrument::Instrument;
+use crate::knob::Knob;
 use crate::macros::Macro;
 use crate::preset::Face;
 use crate::transform::Rule;
@@ -288,6 +289,8 @@ pub struct Track {
     pub choke: u8,
     /// Knobs that each turn several of its settings.
     pub macros: Vec<Macro>,
+    /// A MIDI controller's knobs, each turning one of its settings.
+    pub knobs: Vec<Knob>,
     /// The face of the preset it was given, until its instrument changes for another kind.
     pub face: Option<Face>,
     /// The settings its steps lock, in the order they're shown, at most [`MAX_LOCKS`]. Shared
@@ -415,6 +418,8 @@ struct SparseTrack {
     choke: u8,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     macros: Vec<Macro>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    knobs: Vec<Knob>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     face: Option<Face>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -445,6 +450,7 @@ impl From<Track> for SparseTrack {
             lanes,
             choke: track.choke,
             macros: track.macros,
+            knobs: track.knobs,
             face: track.face,
             columns: track.columns,
         }
@@ -483,6 +489,7 @@ impl TryFrom<SparseTrack> for Track {
             effects,
             choke: sparse.choke,
             macros: sparse.macros,
+            knobs: sparse.knobs,
             face: sparse.face,
             columns: sparse.columns,
         })

@@ -5,7 +5,7 @@
 //! removes either, and locking works as for any setting.
 
 use lattice_core::macros::DEPTH_INFO;
-use lattice_core::{Kind, Lock, MAX_MACROS, MAX_TARGETS, Macro, MacroTarget, Track};
+use lattice_core::{Kind, Lock, MACRO, MAX_MACROS, MAX_TARGETS, Macro, MacroTarget, Track};
 
 use crate::mixer::{Page, Row, Strip};
 use crate::{Editor, Effect};
@@ -260,8 +260,8 @@ impl Editor {
         })
     }
 
-    /// Keeps the targets `keep` says to on track `t`'s macros, letting it change them. Says
-    /// whether any changed.
+    /// Keeps the targets `keep` says to on track `t`'s macros, and its knobs on the settings it
+    /// says to, letting it change them. Says whether any changed.
     pub(crate) fn retain_targets(
         &mut self,
         t: usize,
@@ -276,7 +276,23 @@ impl Editor {
             m.targets.retain_mut(&mut keep);
             changed |= m.targets != before;
         }
-        changed
+        let before = track.knobs.clone();
+        track.knobs.retain_mut(|knob| {
+            // A macro's own value isn't the instrument's or an effect's to take with it.
+            if knob.fx == Some(MACRO) {
+                return true;
+            }
+            let mut target = MacroTarget {
+                fx: knob.fx,
+                param: knob.param,
+                depth: 0.0,
+            };
+            let kept = keep(&mut target);
+            knob.fx = target.fx;
+            knob.param = target.param;
+            kept
+        });
+        changed | (track.knobs != before)
     }
 }
 

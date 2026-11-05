@@ -291,7 +291,9 @@ const LESSONS: &[Lesson] = &[
                are recorded as the piano keys' are, at the velocity they're played, and \
                elsewhere they're only heard. `:midi` says which keyboards Lattice hears, and \
                `:midi-learn toggle_record` binds the next pedal, button or knob you move to \
-               an action (or a `:command`, or `macro 1`).\n\nArm \
+               an action (or a `:command`, or `macro 1`). On a setting on the mixer, fx or \
+               instrument page, `:midi-learn this` binds the next knob you turn to that \
+               setting, in this song: it's marked ◎, and turns it wherever the cursor is.\n\nArm \
                recording, go back to normal mode, and disarm it.",
         teaches: &[Action::ToggleRecord],
         commands: &["midi", "midi-learn"],

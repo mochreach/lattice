@@ -1,7 +1,7 @@
 //! Drawing the mixer page: the overview of every strip above (a strip per track, then the groups'
 //! buses and the send and master buses), and the detail of the strip under the cursor below.
 
-use lattice_core::{Kind, Locks, MIN_DB, Macro, macros};
+use lattice_core::{Kind, Knob, Locks, MIN_DB, Macro, knob};
 use lattice_editor::{Editor, Field, PARAM_COLUMNS, Row, Shown, Strip};
 use lattice_engine::Status;
 use ratatui::Frame;
@@ -429,26 +429,29 @@ fn detail(
         return lines;
     };
     lines.push(Line::raw(""));
-    let macros = match shown.strip {
-        Strip::Track(t) => editor
-            .grid
-            .tracks
-            .get(t)
-            .map_or(&[][..], |t| t.macros.as_slice()),
-        _ => &[],
+    let track = match shown.strip {
+        Strip::Track(t) => editor.grid.tracks.get(t),
+        _ => None,
     };
+    let macros = track.map_or(&[][..], |t| t.macros.as_slice());
+    let knobs = track.map_or(&[][..], |t| t.knobs.as_slice());
     lines.extend(settings(
-        &shown, macros, cursor.row, status, theme, colour, width,
+        &shown, macros, knobs, cursor.row, status, theme, colour, width,
     ));
     lines
 }
 
 /// The settings of an instrument or effect, in a grid filled a row at a time, with the one at
 /// `row` under the cursor. While it plays, a setting a step has locked shows the lock's value;
-/// one a macro turns is marked with its number.
+/// one a knob turns is marked, or one a macro turns, with its number.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each is a different part of what's drawn"
+)]
 pub fn settings(
     shown: &Shown,
     macros: &[Macro],
+    knobs: &[Knob],
     row: Row,
     status: &Status,
     theme: &Theme,
@@ -461,7 +464,7 @@ pub fn settings(
         } else {
             theme.dim
         };
-        // A space after the macro's number, so it doesn't read as part of the name.
+        // A space after the mark, so it doesn't read as part of the name.
         let mark = Span::styled(
             format!("{} ", mark.unwrap_or(' ')),
             Style::new().fg(theme.visual),
@@ -504,7 +507,7 @@ pub fn settings(
                     spans.extend(bars::param(info, lock.value, bar, mark, theme));
                 }
                 None => {
-                    let mark = macros::mark(macros, slot, info.id as u8);
+                    let mark = knob::mark(knobs, macros, slot, info.id as u8);
                     spans.extend(label(info.name, here, mark));
                     spans.extend(bars::param(info, value, bar, value_style(here), theme));
                 }

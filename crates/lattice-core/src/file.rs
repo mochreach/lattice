@@ -140,6 +140,12 @@ fn check_track(track: &Track) -> Result<(), String> {
     }
     let info =
         |fx, param| setting_info(&track.instrument, &track.effects, &track.macros, fx, param);
+    if (track.knobs.iter()).any(|k| k.cc > 127 || info(k.fx, k.param).is_none()) {
+        return Err(format!(
+            "track {:?}: knobs must be cc 0 to 127, on settings it has",
+            track.name
+        ));
+    }
     if track.columns.len() > MAX_LOCKS
         || (track.columns.iter()).any(|c| info(c.fx, c.param).is_none())
     {
@@ -201,6 +207,11 @@ mod tests {
             instrument: Default::default(),
             effects: Default::default(),
             choke: 0,
+            knobs: vec![crate::Knob {
+                cc: 21,
+                fx: None,
+                param: 1,
+            }],
             macros: vec![crate::Macro {
                 name: "growl".into(),
                 value: 0.25,
@@ -266,6 +277,7 @@ mod tests {
             effects: Default::default(),
             choke: 0,
             macros: vec![],
+            knobs: vec![],
             rules: vec![],
         };
         Song {
@@ -501,6 +513,9 @@ mod tests {
         let mut bad = song();
         bad.grid.tracks[0].macros[0].targets[0].depth = 2.0;
         rejects(bad, "depths go from -1 to 1");
+        let mut bad = song();
+        bad.grid.tracks[0].knobs[0].fx = Some(3);
+        rejects(bad, "knobs must be cc 0 to 127, on settings it has");
         let mut bad = song();
         bad.bpm = 1e12;
         rejects(bad, "bpm goes from 20 to 400");

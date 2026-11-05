@@ -451,6 +451,48 @@ its number, for a pad:
 `:midi` says how many controls are bound, and the help page (`:help`) lists them under
 **midi controls**.
 
+### Knobs on settings: `:midi-learn this`
+
+A knob bound to `macro 1` turns the first macro of whichever track you're on, which is right for
+moving about the song with one knob. When I'm playing, though, I want a row of knobs that each
+do one thing, the lead's cutoff, the pad's reverb, the bass's drive, whatever the cursor's on.
+For that, bind a knob to the setting itself. Put the cursor on it, on the mixer, fx or
+instrument page, and:
+
+```
+:midi-learn this      then turn the knob
+```
+
+The message box says what it's bound to:
+
+```
+ cc 21 turns lead's filter.cutoff
+```
+
+From then on the knob turns that setting through its whole range, from any page, wherever the
+cursor is. A whole turn is one undo step. With record armed and the song playing, it locks the
+setting on the steps as they play, as turning it on the mixer does. On the instrument page,
+`this` on a macro binds the knob to that track's macro, rather than to macro 1 of whichever
+track the cursor's on.
+
+A setting a knob turns is marked `◎`, where a macro's number would go:
+
+```
+ ◎ cutoff      ▊▊▊▊▊▊▊▊▊▊▊▊▊    1 resonance   ▊▊▊▊
+```
+
+These bindings belong to the song, not to `midi.toml`: what the tracks are called and which
+effects they have means nothing to another song, so they're saved with the track and go where it
+goes. Taking out the effect a knob turns unbinds it, and moving effects about moves it with them.
+In this song, a knob bound to a setting comes before what `midi.toml` binds it to, and the
+message says so (`cc 21 turns lead's filter.cutoff in this song, over macro 1`). Each knob turns
+one setting, and each setting has one knob: binding a knob again moves it. `:midi-learn none`,
+then the knob, unbinds it, from the song's setting and `midi.toml` alike. A copied track keeps
+its knobs, so a knob then turns the setting on both, which can be what you want. A pad can't
+turn a setting, so `:midi-learn this` waits for a knob or fader.
+
+`:midi` counts them, and the help page lists them under **knobs in this song**, by number.
+
 ### Foot switches that type keys
 
 Many USB foot switches don't speak MIDI at all: they pretend to be a keyboard and type a key.

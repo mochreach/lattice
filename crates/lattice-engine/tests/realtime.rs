@@ -29,6 +29,7 @@ fn rendering_never_allocates() {
         face: None,
         pattern_mute: false,
         columns: vec![],
+        knobs: vec![],
         name: "lead".into(),
         steps: (0..11)
             .map(|i| {

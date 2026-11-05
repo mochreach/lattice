@@ -677,6 +677,25 @@ impl Editor {
     }
 }
 
+/// What `track`'s setting `param` of `fx` is called, as a lock column's named: `cutoff`,
+/// `filter.cutoff`, or a macro's name. `None` if it has no such setting.
+pub(crate) fn setting_name(track: &Track, fx: Option<u8>, param: u8) -> Option<String> {
+    let setting = match fx {
+        Some(MACRO) => Setting::of_macro(usize::from(param)),
+        _ => Setting::new(
+            fx,
+            lattice_core::macros::setting_info(
+                &track.instrument,
+                &track.effects,
+                &track.macros,
+                fx,
+                param,
+            )?,
+        ),
+    };
+    Some(setting.name(track))
+}
+
 /// A lock, as `cutoff 800Hz`, `cutoff ~800Hz` sliding, or `cutoff --` put back, for showing.
 fn describe(track: &Track, lock: &Lock) -> String {
     let format = |info: &ParamInfo| match lock.change {

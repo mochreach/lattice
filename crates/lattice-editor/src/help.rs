@@ -191,6 +191,15 @@ impl Editor {
                 lines.push(item(control.to_string(), target.to_string()));
             }
         }
+        // And the song's own, which come first.
+        let knobs = self.knobs();
+        if !knobs.is_empty() {
+            lines.push(HelpLine::Blank);
+            lines.push(heading("knobs in this song"));
+            for (control, setting) in knobs {
+                lines.push(item(control, setting));
+            }
+        }
 
         lines.push(HelpLine::Blank);
         lines.push(heading("pages"));

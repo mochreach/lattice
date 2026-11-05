@@ -430,7 +430,13 @@ rather than once a frame, so a note waits a millisecond at most. A note is `Key:
 to the editor, held and released like a piano key that knows its own velocity
 (`Editor::play_note`, `stop_note`). Controllers' bindings (`midi.rs` in the editor) map a
 `cc N` or `note N` to an action, a command or a macro, acting on the down edge; `:midi-learn`
-binds the next one moved, and the frontend keeps them in `midi.toml`.
+binds the next one moved, and the frontend keeps them in `midi.toml`. A knob can also be bound to
+one setting of one track, with `:midi-learn this`: that's the song's, as what its tracks are
+called means nothing to another, so it's kept with the track (`Track::knobs`, a `Knob` of the cc,
+effect and setting), moved and dropped with its effects as macro targets are
+(`Editor::retain_targets`), and comes before `midi.toml`'s binding for the same cc. A turn sets
+the setting through its range, one undo step, or with record armed locks it as the mixer does.
+Settings a knob turns are marked `◎` where a macro's number would go.
 
 **Out** is an instrument: `InstKind::Midi`, whose processor (`lattice_engine::midi_out`) makes
 no sound and turns its events into MIDI messages instead. Because it's an instrument, everything
