@@ -628,6 +628,7 @@ impl Processor for Switched {
                 EventKind::NoteOff { pitch } => self.note_off(pitch),
                 EventKind::Choke => self.choke(),
                 EventKind::Shape(shape) => self.shape = shape,
+                EventKind::Program(_) => {}
                 EventKind::Param { id, value } => {
                     if let Some(info) = InstKind::Switched.params().get(id as usize) {
                         self.set(id, info.clamp(value));

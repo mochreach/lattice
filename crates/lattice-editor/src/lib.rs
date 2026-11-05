@@ -36,6 +36,7 @@ mod keymap;
 mod locks;
 mod manual;
 mod midi;
+mod midi_out;
 pub use fields::{StepField, number_velocity, velocity_number};
 pub use locks::{ColumnLabel, lock_text};
 mod looper;
@@ -439,6 +440,8 @@ pub struct Editor {
     pub outputs: Devices,
     /// The MIDI ports listened to, by name, as the frontend found them.
     pub midi_inputs: Vec<String>,
+    /// The MIDI ports Lattice can play gear on, by name, for `:port`.
+    pub midi_outputs: Vec<String>,
     /// What the MIDI controllers' controls are bound to.
     controls: midi::Controls,
     saved: Saved,
@@ -609,6 +612,7 @@ impl Editor {
                 .collect(),
             inputs: Devices::default(),
             midi_inputs: vec![],
+            midi_outputs: vec![],
             controls: midi::Controls::default(),
             outputs: Devices::default(),
             mode: Mode::Normal,

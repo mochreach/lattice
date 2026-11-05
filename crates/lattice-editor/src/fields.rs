@@ -192,8 +192,8 @@ fn write(track: &mut Track, at: usize, field: StepField, value: Option<Value>, d
     }
 }
 
-/// A track's gesture `by` further on: more or fewer hits, 24ths, steps or times as fast, within
-/// what each can be; a gesture with no amount as it is.
+/// A track's gesture `by` further on: more or fewer hits, 24ths, steps, times as fast or
+/// programs, within what each can be; a gesture with no amount as it is.
 fn nudge_gesture(gesture: Gesture, by: i32) -> Gesture {
     let within =
         |n: u8, low: u8, high: u8| (i32::from(n) + by).clamp(low.into(), high.into()) as u8;
@@ -207,6 +207,7 @@ fn nudge_gesture(gesture: Gesture, by: i32) -> Gesture {
         Gesture::Wait(n) => Gesture::Wait(within(n, 1, 99)),
         Gesture::Faster(n) => Gesture::Faster(within(n, 1, MAX_SPEED)),
         Gesture::Slower(n) => Gesture::Slower(within(n, 1, MAX_SPEED)),
+        Gesture::Program(n) => Gesture::Program(within(n, 0, 127)),
         other => other,
     }
 }

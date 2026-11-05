@@ -466,6 +466,8 @@ C-l = ":arm 1"        # a pedal sending Ctrl-L arms the track for one pass
 `R` and `space` work in insert mode as well as normal mode, so a pedal on them works while you
 play.
 
-### Not yet
+### MIDI out
 
-Lattice doesn't yet send MIDI out, to play other instruments; that's on its way.
+Lattice plays other gear too: a track whose instrument is `midi` sends its notes, locks and
+program changes to a synth, a drum machine or another program, in time with the song. `:port`
+chooses where; see [MIDI tracks](07-instruments.md#midi-tracks-playing-other-gear-midi).

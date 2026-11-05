@@ -421,6 +421,38 @@ are. Left to itself, PulseAudio buffers about two seconds, so streams ask for 51
 wherever the device allows them: about 28 ms out and 16 ms in, against ALSA's 43 ms. Elsewhere the
 host is the system's own (CoreAudio, WASAPI).
 
+### MIDI
+
+**In** (`midi.rs` in the frontend): every port is listened to as it appears, through `midir`,
+rescanning each second, skipping Through ports and Lattice's own. Messages reach the UI thread
+over a channel, and while anything is listened to the UI loop polls the terminal in 1 ms slices
+rather than once a frame, so a note waits a millisecond at most. A note is `Key::Note(pitch)`
+to the editor, held and released like a piano key that knows its own velocity
+(`Editor::play_note`, `stop_note`). Controllers' bindings (`midi.rs` in the editor) map a
+`cc N` or `note N` to an action, a command or a macro, acting on the down edge; `:midi-learn`
+binds the next one moved, and the frontend keeps them in `midi.toml`.
+
+**Out** is an instrument: `InstKind::Midi`, whose processor (`lattice_engine::midi_out`) makes
+no sound and turns its events into MIDI messages instead. Because it's an instrument, everything
+the sequencer does reaches it with no new machinery: steps, gestures, locks, macros, slides,
+recording. Its settings are the channel, bend and 128 controllers, with a controller at -1
+(`Curve::Midi`) not sent at all, so a track only touches what it's been given; the instrument
+page hides unset ones without a lock column. A program change is a gesture, `P12`, which the
+engine passes on as `EventKind::Program` before the step's note.
+
+Timing is the hard part. The processor runs on the audio thread, a buffer ahead of what's heard,
+and can't send anything itself. So the audio callback tells the engine when the buffer it's
+rendering will be heard (`Engine::set_heard_at`, from cpal's playback timestamp), the engine
+publishes each block's time in an atomic (`BLOCK_AT`), and the processor stamps each message
+with its block's time plus its offset, pushing it onto a ring buffer. A thread in the frontend
+(`midi_out.rs`) drains every MIDI track's buffer, sends each message when its time comes, within
+a millisecond, and keeps the connections, by name, rescanning each second. So gear sounds with
+Lattice's own instruments, after the same output latency, rather than a buffer early. A track's
+port is part of its instrument, and changing it builds a new processor, as a new file does for a
+sampler; a processor dropped (replaced, removed, or at quit) sends note offs for whatever it was
+playing, and a muted one stops sending notes. Rendering to a file builds MIDI tracks that send
+nothing.
+
 ## Track groups
 
 A group is a named run of adjacent tracks, such as a drum kit with one drum on each track. Each
@@ -685,7 +717,6 @@ Not needed until there's something to release; this is the plan for when there i
 | Plugin hosting | clack-host (CLAP) | 0.2 |
 | UI ↔ audio queues | rtrb | 0.4 |
 | MIDI | midir | 0.11 |
-| MIDI messages | wmidi | |
 | Song files | serde, ron | 1.0, 0.12 |
 
 **Key-release events:** most terminals send key presses only. Kitty, foot, WezTerm, Ghostty and

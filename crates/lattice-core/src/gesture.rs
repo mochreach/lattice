@@ -3,7 +3,8 @@
 //! it, cut it, arpeggiate it or accent it, and on some instruments reverse it, start it part way
 //! in or glide to it. Conditions decide whether the step plays at all: some passes, or only
 //! during a fill. Playhead gestures act on the track's playback: jump,
-//! wait, turn backwards, or change speed. Times are in 24ths of a step.
+//! wait, turn backwards, or change speed. On a MIDI track, a program change picks the sound
+//! the gear plays. Times are in 24ths of a step.
 
 use std::fmt;
 
@@ -31,7 +32,7 @@ pub const MAX_WAIT: u8 = 99;
 pub const OFFSETS: u8 = 16;
 
 /// Something a track does once, on a step. Written as it's typed: `R3`, `r3`, `D8`, `X6`, `A37`,
-/// `!`, `<`, `O8`, `G6`, `?50`, `1:4`, `F`, `F-`, `J12`, `J?`, `W2`, `B`, `*2`, `/2`. Steps are numbered from 0, as they're shown.
+/// `!`, `<`, `O8`, `G6`, `?50`, `1:4`, `F`, `F-`, `J12`, `J?`, `W2`, `B`, `*2`, `/2`, `P12`. Steps are numbered from 0, as they're shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Gesture {
     /// `R3`: plays the note 3 times, evenly, within the step.
@@ -74,6 +75,9 @@ pub enum Gesture {
     Faster(u8),
     /// `/2`: plays the track at half speed, likewise.
     Slower(u8),
+    /// `P12`: on a MIDI track, sends program change 12, before the step's note, so the gear
+    /// plays its sound 12.
+    Program(u8),
 }
 
 impl Gesture {
@@ -110,6 +114,7 @@ impl Gesture {
                     InstKind::Synth | InstKind::Switched | InstKind::Monochord
                 )
             }
+            Gesture::Program(_) => kind == InstKind::Midi,
             _ => true,
         }
     }
@@ -148,6 +153,7 @@ impl Gesture {
             Gesture::Faster(1) | Gesture::Slower(1) => "the song's speed".into(),
             Gesture::Faster(n) => format!("{n} times as fast"),
             Gesture::Slower(n) => format!("1/{n} as fast"),
+            Gesture::Program(n) => format!("program change, to the gear's sound {n}"),
         };
         format!("{self}: {what}")
     }
@@ -175,6 +181,7 @@ impl Gesture {
             }
             Gesture::Wait(n) => within(n, 1, MAX_WAIT, "waits"),
             Gesture::Faster(n) | Gesture::Slower(n) => within(n, 1, MAX_SPEED, "speeds"),
+            Gesture::Program(n) => within(n, 0, 127, "programs"),
             Gesture::Jump(n) if usize::from(n) >= MAX_STEPS => {
                 Err(format!("steps go from 0 to {}", MAX_STEPS - 1))
             }
@@ -205,6 +212,7 @@ impl fmt::Display for Gesture {
             Gesture::Backwards => write!(f, "B"),
             Gesture::Faster(n) => write!(f, "*{n}"),
             Gesture::Slower(n) => write!(f, "/{n}"),
+            Gesture::Program(n) => write!(f, "P{n}"),
         }
     }
 }
@@ -217,7 +225,7 @@ impl std::str::FromStr for Gesture {
     fn from_str(text: &str) -> Result<Self, String> {
         let unknown = || {
             format!(
-                "{text:?} isn't a gesture: R3, r3, D8, X6, A37, !, <, O8, G6, ?50, 1:4, F, F-, J12, J?, W2, B, *2 or /2"
+                "{text:?} isn't a gesture: R3, r3, D8, X6, A37, !, <, O8, G6, ?50, 1:4, F, F-, J12, J?, W2, B, *2, /2 or P12"
             )
         };
         let mut chars = text.chars();
@@ -269,6 +277,7 @@ impl std::str::FromStr for Gesture {
             'B' if rest.is_empty() => Gesture::Backwards,
             '*' => Gesture::Faster(number("*2")?),
             '/' => Gesture::Slower(number("/2")?),
+            'P' => Gesture::Program(number("P12")?),
             _ => return Err(unknown()),
         };
         gesture.check()?;
@@ -338,7 +347,7 @@ mod tests {
     fn gestures_read_as_they_are_written() {
         let all = [
             "R3", "r9", "D8", "X23", "A37", "A05", "!", "<", "O0", "O15", "G6", "J12", "J?", "W2",
-            "B", "*2", "/4", "*1", "?50", "?5", "1:4", "3:3", "F", "F-",
+            "B", "*2", "/4", "*1", "?50", "?5", "1:4", "3:3", "F", "F-", "P0", "P127",
         ];
         for text in all {
             let gesture: Gesture = text.parse().unwrap();
@@ -368,6 +377,9 @@ mod tests {
         assert!("1:1".parse::<Gesture>().is_err());
         assert!("1:".parse::<Gesture>().unwrap_err().contains("as in 1:4"));
         assert_eq!("f-".parse(), Ok(Gesture::NoFill));
+        assert!("P128".parse::<Gesture>().unwrap_err().contains("0 to 127"));
+        assert!(Gesture::Program(3).works_on(InstKind::Midi));
+        assert!(!Gesture::Program(3).works_on(InstKind::Synth));
     }
 
     #[test]

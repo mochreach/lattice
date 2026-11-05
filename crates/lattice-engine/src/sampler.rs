@@ -360,6 +360,7 @@ impl Processor for Sampler {
                 EventKind::NoteOff { pitch } => self.note_off(pitch),
                 EventKind::Choke => self.player.choke(),
                 EventKind::Shape(shape) => self.shape = shape,
+                EventKind::Program(_) => {}
                 EventKind::Param { id, value } => {
                     let info = InstKind::Sampler.params().get(id as usize);
                     if let (Some(info), Some(slot)) = (info, self.values.get_mut(id as usize)) {

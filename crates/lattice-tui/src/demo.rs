@@ -856,10 +856,11 @@ mod tests {
         let read = lattice_core::from_ron(&lattice_core::to_ron(&song).unwrap()).unwrap();
         assert_eq!(read.arrangement, song.arrangement);
         let tracks = &song.grid.tracks;
-        // All but those that play a file, which the demo hasn't got.
+        // All but those that play a file, which the demo hasn't got, or gear, which it can't
+        // count on.
         for kind in InstKind::ALL
             .into_iter()
-            .filter(|&k| !matches!(k, InstKind::Sampler | InstKind::Chop))
+            .filter(|&k| !matches!(k, InstKind::Sampler | InstKind::Chop | InstKind::Midi))
         {
             assert!(tracks.iter().any(|t| t.instrument.kind == kind), "{kind:?}");
         }

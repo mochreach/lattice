@@ -12,7 +12,7 @@
 
 use std::sync::LazyLock;
 
-use lattice_core::instrument::chop;
+use lattice_core::instrument::{chop, midi};
 use lattice_core::{
     Bus, Fx, FxChain, FxKind, InstKind, Instrument, Kind, MAX_CHOKE, MAX_DB, MAX_EFFECTS, MIN_DB,
     ParamInfo, Step, Track,
@@ -258,11 +258,16 @@ impl Editor {
         let strip = self.strip(cursor.strip);
         if cursor.instrument {
             let instrument = self.instrument(strip)?;
+            let mut params = instrument.params();
+            if instrument.kind == InstKind::Midi {
+                // Its controllers are too many for the strip; the instrument page has them.
+                params = params.get(..midi::CC as usize).unwrap_or(params);
+            }
             return Some(Shown {
                 strip,
                 slot: None,
                 name: instrument.kind.name(),
-                params: instrument.params(),
+                params,
                 values: &instrument.values,
             });
         }
@@ -786,7 +791,7 @@ impl Editor {
     }
 
     /// The track, when `tracks` is just the one.
-    fn only_track(&self, tracks: &[usize]) -> Option<&Track> {
+    pub(crate) fn only_track(&self, tracks: &[usize]) -> Option<&Track> {
         match tracks {
             [t] => self.grid.tracks.get(*t),
             _ => None,

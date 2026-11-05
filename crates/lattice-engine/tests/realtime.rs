@@ -170,6 +170,9 @@ fn rendering_never_allocates() {
         48_000.0,
         None,
     ));
+    // A MIDI track, with somewhere to send.
+    let (midi, mut sent) = lattice_engine::midi_out::MidiOut::new(48_000.0, &[2.0]);
+    let mut midi: Option<Box<dyn Processor>> = Some(Box::new(midi));
     let sample = std::sync::Arc::new(Sample {
         rate: 44_100.0,
         left: (0..4_410).map(|i| (i as f32 * 0.05).sin()).collect(),
@@ -429,6 +432,23 @@ fn rendering_never_allocates() {
                         pitch: 36,
                     });
                 }
+                809 => {
+                    handle.send(Command::SetInstrument {
+                        index: 0,
+                        instrument: midi.take().unwrap(),
+                    });
+                    handle.send(Command::SetParam {
+                        target: Target::Instrument(0),
+                        id: lattice_core::instrument::midi::cc(74),
+                        value: 64.0,
+                    });
+                    handle.send(Command::Preview {
+                        track: 0,
+                        pitch: 60,
+                        velocity: 100,
+                        held: false,
+                    });
+                }
                 810 => {
                     handle.send(Command::SetInstrument {
                         index: 0,
@@ -474,6 +494,7 @@ fn rendering_never_allocates() {
                 }
                 _ => {}
             }
+            engine.set_heard_at(1 + block as u64);
             engine.process(&mut left, &mut right);
             peak = left.iter().fold(peak, |p, x| p.max(x.abs()));
             handle.status().take_peak(0);
@@ -485,6 +506,11 @@ fn rendering_never_allocates() {
         recorded.push(take);
     }
     assert_eq!(recorded.len(), 3, "every take comes back");
+    let bytes: Vec<_> = std::iter::from_fn(|| sent.pop().ok()).collect();
+    assert!(
+        bytes.iter().any(|m| m.bytes() == [0x91, 60, 100]),
+        "the MIDI track played on its channel: {bytes:?}"
+    );
     assert!(recorded.iter().any(|t| t.complete && !t.is_empty()));
     assert!(left.iter().all(|&x| x == 0.0), "muted by the end");
     assert!(peak > 0.05, "the synth should be audible, peak {peak}");

@@ -194,6 +194,7 @@ instruments can do each; on the rest, the field shows the gesture dimmed, the st
 | `<`     |            | `sampler`, `chop`                | plays the sound the other way |
 | `O8`    | 0–15 16ths | `sampler`, `chop`                | starts 8/16 of the way in     |
 | `G6`    | 1–23 24ths | `synth`, `switched`, `monochord` | slides in from the last pitch |
+| `P12`   | 0–127      | `midi`                           | changes the gear's program    |
 
 **Reverse, `<`.** Plays the note's sound, or its piece of a chop, the other way round from the
 instrument's `direction`: backwards usually, forwards if `direction` is set to reverse. `~` on a
@@ -209,6 +210,13 @@ no offset, unless a lock moved `start`). A tracker's `9xx`.
 steps; on Monochord the string is plucked at the last pitch and retuned as it goes, as a finger
 slides up a fretboard. The Scarlatti's lead glides into its octave leaps (`G6`), and the demo's
 acid line slides down to its E♭ (`G8`). Krell, being a harpsichord, doesn't glide.
+
+**Program change, `P0` to `P127`.** On a MIDI track (see
+[MIDI tracks](07-instruments.md#midi-tracks-playing-other-gear-midi)), sends a program change
+before the step's note, so the gear switches sound and the note plays with the new one: a bass
+line that swaps patches for its chorus, or a drum machine that changes kit. It's sent on its
+step whether or not the step has a note, so a step with only `P5` changes the sound for the
+notes after it. Most gear numbers its programs from 1, so `P0` is its first.
 
 A held note carries its shape to its later hits: `<` with `R3` plays three hits backwards, and
 `G3` with `A37` slides round the chord.

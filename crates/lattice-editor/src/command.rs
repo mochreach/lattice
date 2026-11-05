@@ -241,7 +241,7 @@ pub const COMMANDS: &[Spec] = &[
         name: "inst",
         alias: None,
         params: &[text("INSTRUMENT", "instrument")],
-        describe: "choose the instrument: synth, switched, monochord, krell, sampler, chop, kick, snare, hat, clap or tom",
+        describe: "choose the instrument: synth, switched, monochord, krell, sampler, chop, kick, snare, hat, clap, tom, or midi for gear outside Lattice",
     },
     Spec {
         name: "sample",
@@ -403,6 +403,21 @@ pub const COMMANDS: &[Spec] = &[
         alias: None,
         params: &[],
         describe: "the MIDI keyboards and controllers Lattice is listening to",
+    },
+    Spec {
+        name: "port",
+        alias: None,
+        params: &[optional_text("[PORT]", "port's number or name, or none")],
+        describe: "play the track on MIDI gear, by its port's number or any part of its name, or none for Lattice's own port; alone, lists the ports",
+    },
+    Spec {
+        name: "cc",
+        alias: None,
+        params: &[
+            int("N", "controller", 0, 127),
+            optional_text("[VALUE]", "0 to 127, or none"),
+        ],
+        describe: "send MIDI controller N at a value from 0 to 127 on the track, or none to stop sending it",
     },
     Spec {
         name: "midi-learn",
@@ -1354,13 +1369,22 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                 1 => "; 1 control bound".into(),
                 n => format!("; {n} controls bound"),
             };
+            let out = match editor.midi_outputs.as_slice() {
+                [] => String::new(),
+                names => format!("; out: {}", names.join(", ")),
+            };
             editor.message = Some(match editor.midi_inputs.as_slice() {
                 [] => format!(
-                    "no MIDI keyboard or controller: plug one in and Lattice listens to it{bound}"
+                    "no MIDI keyboard or controller: plug one in and Lattice listens to it{bound}{out}"
                 ),
-                names => format!("midi in: {}{bound}", names.join(", ")),
+                names => format!("midi in: {}{bound}{out}", names.join(", ")),
             });
             Ok(vec![])
+        }
+        "port" => editor.set_port(command.text(0).unwrap_or_default()),
+        "cc" => {
+            let value = command.text(1).unwrap_or_default();
+            editor.set_cc(command.int(0)?, value)
         }
         "midi-learn" => {
             let target = command.text(0).ok().map(str::to_string);

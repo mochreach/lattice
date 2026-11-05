@@ -1254,6 +1254,8 @@ pub struct Engine {
     latency_offset: i64,
     /// Frames rendered since the engine started.
     frames: u64,
+    /// When the next frame rendered is heard, for MIDI out; 0 when nothing's said.
+    heard_at: u64,
     looper: Looper,
     takes: Producer<Box<Take>>,
     /// The playing pattern's conductor, and what it's told the UI thread.
@@ -1345,6 +1347,7 @@ impl Engine {
             backlog: 0,
             latency_offset: 0,
             frames: 0,
+            heard_at: 0,
             looper: Looper::default(),
             takes: takes_tx,
             conductor: Conductor::default(),
@@ -1383,6 +1386,14 @@ impl Engine {
     /// Set it before each [`Engine::process`].
     pub fn set_latency(&mut self, frames: u64) {
         self.latency = frames;
+    }
+
+    /// When the next frame rendered is heard, in nanoseconds counted from whenever the caller
+    /// likes, so MIDI tracks can say when to send what they play (see [`crate::midi_out`]). Set
+    /// it before each [`Engine::process`]; an engine never told, rendering to a file, says
+    /// nothing.
+    pub fn set_heard_at(&mut self, nanos: u64) {
+        self.heard_at = nanos;
     }
 
     /// Stops playback, releasing every sequenced note.
@@ -1434,7 +1445,12 @@ impl Engine {
     pub fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
         denormal::flush_to_zero();
         self.run_commands();
+        let nanos_per_frame = 1e9 / self.clock.sample_rate();
         for (l, r) in left.chunks_mut(MAX_BLOCK).zip(right.chunks_mut(MAX_BLOCK)) {
+            if self.heard_at != 0 {
+                crate::midi_out::BLOCK_AT.store(self.heard_at, Ordering::Relaxed);
+                self.heard_at += (l.len() as f64 * nanos_per_frame) as u64;
+            }
             self.process_block(l, r);
         }
     }
@@ -1989,6 +2005,7 @@ impl Engine {
             let (tl, tr) = (frames(&mut t.left, len), frames(&mut t.right, len));
             tl.fill(0.0);
             tr.fill(0.0);
+            t.instrument.mute(mix.mute || any_solo && !mix.solo);
             t.instrument.process(&t.events, tl, tr);
             t.events.clear();
             run_chain(&mut t.effects, &mut t.routing, tl, tr, rest);
@@ -2262,6 +2279,18 @@ impl Engine {
             // Before the note, so it plays with the step's settings.
             t.lock(step.locks, offset);
             t.start_ramps(t.playhead, step.locks, length);
+        }
+        for gesture in step.gestures() {
+            if let Gesture::Program(program) = gesture {
+                // Before the note, so it plays with the gear's new sound.
+                push(
+                    &mut t.events,
+                    Event {
+                        offset,
+                        kind: EventKind::Program(program),
+                    },
+                );
+            }
         }
         let delay = (step.gestures()).find_map(|g| match g {
             Gesture::Delay(n) => Some(n),
@@ -3356,7 +3385,10 @@ mod tests {
         impl Processor for Shapes {
             fn process(&mut self, events: &[Event], left: &mut [f32], _: &mut [f32]) {
                 for e in events {
-                    if matches!(e.kind, EventKind::Shape(_) | EventKind::NoteOn { .. }) {
+                    if matches!(
+                        e.kind,
+                        EventKind::Shape(_) | EventKind::NoteOn { .. } | EventKind::Program(_)
+                    ) {
                         let at = self.0 + u64::from(e.offset);
                         self.1.lock().unwrap().push((at, e.kind));
                     }
@@ -3365,7 +3397,14 @@ mod tests {
             }
         }
         let log = Log::default();
-        let gestures = [(0, "<"), (0, "R2"), (1, "O8"), (2, "G12"), (2, "D6")];
+        let gestures = [
+            (0, "<"),
+            (0, "R2"),
+            (1, "O8"),
+            (2, "G12"),
+            (2, "D6"),
+            (3, "P5"),
+        ];
         let mut engine = playing(
             &[60, 62, 64, 65],
             &gestures,
@@ -3402,7 +3441,8 @@ mod tests {
                 // Delayed, and gliding over half a step.
                 shape(13_500, false, 0, 3_000),
                 on(13_500, 64),
-                // The next plays as it is.
+                // The next plays as it is, after its program change.
+                (18_000, EventKind::Program(5)),
                 on(18_000, 65),
             ]
         );

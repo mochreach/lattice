@@ -112,7 +112,7 @@ pub fn render(export: &Export, buses: Buses, bpm: f64, sample_rate: f32) -> Resu
         lane.clone().swap(track);
     }
     let editor = Editor::new(grid, bpm).with_buses(buses);
-    let instruments = Tracks::instruments(&editor.grid, sample_rate);
+    let instruments = Tracks::instruments(&editor.grid, sample_rate, false);
     let (mut engine, mut handle) = Engine::new(sample_rate, bpm, &editor.grid, instruments);
     let mut left = vec![0.0; BLOCK];
     let mut right = vec![0.0; BLOCK];

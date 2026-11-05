@@ -137,7 +137,7 @@ impl<V: Voice> Processor for Drum<V> {
                     self.choked = false;
                 }
                 // A drum rings out whatever, and has no file to reverse or pitch to glide.
-                EventKind::NoteOff { .. } | EventKind::Shape(_) => {}
+                EventKind::NoteOff { .. } | EventKind::Shape(_) | EventKind::Program(_) => {}
                 EventKind::Choke => self.choked = self.sounding,
                 EventKind::Param { id, value } => {
                     if let Some(info) = V::KIND.params().get(id as usize) {
@@ -172,7 +172,8 @@ pub fn build(kind: InstKind, sample_rate: f32, values: &[f32]) -> Option<Box<dyn
         | InstKind::Monochord
         | InstKind::Krell
         | InstKind::Sampler
-        | InstKind::Chop => return None,
+        | InstKind::Chop
+        | InstKind::Midi => return None,
     })
 }
 

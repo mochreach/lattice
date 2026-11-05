@@ -31,6 +31,7 @@ pub mod fx;
 pub mod instrument;
 pub mod krell;
 pub mod looper;
+pub mod midi_out;
 pub mod monochord;
 pub mod param;
 pub mod phaser;

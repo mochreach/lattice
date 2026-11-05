@@ -3,9 +3,10 @@
 
 use lattice_core::{Grid, InstKind, Instrument};
 use lattice_editor::{Editor, TrackId};
+use lattice_engine::midi_out::MidiOut;
 use lattice_engine::{Command, Handle, Processor, Target, TrackPlayer, instrument};
 
-use crate::samples;
+use crate::{midi_out, samples};
 
 pub struct Tracks {
     sample_rate: f32,
@@ -43,12 +44,16 @@ impl Tracks {
         }
     }
 
-    /// An instrument for each of the grid's tracks, for the engine to start with.
-    pub fn instruments(grid: &Grid, sample_rate: f32) -> Vec<Box<dyn Processor>> {
-        grid.tracks
-            .iter()
-            .map(|track| build(&track.instrument, sample_rate).0)
-            .collect()
+    /// An instrument for each of the grid's tracks, for the engine to start with. A MIDI
+    /// track's sends what it plays only if `live`: not when it's rendered to a file.
+    pub fn instruments(grid: &Grid, sample_rate: f32, live: bool) -> Vec<Box<dyn Processor>> {
+        let build = |instrument: &Instrument| match instrument.kind {
+            InstKind::Midi if !live => {
+                Box::new(MidiOut::silent(sample_rate, &instrument.values)) as Box<dyn Processor>
+            }
+            _ => build(instrument, sample_rate).0,
+        };
+        grid.tracks.iter().map(|t| build(&t.instrument)).collect()
     }
 
     /// A sampler's file that couldn't be read since the last call.
@@ -202,7 +207,7 @@ impl Tracks {
                 }
                 sent.file = wanted.file.clone();
             }
-            if sent.kind != wanted.kind || sent.file != wanted.file {
+            if sent.kind != wanted.kind || sent.file != wanted.file || sent.port != wanted.port {
                 let (instrument, problem) = build(wanted, self.sample_rate);
                 self.problem = problem.or(self.problem.take());
                 if !send(Command::SetInstrument { index, instrument }) {
@@ -212,6 +217,7 @@ impl Tracks {
                 // so send it the settings that differ.
                 *sent = Instrument::new(wanted.kind);
                 sent.file = wanted.file.clone();
+                sent.port = wanted.port.clone();
             }
             // Both of the one kind by now, so they've the same settings.
             for (id, (old, &value)) in sent.values.iter_mut().zip(&wanted.values).enumerate() {
@@ -233,8 +239,13 @@ impl Tracks {
 }
 
 /// The processor for `instrument`, and why its file couldn't be read if it plays one that
-/// can't (it's silent until it can).
+/// can't (it's silent until it can). A MIDI track's sends what it plays to its port.
 fn build(instrument: &Instrument, sample_rate: f32) -> (Box<dyn Processor>, Option<String>) {
+    if instrument.kind == InstKind::Midi {
+        let (out, messages) = MidiOut::new(sample_rate, &instrument.values);
+        midi_out::play(messages, instrument.port.clone());
+        return (Box::new(out), None);
+    }
     let (sample, problem) = match samples::for_instrument(instrument) {
         Ok(sample) => (sample, None),
         Err(problem) => (None, Some(problem)),

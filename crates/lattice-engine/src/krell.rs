@@ -609,7 +609,7 @@ impl Processor for Krell {
                 EventKind::NoteOff { pitch } => self.note_off(pitch),
                 EventKind::Choke => self.choke(),
                 // Its notes don't glide.
-                EventKind::Shape(_) => {}
+                EventKind::Shape(_) | EventKind::Program(_) => {}
                 EventKind::Param { id, value } => {
                     if let Some(info) = InstKind::Krell.params().get(id as usize) {
                         self.set(id, info.clamp(value));

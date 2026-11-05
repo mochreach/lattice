@@ -53,10 +53,12 @@ pub enum InstKind {
     Chop,
     Switched,
     Krell,
+    /// Not an instrument of Lattice's own: notes and settings go out over MIDI.
+    Midi,
 }
 
 impl InstKind {
-    pub const ALL: [InstKind; 11] = [
+    pub const ALL: [InstKind; 12] = [
         InstKind::Synth,
         InstKind::Switched,
         InstKind::Monochord,
@@ -68,6 +70,7 @@ impl InstKind {
         InstKind::Hat,
         InstKind::Clap,
         InstKind::Tom,
+        InstKind::Midi,
     ];
 
     pub fn named(name: &str) -> Option<Self> {
@@ -87,6 +90,7 @@ impl InstKind {
             InstKind::Chop => &chop::PARAMS,
             InstKind::Switched => &switched::PARAMS,
             InstKind::Krell => &krell::PARAMS,
+            InstKind::Midi => &midi::PARAMS,
         }
     }
 }
@@ -105,11 +109,66 @@ impl Kind for InstKind {
             InstKind::Chop => "chop",
             InstKind::Switched => "switched",
             InstKind::Krell => "krell",
+            InstKind::Midi => "midi",
         }
     }
 
     fn params(self) -> &'static [ParamInfo] {
         InstKind::params(self)
+    }
+}
+
+/// A MIDI track: its notes go out over MIDI on its channel, and its settings are the
+/// channel, the pitch bend and the 128 controllers, each sent as it changes. A controller at -1
+/// isn't sent at all, so a track only sends what it's been given.
+pub mod midi {
+    use super::*;
+
+    pub const CHANNEL: u32 = 0;
+    pub const BEND: u32 = 1;
+    /// The first controller's id: controller `n` is `CC + n`.
+    pub const CC: u32 = 2;
+
+    /// The controllers' names, by number.
+    const NAMES: [&str; 128] = [
+        "cc0", "cc1", "cc2", "cc3", "cc4", "cc5", "cc6", "cc7", "cc8", "cc9", "cc10", "cc11",
+        "cc12", "cc13", "cc14", "cc15", "cc16", "cc17", "cc18", "cc19", "cc20", "cc21", "cc22",
+        "cc23", "cc24", "cc25", "cc26", "cc27", "cc28", "cc29", "cc30", "cc31", "cc32", "cc33",
+        "cc34", "cc35", "cc36", "cc37", "cc38", "cc39", "cc40", "cc41", "cc42", "cc43", "cc44",
+        "cc45", "cc46", "cc47", "cc48", "cc49", "cc50", "cc51", "cc52", "cc53", "cc54", "cc55",
+        "cc56", "cc57", "cc58", "cc59", "cc60", "cc61", "cc62", "cc63", "cc64", "cc65", "cc66",
+        "cc67", "cc68", "cc69", "cc70", "cc71", "cc72", "cc73", "cc74", "cc75", "cc76", "cc77",
+        "cc78", "cc79", "cc80", "cc81", "cc82", "cc83", "cc84", "cc85", "cc86", "cc87", "cc88",
+        "cc89", "cc90", "cc91", "cc92", "cc93", "cc94", "cc95", "cc96", "cc97", "cc98", "cc99",
+        "cc100", "cc101", "cc102", "cc103", "cc104", "cc105", "cc106", "cc107", "cc108", "cc109",
+        "cc110", "cc111", "cc112", "cc113", "cc114", "cc115", "cc116", "cc117", "cc118", "cc119",
+        "cc120", "cc121", "cc122", "cc123", "cc124", "cc125", "cc126", "cc127",
+    ];
+
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "worked out as it compiles, so out of bounds is an error then, not a panic"
+    )]
+    pub(super) const PARAMS: [ParamInfo; 130] = {
+        let mut params = [param(CHANNEL, "channel", (1.0, 16.0, 1.0), "", Curve::Whole); 130];
+        params[1] = param(BEND, "bend", (-1.0, 1.0, 0.0), "", Curve::Linear);
+        let mut n = 0;
+        while n < 128 {
+            params[CC as usize + n] = param(
+                CC + n as u32,
+                NAMES[n],
+                (-1.0, 127.0, -1.0),
+                "",
+                Curve::Midi,
+            );
+            n += 1;
+        }
+        params
+    };
+
+    /// The id of controller `number`.
+    pub fn cc(number: u8) -> u32 {
+        CC + u32::from(number.min(127))
     }
 }
 

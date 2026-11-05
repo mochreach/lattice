@@ -27,6 +27,7 @@ use crate::audio::{self, Output};
 use crate::config;
 use crate::looper::Looper;
 use crate::midi::Midi;
+use crate::midi_out;
 
 /// Frames a buffer, where the device lets it be set: low enough to play along to, and PulseAudio
 /// would otherwise buffer a couple of seconds.
@@ -301,6 +302,7 @@ impl Machine {
             editor.message = Some(said);
             editor.midi_inputs = self.midi.names();
         }
+        editor.midi_outputs = midi_out::ports();
         self.looper.tick(editor, handle, &self.host)
     }
 

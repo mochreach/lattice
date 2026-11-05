@@ -114,7 +114,7 @@ pub const MAX_LOCKS: usize = 4;
 
 /// Most parameters an instrument or effect has, so players can keep each one's setting without
 /// allocating.
-pub const MAX_PARAMS: usize = 16;
+pub const MAX_PARAMS: usize = 130;
 
 /// A setting changed from one step: a parameter of the track's instrument, or of one of its
 /// effects, at a value in the parameter's own units. It holds until the setting's next lock, as a

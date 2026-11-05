@@ -19,6 +19,9 @@ pub enum Curve {
     /// One of these, by index from 0, as for a waveform. The range is 0 to one less than the
     /// number of choices.
     Choice(&'static [&'static str]),
+    /// A MIDI value, 0 to 127, or -1 for none, which isn't sent. The range runs from 0 to 127,
+    /// so a lock's 00 to 99 never means none.
+    Midi,
 }
 
 /// One control on an instrument or effect, as in CLAP: values are in the parameter's own units,
@@ -62,7 +65,7 @@ impl ParamInfo {
     pub fn clamp(&self, value: f32) -> f32 {
         let value = value.clamp(self.min, self.max);
         match self.curve {
-            Curve::Choice(_) | Curve::Whole => value.round(),
+            Curve::Choice(_) | Curve::Whole | Curve::Midi => value.round(),
             _ => value,
         }
     }
@@ -74,6 +77,7 @@ impl ParamInfo {
                 (value - self.min) / (self.max - self.min)
             }
             Curve::Log => (value / self.min).ln() / (self.max / self.min).ln(),
+            Curve::Midi => value / self.max,
         };
         f.clamp(0.0, 1.0)
     }
@@ -85,6 +89,7 @@ impl ParamInfo {
             Curve::Linear => self.min + f * (self.max - self.min),
             Curve::Log => self.min * (self.max / self.min).powf(f),
             Curve::Choice(_) | Curve::Whole => (self.min + f * (self.max - self.min)).round(),
+            Curve::Midi => (f * self.max).round(),
         }
     }
 
@@ -92,7 +97,7 @@ impl ParamInfo {
     /// the range.
     pub fn nudge(&self, value: f32, by: i32) -> f32 {
         match self.curve {
-            Curve::Choice(_) | Curve::Whole => self.clamp(value + by as f32),
+            Curve::Choice(_) | Curve::Whole | Curve::Midi => self.clamp(value + by as f32),
             _ => self.at(self.fraction(value) + by as f32 / NUDGES),
         }
     }
@@ -102,6 +107,12 @@ impl ParamInfo {
         if let Curve::Choice(names) = self.curve {
             let i = (self.clamp(value) - self.min) as usize;
             return names.get(i).map_or_else(String::new, |n| n.to_string());
+        }
+        if self.curve == Curve::Midi {
+            return match value < 0.0 {
+                true => "–".into(),
+                false => format!("{value:.0}"),
+            };
         }
         // Enough places to tell the smallest settings apart: a sampler's attack starts at
         // half a millisecond, which three would round up to 0.001s.
@@ -147,6 +158,9 @@ pub struct Device<K: Kind> {
     pub values: Vec<f32>,
     /// The file it plays, for a sampler.
     pub file: Option<PathBuf>,
+    /// The MIDI port it plays, by name or part of one, for a MIDI track; `None` for Lattice's
+    /// own port.
+    pub port: Option<String>,
 }
 
 impl<K: Kind> Device<K> {
@@ -156,6 +170,7 @@ impl<K: Kind> Device<K> {
             kind,
             values: kind.params().iter().map(|p| p.default).collect(),
             file: None,
+            port: None,
         }
     }
 
@@ -194,6 +209,8 @@ struct Sparse<K: Kind> {
     params: BTreeMap<String, f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     file: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    port: Option<String>,
 }
 
 impl<K: Kind> From<Device<K>> for Sparse<K> {
@@ -208,6 +225,7 @@ impl<K: Kind> From<Device<K>> for Sparse<K> {
                 .map(|(p, &v)| (p.name.to_string(), v))
                 .collect(),
             file: device.file,
+            port: device.port,
         }
     }
 }
@@ -218,6 +236,7 @@ impl<K: Kind> TryFrom<Sparse<K>> for Device<K> {
     fn try_from(sparse: Sparse<K>) -> Result<Self, String> {
         let mut device = Device::new(sparse.kind);
         device.file = sparse.file;
+        device.port = sparse.port;
         let kind = sparse.kind.name();
         for (name, value) in sparse.params {
             let param = device

@@ -29,6 +29,7 @@ mod log;
 mod looper;
 mod manual_page;
 mod midi;
+mod midi_out;
 mod mixer;
 mod mixer_page;
 mod presets;
@@ -93,6 +94,7 @@ fn main() -> Result<()> {
         return ctl::client(args.get(1..).unwrap_or_default());
     }
     log::start();
+    midi_out::start();
     log!("arguments: {args:?}");
     let demo = demo::song();
     let mut editor = Editor::new(demo.grid, demo.bpm)
@@ -210,6 +212,10 @@ fn main() -> Result<()> {
         Ok(()) => log!("quit"),
         Err(e) => log!("stopped by an error: {e:#}"),
     }
+    // Stopping the audio drops the MIDI tracks, which let go of their notes on the gear.
+    drop(machine);
+    drop(handle);
+    midi_out::finish();
     result
 }
 

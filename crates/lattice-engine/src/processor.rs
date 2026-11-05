@@ -36,6 +36,8 @@ pub enum EventKind {
     },
     /// How the next note-on plays, from a step's gestures: for that note alone.
     Shape(Shape),
+    /// A `P12` gesture: change to program 12. Only MIDI out does anything with it.
+    Program(u8),
 }
 
 /// How a note plays, beyond its pitch and velocity: what a step's `<`, `O` and `G` gestures
@@ -68,6 +70,10 @@ pub trait Processor: Send {
     fn params(&self) -> &[ParamInfo] {
         &[]
     }
+
+    /// The track's muted, or another soloed, from the next block on. Only MIDI out, which
+    /// isn't heard through the mixer, needs to know.
+    fn mute(&mut self, _muted: bool) {}
 
     /// For an instrument that plays a sound file: swaps `sample` for the one it's playing,
     /// carrying on from the new one. Returns false, leaving it alone, if it plays none.

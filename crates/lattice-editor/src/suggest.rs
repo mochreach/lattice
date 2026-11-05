@@ -81,7 +81,12 @@ impl Editor {
         let kinds = |names: Vec<(&str, &[lattice_core::ParamInfo])>| {
             (names.into_iter())
                 .map(|(name, params)| {
-                    let params: Vec<&str> = params.iter().map(|p| p.name).collect();
+                    let mut params: Vec<&str> = params.iter().map(|p| p.name).collect();
+                    // A MIDI track's controllers, by the range rather than one by one.
+                    if name == "midi" {
+                        params.truncate(2);
+                        params.push("cc0…cc127");
+                    }
                     (name.to_string(), params.join(" "))
                 })
                 .collect()
@@ -127,6 +132,10 @@ impl Editor {
             ("face-show" | "face-hide", 0) => (track.instrument.params().iter())
                 .zip(&track.instrument.values)
                 .map(|(p, &value)| (p.name.to_string(), p.format(value)))
+                .collect(),
+            ("port", 0) => (self.midi_outputs.iter().enumerate())
+                .map(|(i, name)| (name.clone(), format!("port {}", i + 1)))
+                .chain([("none".into(), "Lattice's own port".into())])
                 .collect(),
             ("lock" | "unlock", 0) => suggest_settings(track),
             ("lock", 1) => match before.first() {

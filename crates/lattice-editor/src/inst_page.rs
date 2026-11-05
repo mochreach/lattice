@@ -54,7 +54,9 @@ impl Editor {
                 lines.extend(face.controls.iter().map(|&c| InstLine::Param(c.into())));
             }
             _ => {
-                lines.extend((0..track.instrument.params().len()).map(InstLine::Param));
+                let params = 0..track.instrument.params().len();
+                let shown = params.filter(|&p| crate::midi_out::shows_param(track, p));
+                lines.extend(shown.map(InstLine::Param));
                 lines.extend(macros);
             }
         }

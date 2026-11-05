@@ -13,6 +13,7 @@ use lattice_engine::{Engine, Handle};
 
 use crate::devices;
 use crate::log::{HEALTH, log};
+use crate::midi_out;
 use crate::tracks::Tracks;
 
 /// Largest buffer the engine renders in one go; bigger cpal buffers are split.
@@ -50,7 +51,7 @@ pub fn start(
     let config = devices::config(&device, Direction::Output, None)?;
     let sample_rate = config.sample_rate as f32;
 
-    let instruments = Tracks::instruments(grid, sample_rate);
+    let instruments = Tracks::instruments(grid, sample_rate, true);
     // Effects and bus levels are sent once it's running; see `Mixer`.
     let (engine, handle) = Engine::new(sample_rate, bpm, grid, instruments);
     let mut output = Output {
@@ -113,9 +114,11 @@ impl Output {
                     // What's rendered now is heard this much later, and what's played along
                     // with it takes the input's latency to come back.
                     let at = info.timestamp();
-                    let output = at.playback.duration_since(at.callback).as_secs_f64();
-                    let output = (output * f64::from(sample_rate)) as u64;
+                    let ahead = at.playback.duration_since(at.callback);
+                    let output = (ahead.as_secs_f64() * f64::from(sample_rate)) as u64;
                     engine.set_latency(output + input.load(Ordering::Relaxed));
+                    // MIDI tracks send what they play to be heard with it.
+                    engine.set_heard_at(midi_out::heard_at(start + ahead));
                     for chunk in data.chunks_mut(MAX_BLOCK * channels) {
                         let frames = chunk.len() / channels;
                         // A chunk is at most a block, so this always fits.

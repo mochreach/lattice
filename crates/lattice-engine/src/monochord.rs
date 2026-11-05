@@ -477,6 +477,7 @@ impl Processor for Monochord {
                 EventKind::NoteOff { pitch } => self.note_off(pitch),
                 EventKind::Choke => self.choke(),
                 EventKind::Shape(shape) => self.shape = shape,
+                EventKind::Program(_) => {}
                 EventKind::Param { id, value } => {
                     if let Some(info) = InstKind::Monochord.params().get(id as usize) {
                         self.set(id, info.clamp(value));

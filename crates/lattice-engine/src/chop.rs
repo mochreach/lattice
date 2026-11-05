@@ -119,6 +119,7 @@ impl Processor for Chop {
                 EventKind::NoteOff { pitch } => self.player.release(pitch),
                 EventKind::Choke => self.player.choke(),
                 EventKind::Shape(shape) => self.shape = shape,
+                EventKind::Program(_) => {}
                 EventKind::Param { id, value } => {
                     let info = InstKind::Chop.params().get(id as usize);
                     if let (Some(info), Some(slot)) = (info, self.values.get_mut(id as usize)) {

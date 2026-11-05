@@ -14,7 +14,8 @@ chapter 8.
 ## The instruments at a glance
 
 Lattice has eleven instruments. All are built in: the engine is written by hand, in Rust, for
-Lattice alone.
+Lattice alone. A twelfth, `midi`, makes no sound of its own: it plays gear outside Lattice (see
+[MIDI tracks](#midi-tracks-playing-other-gear-midi)).
 
 | Name        | Engine     | What it is                                                   | Voices |
 |-------------|------------|--------------------------------------------------------------|--------|
@@ -55,8 +56,9 @@ selections reach; on the mixer, instrument and fx pages, the track under the cur
 ```
 
 The names are `synth`, `switched`, `monochord`, `krell`, `sampler`, `chop`, `kick`, `snare`,
-`hat`, `clap` and `tom`. Type `:inst ` and the command line lists them; a name it doesn't know
-is refused with the list: `no instrument called "string"; there's synth, switched, …`.
+`hat`, `clap` and `tom`, and `midi` for gear outside Lattice. Type `:inst ` and the command line
+lists them; a name it doesn't know is refused with the list:
+`no instrument called "string"; there's synth, switched, …`.
 
 What changing it does:
 
@@ -291,6 +293,7 @@ engine is named after:
 | `sampler`   | a reel-to-reel, as at the Radiophonic Workshop, its reels turning            |
 | `chop`      | a break's waveform sliced up, a slice and its pad lit in turn                |
 | the drums   | the Rhythmicon's lamp through its spinning disc of holes onto its photocells |
+| `midi`      | a MIDI socket, its five pins, and a note going down the wire, bit by bit     |
 
 They were drawn by hand, dot by dot, rather than traced, as pictures don't survive being made so
 small. A face can have art of its own, drawn by hand too, or else a fractal its title picks
@@ -1193,6 +1196,135 @@ from 0 to 1; `d` on it removes it, and any locks on it.
 - A macro locks like a setting: `:lock bloom 1`, `L`, or turning it with record armed.
 - Changing the instrument (`:inst`) keeps the macros but lets go of the old instrument's
   settings; a preset brings its own macros, in place of the track's.
+
+## MIDI tracks: playing other gear (`midi`)
+
+A MIDI track's instrument is something outside Lattice: a synth on the desk, a drum machine, a
+modular's MIDI interface, or another program. Its notes go out over MIDI, as they're played, and
+its settings go out as controllers. Everything else about the track is as it is for any other:
+its steps, rules, gestures, locks, macros and recording all work, so a hardware synth is
+sequenced exactly as `krell` is.
+
+I'd planned it from the start: when I designed gestures and locks (chapter 5), the test of the
+design was that MIDI out should need nothing new. A track that plays gear is a track whose
+instrument is a MIDI port; its lock columns are controllers; a program change is a gesture.
+
+### Choosing the gear: `:port`
+
+`:port` makes the track a MIDI track, if it isn't one, and says where it plays. On its own it
+lists the ports there are:
+
+```
+:port                 midi out: 1 minilogue xd, 2 Digitakt; or none, for Lattice's own
+:port 2               the track plays the Digitakt
+:port mini            any part of the name will do: the track plays the minilogue xd
+:port none            Lattice's own port
+```
+
+On the pattern page it changes every track the selections reach; on the other pages, the
+cursor's track. Type `:port ` and the command line lists them too.
+
+The track keeps the name as you wrote it (`port: "mini"` in the song file) rather than a number,
+and finds the port by it, in any case. A number can change when gear is plugged in in another
+order; a name doesn't. Lattice looks for ports every second, so a synth switched on after the
+song is opened is played as soon as it's there, and the status line says
+`midi plays prophet, once it's plugged in` when the port isn't there yet. `:midi` lists the ports
+too.
+
+**Lattice's own port.** A track on `none` plays on a port of Lattice's own, called
+`Lattice:out`, which other programs connect to: a DAW, a soft synth, or `aconnect` on Linux to
+wire it to whatever you like. It's there whenever Lattice is running.
+
+### Notes and channels
+
+A note goes out as a note on, at its pitch and velocity, and a note off when it ends, timed as
+the steps, gestures and lengths say: a `R3` sends three notes, an `A37` an arpeggio, a `D8` a
+late one. `channel` is the MIDI channel, 1 to 16, so several tracks can play one multitimbral
+synth on a channel each. Changing it ends the notes sounding on the old one first.
+
+**Timing.** Every message is stamped with the moment its sound would be heard if it were an
+instrument of Lattice's own, and a thread of its own sends it then, within a millisecond. So
+gear plays in time with the built-in instruments: a MIDI note leaves at the moment Lattice's
+kick on the same step comes out of the speakers. What the gear adds itself, between hearing a
+note and sounding it, is up to the gear; a few milliseconds is usual.
+
+**Muting.** A muted track, or one silent because another's soloed, sends no notes, and ends any
+it was playing. Stopping the song, `:inst` to something else, and quitting all end every note
+sounding, so none is left hanging on the gear.
+
+### Settings: controllers and bend
+
+A MIDI track's settings are its channel, its pitch `bend`, from -1 to 1, sent as MIDI's 14-bit
+pitch bend, and its 128 controllers, `cc0` to `cc127`, each 0 to 127. A controller starts unset,
+`–`, and an unset one isn't sent at all: a synth's own settings stay as they are until the track
+says otherwise. `:cc` sets one:
+
+```
+:cc 74 40             send controller 74 at 40: the filter's cutoff, on most synths
+:cc 74 none           stop sending it
+```
+
+The instrument page shows only the controllers the track sends, or a lock column changes, as
+128 lines of `–` would bury the ones that matter; the mixer shows only the channel and bend.
+Once set, a controller is turned with `+` and `-` like any setting, a step at a time, and sent
+as it changes. When the track starts playing, its settings are sent once, so the gear starts
+where the track says.
+
+**Locks** work on controllers as on anything: `:lock cc74 20` puts a lock column on the
+track, and a lock in it sends the controller on its step, held until the next, and back to the
+track's setting when the song stops. As in every lock column, `00` to `99` cover the whole
+range, here 0 to 127. A macro can turn controllers too, several at once (see
+[Macros](#macros)): a knob on a MIDI controller turning a macro on a MIDI track turns the
+gear's settings, recorded as locks if you record.
+
+**Program change** is a gesture, `P0` to `P127`, sent before the step's note, so the note plays
+with the gear's new sound (see [sound gestures](05-gestures.md#sound-gestures)).
+
+### The controllers
+
+What a controller does is up to the gear, and its manual has a chart of them. Most synths follow
+the conventions below for the ones they have; the unnamed ones are free for a synth to use as it
+likes, and most of its knobs are among them. `cc32` to `cc63` are the fine halves of `cc0` to
+`cc31`, for the few synths that take 14-bit settings.
+
+| 0–31                 | 32–63                | 64–95                | 96–127               |
+|----------------------|----------------------|----------------------|----------------------|
+| `cc0` bank           | `cc32` fine cc0      | `cc64` sustain       | `cc96` data +1       |
+| `cc1` mod wheel      | `cc33` fine cc1      | `cc65` glide on      | `cc97` data −1       |
+| `cc2` breath         | `cc34` fine cc2      | `cc66` sostenuto     | `cc98` NRPN fine     |
+| `cc3`                | `cc35` fine cc3      | `cc67` soft pedal    | `cc99` NRPN          |
+| `cc4` foot           | `cc36` fine cc4      | `cc68` legato        | `cc100` RPN fine     |
+| `cc5` glide time     | `cc37` fine cc5      | `cc69` hold 2        | `cc101` RPN          |
+| `cc6` data entry     | `cc38` fine cc6      | `cc70` variation     | `cc102`              |
+| `cc7` volume         | `cc39` fine cc7      | `cc71` resonance     | `cc103`              |
+| `cc8` balance        | `cc40` fine cc8      | `cc72` release       | `cc104`              |
+| `cc9`                | `cc41` fine cc9      | `cc73` attack        | `cc105`              |
+| `cc10` pan           | `cc42` fine cc10     | `cc74` cutoff        | `cc106`              |
+| `cc11` expression    | `cc43` fine cc11     | `cc75` decay         | `cc107`              |
+| `cc12` effect 1      | `cc44` fine cc12     | `cc76` vibrato rate  | `cc108`              |
+| `cc13` effect 2      | `cc45` fine cc13     | `cc77` vibrato depth | `cc109`              |
+| `cc14`               | `cc46` fine cc14     | `cc78` vibrato delay | `cc110`              |
+| `cc15`               | `cc47` fine cc15     | `cc79` sound 10      | `cc111`              |
+| `cc16`               | `cc48` fine cc16     | `cc80`               | `cc112`              |
+| `cc17`               | `cc49` fine cc17     | `cc81`               | `cc113`              |
+| `cc18`               | `cc50` fine cc18     | `cc82`               | `cc114`              |
+| `cc19`               | `cc51` fine cc19     | `cc83`               | `cc115`              |
+| `cc20`               | `cc52` fine cc20     | `cc84` glide from    | `cc116`              |
+| `cc21`               | `cc53` fine cc21     | `cc85`               | `cc117`              |
+| `cc22`               | `cc54` fine cc22     | `cc86`               | `cc118`              |
+| `cc23`               | `cc55` fine cc23     | `cc87`               | `cc119`              |
+| `cc24`               | `cc56` fine cc24     | `cc88` velocity fine | `cc120` sound off    |
+| `cc25`               | `cc57` fine cc25     | `cc89`               | `cc121` reset all    |
+| `cc26`               | `cc58` fine cc26     | `cc90`               | `cc122` local        |
+| `cc27`               | `cc59` fine cc27     | `cc91` reverb        | `cc123` notes off    |
+| `cc28`               | `cc60` fine cc28     | `cc92` tremolo       | `cc124` omni off     |
+| `cc29`               | `cc61` fine cc29     | `cc93` chorus        | `cc125` omni on      |
+| `cc30`               | `cc62` fine cc30     | `cc94` detune        | `cc126` mono         |
+| `cc31`               | `cc63` fine cc31     | `cc95` phaser        | `cc127` poly         |
+
+`cc120` to `cc127` aren't settings but orders to the synth: `cc123` ends every note, which
+Lattice sends itself when it needs to. Setting them on a track sends them every time it starts,
+which is rarely what you want.
 
 ## Audio devices
 
