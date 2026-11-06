@@ -462,6 +462,12 @@ pub const COMMANDS: &[Spec] = &[
         describe: "bars counted in before recording (0 for none)",
     },
     Spec {
+        name: "threshold",
+        alias: None,
+        params: &[optional_text("[DB]", "level")],
+        describe: "the looper waits for the input to reach this level, -60 to 0 dB, then records from where you come in (off for none)",
+    },
+    Spec {
         name: "layout",
         alias: None,
         params: &[text("LAYOUT", "layout")],
@@ -1425,6 +1431,21 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         "count" => {
             editor.count_in = command.int(0)?;
+            Ok(vec![])
+        }
+        "threshold" => {
+            editor.threshold = match command.text(0)?.trim() {
+                "" => editor.threshold,
+                "off" => None,
+                typed => match typed.trim_end_matches("dB").trim().parse::<f32>() {
+                    Ok(db) if (-60.0..=0.0).contains(&db) => Some(db),
+                    _ => return Err(format!("the threshold goes from -60 to 0 dB, not {typed}")),
+                },
+            };
+            editor.message = Some(match editor.threshold {
+                Some(db) => format!("threshold {db} dB: the looper records from where you come in"),
+                None => "no threshold: the looper records from the track's first step".into(),
+            });
             Ok(vec![])
         }
         "layout" => {

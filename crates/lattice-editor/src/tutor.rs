@@ -909,7 +909,10 @@ const LESSONS: &[Lesson] = &[
                after that overdubs the last, and {undo} takes one off. Tap it again and the pass \
                finishes and the loop plays on; again, and it overdubs from the next pass. On a \
                track of notes it adds a track beside it, `loop`, to record into. \
-               `:midi-learn loop_pedal` puts it on a foot switch.\n\n\
+               `:midi-learn loop_pedal` puts it on a foot switch. `:threshold -30` makes it \
+               listen instead: it records from where you come in, the moment you play louder \
+               than -30 dB, and if the song's stopped, starts it from 00 with you; \
+               `:threshold off` goes back to waiting for 00.\n\n\
                `:arm` arms the track for record ({toggle_record}) to record instead, and \
                `:arm 1` records one pass and stops, `:arm 4` four. `:arm!` records a new loop \
                over the old one, and `:disarm` disarms; delete a loop's notes and the next pass \
@@ -921,7 +924,15 @@ const LESSONS: &[Lesson] = &[
                hear. If what you play comes back late or early, `:latency 20` moves it by \
                milliseconds, or `:latency -20`.\n\nStart a loop on the chop track.",
         teaches: &[Action::LoopPedal],
-        commands: &["arm", "arm!", "disarm", "input", "output", "latency"],
+        commands: &[
+            "arm",
+            "arm!",
+            "disarm",
+            "threshold",
+            "input",
+            "output",
+            "latency",
+        ],
         setup: nothing,
         watch: never,
         done: |e, _| e.armed().is_some(),

@@ -175,6 +175,9 @@ pub enum Effect {
     /// and [`Editor::buses`].
     MixerChanged,
     TogglePlay,
+    /// Get the engine ready to play the song from the top, as [`Effect::TogglePlay`] does,
+    /// without starting it: the looper's to start it as the input reaches its threshold.
+    ReadyToPlay,
     Bpm(f64),
     Click(bool),
     /// The meter changed: send it to the engine, before the tempo. `groups` has a bit for each
@@ -509,6 +512,9 @@ pub struct Editor {
     pub record: bool,
     /// Bars of clicks before the song starts, when record is armed.
     pub count_in: u32,
+    /// The level, in dB, the input reaches to start the looper recording, rather than the
+    /// track's first step or a count-in; `None` for no threshold.
+    pub threshold: Option<f32>,
     /// Where playback is; see [`Editor::set_transport`].
     transport: Option<Transport>,
     /// The pass being recorded, all one undo.
@@ -665,6 +671,7 @@ impl Editor {
             show_keys: false,
             record: false,
             count_in: 1,
+            threshold: None,
             transport: None,
             take: None,
             held: Vec::new(),

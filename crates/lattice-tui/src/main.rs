@@ -701,6 +701,13 @@ fn apply(
                 count_in: if editor.looping() { editor.count_in } else { 0 },
             }
         }
+        // As for playing, but the looper starts it, as it hears the input.
+        Effect::ReadyToPlay => {
+            let (now, next) = editor.song_mutes();
+            handle.send(Command::SetMutes { now, next });
+            sequencer.send_pattern(editor, handle);
+            return Flow::Next;
+        }
         Effect::Bpm(bpm) => Command::SetBpm(bpm),
         Effect::Click(on) => Command::SetClick(on),
         Effect::Meter {

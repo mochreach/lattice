@@ -94,13 +94,27 @@ impl Looper {
             }
         }
 
-        let recording = editor.looping() && playing && self.input.is_some();
+        // With a threshold, the looper listens while the song's stopped, to start it.
+        let threshold = editor.threshold_level();
+        let recording =
+            editor.looping() && (playing || threshold.is_some()) && self.input.is_some();
         match armed.filter(|_| recording) {
             Some(t) => {
                 // No more than the passes left, if they're counted.
                 let left = editor.passes_left().map_or(WAITING, |n| n as usize);
                 while self.waiting < WAITING.min(left) {
-                    let take = Take::new(t, self.room(editor, t, handle.status().tempo()));
+                    let mut room = self.room(editor, t, handle.status().tempo());
+                    // The first waits for the input, and the rest follow on.
+                    let listens = self.waiting == 0 && threshold.is_some();
+                    if listens {
+                        // With room for its lead too: up to a step, and the latency.
+                        let steps = editor.grid.tracks.get(t).map_or(1, |t| t.steps.len());
+                        room += room / steps.max(1) + self.sample_rate as usize;
+                    }
+                    let mut take = Take::new(t, room);
+                    if listens {
+                        take.threshold = threshold;
+                    }
                     if !handle.send(Command::Record(take)) {
                         break;
                     }
@@ -113,9 +127,15 @@ impl Looper {
         }
 
         let mut effects = vec![];
-        while let Some(take) = handle.recorded() {
+        while let Some(mut take) = handle.recorded() {
             self.waiting = self.waiting.saturating_sub(1);
             if take.complete && !take.is_empty() {
+                let steps = editor
+                    .grid
+                    .tracks
+                    .get(take.track)
+                    .map_or(0, |t| t.steps.len());
+                turn(&mut take, steps);
                 effects.extend(self.save(&take, editor));
             }
         }
@@ -153,6 +173,26 @@ impl Looper {
             }
         }
     }
+}
+
+/// Turns a take whose pass started on another step than the first round, for a track of
+/// `steps` steps, so that it starts on the first, as the track plays it, with its lead, played
+/// before its pass started, laid on the end of the pass, just before that step.
+fn turn(take: &mut Take, steps: usize) {
+    let (lead, step) = (take.lead.min(take.len()), take.step);
+    for side in [&mut take.left, &mut take.right] {
+        let before: Vec<f32> = side.drain(..lead).collect();
+        for (sample, lead) in side.iter_mut().rev().zip(before.iter().rev()) {
+            *sample += lead;
+        }
+        let len = side.len();
+        // Below `len`, as the step is below `steps`; a track of none has nothing to turn.
+        if let Some(at) = (step % steps.max(1) * len).checked_div(steps) {
+            side.rotate_right(at);
+        }
+    }
+    take.lead = 0;
+    take.step = 0;
 }
 
 /// The take, with `under` mixed in beneath it if it's overdubbing, as interleaved stereo at
@@ -270,5 +310,18 @@ mod tests {
             .step_by(2)
             .collect();
         assert_eq!(mixed, [1.0, 2.0, 3.0, 2.0]);
+    }
+
+    #[test]
+    fn a_pass_from_another_step_is_turned_round_to_start_on_the_first() {
+        // Its pass of 4 steps, of 2 frames each, from step 1, after a lead of 1 frame.
+        let mut pass = take(vec![9.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 0.0, 0.0]);
+        pass.step = 1;
+        pass.lead = 1;
+        turn(&mut pass, 4);
+        // Step 0's, recorded last, comes first; the lead, before step 1, ends it.
+        assert_eq!(pass.left, [0.0, 9.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0]);
+        assert_eq!(pass.right[1], -9.0);
+        assert_eq!((pass.step, pass.lead), (0, 0));
     }
 }

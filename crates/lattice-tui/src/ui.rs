@@ -439,6 +439,10 @@ fn header(editor: &Editor, status: &Status, theme: &Theme, width: u16) -> Line<'
                 format!(" ● LOOP {} ", track.name.to_uppercase()),
                 theme.block(theme.error),
             ),
+            Some(track) if status.listening() => Span::styled(
+                format!(" ◌ LISTEN {} ", track.name.to_uppercase()),
+                theme.block(theme.accent),
+            ),
             Some(track) => Span::styled(
                 format!(" ARMED {} ", track.name.to_uppercase()),
                 theme.block(theme.visual),

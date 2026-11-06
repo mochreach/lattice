@@ -515,6 +515,8 @@ pub struct Status {
     locks: [[AtomicU64; MAX_LOCKS]; MAX_TRACKS],
     /// Whether a take is recording the input.
     recording: AtomicBool,
+    /// Whether a take is waiting for the input to reach its threshold.
+    listening: AtomicBool,
     /// Things leaked on the audio thread because the garbage queue was full.
     leaked: AtomicU64,
     /// The tempo playing, as `f64` bits: the song's, or the conductor's.
@@ -580,6 +582,7 @@ impl Status {
             notes: std::array::from_fn(|_| AtomicU32::new(0)),
             locks: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU64::new(0))),
             recording: AtomicBool::new(false),
+            listening: AtomicBool::new(false),
             leaked: AtomicU64::new(0),
             tempo: AtomicU64::new(0),
             conductor_step: AtomicU64::new(u64::MAX),
@@ -602,6 +605,11 @@ impl Status {
     /// Whether a take is recording the input now, rather than waiting for its pass to start.
     pub fn recording(&self) -> bool {
         self.recording.load(Ordering::Relaxed)
+    }
+
+    /// Whether a take is waiting for the input to reach its threshold, to start.
+    pub fn listening(&self) -> bool {
+        self.listening.load(Ordering::Relaxed)
     }
 
     pub fn playing(&self) -> bool {
@@ -1399,6 +1407,11 @@ impl Engine {
     /// Starts playback from the top, after `bars` bars of clicks.
     pub fn play_after(&mut self, bars: u32) {
         self.stop();
+        self.begin(bars);
+    }
+
+    /// Starts playback from the top, stopped as it is, after `bars` bars of clicks.
+    fn begin(&mut self, bars: u32) {
         self.playing = true;
         self.count_in = u64::from(bars) * self.beats_per_bar * self.steps_per_beat;
         self.status.playing.store(true, Ordering::Relaxed);
@@ -2170,11 +2183,16 @@ impl Engine {
             frames(&mut self.input_left, len),
             frames(&mut self.input_right, len),
         );
-        self.looper
-            .write(self.frames, il, ir, |t| send_take(takes, garbage, t));
+        let heard = (self.looper).write(self.frames, il, ir, |t| send_take(takes, garbage, t));
         self.frames += len as u64;
+        // A take waiting for the input starts the song as it's heard, from the next block.
+        if heard && !self.playing {
+            self.begin(0);
+        }
         let recording = self.looper.recording(self.frames);
         self.status.recording.store(recording, Ordering::Relaxed);
+        let listening = self.looper.listening();
+        self.status.listening.store(listening, Ordering::Relaxed);
     }
 
     /// Clicks for beat `beat` of a bar: the accent on its first, the accent more softly where
@@ -2318,11 +2336,12 @@ impl Engine {
             });
             return false;
         }
-        if t.realised != Some(t.pass) {
+        let new_pass = t.realised != Some(t.pass);
+        if new_pass {
             realise_into(&t.track, t.pass, &mut t.steps);
             t.realised = Some(t.pass);
-            self.looper.pass_starts(index, at, latency);
         }
+        (self.looper).step_starts(index, (t.pass, t.playhead, new_pass), at, latency);
         t.position = u64::from(t.pass) << 32 | t.playhead as u64;
         self.status.set_position(index, t.position);
         // The playhead is kept within the steps, being reset whenever they change.
@@ -4586,6 +4605,27 @@ mod tests {
         let take = handle.recorded().unwrap();
         assert_eq!(take.left[..2], [100.0, 101.0]);
         assert_eq!(take.len(), 2400);
+    }
+
+    #[test]
+    fn stopped_a_take_with_a_threshold_starts_the_song_as_the_input_reaches_it() {
+        let (mut engine, mut handle, mut input) = looping(4);
+        handle.send(Command::SetLatencyOffset(-(MAX_BLOCK as i64)));
+        let mut take = Take::new(0, 4000);
+        take.threshold = Some(1000.0);
+        handle.send(Command::Record(take));
+        feed(&mut engine, &mut input, 0, 512);
+        assert!(handle.status().listening() && !handle.status().playing());
+        feed(&mut engine, &mut input, 512, 1024);
+        assert!(handle.status().playing(), "the input's reached it");
+        assert!(!handle.status().listening());
+        feed(&mut engine, &mut input, 1536, 3072);
+        let take = handle.recorded().expect("a pass recorded");
+        assert!(take.complete);
+        assert_eq!(take.step, 0, "from the song's first step");
+        // From a little before it was heard, the pass a whole one after its lead.
+        assert_eq!(take.left[0], 1000.0 - 128.0);
+        assert_eq!(take.len() - take.lead, 2400);
     }
 
     #[test]

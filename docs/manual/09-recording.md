@@ -226,6 +226,38 @@ playing a loop, records where it is.
  loop: recording a new loop from its next 00; ! again stops
 ```
 
+### Coming in when you're ready: `:threshold`
+
+Waiting for `00` keeps the loop in time, but it's a wait, and with the song stopped there's a
+count-in to sit through as well. A **threshold** lets the looper listen instead, as many loop
+pedals do: nothing is recorded until what comes in is louder than the threshold, and recording
+starts the moment it is.
+
+| Command          | What it does                                                       |
+|------------------|--------------------------------------------------------------------|
+| `:threshold -30` | waits for the input to reach -30 dB (from -60, the quietest, to 0) |
+| `:threshold off` | no threshold: the looper waits for `00`, as before                 |
+| `:threshold`     | says what it is                                                    |
+
+With a threshold:
+
+- **With the song stopped**, the loop pedal (or `:arm` with record on) doesn't start the song: the
+  header shows `◌ LISTEN TROLL`, and the status line
+  `troll: listening; play and the song starts with you`. The moment you play, the song starts
+  from `00`, there and then, with no count-in, and the first pass is recorded from your first
+  note.
+- **With the song playing**, recording starts in the step where you come in, rather than waiting
+  for the next `00`. The pass then runs round the track to that step again, a whole pass, and is
+  turned round before it's saved, so that it plays from step `00` like any other loop: whichever
+  step you came in on, the loop is in time.
+
+Either way, what you played just before the step the pass starts on, the note that crossed the
+threshold among it, isn't lost: it goes on the end of the loop, where you played it, just before
+that step. The passes after the first follow on from it, back to back, as always.
+
+Set it above the noise of what you're recording, the hiss of an amp, the hum of a cable, so it
+isn't set off by them: `-40` suits a quiet line input, `-20` a noisy room through a microphone.
+
 `:midi-learn loop_pedal` puts it on a MIDI foot switch (see
 [`:midi-learn`](#pedals-buttons-pads-and-knobs-midi-learn)), so the whole loop can be played
 from the floor. Stopping the song disarms it, so playing again

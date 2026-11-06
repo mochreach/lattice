@@ -402,6 +402,17 @@ ISO Level 3 Shift (AltGr), into `Key::RightAlt` as it's let go, if no key was pr
 down, so chords held on it stay chords. On a track of notes that isn't a chop track, the pedal
 adds a `loop` track beside it rather than chopping the notes away.
 
+With `:threshold`, the first take the frontend sends carries the level (`Take::threshold`) and
+waits for the input to reach it, in `Looper::write`, rather than for the track's first step. It
+records from the start of the block it hears it in, or a little before; its pass starts on the
+track's first step to be heard after that, found among the steps the looper has kept of that
+track (sequencing runs ahead of the input by the latency, so it may have been played already),
+and ends as the track comes round to that step again. What came before is the take's `lead`.
+The frontend turns the pass round to start on the first step, laying the lead on its end, so the
+file plays as any loop does. Stopped, the frontend only gets the engine ready to play
+(`Effect::ReadyToPlay`) and sends the take while stopped; the engine starts the song itself,
+from the block after it hears the input, without a count-in.
+
 What you hear comes out late, and what you play to it reaches the engine later still, so a pass
 starts when its first step is heard plus the input's delay: the latency is the output's and the
 input's, from cpal's timestamps, plus the input waiting in the ring buffer, plus `:latency`. It is

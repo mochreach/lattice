@@ -142,14 +142,26 @@ impl Editor {
             Some(_) => "overdubbing",
             None => "recording a new loop",
         };
-        self.message = Some(match self.transport {
-            Some(_) => format!("{name}: {how} from its next 00; ! again stops"),
-            None => {
+        self.message = Some(match (self.transport.is_some(), self.threshold.is_some()) {
+            (true, false) => format!("{name}: {how} from its next 00; ! again stops"),
+            (false, false) => {
                 effects.push(Effect::TogglePlay);
                 format!("{name}: {how} as the song starts; ! again stops")
             }
+            (true, true) => format!("{name}: listening, {how} from where you come in"),
+            // The looper starts the song when it hears the input.
+            (false, true) => {
+                effects.push(Effect::ReadyToPlay);
+                format!("{name}: listening; play and the song starts with you")
+            }
         });
         effects
+    }
+
+    /// The input's level, as a sample's size, that starts the looper recording, if there's a
+    /// threshold.
+    pub fn threshold_level(&self) -> Option<f32> {
+        self.threshold.map(|db| 10f32.powf(db / 20.0))
     }
 
     /// Whether the armed track records as the song plays: by the loop key, or with record on.
@@ -358,6 +370,35 @@ mod tests {
         run(&mut e, "arm");
         e.song_stopped();
         assert_eq!(e.armed(), Some(0));
+    }
+
+    #[test]
+    fn with_a_threshold_the_loop_pedal_listens_rather_than_starting_the_song() {
+        let mut e = editor();
+        run(&mut e, "threshold -30");
+        assert_eq!(e.threshold, Some(-30.0));
+        assert!((e.threshold_level().unwrap() - 0.0316).abs() < 0.001);
+        let effects = e.handle(Key::RightAlt);
+        assert!(effects.contains(&Effect::ReadyToPlay));
+        assert!(
+            !effects.contains(&Effect::TogglePlay),
+            "the looper starts it"
+        );
+        assert_eq!(
+            e.message.as_deref(),
+            Some("a: listening; play and the song starts with you")
+        );
+        e.handle(Key::RightAlt);
+        e.set_transport(Some(crate::Transport::default()));
+        assert!(
+            e.handle(Key::RightAlt).is_empty(),
+            "playing, it only listens"
+        );
+
+        run(&mut e, "threshold 6");
+        assert_eq!(e.threshold, Some(-30.0), "{:?}", e.message);
+        run(&mut e, "threshold off");
+        assert_eq!(e.threshold, None);
     }
 
     #[test]
