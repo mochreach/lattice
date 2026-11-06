@@ -101,6 +101,7 @@ impl Chop {
             gain: f32::from(velocity) / 127.0,
             attack: ATTACK_SECONDS,
             release: self.value(RELEASE),
+            join: true,
         }
     }
 }
@@ -228,6 +229,30 @@ mod tests {
         // And the next as it is.
         let out = play(&mut c, DRUM_ROOT + 1, 25, 30);
         assert!((out[5] - 0.3).abs() < 0.01, "{}", out[5]);
+    }
+
+    #[test]
+    fn pieces_one_after_the_other_play_as_one_sound_rather_than_over_each_other() {
+        let mut c = chop(&[]);
+        let mut left = vec![0.0; 50];
+        let mut right = vec![0.0; 50];
+        let on = |offset, pitch| Event {
+            offset,
+            kind: EventKind::NoteOn {
+                pitch,
+                velocity: 127,
+            },
+        };
+        let off = |offset, pitch| Event {
+            offset,
+            kind: EventKind::NoteOff { pitch },
+        };
+        let events = [on(0, DRUM_ROOT), off(25, DRUM_ROOT), on(25, DRUM_ROOT + 1)];
+        c.process(&events, &mut left, &mut right);
+        // The ramp goes on through the second piece's start, not doubled as the first fades.
+        for (i, x) in left.iter().enumerate().skip(5) {
+            assert!((x - i as f32 / 100.0).abs() < 0.015, "{i}: {x}");
+        }
     }
 
     #[test]

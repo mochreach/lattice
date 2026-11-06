@@ -175,13 +175,19 @@ impl Looper {
     }
 }
 
+/// How long the lead fades in over, in frames, about 2 ms: it starts wherever the input had
+/// got to, so without it the lead would click as it came in over the end of the pass.
+const LEAD_FADE: usize = 96;
+
 /// Turns a take whose pass started on another step than the first round, for a track of
 /// `steps` steps, so that it starts on the first, as the track plays it, with its lead, played
 /// before its pass started, laid on the end of the pass, just before that step.
 fn turn(take: &mut Take, steps: usize) {
     let (lead, step) = (take.lead.min(take.len()), take.step);
     for side in [&mut take.left, &mut take.right] {
-        let before: Vec<f32> = side.drain(..lead).collect();
+        let before: Vec<f32> = (side.drain(..lead).enumerate())
+            .map(|(i, x)| x * ((i + 1) as f32 / LEAD_FADE as f32).min(1.0))
+            .collect();
         for (sample, lead) in side.iter_mut().rev().zip(before.iter().rev()) {
             *sample += lead;
         }
@@ -314,8 +320,19 @@ mod tests {
 
     #[test]
     fn a_pass_from_another_step_is_turned_round_to_start_on_the_first() {
-        // Its pass of 4 steps, of 2 frames each, from step 1, after a lead of 1 frame.
-        let mut pass = take(vec![9.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 0.0, 0.0]);
+        // Its pass of 4 steps, of 2 frames each, from step 1, after a lead of 1 frame, which
+        // fades in over its first few.
+        let mut pass = take(vec![
+            LEAD_FADE as f32 * 9.0,
+            1.0,
+            1.0,
+            2.0,
+            2.0,
+            3.0,
+            3.0,
+            0.0,
+            0.0,
+        ]);
         pass.step = 1;
         pass.lead = 1;
         turn(&mut pass, 4);

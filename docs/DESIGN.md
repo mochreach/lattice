@@ -345,8 +345,11 @@ references to the audio, not the audio: the file's never changed, and editing, u
 locks all work on pieces as they do on notes. A note plays its piece from the piece's start at
 the file's speed until the note ends, then releases, playing on into the next piece if it's held
 longer: so a loop follows the tempo without stretching, with small gaps if the song's faster than
-the recording (each piece cut short) and pieces running into the next if slower. Reversed, a
-piece plays back from its end. `direction` is a setting like any other, and a `<` gesture on a
+the recording (each piece cut short) and pieces running into the next if slower. A piece that
+starts where the note before has got to, as the next piece of an untouched loop does, carries
+that note on rather than starting over its release, so the loop plays as the one sound it was
+recorded as; overlapping, the two would sound the same audio twice, a flutter every step.
+Reversed, a piece plays back from its end. `direction` is a setting like any other, and a `<` gesture on a
 step turns just that piece round, the other way from it.
 
 The pattern page draws a chop track wider, with each row's piece number (in decimal, like the rows,

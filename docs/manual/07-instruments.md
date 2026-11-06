@@ -915,6 +915,12 @@ next. So a chopped loop follows the song's tempo without being stretched: faster
 recording, each piece is cut a little short, leaving small gaps; slower, each runs a little into
 the next. Notes above the last piece wrap round to the first.
 
+When a piece starts where the note before it has got to, as the next piece does in a loop left
+as recorded, the note carries on into it rather than fading out under it. Otherwise the two would
+play the same audio twice for the length of the release, and the loop would flutter every step.
+So an untouched chop track sounds exactly like the file, and only the steps you've moved start
+afresh.
+
 | Setting     | Range               | Default   | What it does                                   |
 |-------------|---------------------|-----------|------------------------------------------------|
 | `pieces`    | 1 to 256            | 16        | pieces the region is cut into                  |

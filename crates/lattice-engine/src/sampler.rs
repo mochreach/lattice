@@ -57,6 +57,10 @@ const VOICES: usize = 16;
 /// Faded over this at the region's ends and on a choke, so nothing clicks.
 const FADE_SECONDS: f32 = 0.002;
 
+/// How near a note joining on must start to where the voice let go has got to, for that voice
+/// to carry on into it: a few milliseconds of the tempo's rounding.
+const JOIN_SECONDS: f32 = 0.005;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Stage {
     Idle,
@@ -83,6 +87,8 @@ struct Voice {
     level: f32,
     attack: f32,
     release: f32,
+    /// Let go since it last played a sample, so a note starting now may carry it on.
+    let_go: bool,
 }
 
 impl Voice {
@@ -99,6 +105,7 @@ impl Voice {
         level: 0.0,
         attack: 1.0,
         release: 1.0,
+        let_go: false,
     };
 }
 
@@ -115,6 +122,10 @@ pub(crate) struct Play {
     /// Seconds.
     pub attack: f32,
     pub release: f32,
+    /// Carries on the voice let go just now, if it's got to where this starts, rather than
+    /// starting another over it: chop's pieces, one after the other, play as the one sound
+    /// they were recorded as, rather than each fading in over the last fading out.
+    pub join: bool,
 }
 
 /// Voices playing a sound file: the sampler's and chop's.
@@ -153,6 +164,35 @@ impl Player {
             return;
         }
         let per_sample = |seconds: f32| 1.0 / (seconds * self.sample_rate).max(1.0);
+        let pos = if play.rate < 0.0 {
+            play.to - 1.0
+        } else {
+            play.from
+        };
+        let near = f64::from(JOIN_SECONDS * self.sample_rate) * play.rate.abs();
+        let joins = |v: &Voice| {
+            v.let_go && (v.rate < 0.0) == (play.rate < 0.0) && (v.pos - pos).abs() <= near
+        };
+        if play.join
+            && let Some(voice) = self.voices.iter_mut().find(|v| joins(v))
+        {
+            // Where it's got to, rather than where the note starts, so it doesn't jump.
+            self.notes += 1;
+            *voice = Voice {
+                stage: Stage::Playing,
+                pitch: play.pitch,
+                started: self.notes,
+                rate: play.rate,
+                from: play.from,
+                to: play.to,
+                looping: play.looping,
+                gain: play.gain,
+                release: per_sample(play.release),
+                let_go: false,
+                ..*voice
+            };
+            return;
+        }
         // A free voice, else the oldest releasing, else the oldest. The first of equals wins.
         let free = |v: &Voice| match v.stage {
             Stage::Idle => (0, 0),
@@ -168,11 +208,7 @@ impl Player {
             stage: Stage::Playing,
             pitch: play.pitch,
             started: self.notes,
-            pos: if play.rate < 0.0 {
-                play.to - 1.0
-            } else {
-                play.from
-            },
+            pos,
             rate: play.rate,
             from: play.from,
             to: play.to,
@@ -181,6 +217,7 @@ impl Player {
             level: 0.0,
             attack: per_sample(play.attack),
             release: per_sample(play.release),
+            let_go: false,
         };
     }
 
@@ -189,6 +226,7 @@ impl Player {
         for v in &mut self.voices {
             if v.stage == Stage::Playing && v.pitch == pitch {
                 v.stage = Stage::Releasing;
+                v.let_go = true;
             }
         }
     }
@@ -215,6 +253,7 @@ impl Player {
                 if v.stage == Stage::Idle {
                     continue;
                 }
+                v.let_go = false;
                 if v.looping {
                     // Round the region, in either direction.
                     let span = v.to - v.from;
@@ -335,6 +374,7 @@ impl Sampler {
             gain: f32::from(velocity) / 127.0,
             attack: self.value(ATTACK),
             release: self.value(RELEASE),
+            join: false,
         });
     }
 
