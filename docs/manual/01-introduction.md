@@ -517,8 +517,8 @@ for none, 1 to start). Recording is in [Recording](09-recording.md).
 - `tab` (`toggle_view`) switches the pattern between the notes as written and as they're
   playing this pass, after the rules have changed them. The header says which.
 - `:oct OCTAVE` sets the keyboard's octave for entering notes (0 to 9), as `{` and `}` step it
-  down and up from anywhere; `:step STEPS` how far the cursor moves after each note (0 to 64; 0
-  stays put, for entering chords).
+  down and up from anywhere; `:step STEPS` how far the cursor moves after each note or paste (0 to
+  64; 0 stays put, for entering chords), and `C-0` to `C-9` set it from the keyboard.
 
 ## Things that look alike
 

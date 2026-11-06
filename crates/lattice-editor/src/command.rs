@@ -354,7 +354,7 @@ pub const COMMANDS: &[Spec] = &[
         name: "step",
         alias: None,
         params: &[int("STEPS", "auto-step", 0, 64)],
-        describe: "steps to move after each note",
+        describe: "steps to move after each note or paste; C-0 to C-9 set it too",
     },
     Spec {
         name: "oct",

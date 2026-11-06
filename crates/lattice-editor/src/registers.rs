@@ -228,6 +228,7 @@ mod tests {
     fn a_count_can_come_either_side_of_the_register() {
         let mut e = editor();
         notes(&mut e, "z");
+        e.auto_step = 0;
         keys(&mut e, "gg\"ay");
         keys(&mut e, "j2\"ap");
         keys(&mut e, ";j\"a2p");

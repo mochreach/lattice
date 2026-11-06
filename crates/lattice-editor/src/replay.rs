@@ -281,6 +281,7 @@ mod tests {
         let mut e = editor();
         let tracks = e.grid.tracks.len();
         notes(&mut e, "z");
+        e.auto_step = 0;
         // Copy the first step, then on each track paste it and move on.
         keys(&mut e, "ggyQaptlQ");
         keys(&mut e, "100qa");

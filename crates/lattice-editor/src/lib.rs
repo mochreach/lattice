@@ -1168,6 +1168,18 @@ impl Editor {
             (Key::F(n), Mode::Insert) if self.fkeys.contains_key(&n) => {
                 return self.replay_while_playing(key);
             }
+            // The auto-step, at once, mid-entry, unless the player's bound the key to something.
+            (Key::Ctrl(c @ '0'..='9'), Mode::Normal | Mode::Select | Mode::Insert)
+                if !self.keymap.normal.contains_key(&key)
+                    && !self.keymap.insert.contains_key(&key) =>
+            {
+                self.auto_step = c as usize - '0' as usize;
+                self.message = Some(match self.auto_step {
+                    0 => "step 0: the cursor stays put after each note".into(),
+                    n => format!("step {n}: the cursor moves on {n} after each note"),
+                });
+                return vec![];
+            }
             _ => {}
         }
         match self.mode {
@@ -2304,7 +2316,9 @@ impl Editor {
     }
 
     /// Writes a clip `n` times down from each selection's first step, one column per track, then
-    /// selects what was written. As in Helix, the selections take the clips in order, and the last
+    /// moves on as a note does: by the auto-step, or past what was written if it's longer, so
+    /// pasting again carries on down the track. With an auto-step of 0 it selects what was
+    /// written instead, as Helix does. As in Helix, the selections take the clips in order, and the last
     /// clip is repeated if there are more selections than clips. `Place::Over` writes over the
     /// steps there; `Place::Insert` pushes them down first, and what's pushed past the end of the
     /// track falls off. Steps off the grid are skipped.
@@ -2363,6 +2377,20 @@ impl Editor {
                 .map(|w| w.3)
                 .sum();
             let first = step + shift;
+            if self.auto_step > 0 {
+                let track = *span.start();
+                let at = Cursor {
+                    track,
+                    // An empty track has only its first step to be on.
+                    step: (first + total.max(self.auto_step))
+                        .checked_rem(self.track_len(track))
+                        .unwrap_or(0),
+                };
+                if let Some(selection) = selections.get_mut(i) {
+                    *selection = self.clamped(at, at);
+                }
+                continue;
+            }
             let pasted = self.clamped(
                 Cursor {
                     track: *span.start(),
@@ -2677,6 +2705,20 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_and_a_digit_sets_the_auto_step_even_mid_entry() {
+        let mut e = editor();
+        keys(&mut e, "iz");
+        e.handle(Key::Ctrl('4'));
+        assert_eq!(e.auto_step, 4);
+        assert_eq!(e.mode, Mode::Insert, "it doesn't leave insert mode");
+        keys(&mut e, "z");
+        assert_eq!(e.cursor().step, 5);
+        e.handle(Key::Esc);
+        e.handle(Key::Ctrl('0'));
+        assert_eq!(e.auto_step, 0);
+    }
+
+    #[test]
     fn insert_mode_enters_notes_and_advances() {
         let mut e = editor();
         let effects = keys(&mut e, "izxc");
@@ -2759,9 +2801,10 @@ mod tests {
     }
 
     #[test]
-    fn yank_and_paste_select_what_was_pasted() {
+    fn with_no_auto_step_yank_and_paste_select_what_was_pasted() {
         let mut e = editor();
         notes(&mut e, "zxc");
+        e.auto_step = 0;
         keys(&mut e, "ggvjjy");
         keys(&mut e, ";gg10jp");
         assert_eq!(
@@ -2783,9 +2826,27 @@ mod tests {
     }
 
     #[test]
+    fn paste_moves_on_by_the_auto_step_or_past_what_it_pasted() {
+        let mut e = editor();
+        notes(&mut e, "z");
+        keys(&mut e, "ggy");
+        e.auto_step = 4;
+        keys(&mut e, "4jppp");
+        let hits: Vec<usize> = (0..16).filter(|&i| pitches(&e, 0)[i].is_some()).collect();
+        assert_eq!(hits, [0, 4, 8, 12], "a hit a beat");
+        assert_eq!(e.selection().first_step, 0, "round to the top, as notes go");
+        // Longer than the auto-step, it moves on past the clip, so pasting again follows it.
+        keys(&mut e, "ggvjjjjjy");
+        e.auto_step = 1;
+        keys(&mut e, "gg8jp");
+        assert_eq!(e.cursor().step, 14);
+    }
+
+    #[test]
     fn paste_inserting_pushes_the_rest_down() {
         let mut e = editor();
         notes(&mut e, "zx");
+        e.auto_step = 0;
         let len = e.grid.tracks[0].steps.len();
         e.grid.tracks[0].steps[len - 1] = e.grid.tracks[0].steps[0];
         keys(&mut e, "ggvjy");
@@ -3812,6 +3873,7 @@ mod tests {
         notes(&mut e, "zx");
         keys(&mut e, "ggCy");
         assert_eq!(e.message.as_deref(), Some("copied 2 selections"));
+        e.auto_step = 0;
         keys(&mut e, "4jCp");
         assert_eq!(
             &pitches(&e, 0)[4..7],

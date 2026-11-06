@@ -79,6 +79,9 @@ const PAGES: &[(&str, &str)] = &[
     ),
 ];
 
+/// What `C-0` to `C-9` do, which aren't in the keymap.
+const STEP_KEYS: &str = "auto-step: how far the cursor moves after each note, as :step";
+
 fn heading(title: &str) -> HelpLine {
     HelpLine::Heading(title.into())
 }
@@ -150,6 +153,7 @@ impl Editor {
             .collect();
         commands.sort_by_key(|line| format!("{line:?}"));
         lines.extend(commands);
+        lines.push(item("C-0…C-9", STEP_KEYS));
 
         // The menus, in the order of their keys.
         let mut menus: Vec<_> = (self.keymap.normal.iter())
@@ -182,6 +186,7 @@ impl Editor {
             "as laid out by :layout, in the keyboard octave",
         ));
         lines.extend(by_action(self.keymap.insert.iter().map(|(k, a)| (*k, *a))));
+        lines.push(item("C-0…C-9", STEP_KEYS));
 
         // The MIDI controls bound, in the order they were.
         if !self.controls().is_empty() {

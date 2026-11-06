@@ -524,9 +524,10 @@ page (they work while choosing `r`'s note, too); `:oct N` sets it outright. The 
 
 `:step N` sets how many steps the cursor moves on after each note, 0 to 64; it starts at 1 and is
 shown as `step` in the header. With `:step 2`, typing eight notes puts one on every other step;
-`:step 4` puts one on each beat. `:step 0` doesn't move at all, for trying notes on one step.
-The cursor wraps round to the top of the track, so with `:step 2` and eight `z`s, a 16-step hat
-track fills with `C-4` on every even step:
+`:step 4` puts one on each beat. `:step 0` doesn't move at all, for trying notes on one step. `C-0`
+to `C-9` set it straight away, in normal or insert mode, without leaving off what you're entering:
+`C-4` for a note a beat, `C-1` to go back to every step. The cursor wraps round to the top of the
+track, so with `:step 2` and eight `z`s, a 16-step hat track fills with `C-4` on every even step:
 
 ```
 :step 2
@@ -545,8 +546,8 @@ i z z z z z z z z esc
  15  F-2         ···         ···             ··   ··
 ```
 
-Auto-step also moves the cursor after clearing a step in insert mode and after typing a value
-into a field.
+Auto-step also moves the cursor after clearing a step in insert mode, after typing a value
+into a field, and after pasting (see [Copying and pasting](#copying-and-pasting)).
 
 ### Velocity: `:vel`
 
@@ -626,8 +627,12 @@ three selections you have three clips (`copied 3 selections`).
 `p` pastes over the steps already there, from the top left of each selection: the first column
 of the clip goes onto the selection's first track, the next onto the track to its right, and so
 on. Columns that would go past the last track, and steps past the end of a track, are left out.
-`3p` pastes three times, one after the other down the track. Afterwards the selection is what was
-pasted, so you can see it and act on it again.
+`3p` pastes three times, one after the other down the track. Afterwards the cursor moves on, as
+it does after a note: by the auto-step (`:step`, below), or past what was pasted if that's longer,
+so it never lands inside it. So with `:step 4`, copying a snare and pressing `p` again and again
+puts one on each beat, and a bar copied whole goes down the track a bar at a time, `p` after `p`.
+With `:step 0` the cursor stays, and the selection is what was pasted, as in Helix, so you can see
+it and act on it again.
 
 `P` inserts instead: the steps from the selection down are pushed down to make room, as a
 tracker's insert does, and whatever is pushed past the end of the track falls off; the track

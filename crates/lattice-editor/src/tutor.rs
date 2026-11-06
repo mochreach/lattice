@@ -238,8 +238,9 @@ const LESSONS: &[Lesson] = &[
         text: "{insert} starts insert mode at the selection, and {append} after it. There, the \
                keyboard's bottom two rows are a piano: `z` is C, `s` C#, `x` D and so on, \
                with the B below on `\\`, and the octave above from `q`, on into the next \
-               from `i`. Each note moves the cursor down a step; {clear_advance} clears one \
-               instead. With every letter a note, the arrow keys move without entering one, \
+               from `i`. Each note moves the cursor down a step, or more: `C-4` makes it four \
+               (a note a beat), `C-1` one again and `C-0` none, in any mode. {clear_advance} \
+               clears a step instead. With every letter a note, the arrow keys move without entering one, \
                so `down` skips a step and leaves it as it was; `space` still plays and stops. \
                {keyboard_octave_up} and {keyboard_octave_down} change the keyboard's \
                octave, in any mode and on any page, and {escape} goes back to normal mode.\n\nGo to the top of the LEAD track, put four notes in it, then go \
@@ -392,7 +393,8 @@ const LESSONS: &[Lesson] = &[
     Lesson {
         title: "Copy and paste",
         text: "{yank} copies the selection, and {paste} pastes it at the cursor, over what's \
-               there; {paste_insert} pushes the rest down instead.\n\nCopy the KICK track's \
+               there, then moves on past it, as a note does, so pasting again carries on down \
+               the track; {paste_insert} pushes the rest down instead.\n\nCopy the KICK track's \
                first beat, steps 00 to 03, onto the HAT track at step 08.",
         teaches: &[Action::Yank, Action::Paste, Action::PasteInsert],
         commands: &[],

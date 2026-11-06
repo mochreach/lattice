@@ -1298,6 +1298,13 @@ a count and a prefix key (`3"atp`), and is dropped once the action after it has 
 aren't saved; entries are copied by pattern id, which a new song doesn't share, so opening one
 forgets them.
 
+Pasting steps moves on after it as entering a note does (`Editor::paste`): each selection goes to
+the step the auto-step reaches, or past what it pasted if that's longer, wrapping round, so `p`
+again and again lays the clip down a track a hit a beat or a bar a bar; this is where Lattice
+leaves Helix, as a tracker is filled in down the page. With an auto-step of 0 it keeps Helix's
+way and selects what was pasted. `C-0` to `C-9` set the auto-step without the command line
+(`Editor::handle_key`, unless they've been bound to something else), so it can change mid-entry.
+
 Recorded keys (`replay.rs`), Vim and Helix's macros under another name, as a macro in Lattice is
 a track's knob, go in a register too (`Register::keys`). `Editor::handle` and `play_note` note
 each key while recording, except those a replay presses; `Q` stops by dropping itself from the
