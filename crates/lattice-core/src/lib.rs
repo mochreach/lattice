@@ -52,7 +52,7 @@ pub use preset::{
     ART_FRAMES, ART_ROWS, ART_WIDTH, Face, MAX_CONTROLS, PRESETS, Preset, SavedPreset, preset,
 };
 pub use song::{
-    Change, Grid, Lock, LockColumn, Locks, MAX_CHOKE, MAX_DB, MAX_LOCKS, MAX_PARAMS, MAX_STEPS,
-    MAX_TRACKS, MIN_DB, Mix, Note, Song, Step, Track, db_to_gain,
+    Change, Grid, Lock, LockColumn, Locks, Looping, MAX_CHOKE, MAX_DB, MAX_LOCKS, MAX_PARAMS,
+    MAX_STEPS, MAX_TRACKS, MIN_DB, MIN_THRESHOLD, Mix, Note, Song, Step, Track, db_to_gain,
 };
 pub use transform::{Condition, Rule, Transform, realise, realise_into};

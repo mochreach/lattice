@@ -8,8 +8,8 @@ use std::ops::Range;
 use std::path::PathBuf;
 
 use lattice_core::{
-    Condition, GESTURES, MAX_CHOKE, MAX_DB, MAX_STEPS, MAX_TRACKS, MIN_DB, Mix, Rule, Step, Track,
-    Transform,
+    Condition, GESTURES, Looping, MAX_CHOKE, MAX_DB, MAX_STEPS, MAX_TRACKS, MIN_DB, MIN_THRESHOLD,
+    Mix, Rule, Step, Track, Transform,
 };
 
 use crate::{Direction, Editor, Effect, NoteLayout};
@@ -465,7 +465,13 @@ pub const COMMANDS: &[Spec] = &[
         name: "threshold",
         alias: None,
         params: &[optional_text("[DB]", "level")],
-        describe: "the looper waits for the input to reach this level, -60 to 0 dB, then records from where you come in (off for none)",
+        describe: "this loop track waits for the input to reach this level, -60 to 0 dB, then records from where you come in (off for none)",
+    },
+    Spec {
+        name: "overdub",
+        alias: None,
+        params: &[optional_text("[on|off]", "on or off")],
+        describe: "whether the loop pedal overdubs this loop track pass after pass (on), or records one pass and plays it (off, as at first); alone, turns it over",
     },
     Spec {
         name: "layout",
@@ -1434,18 +1440,32 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![])
         }
         "threshold" => {
-            editor.threshold = match command.text(0)?.trim() {
-                "" => editor.threshold,
-                "off" => None,
+            let change = match command.text(0)?.trim() {
+                "" => None,
+                "off" => Some(None),
                 typed => match typed.trim_end_matches("dB").trim().parse::<f32>() {
-                    Ok(db) if (-60.0..=0.0).contains(&db) => Some(db),
-                    _ => return Err(format!("the threshold goes from -60 to 0 dB, not {typed}")),
+                    Ok(db) if (MIN_THRESHOLD..=0.0).contains(&db) => Some(Some(db)),
+                    _ => {
+                        return Err(format!(
+                            "the threshold goes from {MIN_THRESHOLD} to 0 dB, not {typed}"
+                        ));
+                    }
                 },
             };
-            editor.message = Some(match editor.threshold {
-                Some(db) => format!("threshold {db} dB: the looper records from where you come in"),
-                None => "no threshold: the looper records from the track's first step".into(),
-            });
+            editor.set_looping(change.map(|db| move |l: &mut Looping| l.threshold = db))?;
+            Ok(vec![])
+        }
+        "overdub" => {
+            let change = match command.text(0)?.trim() {
+                // On its own, it turns it the other way.
+                "" => Some(None),
+                "on" => Some(Some(true)),
+                "off" => Some(Some(false)),
+                typed => return Err(format!("overdub on or off, not {typed}")),
+            };
+            editor.set_looping(
+                change.map(|on| move |l: &mut Looping| l.overdub = on.unwrap_or(!l.overdub)),
+            )?;
             Ok(vec![])
         }
         "layout" => {

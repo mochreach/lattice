@@ -1075,7 +1075,8 @@ fn bracket(label: &str, width: usize, spare: usize, opens: bool, closes: bool) -
     }
 }
 
-/// Track names with mute (`M`, or `m` in this pattern only) and solo flags, lengths and passes, level and pan, then the rules one
+/// Track names with mute (`M`, or `m` in this pattern only) and solo flags, lengths and passes,
+/// how the looper records loop tracks if there are any, level and pan, then the rules one
 /// per line, then a meter underlining it all. Arrows by the names show there are more tracks
 /// off to the (left, right).
 /// `armed` is the track armed to record the input, and whether it's recording. `compact`, on a
@@ -1160,6 +1161,27 @@ fn header_lines(
                 .collect(),
         ),
     ];
+    // Loop tracks say how the looper records them, so they stand apart from tracks of notes:
+    // from what level, or step 00, and a pass at a time or overdubbing.
+    if columns.iter().any(|c| c.track.looper.is_some()) {
+        lines.push(line(
+            columns
+                .iter()
+                .map(|c| match c.track.looper {
+                    Some(_) if c.width == FOLDED => cell(c, "L".into(), Style::new().fg(c.colour)),
+                    Some(looping) => {
+                        let from = match looping.threshold {
+                            Some(db) => format!("{db}dB"),
+                            None => "at 00".into(),
+                        };
+                        let then = if looping.overdub { "dub" } else { "once" };
+                        cell(c, format!("{from} {then}"), Style::new().fg(c.colour))
+                    }
+                    None => cell(c, String::new(), Style::new()),
+                })
+                .collect(),
+        ));
+    }
     let mix = [
         // Folded, there's no room for the level and pan; the mixer page has them.
         line(

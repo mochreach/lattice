@@ -512,9 +512,6 @@ pub struct Editor {
     pub record: bool,
     /// Bars of clicks before the song starts, when record is armed.
     pub count_in: u32,
-    /// The level, in dB, the input reaches to start the looper recording, rather than the
-    /// track's first step or a count-in; `None` for no threshold.
-    pub threshold: Option<f32>,
     /// Where playback is; see [`Editor::set_transport`].
     transport: Option<Transport>,
     /// The pass being recorded, all one undo.
@@ -671,7 +668,6 @@ impl Editor {
             show_keys: false,
             record: false,
             count_in: 1,
-            threshold: None,
             transport: None,
             take: None,
             held: Vec::new(),
@@ -2648,6 +2644,7 @@ mod tests {
             macros: vec![],
             knobs: vec![],
             rules: vec![],
+            looper: None,
         };
         let grid = Grid {
             name: "test".into(),

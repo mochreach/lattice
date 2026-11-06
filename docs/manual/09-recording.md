@@ -207,10 +207,18 @@ Tap it, and the cursor's track records its next pass:
 1. **Record.** The track is armed, and records from the next time its playhead comes round to
    step `00`. If the song's stopped, it starts, with the count-in (`:count`, above), so you can
    come in on the first beat. Record (`R`) stays off, and you stay in whatever mode you were in.
-2. **Overdub.** At the end of the pass it plays back, and the next pass records over it, layer
-   on layer, for as long as you leave it. `u` takes the last layer off.
-3. **Play.** Tap again, and the pass being recorded finishes, then the loop plays on, disarmed.
-4. **Overdub again.** Tap once more and it records over the loop from its next pass.
+2. **Play.** At the end of the pass it plays back, and the pedal disarms:
+   `loop: pass recorded; ! overdubs another`.
+3. **Overdub.** Tap again, and the next pass records over the loop, a layer. Each tap adds one,
+   and `u` takes the last off.
+
+Tap while it's recording and the pass under way finishes, then the loop plays on: a tap never
+cuts a pass short.
+
+That's a pass a tap, so the loop doesn't fill up with layers you didn't mean to play. Some
+loops want building up without stopping, a layer each time round while you try things over it:
+`:overdub` sets the track to overdub **pass after pass**, from the first tap until the next,
+and `:overdub` again sets it back (or `:overdub on`, `:overdub off`).
 
 With the song already playing, it waits for `00`, however far off that is: a long loop may keep
 you waiting, but the loop always lines up with the song. For less of a wait, make the track
@@ -223,8 +231,24 @@ playing a loop, records where it is.
 
 ```
  LATTICE  PATTERN   ▶ PLAY  ● LOOP LOOP    mountain-king.lattice   pat cave   bpm 138
- loop: recording a new loop from its next 00; ! again stops
+ loop: recording a new loop from its next 00, one pass; ! again stops
 ```
+
+### Loop tracks
+
+A track the looper has recorded, or been set up for, is a **loop track**, and says so in its
+header, under its length: how it records, so that it stands apart from the tracks of notes
+beside it. The first word is where it starts, `at 00` or the threshold (below) it waits for,
+`-30dB`; the second is `once` for a pass a tap, or `dub` for overdubbing pass after pass:
+
+```
+    BASS        LOOP        PAD
+    16          16          16
+                at 00 once
+```
+
+`:threshold` and `:overdub` set the cursor's track, and make it a loop track if it isn't one;
+each is an undo. They're saved with the song, so a loop track keeps how it records.
 
 ### Coming in when you're ready: `:threshold`
 
@@ -237,7 +261,7 @@ starts the moment it is.
 |------------------|--------------------------------------------------------------------|
 | `:threshold -30` | waits for the input to reach -30 dB (from -60, the quietest, to 0) |
 | `:threshold off` | no threshold: the looper waits for `00`, as before                 |
-| `:threshold`     | says what it is                                                    |
+| `:threshold`     | says how the track records                                         |
 
 With a threshold:
 

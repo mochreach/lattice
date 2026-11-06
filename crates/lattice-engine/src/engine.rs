@@ -2881,6 +2881,7 @@ mod tests {
                 transform: Transform::Drift(1),
                 when: Condition::Always,
             }],
+            looper: None,
         }
     }
 

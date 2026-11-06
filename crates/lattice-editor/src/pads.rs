@@ -317,6 +317,7 @@ mod tests {
             macros: vec![],
             knobs: vec![],
             rules: vec![],
+            looper: None,
         };
         let grid = Grid {
             name: "test".into(),

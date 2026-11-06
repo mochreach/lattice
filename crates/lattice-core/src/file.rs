@@ -235,6 +235,7 @@ mod tests {
                     when: Condition::Pass(3),
                 },
             ],
+            looper: None,
         };
         bass.mix = Mix {
             level: -3.5,
@@ -279,6 +280,7 @@ mod tests {
             macros: vec![],
             knobs: vec![],
             rules: vec![],
+            looper: None,
         };
         Song {
             name: "test".into(),

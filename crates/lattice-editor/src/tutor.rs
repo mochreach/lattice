@@ -905,14 +905,16 @@ const LESSONS: &[Lesson] = &[
                {loop_pedal} (right Alt, or AltGr, on its own; `!` where the terminal doesn't \
                report it) and it records the cursor's track from its next step 00, starting the \
                song with a count-in if it's stopped: a pass, from 00 round to 00 again (`●` by \
-               the track's name), which then plays back, cut into a piece a step. Each pass \
-               after that overdubs the last, and {undo} takes one off. Tap it again and the pass \
-               finishes and the loop plays on; again, and it overdubs from the next pass. On a \
-               track of notes it adds a track beside it, `loop`, to record into. \
-               `:midi-learn loop_pedal` puts it on a foot switch. `:threshold -30` makes it \
-               listen instead: it records from where you come in, the moment you play louder \
-               than -30 dB, and if the song's stopped, starts it from 00 with you; \
-               `:threshold off` goes back to waiting for 00.\n\n\
+               the track's name), which then plays back, cut into a piece a step. Tap it again \
+               and it overdubs a pass over it, a layer a tap, and {undo} takes one off; tapped \
+               while it records, the pass finishes and the loop plays on. On a track of notes it \
+               adds a track beside it, `loop`, to record into. `:midi-learn loop_pedal` puts it \
+               on a foot switch.\n\n\
+               A loop track shows how it records under its name: `at 00 once`. `:overdub` sets \
+               it to `dub`, overdubbing pass after pass until you tap again, and back. \
+               `:threshold -30` (`-30dB`) makes it listen instead: it records from where you come \
+               in, the moment you play louder than -30 dB, and if the song's stopped, starts it \
+               from 00 with you; `:threshold off` goes back to waiting for 00.\n\n\
                `:arm` arms the track for record ({toggle_record}) to record instead, and \
                `:arm 1` records one pass and stops, `:arm 4` four. `:arm!` records a new loop \
                over the old one, and `:disarm` disarms; delete a loop's notes and the next pass \
@@ -929,6 +931,7 @@ const LESSONS: &[Lesson] = &[
             "arm!",
             "disarm",
             "threshold",
+            "overdub",
             "input",
             "output",
             "latency",

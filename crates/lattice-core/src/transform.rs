@@ -166,6 +166,7 @@ mod tests {
             macros: vec![],
             knobs: vec![],
             rules,
+            looper: None,
         }
     }
 

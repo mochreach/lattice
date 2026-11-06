@@ -296,8 +296,8 @@ pub enum Action {
     PlayFill,
     /// Arm or disarm recording at the playhead.
     ToggleRecord,
-    /// As a loop pedal: record the cursor's track into a loop from its next pass, overdubbing
-    /// pass after pass, until it's pressed again.
+    /// As a loop pedal: record a pass of the cursor's track into a loop from its next, and
+    /// another over it each press (or pass after pass, with `:overdub`).
     LoopPedal,
     ToggleView,
     Quit,
@@ -555,7 +555,7 @@ impl Action {
             Action::Hush => "stop everything: the song, every note, echo and tail",
             Action::PlayFill => "hold for a fill: steps marked F play, and F- don't",
             Action::ToggleRecord => "record on / off",
-            Action::LoopPedal => "loop pedal: record a loop from the next pass, again to stop",
+            Action::LoopPedal => "loop pedal: record a pass into a loop, again to overdub one",
             Action::ToggleView => "written or playing pattern",
             Action::Quit => "quit, warning first of unsaved changes: again to quit anyway",
         }

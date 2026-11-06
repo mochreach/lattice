@@ -402,6 +402,11 @@ ISO Level 3 Shift (AltGr), into `Key::RightAlt` as it's let go, if no key was pr
 down, so chords held on it stay chords. On a track of notes that isn't a chop track, the pedal
 adds a `loop` track beside it rather than chopping the notes away.
 
+A loop track carries how the looper records it, `Track::looper` (`Looping`: a threshold and
+whether to overdub), shared by every pattern as its instrument is, saved with it, and shown in
+its header. The pedal arms it for one pass (`Armed::passes`) unless it's set to overdub; tracks
+the looper records into become loop tracks.
+
 With `:threshold`, the first take the frontend sends carries the level (`Take::threshold`) and
 waits for the input to reach it, in `Looper::write`, rather than for the track's first step. It
 records from the start of the block it hears it in, or a little before; its pass starts on the

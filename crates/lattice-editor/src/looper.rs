@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use lattice_core::{InstKind, MAX_TRACKS, Step, Track};
+use lattice_core::{InstKind, Looping, MAX_TRACKS, Step, Track};
 
 use crate::{Editor, Effect, TrackId};
 
@@ -77,9 +77,10 @@ impl Editor {
     }
 
     /// The loop key (`!`), as on a loop pedal: arms the cursor's track and records it from its
-    /// next `00`, pass after pass, without record on, starting the song if it's stopped; pressed
-    /// again, it lets the pass finish and disarms, the song playing on. A track of notes that
-    /// isn't a loop already gets a new track beside it to record into.
+    /// next `00`, without record on, starting the song if it's stopped: a pass, then the loop
+    /// plays, or pass after pass with `:overdub`. Pressed while it records, it lets the pass
+    /// finish and disarms, the song playing on. A track of notes that isn't a loop already gets
+    /// a new loop track beside it to record into.
     pub(crate) fn loop_pedal(&mut self) -> Vec<Effect> {
         if let Some(t) = self.armed().filter(|_| self.looping()) {
             let name = self.grid.tracks.get(t).map_or("", |t| t.name.as_str());
@@ -130,38 +131,92 @@ impl Editor {
             return effects;
         };
         let name = track.name.clone();
-        // Keeping what `:arm` said for the track, if it's the one armed.
+        let looping = track.looper.unwrap_or_default();
+        // It's a loop track now, its settings shown in its header.
+        if let Some(track) = self.grid.tracks.get_mut(t) {
+            track.looper = Some(looping);
+        }
+        // Keeping what `:arm` said for the track, if it's the one armed; else a pass, unless
+        // it's to overdub.
         let armed = self.armed.filter(|a| a.track == id);
+        let passes = (!looping.overdub).then_some(1);
         self.armed = Some(Armed {
             track: id,
             fresh: armed.is_some_and(|a| a.fresh),
-            passes: armed.and_then(|a| a.passes),
+            passes: armed.map_or(passes, |a| a.passes),
             pedal: true,
         });
         let how = match self.overdubbing(t) {
             Some(_) => "overdubbing",
             None => "recording a new loop",
         };
-        self.message = Some(match (self.transport.is_some(), self.threshold.is_some()) {
-            (true, false) => format!("{name}: {how} from its next 00; ! again stops"),
-            (false, false) => {
-                effects.push(Effect::TogglePlay);
-                format!("{name}: {how} as the song starts; ! again stops")
-            }
-            (true, true) => format!("{name}: listening, {how} from where you come in"),
-            // The looper starts the song when it hears the input.
-            (false, true) => {
-                effects.push(Effect::ReadyToPlay);
-                format!("{name}: listening; play and the song starts with you")
-            }
-        });
+        let then = match self.passes_left() {
+            Some(1) => "one pass",
+            Some(_) => "for its passes",
+            None => "pass after pass",
+        };
+        self.message = Some(
+            match (self.transport.is_some(), looping.threshold.is_some()) {
+                (true, false) => format!("{name}: {how} from its next 00, {then}; ! again stops"),
+                (false, false) => {
+                    effects.push(Effect::TogglePlay);
+                    format!("{name}: {how} as the song starts, {then}; ! again stops")
+                }
+                (true, true) => format!("{name}: listening, {how} from where you come in, {then}"),
+                // The looper starts the song when it hears the input.
+                (false, true) => {
+                    effects.push(Effect::ReadyToPlay);
+                    format!("{name}: listening, {then}; play and the song starts with you")
+                }
+            },
+        );
         effects
     }
 
-    /// The input's level, as a sample's size, that starts the looper recording, if there's a
-    /// threshold.
+    /// The input's level, as a sample's size, that starts the looper recording the armed track,
+    /// if it has a threshold.
     pub fn threshold_level(&self) -> Option<f32> {
-        self.threshold.map(|db| 10f32.powf(db / 20.0))
+        let track = self.grid.tracks.get(self.armed()?)?;
+        let db = track.looper?.threshold?;
+        Some(10f32.powf(db / 20.0))
+    }
+
+    /// `:threshold [DB|off]` and `:overdub [on|off]`: changes the cursor's track's looper
+    /// settings with `change`, making it a loop track, or, given `None`, only says what they
+    /// are.
+    pub(crate) fn set_looping(
+        &mut self,
+        change: Option<impl FnOnce(&mut Looping)>,
+    ) -> Result<(), String> {
+        let t = self.cursor().track;
+        let track = self.grid.tracks.get(t).ok_or("no such track")?;
+        let name = track.name.clone();
+        let mut looping = track.looper.unwrap_or_default();
+        match change {
+            Some(change) => {
+                change(&mut looping);
+                self.checkpoint();
+                if let Some(track) = self.grid.tracks.get_mut(t) {
+                    track.looper = Some(looping);
+                }
+            }
+            None if track.looper.is_none() => {
+                return Err(format!(
+                    "{name} isn't a loop track: :threshold or :overdub makes it one"
+                ));
+            }
+            None => {}
+        }
+        let from = match looping.threshold {
+            Some(db) => format!("from where the input reaches {db} dB"),
+            None => "from step 00".into(),
+        };
+        let then = match looping.overdub {
+            true => "overdubbing pass after pass",
+            false => "a pass at a time",
+        };
+        self.message = Some(format!("{name}: loops {from}, {then}"));
+        Ok(())
     }
 
     /// Whether the armed track records as the song plays: by the loop key, or with record on.
@@ -241,7 +296,11 @@ impl Editor {
         } else {
             self.chop_track(t, path);
         }
+        if let Some(track) = self.grid.tracks.get_mut(t) {
+            track.looper.get_or_insert_default();
+        }
         let mut done = false;
+        let pedal = self.armed.is_some_and(|a| a.pedal);
         if let Some(armed) = &mut self.armed {
             armed.fresh = false;
             if let Some(passes) = &mut armed.passes {
@@ -256,9 +315,10 @@ impl Editor {
             true => "pass overdubbed",
             false => "pass recorded",
         };
-        self.message = Some(match done {
-            true => format!("{name}: {pass}, and disarmed"),
-            false => format!("{name}: {pass}"),
+        self.message = Some(match (done, pedal) {
+            (true, true) => format!("{name}: {pass}; ! overdubs another"),
+            (true, false) => format!("{name}: {pass}, and disarmed"),
+            (false, _) => format!("{name}: {pass}"),
         });
         vec![Effect::TrackChanged(t), Effect::MixerChanged]
     }
@@ -338,7 +398,7 @@ mod tests {
     }
 
     #[test]
-    fn the_loop_pedal_records_without_record_and_stops_again() {
+    fn the_loop_pedal_records_a_pass_without_record_then_overdubs_one_a_press() {
         let mut e = editor();
         let effects = e.handle(Key::RightAlt);
         assert!(effects.contains(&Effect::TogglePlay), "starts the song");
@@ -346,23 +406,46 @@ mod tests {
         assert!(e.looping() && !e.record, "without record on");
         assert_eq!(e.mode, crate::Mode::Normal, "nor insert mode");
         assert_eq!(
+            e.grid.tracks[0].looper,
+            Some(Looping::default()),
+            "a loop track now"
+        );
+        assert_eq!(
             e.message.as_deref(),
-            Some("a: recording a new loop as the song starts; ! again stops")
+            Some("a: recording a new loop as the song starts, one pass; ! again stops")
         );
 
-        // Pressed again, it disarms, and the pass under way finishes.
-        assert!(e.handle(Key::Char('!')).is_empty());
-        assert_eq!(e.armed(), None);
-        assert!(!e.looping());
-
-        // Pressed while playing, it overdubs from the next pass, leaving the song playing.
+        // A pass, and it plays.
         e.recorded(0, "/s/take-1.wav".into());
+        assert_eq!(e.armed(), None);
+        assert_eq!(
+            e.message.as_deref(),
+            Some("a: pass recorded; ! overdubs another")
+        );
+
+        // Pressed while playing, it overdubs a pass from the next, leaving the song playing.
         e.set_transport(Some(crate::Transport::default()));
         assert!(!e.handle(Key::RightAlt).contains(&Effect::TogglePlay));
         assert_eq!(
             e.message.as_deref(),
-            Some("a: overdubbing from its next 00; ! again stops")
+            Some("a: overdubbing from its next 00, one pass; ! again stops")
         );
+
+        // Pressed again before it's done, it disarms, and the pass under way finishes.
+        assert!(e.handle(Key::Char('!')).is_empty());
+        assert_eq!(e.armed(), None);
+        assert!(!e.looping());
+
+        // Set to overdub, it goes on until it's pressed again.
+        run(&mut e, "overdub");
+        assert_eq!(
+            e.message.as_deref(),
+            Some("a: loops from step 00, overdubbing pass after pass")
+        );
+        e.handle(Key::RightAlt);
+        assert_eq!(e.passes_left(), None);
+        e.recorded(0, "/s/take-2.wav".into());
+        assert_eq!(e.armed(), Some(0));
 
         // Stopping the song stops it, but not a track armed by :arm.
         e.song_stopped();
@@ -375,10 +458,18 @@ mod tests {
     #[test]
     fn with_a_threshold_the_loop_pedal_listens_rather_than_starting_the_song() {
         let mut e = editor();
+        run(&mut e, "threshold");
+        assert_eq!(
+            e.message.as_deref(),
+            Some("a isn't a loop track: :threshold or :overdub makes it one")
+        );
         run(&mut e, "threshold -30");
-        assert_eq!(e.threshold, Some(-30.0));
-        assert!((e.threshold_level().unwrap() - 0.0316).abs() < 0.001);
+        let looper = e.grid.tracks[0].looper.unwrap();
+        assert_eq!(looper.threshold, Some(-30.0));
+        assert!(!looper.overdub);
+        assert_eq!(e.grid.tracks[1].looper, None, "only the cursor's track");
         let effects = e.handle(Key::RightAlt);
+        assert!((e.threshold_level().unwrap() - 0.0316).abs() < 0.001);
         assert!(effects.contains(&Effect::ReadyToPlay));
         assert!(
             !effects.contains(&Effect::TogglePlay),
@@ -386,7 +477,7 @@ mod tests {
         );
         assert_eq!(
             e.message.as_deref(),
-            Some("a: listening; play and the song starts with you")
+            Some("a: listening, one pass; play and the song starts with you")
         );
         e.handle(Key::RightAlt);
         e.set_transport(Some(crate::Transport::default()));
@@ -396,9 +487,12 @@ mod tests {
         );
 
         run(&mut e, "threshold 6");
-        assert_eq!(e.threshold, Some(-30.0), "{:?}", e.message);
+        assert_eq!(e.grid.tracks[0].looper.unwrap().threshold, Some(-30.0));
         run(&mut e, "threshold off");
-        assert_eq!(e.threshold, None);
+        assert_eq!(e.grid.tracks[0].looper.unwrap().threshold, None);
+        // Each is an undo.
+        e.handle(Key::Char('u'));
+        assert_eq!(e.grid.tracks[0].looper.unwrap().threshold, Some(-30.0));
     }
 
     #[test]
@@ -419,9 +513,9 @@ mod tests {
         e.handle(Key::RightAlt);
         assert_eq!(e.grid.tracks[1].name, "loop 2");
 
-        // A loop track overdubs where it is.
+        // A loop track overdubs where it is, once its pass has disarmed it.
         e.recorded(1, "/s/take-1.wav".into());
-        e.handle(Key::RightAlt);
+        assert_eq!(e.armed(), None);
         e.select_point(1, 0);
         e.handle(Key::RightAlt);
         assert_eq!(e.grid.tracks.len(), 4);

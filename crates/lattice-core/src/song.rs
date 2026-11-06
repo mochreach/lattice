@@ -296,7 +296,26 @@ pub struct Track {
     /// The settings its steps lock, in the order they're shown, at most [`MAX_LOCKS`]. Shared
     /// by every pattern. See [`Track::lock_columns`].
     pub columns: Vec<LockColumn>,
+    /// How the looper records it, if it's a loop track: one the looper's recorded into or been
+    /// set up for. `None` for a track of notes.
+    pub looper: Option<Looping>,
 }
+
+/// How the looper records a loop track, shown in its header.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct Looping {
+    /// The level, in dB, the input reaches to start recording, from where it does; `None` to
+    /// start on step 00.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold: Option<f32>,
+    /// Whether the loop pedal goes on overdubbing pass after pass, rather than recording one
+    /// pass and playing it.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub overdub: bool,
+}
+
+/// The quietest threshold the looper takes, in dB; 0 dB is the loudest.
+pub const MIN_THRESHOLD: f32 = -60.0;
 
 impl Track {
     /// The settings its steps lock, as columns: [`Track::columns`], then any locked on its steps
@@ -424,6 +443,8 @@ struct SparseTrack {
     face: Option<Face>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     columns: Vec<LockColumn>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    looper: Option<Looping>,
 }
 
 fn is_zero_u8(n: &u8) -> bool {
@@ -453,6 +474,7 @@ impl From<Track> for SparseTrack {
             knobs: track.knobs,
             face: track.face,
             columns: track.columns,
+            looper: track.looper,
         }
     }
 }
@@ -492,6 +514,7 @@ impl TryFrom<SparseTrack> for Track {
             knobs: sparse.knobs,
             face: sparse.face,
             columns: sparse.columns,
+            looper: sparse.looper,
         })
     }
 }

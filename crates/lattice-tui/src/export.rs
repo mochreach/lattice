@@ -294,6 +294,7 @@ mod tests {
             macros: vec![],
             knobs: vec![],
             rules: vec![],
+            looper: None,
         };
         track.steps[0].note = Some(Note {
             pitch: 60,

@@ -100,6 +100,7 @@ fn rendering_never_allocates() {
                 when: Condition::Every { n: 2, offset: 1 },
             },
         ],
+        looper: None,
     };
     let grid = Grid {
         name: "test".into(),
