@@ -1,11 +1,13 @@
 //! The looper, on the editor's side: `:arm` arms a track to record the audio input, and while
 //! record's on and the song plays, the frontend records it a pass at a time, each pass becoming
 //! a sound file in the song's samples folder that the track plays, chopped a piece a step. Each
-//! pass overdubs the last, and each can be undone.
+//! pass overdubs the last, and each can be undone. The loop key (`!`), a loop pedal's, does it
+//! all in one: it arms the cursor's track and records it, with record off, until it's pressed
+//! again.
 
 use std::path::{Path, PathBuf};
 
-use lattice_core::InstKind;
+use lattice_core::{InstKind, MAX_TRACKS, Step, Track};
 
 use crate::{Editor, Effect, TrackId};
 
@@ -16,6 +18,8 @@ pub(crate) struct Armed {
     pub track: TrackId,
     pub fresh: bool,
     pub passes: Option<u32>,
+    /// Armed by the loop key, to record without record on until it's pressed again.
+    pub pedal: bool,
 }
 
 /// The most passes `:arm` counts.
@@ -38,10 +42,13 @@ impl Editor {
             return Err("no such track".into());
         };
         let name = to_arm.name.clone();
+        // Arming the track the loop key's recording again doesn't stop it.
+        let pedal = self.armed.is_some_and(|a| a.pedal && a.track == track);
         self.armed = Some(Armed {
             track,
             fresh,
             passes,
+            pedal,
         });
         let how = if self.overdubbing(t).is_some() {
             "overdubbing its loop"
@@ -67,6 +74,95 @@ impl Editor {
             None => "nothing's armed".into(),
         });
         self.armed = None;
+    }
+
+    /// The loop key (`!`), as on a loop pedal: arms the cursor's track and records it from its
+    /// next `00`, pass after pass, without record on, starting the song if it's stopped; pressed
+    /// again, it lets the pass finish and disarms, the song playing on. A track of notes that
+    /// isn't a loop already gets a new track beside it to record into.
+    pub(crate) fn loop_pedal(&mut self) -> Vec<Effect> {
+        if let Some(t) = self.armed().filter(|_| self.looping()) {
+            let name = self.grid.tracks.get(t).map_or("", |t| t.name.as_str());
+            self.message = Some(format!(
+                "{name} disarmed: a pass under way finishes, and the loop plays on"
+            ));
+            self.armed = None;
+            return vec![];
+        }
+        let mut effects = vec![];
+        let mut t = self.cursor().track;
+        let Some(track) = self.grid.tracks.get(t) else {
+            self.message = Some("no track to loop".into());
+            return effects;
+        };
+        let notes = track.steps.iter().any(|s| s.note.is_some());
+        let len = track.steps.len();
+        if notes && track.instrument.kind != InstKind::Chop {
+            let tracks = &self.grid.tracks;
+            if tracks.len() >= MAX_TRACKS {
+                self.message = Some(format!("at most {MAX_TRACKS} tracks: no room for a loop"));
+                return effects;
+            }
+            // The first of `loop`, `loop 2`, … not taken; of one more than there are tracks,
+            // one's always free.
+            let name = (1..=tracks.len() + 1)
+                .map(|n| match n {
+                    1 => "loop".to_string(),
+                    n => format!("loop {n}"),
+                })
+                .find(|name| tracks.iter().all(|t| t.name != *name))
+                .unwrap_or_default();
+            let new = Track {
+                name,
+                steps: vec![Step::default(); len],
+                ..Track::default()
+            };
+            self.checkpoint();
+            if !self.insert_track(t + 1, new) {
+                self.message = Some("can't add a track for the loop".into());
+                return effects;
+            }
+            t += 1;
+            self.point_page_at(t);
+            effects.push(Effect::TracksChanged);
+        }
+        let (Some(&id), Some(track)) = (self.ids.get(t), self.grid.tracks.get(t)) else {
+            return effects;
+        };
+        let name = track.name.clone();
+        // Keeping what `:arm` said for the track, if it's the one armed.
+        let armed = self.armed.filter(|a| a.track == id);
+        self.armed = Some(Armed {
+            track: id,
+            fresh: armed.is_some_and(|a| a.fresh),
+            passes: armed.and_then(|a| a.passes),
+            pedal: true,
+        });
+        let how = match self.overdubbing(t) {
+            Some(_) => "overdubbing",
+            None => "recording a new loop",
+        };
+        self.message = Some(match self.transport {
+            Some(_) => format!("{name}: {how} from its next 00; ! again stops"),
+            None => {
+                effects.push(Effect::TogglePlay);
+                format!("{name}: {how} as the song starts; ! again stops")
+            }
+        });
+        effects
+    }
+
+    /// Whether the armed track records as the song plays: by the loop key, or with record on.
+    pub fn looping(&self) -> bool {
+        self.armed.is_some_and(|a| a.pedal) || self.record
+    }
+
+    /// The song has stopped: the loop key's recording stops with it, so that playing again
+    /// doesn't record.
+    pub fn song_stopped(&mut self) {
+        if self.armed.is_some_and(|a| a.pedal) {
+            self.armed = None;
+        }
     }
 
     /// How long a step lasts, in seconds, at `bpm`.
@@ -227,6 +323,68 @@ mod tests {
         e.handle(Key::Char('u'));
         let file = e.grid.tracks[0].instrument.file.clone();
         assert_eq!(file.as_deref(), Some(Path::new("/s/take-1.wav")));
+    }
+
+    #[test]
+    fn the_loop_pedal_records_without_record_and_stops_again() {
+        let mut e = editor();
+        let effects = e.handle(Key::RightAlt);
+        assert!(effects.contains(&Effect::TogglePlay), "starts the song");
+        assert_eq!(e.armed(), Some(0));
+        assert!(e.looping() && !e.record, "without record on");
+        assert_eq!(e.mode, crate::Mode::Normal, "nor insert mode");
+        assert_eq!(
+            e.message.as_deref(),
+            Some("a: recording a new loop as the song starts; ! again stops")
+        );
+
+        // Pressed again, it disarms, and the pass under way finishes.
+        assert!(e.handle(Key::Char('!')).is_empty());
+        assert_eq!(e.armed(), None);
+        assert!(!e.looping());
+
+        // Pressed while playing, it overdubs from the next pass, leaving the song playing.
+        e.recorded(0, "/s/take-1.wav".into());
+        e.set_transport(Some(crate::Transport::default()));
+        assert!(!e.handle(Key::RightAlt).contains(&Effect::TogglePlay));
+        assert_eq!(
+            e.message.as_deref(),
+            Some("a: overdubbing from its next 00; ! again stops")
+        );
+
+        // Stopping the song stops it, but not a track armed by :arm.
+        e.song_stopped();
+        assert_eq!(e.armed(), None);
+        run(&mut e, "arm");
+        e.song_stopped();
+        assert_eq!(e.armed(), Some(0));
+    }
+
+    #[test]
+    fn the_loop_pedal_on_a_track_of_notes_records_beside_it() {
+        let mut e = editor();
+        e.grid.tracks[0].steps[0] = Step::note(60);
+        let effects = e.handle(Key::RightAlt);
+        assert!(effects.contains(&Effect::TracksChanged));
+        let names: Vec<_> = e.grid.tracks.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, ["a", "loop", "b"]);
+        assert_eq!(e.grid.tracks[1].steps.len(), 8, "as long as the track");
+        assert_eq!(e.armed(), Some(1));
+        assert_eq!(e.cursor().track, 1, "the cursor goes with it");
+
+        // A second loop, from the first track again, is named apart.
+        e.handle(Key::RightAlt);
+        e.select_point(0, 0);
+        e.handle(Key::RightAlt);
+        assert_eq!(e.grid.tracks[1].name, "loop 2");
+
+        // A loop track overdubs where it is.
+        e.recorded(1, "/s/take-1.wav".into());
+        e.handle(Key::RightAlt);
+        e.select_point(1, 0);
+        e.handle(Key::RightAlt);
+        assert_eq!(e.grid.tracks.len(), 4);
+        assert_eq!(e.armed(), Some(1));
     }
 
     #[test]

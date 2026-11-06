@@ -254,6 +254,7 @@ impl Editor {
             | Action::CommandLine
             | Action::PlaySong
             | Action::PlayFill
+            | Action::LoopPedal
             | Action::ToggleRecord
             | Action::Escape
             | Action::Quit

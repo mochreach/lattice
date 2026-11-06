@@ -393,6 +393,15 @@ then swaps the new file into the playing instrument (`Command::SetSample`) rathe
 it, so the loop plays on without a click. Turning record off lets the take recording finish its
 pass; stopping ends it unfinished, and an unfinished take is thrown away.
 
+The loop pedal (`loop_pedal`: right Alt tapped alone, or `!`) arms a track with `Armed::pedal`
+set, which records without record on (`Editor::looping`), so it leaves note recording and insert
+mode alone; pressed again it disarms, which lets the take finish as record off does, and the
+frontend disarms it when it sees the song stop. A lone modifier only reaches Lattice through the
+kitty keyboard protocol's "report all keys": `keys::Tap` in the frontend turns Right Alt, or
+ISO Level 3 Shift (AltGr), into `Key::RightAlt` as it's let go, if no key was pressed while it was
+down, so chords held on it stay chords. On a track of notes that isn't a chop track, the pedal
+adds a `loop` track beside it rather than chopping the notes away.
+
 What you hear comes out late, and what you play to it reaches the engine later still, so a pass
 starts when its first step is heard plus the input's delay: the latency is the output's and the
 input's, from cpal's timestamps, plus the input waiting in the ring buffer, plus `:latency`. It is

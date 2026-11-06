@@ -438,6 +438,7 @@ impl Editor {
             | Action::TogglePlay
             | Action::PlaySong
             | Action::PlayFill
+            | Action::LoopPedal
             | Action::Escape
             | Action::Quit
             | Action::ToggleMute

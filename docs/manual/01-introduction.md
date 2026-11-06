@@ -302,8 +302,9 @@ mode, so that letters can be both commands and notes.
 
 Some keys work in every mode: the arrows, `pageup` `pagedown` `home` `end`, `esc`, the transport
 (`space`, `C-space`, `A-space`, `C-k`, backtick), `{` `}` for the keyboard's octave, `tab`, `R`
-to arm recording, and `C-c` to quit. Insert mode's piano layout can be changed with `:layout`
-(`piano`, `wicki`, `fourths` or `scale`), explained in [Recording](09-recording.md).
+to arm recording, the loop pedal (right Alt tapped alone, or `!`), and `C-c` to quit. Insert
+mode's piano layout can be changed with `:layout` (`piano`, `wicki`, `fourths` or `scale`),
+explained in [Recording](09-recording.md).
 
 ## Pages
 
@@ -476,6 +477,7 @@ says `nothing to undo` (or `nothing to redo`).
 | `A-space`  | `play_from_here` | play the song from the entry playing this pattern (or stop)   |
 | `C-k`      | `hush`           | stop the song and every sound at once                         |
 | backtick   | `play_fill`      | hold for a fill (see [Gestures](05-gestures.md))              |
+| `ralt` `!` | `loop_pedal`     | record a loop ([looper](09-recording.md#the-loop-pedal))      |
 
 `space` on the pattern page loops the pattern being edited, each track going round at its own
 length, so tracks of different lengths drift against each other. On the song page, it plays the

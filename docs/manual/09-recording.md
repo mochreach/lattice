@@ -34,8 +34,9 @@ entered.
 
 ### The count-in
 
-With record armed, playing starts with a **count-in**: a bar of clicks, accenting its first beat,
-before the song's first step, so you can come in on the one. The header counts down the beats
+With record armed, or the loop pedal starting the song, playing starts with a **count-in**: a
+bar of clicks, accenting its first beat, before the song's first step, so you can come in on the
+one. The header counts down the beats
 left, `◆ IN 4` … `◆ IN 1`. The clicks sound whether or not the metronome (`:click`) is on.
 
 `:count BARS` sets how many bars to count in, from 0 (none) to 4; it starts at 1. The count-in
@@ -190,10 +191,51 @@ tape between two tape recorders, so whatever was played came round again seconds
 played over. Guitarists now stand on loop pedals that do the same. Lattice's looper records your
 audio interface's input, a guitar, a voice, a synth, into a chop track, in time with the song.
 
+### The loop pedal
+
+A loop pedal has one switch, and that's the point: your hands are on the instrument, so
+recording, playing back and overdubbing all hang off a single press. Lattice's loop pedal is
+**right Alt**, tapped on its own: pressed and let go with nothing else in between (`loop_pedal`).
+On a UK keyboard, and many others, that key is AltGr; it counts too. Holding it for a chord or an
+AltGr letter doesn't, so it never goes off by accident, and it sits under your right thumb, out
+of the way of anything you type. Only terminals that report every key through the kitty keyboard
+protocol send a lone Alt (kitty, WezTerm, foot, Ghostty and recent Alacritty; not through tmux):
+`!` does the same everywhere.
+
+Tap it, and the cursor's track records its next pass:
+
+1. **Record.** The track is armed, and records from the next time its playhead comes round to
+   step `00`. If the song's stopped, it starts, with the count-in (`:count`, above), so you can
+   come in on the first beat. Record (`R`) stays off, and you stay in whatever mode you were in.
+2. **Overdub.** At the end of the pass it plays back, and the next pass records over it, layer
+   on layer, for as long as you leave it. `u` takes the last layer off.
+3. **Play.** Tap again, and the pass being recorded finishes, then the loop plays on, disarmed.
+4. **Overdub again.** Tap once more and it records over the loop from its next pass.
+
+With the song already playing, it waits for `00`, however far off that is: a long loop may keep
+you waiting, but the loop always lines up with the song. For less of a wait, make the track
+shorter, or start the song from somewhere else.
+
+On a track that has notes and isn't a loop already, a synth or a drum, recording over it would
+lose them, so the pedal adds a new track beside it, `loop` (then `loop 2` and so on), as many
+steps long, moves the cursor onto it and records there. A track with no notes, or a chop track
+playing a loop, records where it is.
+
+```
+ LATTICE  PATTERN   ▶ PLAY  ● LOOP LOOP    mountain-king.lattice   pat cave   bpm 138
+ loop: recording a new loop from its next 00; ! again stops
+```
+
+`:midi-learn loop_pedal` puts it on a MIDI foot switch (see
+[`:midi-learn`](#pedals-buttons-pads-and-knobs-midi-learn)), so the whole loop can be played
+from the floor. Stopping the song disarms it, so playing again
+doesn't record by surprise.
+
 ### Arming a track
 
-`:arm` arms the cursor's track to record. Then turn record on with `R` and play the song. The
-header shows `ARMED TROLL` (the track's name) while it waits, and the track's header a `○`:
+For more say over the passes, `:arm` arms the cursor's track to record with record on. Then turn
+record on with `R` and play the song. The header shows `ARMED TROLL` (the track's name) while it
+waits, and the track's header a `○`:
 
 ```
  LATTICE  PATTERN   ■ STOP  ARMED TROLL    mountain-king.lattice   pat cave   bpm 138
@@ -259,9 +301,10 @@ Because the loop is a chop track, everything chop can do works on it: rules such
 
 ### Stopping
 
-Turning record off (`R`) lets the pass being recorded finish, and then stops recording; the
-song plays on. **Stopping** the song ends the pass where it is, and an unfinished pass is thrown
-away, so a pass is always whole. `^k` (hush) stops everything at once, the same way.
+Turning record off (`R`), or tapping the loop pedal, lets the pass being recorded finish, and
+then stops recording; the song plays on. **Stopping** the song ends the pass where it is, and an
+unfinished pass is thrown away, so a pass is always whole. `^k` (hush) stops everything at once,
+the same way.
 
 ### Hearing what you play
 
@@ -538,8 +581,8 @@ record or `space` for play, or bind a key it can type to a command in the config
 C-l = ":arm 1"        # a pedal sending Ctrl-L arms the track for one pass
 ```
 
-`R` and `space` work in insert mode as well as normal mode, so a pedal on them works while you
-play.
+`R`, `space` and `!` (the loop pedal) work in insert mode as well as normal mode, so a pedal on
+them works while you play.
 
 ### MIDI out
 

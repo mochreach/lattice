@@ -241,6 +241,7 @@ impl Editor {
             | Action::TogglePlay
             | Action::PlaySong
             | Action::PlayFill
+            | Action::LoopPedal
             | Action::Quit
             | Action::GotoMixer
             | Action::GotoPattern

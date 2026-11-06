@@ -901,25 +901,31 @@ const LESSONS: &[Lesson] = &[
     },
     Lesson {
         title: "Looping",
-        text: "A chop track can record its loop from the audio input. `:arm` arms the cursor's \
-               track (`○` by its name); then with record on ({toggle_record}) and the song \
-               playing, it records a pass, from step 00 round to 00 again (`●`), and plays it, \
-               cut into a piece a step. Each pass after that overdubs the last, and {undo} takes \
-               one off; delete its notes and the next pass starts a new loop. `:arm 1` records \
-               one pass and stops, `:arm 4` four. `:arm!` records a new loop over the old one, \
-               and `:disarm` disarms. \
+        text: "Lattice can record a loop from the audio input, as a loop pedal does. Tap \
+               {loop_pedal} (right Alt, or AltGr, on its own; `!` where the terminal doesn't \
+               report it) and it records the cursor's track from its next step 00, starting the \
+               song with a count-in if it's stopped: a pass, from 00 round to 00 again (`●` by \
+               the track's name), which then plays back, cut into a piece a step. Each pass \
+               after that overdubs the last, and {undo} takes one off. Tap it again and the pass \
+               finishes and the loop plays on; again, and it overdubs from the next pass. On a \
+               track of notes it adds a track beside it, `loop`, to record into. \
+               `:midi-learn loop_pedal` puts it on a foot switch.\n\n\
+               `:arm` arms the track for record ({toggle_record}) to record instead, and \
+               `:arm 1` records one pass and stops, `:arm 4` four. `:arm!` records a new loop \
+               over the old one, and `:disarm` disarms; delete a loop's notes and the next pass \
+               starts a new one. \
                `:input` chooses what to record from: type `:input ` and the devices are \
                suggested, or enter `:input` alone to list them all, then a number or part of a \
                name picks one. Apps playing are listed too, \
                `app: Firefox`, to record just that app's sound. `:output` chooses what you \
                hear. If what you play comes back late or early, `:latency 20` moves it by \
-               milliseconds, or `:latency -20`.\n\nArm the chop track.",
-        teaches: &[],
+               milliseconds, or `:latency -20`.\n\nStart a loop on the chop track.",
+        teaches: &[Action::LoopPedal],
         commands: &["arm", "arm!", "disarm", "input", "output", "latency"],
         setup: nothing,
         watch: never,
         done: |e, _| e.armed().is_some(),
-        solution: "ghtltl:arm<ret>",
+        solution: "ghtltl<ralt>",
     },
     Lesson {
         title: "Patterns",

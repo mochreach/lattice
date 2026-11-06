@@ -275,6 +275,7 @@ fn run(
 ) -> Result<()> {
     let mut view = ui::ViewState::default();
     let mut playhead = Playhead::default();
+    let mut tap = keys::Tap::default();
     let mut sequencer = Sequencer::default();
     let mut watch = Watch::new();
     let mut said = None;
@@ -474,16 +475,16 @@ fn run(
         // Handle everything that's waiting before drawing again.
         loop {
             if let Event::Key(event) = event::read()?
-                && let Some(key) = keys::convert(event)
+                && let Some((key, kind)) = tap.key(event)
             {
                 // A key skips the opening, and does nothing else. Only a press: the release of
                 // the Enter that started Lattice comes through too.
-                if event.kind == KeyEventKind::Press && splash.take().is_some() {
+                if kind == KeyEventKind::Press && splash.take().is_some() {
                     break;
                 }
                 let now = Instant::now();
                 editor.set_transport(playhead.transport(handle.status(), editor, now));
-                let effects = match event.kind {
+                let effects = match kind {
                     KeyEventKind::Release => editor.release(key),
                     // A held note plays once, as on a keyboard; held motions still repeat.
                     KeyEventKind::Repeat if editor.plays(key) => vec![],
@@ -690,14 +691,14 @@ fn apply(
             None => return Flow::Next,
         },
         Effect::TogglePlay if handle.status().playing() => Command::Stop,
-        // A count-in only when recording, to play along from the first beat.
+        // A count-in only when recording, notes or a loop, to play along from the first beat.
         Effect::TogglePlay => {
             // The song's mutes from the first step.
             let (now, next) = editor.song_mutes();
             handle.send(Command::SetMutes { now, next });
             sequencer.send_pattern(editor, handle);
             Command::Play {
-                count_in: if editor.record { editor.count_in } else { 0 },
+                count_in: if editor.looping() { editor.count_in } else { 0 },
             }
         }
         Effect::Bpm(bpm) => Command::SetBpm(bpm),

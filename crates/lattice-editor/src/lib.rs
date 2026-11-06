@@ -1929,6 +1929,7 @@ impl Editor {
             Action::TogglePlay => return vec![Effect::TogglePlay],
             Action::PlayFill => return self.play_fill(),
             Action::ToggleRecord => self.toggle_record(),
+            Action::LoopPedal => return self.loop_pedal(),
             Action::ToggleView => {
                 self.view = match self.view {
                     View::Source => View::Live,

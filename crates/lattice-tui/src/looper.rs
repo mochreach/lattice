@@ -45,6 +45,8 @@ pub struct Looper {
     waiting: usize,
     /// Whether the engine's been told to stop recording since a take was last sent.
     stopped: bool,
+    /// Whether the song was playing at the last frame, to see it stop.
+    playing: bool,
 }
 
 impl Looper {
@@ -57,6 +59,7 @@ impl Looper {
             device,
             waiting: 0,
             stopped: true,
+            playing: false,
         }
     }
 
@@ -64,6 +67,11 @@ impl Looper {
     /// there's something to record, and saves the passes recorded. Returns what the editor
     /// makes of them.
     pub fn tick(&mut self, editor: &mut Editor, handle: &mut Handle, host: &Host) -> Vec<Effect> {
+        let playing = handle.status().playing();
+        if self.playing && !playing {
+            editor.song_stopped();
+        }
+        self.playing = playing;
         let armed = editor.armed();
         if armed.is_none() {
             self.failed = false;
@@ -86,7 +94,7 @@ impl Looper {
             }
         }
 
-        let recording = editor.record && handle.status().playing() && self.input.is_some();
+        let recording = editor.looping() && playing && self.input.is_some();
         match armed.filter(|_| recording) {
             Some(t) => {
                 // No more than the passes left, if they're counted.

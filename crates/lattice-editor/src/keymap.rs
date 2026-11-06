@@ -32,6 +32,10 @@ pub enum Key {
     Note(u8),
     /// A function key, `F1` to `F12`.
     F(u8),
+    /// Right Alt, AltGr on many layouts, tapped on its own: pressed and let go with no other
+    /// key between, so holding it for a chord doesn't count. Only terminals that report every
+    /// key, as kitty does, send it.
+    RightAlt,
 }
 
 impl Key {
@@ -70,6 +74,7 @@ impl Key {
             "pagedown" => Key::PageDown,
             "home" => Key::Home,
             "end" => Key::End,
+            "ralt" => Key::RightAlt,
             _ if let Some(n) = (name.strip_prefix('F'))
                 .and_then(|n| n.parse::<u8>().ok())
                 .filter(|n| (1..=12).contains(n)) =>
@@ -126,6 +131,7 @@ impl fmt::Display for Key {
             Key::Ctrl(c) => write!(f, "C-{c}"),
             Key::Alt(c) => write!(f, "A-{c}"),
             Key::Esc => f.write_str("esc"),
+            Key::RightAlt => f.write_str("ralt"),
             Key::Enter => f.write_str("ret"),
             Key::Backspace => f.write_str("backspace"),
             Key::Delete => f.write_str("del"),
@@ -290,6 +296,9 @@ pub enum Action {
     PlayFill,
     /// Arm or disarm recording at the playhead.
     ToggleRecord,
+    /// As a loop pedal: record the cursor's track into a loop from its next pass, overdubbing
+    /// pass after pass, until it's pressed again.
+    LoopPedal,
     ToggleView,
     Quit,
 }
@@ -396,6 +405,7 @@ impl Action {
         Action::Hush,
         Action::PlayFill,
         Action::ToggleRecord,
+        Action::LoopPedal,
         Action::ToggleView,
         Action::Quit,
     ];
@@ -545,6 +555,7 @@ impl Action {
             Action::Hush => "stop everything: the song, every note, echo and tail",
             Action::PlayFill => "hold for a fill: steps marked F play, and F- don't",
             Action::ToggleRecord => "record on / off",
+            Action::LoopPedal => "loop pedal: record a loop from the next pass, again to stop",
             Action::ToggleView => "written or playing pattern",
             Action::Quit => "quit, warning first of unsaved changes: again to quit anyway",
         }
@@ -763,6 +774,8 @@ impl Default for Keymap {
             (Char('}'), KeyboardOctaveUp),
             (Tab, ToggleView),
             (Char('R'), ToggleRecord),
+            (RightAlt, LoopPedal),
+            (Char('!'), LoopPedal),
             (Ctrl('c'), Quit),
         ];
 
