@@ -73,6 +73,15 @@ pub use record::Transport;
 pub use suggest::{Completion, word_start};
 pub use tutor::TutorView;
 
+/// The player's home folder: `$HOME`, or on Windows, which has none, `%USERPROFILE%`.
+pub fn home() -> Option<PathBuf> {
+    ["HOME", "USERPROFILE"]
+        .into_iter()
+        .filter_map(std::env::var_os)
+        .find(|dir| !dir.is_empty())
+        .map(PathBuf::from)
+}
+
 use std::path::{Path, PathBuf};
 
 use lattice_core::{

@@ -385,7 +385,7 @@ fn paths(typed: &str, extension: Option<&str>) -> Vec<Completion> {
     let after = typed.rfind('/').map_or(0, |i| i + 1);
     let (folder, name) = typed.split_at_checked(after).unwrap_or(("", typed));
     let path = match folder.strip_prefix("~/") {
-        Some(rest) => std::env::var_os("HOME").map(|home| PathBuf::from(home).join(rest)),
+        Some(rest) => crate::home().map(|home| home.join(rest)),
         None if folder.is_empty() => Some(PathBuf::from(".")),
         None => Some(PathBuf::from(folder)),
     };

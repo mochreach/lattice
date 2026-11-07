@@ -25,7 +25,7 @@ pub fn path() -> Option<PathBuf> {
     let state = std::env::var_os("XDG_STATE_HOME")
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/state")))?;
+        .or_else(|| lattice_editor::home().map(|h| h.join(".local/state")))?;
     Some(state.join("lattice").join("lattice.log"))
 }
 

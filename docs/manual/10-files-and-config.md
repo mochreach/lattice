@@ -685,6 +685,7 @@ Besides songs and the config, Lattice keeps a few files of its own:
 | `~/.local/state/lattice/autosave/`      | unsaved changes kept for `:recover`                |
 
 The config folder moves with `$XDG_CONFIG_HOME`, and the state folder with `$XDG_STATE_HOME`.
+On Windows, which has no `~`, they're in your user folder, `%USERPROFILE%`, all the same.
 The devices, chains and presets are explained in [Recording](09-recording.md) and
 [Mixer and effects](08-mixer-and-effects.md).
 

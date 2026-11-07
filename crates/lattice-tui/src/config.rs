@@ -33,7 +33,7 @@ use crate::theme::Theme;
 pub fn default_path() -> Option<PathBuf> {
     let base = match std::env::var_os("XDG_CONFIG_HOME") {
         Some(dir) if !dir.is_empty() => PathBuf::from(dir),
-        _ => PathBuf::from(std::env::var_os("HOME")?).join(".config"),
+        _ => lattice_editor::home()?.join(".config"),
     };
     Some(base.join("lattice").join("config.toml"))
 }
