@@ -491,7 +491,9 @@ My laptop's keyboard lights each key on its own, so Lattice lights the keys that
 Ableton's Push and Novation's Launchpad light their pads to show what each one plays. It needs
 `qs-rgbd`, a service I wrote that shares the keyboard between programs. It isn't released, so
 for now the lights are tied to my laptop; without it nothing is lit and nothing goes wrong, so
-there's nothing to set up or turn off.
+there's nothing to set up or turn off. What Lattice asks of it is small, though: if your
+keyboard lights its keys one by one, [the interface](../keyboard-lights.md) has all it needs and
+a service to start from.
 
 - **In normal and select mode** every key that does something lights up, dimly, in a colour
   for the kind of thing it does, as the actions are sorted under [Every action, by
@@ -507,8 +509,9 @@ there's nothing to set up or turn off.
   root orange, the scale's other notes white, and the rest dim blue. In C major the piano
   layout looks like a piano, white keys and black; `:layout` lays them out differently, and
   the lights follow, so the fourths and Wicki–Hayden layouts show where the scale lies on
-  them, which is hard to remember. In a folded group the digit pads light blue. The keys that
-  aren't notes light by kind, as in normal mode.
+  them, which is hard to remember. In a folded group the digit pads light blue. They're all
+  kept dim, so the note sounding stands out bright against them. The keys that aren't notes
+  light by kind, as in normal mode.
 - **As the song plays**, the key for the note sounding on the cursor's track lights bright cyan,
   held as long as the note is, so you can watch a part go by under your fingers and learn it.
 - **The beat** runs along the number row while the song plays: one key a beat of the bar, the
