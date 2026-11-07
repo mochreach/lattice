@@ -166,6 +166,8 @@ Lattice settles, the format will too.
 | `:new! [PATH]` (`:n!`) | the same, throwing away unsaved changes                              |
 | `:quit` (`:q`)         | quit, unless there are unsaved changes                               |
 | `:quit!` (`:q!`)       | quit, throwing away unsaved changes                                  |
+| `:recover`             | bring back the unsaved changes kept when Lattice last stopped        |
+| `:recover!`            | the same, throwing away the unsaved changes there are now            |
 
 Paths are typed as they are, relative to the folder Lattice was started in, and `tab` completes
 them: after `:open`, `:w` and the others, the files and folders that fit are listed above the
@@ -225,6 +227,33 @@ ahead.
 
 `:q` quits, and refuses if there are unsaved changes; `:q!` quits anyway. `C-c` is the same
 from a key: with unsaved changes it says so, and a second `C-c` straight away quits anyway.
+
+### Unsaved changes are kept: `:recover`
+
+A terminal is easy to close by mistake, and nothing asks first: the window goes, and Lattice
+with it. So while the song has unsaved changes, Lattice keeps a copy of it every 30 seconds,
+and again as it stops for any reason but quitting: the terminal closing, the computer shutting
+down, or being told to stop. The copy goes in Lattice's state folder,
+`~/.local/state/lattice/autosave/`, in a folder for each song, never beside the song itself,
+so your own files only ever change when you save. Samples the song plays that were made before
+it had a file, and so are only in the scratch folder, which a restart may clear, are copied
+into that folder too.
+
+Next time you open the song, or start Lattice with no song if it never had a file, the status
+line says so: `unsaved changes from 5 minutes ago were kept: :recover to bring them back`. It
+says that only when the copy is newer than the song's file. `:recover` replaces the song with
+the copy, counted as unsaved (`[+]`), so `:w` keeps it; if you've changed something since
+opening, it refuses, as `:o` does, and `:recover!` goes ahead anyway.
+
+The copy is thrown away when it's no longer wanted: once the song is saved, or undone back to
+how it was saved, and when you quit, since quitting with `:q!` is choosing to lose the changes.
+A copy you didn't recover stays until that song is changed again, when the new changes take
+its place, so open the song and `:recover` first if you want it.
+
+Thirty seconds is a guess at the most work it's fine to lose; most changes are a few keys, and
+writing the song takes a few milliseconds, so it could be more often, but there's no need while
+closing the terminal still saves. Killing Lattice outright (`kill -9`) or losing power can't be
+caught, and those lose up to the 30 seconds.
 
 ### If Lattice crashes
 
@@ -653,6 +682,7 @@ Besides songs and the config, Lattice keeps a few files of its own:
 | `~/.local/state/lattice/lattice.log`    | what happened this run; the last run's is `.log.1` |
 | `~/.local/state/lattice/history`        | the command line's history, a command a line       |
 | `~/.local/state/lattice/rescue.lattice` | a never-saved song, rescued from a crash           |
+| `~/.local/state/lattice/autosave/`      | unsaved changes kept for `:recover`                |
 
 The config folder moves with `$XDG_CONFIG_HOME`, and the state folder with `$XDG_STATE_HOME`.
 The devices, chains and presets are explained in [Recording](09-recording.md) and

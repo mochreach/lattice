@@ -552,6 +552,18 @@ pub const COMMANDS: &[Spec] = &[
         describe: "open a song, discarding unsaved changes",
     },
     Spec {
+        name: "recover",
+        alias: None,
+        params: &[],
+        describe: "bring back the unsaved changes kept when Lattice last stopped without saving",
+    },
+    Spec {
+        name: "recover!",
+        alias: None,
+        params: &[],
+        describe: "bring back the kept changes, discarding the unsaved changes there are now",
+    },
+    Spec {
         name: "pattern",
         alias: Some("pat"),
         params: &[text("NAME", "pattern")],
@@ -1290,6 +1302,10 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         ]),
         "open" if editor.modified() => Err(UNSAVED_OPEN.into()),
         "open" | "open!" => Ok(vec![Effect::Open(command.text(0)?.into())]),
+        "recover" if editor.modified() => {
+            Err("unsaved changes: :w to save them, or :recover! to bring back the kept ones".into())
+        }
+        "recover" | "recover!" => Ok(vec![Effect::Recover]),
         "new" if editor.modified() => {
             Err("unsaved changes: :w to save them, or :new! to start anyway".into())
         }

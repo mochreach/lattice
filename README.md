@@ -157,11 +157,17 @@ cargo build --release
 target/release/lattice                 # a demo song
 target/release/lattice song.lattice    # open a song, or start a new one there
 target/release/lattice --tutor         # the tutor
+target/release/lattice --help          # options, first keys, files, and what to try if stuck
 ```
 
 To put `lattice` on your path, `cargo install --path crates/lattice-tui`. The other options
 (`--no-splash`, `--no-click`, `--config`, …) are in
 [Starting Lattice](docs/manual/01-introduction.md#starting-lattice).
+
+If you're stuck, or an agent is helping you set Lattice up, `lattice --help` is the place to
+start: it says where the config, log and kept changes are on your machine, and what to try when
+there's no sound or keys don't work. Unsaved changes are kept every 30 seconds and when the
+terminal closes, so closing it by mistake loses little: `:recover` brings them back.
 
 ### Platforms
 
@@ -186,7 +192,8 @@ Option on a Mac, so set Option to work as Alt rather than typing accented letter
 
 - kitty: `macos_option_as_alt yes` in `kitty.conf`;
 - WezTerm: `send_composed_key_when_left_alt_is_pressed = false` and
-  `send_composed_key_when_right_alt_is_pressed = false`;
+  `send_composed_key_when_right_alt_is_pressed = false`, with `enable_kitty_keyboard = true`
+  so it reports keys as Lattice needs;
 - Ghostty: `macos-option-as-alt = true`.
 
 Right Option is then the loop pedal, as right Alt is elsewhere.

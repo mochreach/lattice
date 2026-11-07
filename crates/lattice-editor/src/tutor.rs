@@ -105,6 +105,7 @@ pub const COMMANDS_NOT_TAUGHT: &[&str] = &[
     "new",
     "new!",
     "open!",
+    "recover!",
     "export",
     "export-sel",
     "write-quit",
@@ -518,9 +519,11 @@ const LESSONS: &[Lesson] = &[
         text: "{command_line} opens the command line; it suggests commands as you type, and \
                `tab` takes one, then the values that fit each word, such as the effects after \
                `:fx-add `. `↑` brings back the commands you've run. `:w` saves the song, `:q` quits ({quit} too, asking first if there are unsaved changes), and `:bpm` \
-               sets the tempo.\n\nSet the tempo to 128.",
+               sets the tempo. Unsaved changes are kept aside every half minute as well, so if \
+               the terminal's closed by mistake, `:recover` brings them back next time.\n\nSet \
+               the tempo to 128.",
         teaches: &[Action::CommandLine, Action::Quit],
-        commands: &["write", "quit", "bpm"],
+        commands: &["write", "quit", "bpm", "recover"],
         setup: nothing,
         watch: never,
         done: |e, _| e.bpm == 128.0,

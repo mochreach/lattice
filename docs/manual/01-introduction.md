@@ -158,10 +158,18 @@ Lattice before it starts, with the reason (see [song files](10-files-and-config.
 | `--show-keys`          | show the keys as they're pressed, above the status line              |
 | `--no-splash`          | leave out the opening animation                                      |
 | `--allow-agent-save`   | let `lattice ctl` save, open and quit (see below)                    |
+| `-h`, `--help`         | print a summary: options, first keys, files and what to do if stuck  |
+| `-V`, `--version`      | print the version, and the commit it was built from                  |
 | `ctl …`                | talk to a Lattice that's running, rather than start one              |
 
-The options can come in any order. The first word that doesn't start with `--` (and isn't the
-path after `--config`) is the song. Options Lattice doesn't know are ignored.
+The options can come in any order. The first word that doesn't start with `-` (and isn't the
+path after `--config`) is the song, and only one song can be given. An option Lattice doesn't
+know stops it before it starts, and names the nearest it does know: `--no-spalsh` asks
+`did you mean --no-splash?`. A mistyped option left to do nothing quietly would be worse.
+
+- `--help` is written for someone stuck, or an agent helping them: it gives the options, the
+  first keys to press, where the config, log and kept changes are on this machine, and what to
+  try when there's no sound, keys don't work or a song won't open.
 
 - `--tutor` starts the tutor at once, in place of the song: `lattice --tutor` is the same as
   starting Lattice and typing `:tutor`.
@@ -643,6 +651,10 @@ to go ahead.
 
 `C-c` (`quit`) quits as `:q` does, but if there are unsaved changes it says so, and pressing it
 again straight away quits anyway, as `:q!` does.
+
+Unsaved changes are kept aside every 30 seconds, and as Lattice stops if the terminal's closed,
+so closing it by mistake loses little: next time, `:recover` brings them back (see
+[unsaved changes are kept](10-files-and-config.md#unsaved-changes-are-kept-recover)).
 
 Lattice shouldn't crash, but if it does, it saves the song first if it had unsaved changes, as
 `song.rescue.lattice` beside its file (or `rescue.lattice` beside the log, if it was never

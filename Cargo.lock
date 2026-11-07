@@ -961,6 +961,7 @@ dependencies = [
  "pulseaudio",
  "ratatui",
  "rtrb",
+ "signal-hook",
  "terminal-colorsaurus",
  "toml",
 ]

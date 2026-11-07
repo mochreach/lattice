@@ -234,6 +234,8 @@ pub enum Effect {
     /// Read the song here and pass it to [`Editor::load`], or start a new song if there's no such
     /// file.
     Open(PathBuf),
+    /// Bring back the unsaved changes kept for this song, and pass them to [`Editor::recover`].
+    Recover,
     /// Render this to a WAV file.
     Export(Box<Export>),
     /// Allow this many more milliseconds of latency when recording the input, or fewer.
@@ -786,6 +788,16 @@ impl Editor {
         self.message = Some(format!("opened {}", path.display()));
         self.tutor = None;
         self.armed = None;
+        effects
+    }
+
+    /// Replaces the song with the unsaved changes kept for it, as [`Editor::load`] does, but
+    /// still counted as unsaved, against its file as it is.
+    pub fn recover(&mut self, song: Song) -> Vec<Effect> {
+        let saved = self.saved.clone();
+        let effects = self.replace_song(song, self.path.clone());
+        self.saved = saved;
+        self.message = Some("unsaved changes brought back: :w to keep them".into());
         effects
     }
 

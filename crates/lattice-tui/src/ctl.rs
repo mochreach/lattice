@@ -28,7 +28,7 @@ pub use socket::Server;
 pub use without_socket::Server;
 
 /// Commands that would throw away the song, refused unless saving is allowed.
-const DISCARDING: &[&str] = &["new!", "open!", "quit!", "tutor!"];
+const DISCARDING: &[&str] = &["new!", "open!", "quit!", "tutor!", "recover!"];
 
 /// What a request asks for.
 pub enum Ask {

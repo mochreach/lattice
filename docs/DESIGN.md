@@ -702,6 +702,17 @@ unwrap, as that's how they fail. Should something panic regardless, from a libra
 it once the UI thread unwinds, puts the terminal back and saves the song, if it had changes, as
 `.rescue.lattice` beside it, leaving the original alone in case the song was half changed.
 
+**Keeping unsaved changes.** Every 30 seconds while the song's modified, and when it stops
+without quitting, the frontend writes the song to `$XDG_STATE_HOME/lattice/autosave/<path>/`,
+the song's whole path made into a folder name, with any scratch samples it plays, so a closed
+terminal or a power cut loses half a minute at most; `:recover` reads it back as unsaved
+changes. `SIGHUP` and `SIGTERM` set a flag the UI loop looks at, but a closed terminal can leave
+crossterm reading it for ever (a read failing with `EIO` is retried), so a thread of its own
+holds the latest modified song, handed over each frame before the UI thread waits for keys,
+and if the UI thread hasn't kept it and finished a second after the signal, keeps it and exits.
+A copy is the run's to delete only once its song has been changed, so one waiting from before
+survives being opened. Quitting deletes it, `:q!` included, as that's choosing to lose them.
+
 **Driving it from outside.** Each Lattice listens on a Unix socket of its own,
 `$XDG_RUNTIME_DIR/lattice/<pid>.sock` (mode 600, in a 700 folder), so a script or an agent can
 see what's on screen and work it: `lattice ctl screen`, `state` (JSON), `keys`, `cmd` and `log`.

@@ -16,6 +16,7 @@ mod apps;
 #[path = "no_apps.rs"]
 mod apps;
 mod audio;
+mod autosave;
 mod bars;
 mod chains;
 mod config;
@@ -51,10 +52,13 @@ mod splash;
 mod theme;
 mod tracks;
 mod ui;
+mod usage;
 mod wave;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
@@ -104,6 +108,16 @@ fn main() -> Result<()> {
     if args.first().is_some_and(|a| a == "ctl") {
         return ctl::client(args.get(1..).unwrap_or_default());
     }
+    let options = match usage::parse(&args)? {
+        usage::Run::Start(options) => options,
+        usage::Run::Print(text) => {
+            print!("{text}");
+            if !text.ends_with('\n') {
+                println!();
+            }
+            return Ok(());
+        }
+    };
     log::start();
     midi_out::start();
     log!("arguments: {args:?}");
@@ -112,13 +126,9 @@ fn main() -> Result<()> {
         .with_buses(demo.buses)
         .with_arrangement(demo.arrangement);
     // `--config PATH` reads that config in place of the usual one.
-    let config = args.iter().position(|a| a == "--config");
-    let named = config.and_then(|i| args.get(i + 1)).map(PathBuf::from);
+    let named = options.config.clone();
     // `lattice song.lattice` opens the song, or starts a new one there, like Helix.
-    if let Some(path) = (args.iter().enumerate())
-        .find(|&(i, a)| !a.starts_with("--") && config.is_none_or(|c| i != c + 1))
-        .map(|(_, a)| PathBuf::from(a))
-    {
+    if let Some(path) = options.song.clone() {
         let (song, new) = file::open(&path)?;
         log!("opened {}", path.display());
         // The engine starts from the editor's song, so nothing needs sending yet.
@@ -129,7 +139,7 @@ fn main() -> Result<()> {
     }
 
     // `--tutor` starts the tutor, on a song of its own.
-    if args.iter().any(|a| a == "--tutor") {
+    if options.tutor {
         // The engine starts from the editor's song, so nothing needs sending yet.
         let _ = editor.start_tutor();
     }
@@ -143,7 +153,7 @@ fn main() -> Result<()> {
     let mut mixer = Mixer::new(sample_rate);
     let mut exports = Exports::new(sample_rate);
     mixer.sync(&editor, &mut handle);
-    if args.iter().any(|a| a == "--no-click") {
+    if options.no_click {
         editor.click = false;
     }
     // The engine starts with the click on; the song, or `--no-click`, may want it off.
@@ -157,7 +167,7 @@ fn main() -> Result<()> {
         beats_per_bar: meter.beats,
         groups: meter.group_starts(),
     });
-    editor.show_keys = args.iter().any(|a| a == "--show-keys");
+    editor.show_keys = options.show_keys;
     editor.history = history::load();
     editor.chains = chains::names();
     editor.presets = presets::names();
@@ -173,6 +183,14 @@ fn main() -> Result<()> {
         && let Some(problem) = config::load(&path, named.is_some(), &mut editor.keymap, &mut theme)
     {
         editor.message = Some(problem);
+    }
+    if !editor.tutoring()
+        && let Some(waiting) = autosave::waiting(editor.path.as_deref())
+    {
+        editor.message = Some(match editor.message.take() {
+            Some(before) => format!("{before}; {waiting}"),
+            None => waiting,
+        });
     }
     // Without a terminal, run from a script say, there's nothing to draw in: say so, rather
     // than panicking.
@@ -199,8 +217,10 @@ fn main() -> Result<()> {
         )
         .is_ok();
     editor.releases = enhanced;
-    let splash = (!args.iter().any(|a| a == "--no-splash")).then(|| Splash::new(Instant::now()));
-    let server = ctl::Server::start(args.iter().any(|a| a == "--allow-agent-save"));
+    let splash = (!options.no_splash).then(|| Splash::new(Instant::now()));
+    let server = ctl::Server::start(options.allow_agent_save);
+    let hung_up = hang_ups();
+    let mut keeper = autosave::Keeper::new(Arc::clone(&hung_up));
     // Lattice shouldn't panic, but if it does, the song's rescued once the terminal's back.
     let result = catch_unwind(AssertUnwindSafe(|| {
         run(
@@ -214,12 +234,22 @@ fn main() -> Result<()> {
             &theme,
             splash,
             server.as_ref(),
+            &mut keeper,
+            &hung_up,
         )
     }));
     if enhanced {
         let _ = execute!(std::io::stdout(), PopKeyboardEnhancementFlags);
     }
     ratatui::restore();
+    // Quitting leaves the song as the player chose; stopping any other way keeps its changes.
+    // A panic's rescued instead, as the editor it panicked in may panic again.
+    match &result {
+        Ok(Ok(())) => keeper.forget(),
+        Ok(Err(_)) => keeper.keep(&editor),
+        Err(_) => {}
+    }
+    keeper.finish();
     let result = result.unwrap_or_else(|_| Err(rescue(&editor)));
     if let Err(e) = history::save(&editor.history) {
         log!("couldn't keep the command history: {e:#}");
@@ -233,6 +263,19 @@ fn main() -> Result<()> {
     drop(handle);
     midi_out::finish();
     result
+}
+
+/// Set when the terminal closes (`SIGHUP`) or Lattice is told to stop (`SIGTERM`), rather than
+/// being killed outright, so it can keep the song's unsaved changes first.
+fn hang_ups() -> Arc<AtomicBool> {
+    let flag = Arc::new(AtomicBool::new(false));
+    #[cfg(unix)]
+    for signal in [signal_hook::consts::SIGHUP, signal_hook::consts::SIGTERM] {
+        if let Err(e) = signal_hook::flag::register(signal, Arc::clone(&flag)) {
+            log!("can't watch for signal {signal}: {e}");
+        }
+    }
+    flag
 }
 
 /// After a panic: saves the song, if it had changes, beside its file as `.rescue.lattice`, or in
@@ -282,6 +325,8 @@ fn run(
     theme: &Theme,
     mut splash: Option<Splash>,
     server: Option<&ctl::Server>,
+    keeper: &mut autosave::Keeper,
+    hung_up: &AtomicBool,
 ) -> Result<()> {
     let mut view = ui::ViewState::default();
     let mut playhead = Playhead::default();
@@ -296,6 +341,9 @@ fn run(
     let mut stirred = Instant::now();
     let mut drawn_at: Option<Instant> = None;
     loop {
+        if hung_up.load(Ordering::Relaxed) {
+            return Err(anyhow!("the terminal closed, or Lattice was told to stop"));
+        }
         handle.collect_garbage();
         if let Some(problem) = watch.look(handle.status().leaked()) {
             editor.message = Some(problem);
@@ -443,6 +491,9 @@ fn run(
             }
         }
 
+        // Last before waiting, where a closed terminal can leave it stuck, so it has the song as
+        // it is.
+        keeper.tick(editor);
         let keyed = wait(FRAME, &mut machine.midi)?;
         let played = machine.midi.take();
         if !keyed && played.is_empty() {
@@ -486,6 +537,10 @@ fn run(
         }
         // Handle everything that's waiting before drawing again.
         loop {
+            // A closed terminal may say there's always more to read.
+            if hung_up.load(Ordering::Relaxed) {
+                break;
+            }
             if let Event::Key(event) = event::read()?
                 && let Some((key, kind)) = tap.key(event)
             {
@@ -807,6 +862,21 @@ fn apply(
             return open(
                 path, editor, tracks, mixer, exports, sequencer, machine, handle,
             );
+        }
+        Effect::Recover => {
+            let song = match autosave::read(editor.path.as_deref()) {
+                Ok(song) => song,
+                Err(e) => {
+                    editor.message = Some(format!("{e:#}"));
+                    return Flow::Stop;
+                }
+            };
+            for effect in editor.recover(song) {
+                apply(
+                    effect, editor, tracks, mixer, exports, sequencer, machine, handle,
+                );
+            }
+            return Flow::Next;
         }
         Effect::Export(export) => {
             exports.start(*export, editor);
