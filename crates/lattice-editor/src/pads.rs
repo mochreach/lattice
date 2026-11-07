@@ -216,7 +216,7 @@ impl Editor {
     }
 
     /// The scale the pads play.
-    fn scale(&self) -> Scale {
+    pub(crate) fn scale(&self) -> Scale {
         // Only `:scale` sets it, to one of these; major is where it starts.
         SCALES.get(self.scale).copied().unwrap_or(MAJOR)
     }

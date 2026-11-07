@@ -25,7 +25,11 @@ mod help_page;
 mod history;
 mod inst_page;
 mod key_log;
+// qs-rgb's client, kept as it comes, with more than Lattice uses.
+#[expect(dead_code, reason = "the client's whole, as qs-rgb ships it")]
+mod keyboard_lights;
 mod keys;
+mod lights;
 mod log;
 mod looper;
 mod manual_page;
@@ -276,6 +280,7 @@ fn run(
     let mut view = ui::ViewState::default();
     let mut playhead = Playhead::default();
     let mut tap = keys::Tap::default();
+    let mut lights = lights::Lights::start();
     let mut sequencer = Sequencer::default();
     let mut watch = Watch::new();
     let mut said = None;
@@ -370,6 +375,7 @@ fn run(
         }
         let requests = server.map(ctl::Server::requests).unwrap_or_default();
         let status = handle.status();
+        lights.show(editor, status);
         let busy = status.playing() || status.count_in() > 0 || status.recording();
         if busy || splash.is_some() || !requests.is_empty() || !view.still() {
             stirred = now;

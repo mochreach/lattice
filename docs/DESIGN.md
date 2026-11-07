@@ -1412,6 +1412,29 @@ fields after `Theme::detect`, so what isn't set still follows the terminal.
   status line with how many more there were. A missing file is only a mistake if `--config`
   named it.
 
+### Keyboard lights
+
+A laptop keyboard that lights each key on its own can show what the keys do now, as a Push or a
+Launchpad lights its pads. It's driven through `qs-rgbd`, a service on my laptop that shares the
+keyboard between programs as layers over its own battery and notification lights, at a socket in
+`$XDG_RUNTIME_DIR`; elsewhere there's no socket and nothing happens.
+
+- **What each key means** comes from the editor, `Editor::lights` (`lights.rs`), as a `Glow`:
+  in insert mode, and while `r` waits, the keys that play notes, each by where its note falls
+  in the pads' scale (`:scale`), its root, in it or out, so the piano layout in C major looks
+  like a piano and the scale layout shows only the scale; a folded group's digit pads; while a
+  key's pending (`g`, `f`, `"`, `t`…), the keys of its infobox; and `esc` in the mode's colour,
+  as the key that leaves it. Being in the editor, it's tested with key sequences.
+- **Colours** are the frontend's (`lattice-tui/src/lights.rs`), fixed, as the terminal's palette
+  can't be asked for: the keyboard's colours after the theme's roles. It adds the transport:
+  `space` green while playing, red while recording, and right Alt, the loop pedal, breathing
+  while a track's armed, pulsing while it listens and red while it records.
+- **Sending** waits on the service's answers, so a thread does it, sent the whole picture over a
+  channel only when it changes and keeping just the newest. It sets the whole layer each time
+  rather than patching: a picture changes all at once, on a change of mode, and a set can't
+  leave a key lit from the last. The client, `keyboard_lights.rs`, is qs-rgb's own, as it ships.
+  The layer goes with the connection, so Lattice never clears it: quitting or crashing does.
+
 ## Song files
 
 A sound file an instrument plays is saved relative to the song if it's in the song's folder or

@@ -456,6 +456,30 @@ foreground are as it starts, and mixes them, a little of the way for beat rows a
 the selection. A terminal that doesn't say leaves beat rows unshaded and the selection dark grey.
 `beat-row = "none"` turns the shading off.
 
+### Keyboard lights
+
+My laptop's keyboard lights each key on its own, so Lattice lights the keys that matter now, as
+Ableton's Push and Novation's Launchpad light their pads to show what each one plays. It needs
+`qs-rgbd`, a service I wrote that shares the keyboard between programs; without it nothing is
+lit and nothing goes wrong, so there's nothing to set up or turn off.
+
+- **In insert mode** (and on the instrument page, playing), the keys that play notes light up
+  by where their notes fall in the pads' scale (`:scale`, [chapter 9](09-recording.md)): the
+  root orange, the scale's other notes white, and the rest dim blue. In C major the piano
+  layout looks like a piano, white keys and black; `:layout` lays them out differently, and
+  the lights follow, so the fourths and Wicki–Hayden layouts show where the scale lies on
+  them, which is hard to remember. In a folded group the digit pads light blue.
+- **While a key waits for another**, after `g`, `]`, `t`, `f`, `"`, `q` and the like, the keys
+  that do something next light amber, the infobox's keys on the keyboard. After `r`, the
+  notes light up, as it waits for one.
+- **`esc`** shows the mode it leaves: green in insert mode, yellow in select, purple on the
+  command line, and unlit in normal mode.
+- **`space`** is green while the song plays, and red while it records.
+- **Right Alt**, the loop pedal, breathes amber while a track's armed, pulses as it listens
+  for `:threshold`, and breathes red while it records.
+
+Keys Lattice doesn't light keep whatever lights them otherwise.
+
 ## Every action, by name
 
 These are all of Lattice's actions, by the name the config file binds keys to, with their keys
