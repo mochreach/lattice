@@ -7,19 +7,31 @@
 //! service, on another machine say, nothing lights and nothing goes wrong.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender, channel};
+use std::time::{Duration, Instant};
 
 use lattice_editor::lights::{Glow, Kind, Playhead};
 use lattice_editor::{Editor, Key};
 use lattice_engine::Status;
 
 use crate::keyboard_lights::Keyboard;
+use crate::log::HEALTH;
 
 /// What the layer's called, for `qs-rgb list`.
 const LAYER: &str = "lattice";
 
 /// Where applications' layers go: over the battery and notifications, under the volume bar.
 const PRIORITY: u16 = 20;
+
+/// How long a key flashes after something goes wrong.
+const FLASH: Duration = Duration::from_millis(1_500);
+
+/// A key flashing to say something went wrong.
+const WARNING: Light = Light {
+    colour: "#ff0000",
+    moves: Some(("blink", 0.25)),
+};
 
 /// How a key lights: a colour, and how it moves, if it does.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -77,6 +89,12 @@ type Picture = Vec<(String, Light)>;
 pub struct Lights {
     to: Sender<Picture>,
     shown: Picture,
+    /// The output blocks missed, and input frames dropped, as last seen.
+    missed: u64,
+    dropped: u64,
+    /// Until when `space` flashes for a glitch in the sound, and right Alt for input lost.
+    glitched: Option<Instant>,
+    lost: Option<Instant>,
 }
 
 impl Lights {
@@ -84,7 +102,14 @@ impl Lights {
     pub fn start() -> Self {
         let (to, from) = channel();
         std::thread::spawn(move || send(&from));
-        Self { to, shown: vec![] }
+        Self {
+            to,
+            shown: vec![],
+            missed: HEALTH.missed.load(Ordering::Relaxed),
+            dropped: HEALTH.dropped.load(Ordering::Relaxed),
+            glitched: None,
+            lost: None,
+        }
     }
 
     /// Lights the keys for `editor` and the engine's `status`, if they've changed.
@@ -92,6 +117,26 @@ impl Lights {
         // The transport first, on the keys that start it, as it matters most: space playing,
         // red while it records; right Alt, the loop pedal, as the looper waits or records.
         let mut picture: Picture = vec![];
+        // A glitch first of all, flashing for a moment: space if the sound broke up, right Alt
+        // if the input lost some of what it heard, which the looper would have recorded.
+        let now = Instant::now();
+        let (missed, dropped) = (
+            HEALTH.missed.load(Ordering::Relaxed),
+            HEALTH.dropped.load(Ordering::Relaxed),
+        );
+        if missed > self.missed {
+            self.glitched = Some(now + FLASH);
+        }
+        if dropped > self.dropped {
+            self.lost = Some(now + FLASH);
+        }
+        (self.missed, self.dropped) = (missed, dropped);
+        if self.glitched.is_some_and(|until| now < until) {
+            picture.push(("space".into(), WARNING));
+        }
+        if self.lost.is_some_and(|until| now < until) {
+            picture.push(("rightalt".into(), WARNING));
+        }
         let recording = editor.record || status.recording();
         if status.playing() {
             picture.push((

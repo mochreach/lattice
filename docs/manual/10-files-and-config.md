@@ -490,6 +490,9 @@ lit and nothing goes wrong, so there's nothing to set up or turn off.
 - **`space`** is bright green while the song plays, and red while it records.
 - **Right Alt**, the loop pedal, breathes amber while a track's armed, pulses as it listens
   for `:threshold`, and breathes red while it records.
+- **When something goes wrong**, a key flashes red for a moment: `space` when the sound broke
+  up, the computer too busy to keep up (the log says how often), and right Alt when the input
+  lost some of what it heard, which a loop would have recorded, so you know to take it again.
 
 On the command line the keys are only letters, so Lattice lights nothing there but `esc` and the
 F keys. Keys Lattice doesn't light keep whatever lights them otherwise.

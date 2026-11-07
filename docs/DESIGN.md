@@ -1436,7 +1436,9 @@ keyboard between programs as layers over its own battery and notification lights
   can't be asked for: dim for what a key could do, a hue for each kind, and bright for what's
   happening or what a key does now. It adds the transport first, over the rest:
   `space` green while playing, red while recording, and right Alt, the loop pedal, breathing
-  while a track's armed, pulsing while it listens and red while it records.
+  while a track's armed, pulsing while it listens and red while it records. Before that, a
+  key flashes for a moment when `HEALTH`'s counters go up: `space` for output blocks missed,
+  right Alt for input frames dropped, which the looper would have recorded.
 - **Sending** waits on the service's answers, so a thread does it, sent the whole picture over a
   channel only when it changes and keeping just the newest. When the same keys are lit, as
   they are when a note sounds or the beat moves on, it patches the ones that changed;
