@@ -39,7 +39,9 @@ impl fmt::Display for FileError {
 impl std::error::Error for FileError {}
 
 pub fn to_ron(song: &Song) -> Result<String, FileError> {
+    // RON ends lines as the platform does unless told; a song's the same file everywhere.
     let config = PrettyConfig::new()
+        .new_line("\n")
         .depth_limit(DEPTH_LIMIT)
         .extensions(Extensions::IMPLICIT_SOME);
     let mut text =
