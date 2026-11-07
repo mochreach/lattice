@@ -217,9 +217,8 @@ real-time mistake shows up at once. Outside tests the code can't panic: the work
 drive a running Lattice through `lattice ctl`
 ([Driving Lattice from scripts](docs/manual/10-files-and-config.md#driving-lattice-from-scripts-lattice-ctl)).
 
-The design, and what was learned from a first attempt as a GUI
-([mochreach/lattice-legacy](https://github.com/mochreach/lattice-legacy), archived), are in
-[docs/DESIGN.md](docs/DESIGN.md). How to work on the code is in [AGENTS.md](AGENTS.md).
+The design, and what was learned from a first attempt as a GUI, written in iced and since
+archived, are in [docs/DESIGN.md](docs/DESIGN.md). How to work on the code is in [AGENTS.md](AGENTS.md).
 
 ```sh
 cargo test --workspace
