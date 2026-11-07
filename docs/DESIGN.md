@@ -1419,20 +1419,29 @@ Launchpad lights its pads. It's driven through `qs-rgbd`, a service on my laptop
 keyboard between programs as layers over its own battery and notification lights, at a socket in
 `$XDG_RUNTIME_DIR`; elsewhere there's no socket and nothing happens.
 
-- **What each key means** comes from the editor, `Editor::lights` (`lights.rs`), as a `Glow`:
-  in insert mode, and while `r` waits, the keys that play notes, each by where its note falls
-  in the pads' scale (`:scale`), its root, in it or out, so the piano layout in C major looks
-  like a piano and the scale layout shows only the scale; a folded group's digit pads; while a
-  key's pending (`g`, `f`, `"`, `t`…), the keys of its infobox; and `esc` in the mode's colour,
-  as the key that leaves it. Being in the editor, it's tested with key sequences.
+- **What each key means** comes from the editor, `Editor::lights` (`lights.rs`), as a `Glow`,
+  given what's playing (`lights::Playhead`). It's built in layers, each key taking the first
+  thing said of it, and then the rest of the main block dark, so a lit key stands out from the
+  service's white battery lights below: `esc` in the mode's colour, as the key that leaves it;
+  the F key being recorded into and those holding keys; while a key's pending (`g`, `f`, `"`,
+  `t`…), only the keys of its infobox; in insert mode, and while `r` waits, the note sounding
+  on the cursor's track (realised for its pass, held for the note's length), a folded group's
+  digit pads, and the keys that play notes, each by where its note falls in the pads' scale,
+  so the piano layout in C major looks like a piano and the scale layout shows only the scale;
+  the beat, along the number row; then every bound key by its action's `lights::Kind`, the
+  manual's sorting of the actions (an exhaustive match, so a new action must be given one),
+  menus, and the digits as counts. A key and its shifted or Ctrl form are the same key, so the
+  key on its own is listed first. Being in the editor, it's tested with key sequences.
 - **Colours** are the frontend's (`lattice-tui/src/lights.rs`), fixed, as the terminal's palette
-  can't be asked for: the keyboard's colours after the theme's roles. It adds the transport:
+  can't be asked for: dim for what a key could do, a hue for each kind, and bright for what's
+  happening or what a key does now. It adds the transport first, over the rest:
   `space` green while playing, red while recording, and right Alt, the loop pedal, breathing
   while a track's armed, pulsing while it listens and red while it records.
 - **Sending** waits on the service's answers, so a thread does it, sent the whole picture over a
-  channel only when it changes and keeping just the newest. It sets the whole layer each time
-  rather than patching: a picture changes all at once, on a change of mode, and a set can't
-  leave a key lit from the last. The client, `keyboard_lights.rs`, is qs-rgb's own, as it ships.
+  channel only when it changes and keeping just the newest. When the same keys are lit, as
+  they are when a note sounds or the beat moves on, it patches the ones that changed;
+  otherwise, on a change of mode say, it sets the whole layer afresh, so no key is left lit from
+  the last. The client, `keyboard_lights.rs`, is qs-rgb's own, as it ships.
   The layer goes with the connection, so Lattice never clears it: quitting or crashing does.
 
 ## Song files

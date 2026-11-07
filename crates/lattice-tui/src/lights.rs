@@ -6,9 +6,11 @@
 //! whole picture each time it changes, rather than ever holding up a frame. Without the
 //! service, on another machine say, nothing lights and nothing goes wrong.
 
+use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
-use lattice_editor::{Editor, Glow, Key};
+use lattice_editor::lights::{Glow, Kind, Playhead};
+use lattice_editor::{Editor, Key};
 use lattice_engine::Status;
 
 use crate::keyboard_lights::Keyboard;
@@ -35,17 +37,36 @@ const fn solid(colour: &'static str) -> Light {
 }
 
 /// The colour for what a key means. The terminal's palette can't be asked for its colours, so
-/// these are the keyboard's own, after the theme's roles.
+/// these are the keyboard's own. What a key could do is dim, a colour for each kind of action;
+/// what it does now, or what's happening, is bright.
 fn light(glow: Glow) -> Light {
     match glow {
+        Glow::Does(Kind::Move) => solid("#0028c0"),
+        Glow::Does(Kind::Page) => solid("#007878"),
+        Glow::Does(Kind::Select) => solid("#907000"),
+        Glow::Does(Kind::Edit) => solid("#a00018"),
+        Glow::Does(Kind::Mode) => solid("#606060"),
+        Glow::Does(Kind::Track) => solid("#900070"),
+        Glow::Does(Kind::Play) => solid("#00a020"),
+        Glow::Menu => solid("#c06000"),
+        Glow::Count => solid("#181818"),
+        Glow::Dark => solid("#000000"),
         Glow::Root => solid("#ff5000"),
-        Glow::InScale => solid("#909090"),
+        Glow::InScale => solid("#a0a0a0"),
         Glow::OutOfScale => solid("#081840"),
+        Glow::Sounding => solid("#00ffff"),
         Glow::Pad => solid("#00a0ff"),
         Glow::Choice => solid("#ffaa00"),
+        Glow::Beat => solid("#40ff80"),
+        Glow::Bar => solid("#003010"),
+        Glow::Recorded => solid("#a040ff"),
+        Glow::Recording => Light {
+            colour: "#ff0020",
+            moves: Some(("blink", 1.0)),
+        },
         Glow::Insert => solid("#00ff60"),
         Glow::Select => solid("#ffd000"),
-        Glow::Command => solid("#a040ff"),
+        Glow::Command => solid("#ffffff"),
     }
 }
 
@@ -68,11 +89,9 @@ impl Lights {
 
     /// Lights the keys for `editor` and the engine's `status`, if they've changed.
     pub fn show(&mut self, editor: &Editor, status: &Status) {
-        let mut picture: Picture = (editor.lights().into_iter())
-            .filter_map(|(key, glow)| Some((name(key)?, light(glow))))
-            .collect();
-        // The transport, on the keys that start it: space playing, red while it records; right
-        // Alt, the loop pedal, as the looper waits or records.
+        // The transport first, on the keys that start it, as it matters most: space playing,
+        // red while it records; right Alt, the loop pedal, as the looper waits or records.
+        let mut picture: Picture = vec![];
         let recording = editor.record || status.recording();
         if status.playing() {
             picture.push((
@@ -97,8 +116,18 @@ impl Lights {
             };
             picture.push(("rightalt".into(), pedal));
         }
-        // A key can mean two things, as a choice and a note; the first said wins.
-        let mut seen = std::collections::HashSet::new();
+        let playhead = status.playing().then(|| Playhead {
+            step: status.pattern_step(),
+            tracks: (0..editor.grid.tracks.len())
+                .map(|t| status.position(t))
+                .collect(),
+        });
+        picture.extend(
+            (editor.lights(playhead.as_ref()).into_iter())
+                .filter_map(|(key, glow)| Some((name(key)?, light(glow)))),
+        );
+        // A key can mean several things, `u` and `U` say; the first said wins.
+        let mut seen = HashSet::new();
         picture.retain(|(key, _)| seen.insert(key.clone()));
         if picture != self.shown {
             // Only gone if the thread has, when there's nothing to light anyway.
@@ -108,9 +137,12 @@ impl Lights {
     }
 }
 
-/// Lights each picture sent, the newest, until Lattice stops.
+/// Lights each picture sent, the newest, until Lattice stops: the keys that changed alone, if
+/// it's the same keys lit, as it is when a note sounds or the beat moves on, or else the whole
+/// layer afresh, so no key's left lit from the last.
 fn send(from: &Receiver<Picture>) {
     let mut keyboard = Keyboard::connect(LAYER);
+    let mut shown: HashMap<String, Light> = HashMap::new();
     while let Ok(mut picture) = from.recv() {
         // Only the newest matters, if several came while the last was being sent.
         while let Ok(newer) = from.try_recv() {
@@ -119,18 +151,29 @@ fn send(from: &Receiver<Picture>) {
         // The service may have started since, or come back.
         if !keyboard.is_connected() {
             keyboard = Keyboard::connect(LAYER);
+            shown.clear();
         }
-        let still: Vec<(&str, &str)> = (picture.iter())
+        let same_keys =
+            shown.len() == picture.len() && picture.iter().all(|(key, _)| shown.contains_key(key));
+        let changed: Vec<&(String, Light)> = (picture.iter())
+            .filter(|(key, light)| !same_keys || shown.get(key) != Some(light))
+            .collect();
+        let still: Vec<(&str, &str)> = (changed.iter())
             .filter(|(_, light)| light.moves.is_none())
             .map(|(key, light)| (key.as_str(), light.colour))
             .collect();
         // A missing service is no error; a write that fails stops the client trying.
-        let _ = keyboard.set(PRIORITY, &still);
-        for (key, light) in &picture {
+        if !same_keys {
+            let _ = keyboard.set(PRIORITY, &still);
+        } else if !still.is_empty() {
+            let _ = keyboard.patch(&still);
+        }
+        for (key, light) in &changed {
             if let Some((effect, period)) = light.moves {
                 let _ = keyboard.animate(key, light.colour, effect, period);
             }
         }
+        shown = picture.into_iter().collect();
     }
 }
 

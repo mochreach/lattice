@@ -463,22 +463,36 @@ Ableton's Push and Novation's Launchpad light their pads to show what each one p
 `qs-rgbd`, a service I wrote that shares the keyboard between programs; without it nothing is
 lit and nothing goes wrong, so there's nothing to set up or turn off.
 
+- **In normal and select mode** every key that does something lights up, dimly, in a colour
+  for the kind of thing it does, as the actions are sorted under [Every action, by
+  name](#every-action-by-name): moving blue, pages cyan, selecting yellow, editing red, modes
+  grey (`i`, `a`, `:`), tracks magenta, playing green. Keys that open a menu, `g` `]` `[` `t`,
+  are orange, the digits that start a count faint, and the keys that do nothing dark. On its
+  own a key shows what it does unshifted: `u`, undo, rather than `U`, redo.
+- **While a key waits for another**, after `g`, `]`, `t`, `f`, `"`, `q` and the like, only the
+  keys that do something next light up, bright amber, and the rest go dark: the infobox, on the
+  keyboard. After `r`, the notes light up, as it waits for one.
 - **In insert mode** (and on the instrument page, playing), the keys that play notes light up
   by where their notes fall in the pads' scale (`:scale`, [chapter 9](09-recording.md)): the
   root orange, the scale's other notes white, and the rest dim blue. In C major the piano
   layout looks like a piano, white keys and black; `:layout` lays them out differently, and
   the lights follow, so the fourths and Wicki–Hayden layouts show where the scale lies on
-  them, which is hard to remember. In a folded group the digit pads light blue.
-- **While a key waits for another**, after `g`, `]`, `t`, `f`, `"`, `q` and the like, the keys
-  that do something next light amber, the infobox's keys on the keyboard. After `r`, the
-  notes light up, as it waits for one.
-- **`esc`** shows the mode it leaves: green in insert mode, yellow in select, purple on the
-  command line, and unlit in normal mode.
-- **`space`** is green while the song plays, and red while it records.
+  them, which is hard to remember. In a folded group the digit pads light blue. The keys that
+  aren't notes light by kind, as in normal mode.
+- **As the song plays**, the key for the note sounding on the cursor's track lights bright cyan,
+  held as long as the note is, so you can watch a part go by under your fingers and learn it.
+- **The beat** runs along the number row while the song plays: one key a beat of the bar, the
+  beat playing lit bright green. In insert mode the keys that are notes stay notes.
+- **F keys** holding recorded keys (`QF3`, [chapter 2](02-patterns.md)) light purple, and the
+  one being recorded into blinks red.
+- **`esc`** shows the mode it leaves: green in insert mode, yellow in select, white on the
+  command line.
+- **`space`** is bright green while the song plays, and red while it records.
 - **Right Alt**, the loop pedal, breathes amber while a track's armed, pulses as it listens
   for `:threshold`, and breathes red while it records.
 
-Keys Lattice doesn't light keep whatever lights them otherwise.
+On the command line the keys are only letters, so Lattice lights nothing there but `esc` and the
+F keys. Keys Lattice doesn't light keep whatever lights them otherwise.
 
 ## Every action, by name
 

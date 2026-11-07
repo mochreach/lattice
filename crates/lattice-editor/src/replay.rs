@@ -46,6 +46,14 @@ pub(crate) enum Slot {
 }
 
 impl Slot {
+    /// The F key it is, if it's one.
+    pub(crate) fn f(self) -> Option<u8> {
+        match self {
+            Slot::F(n) => Some(n),
+            Slot::Register(_) => None,
+        }
+    }
+
     /// The one `key` names, after `Q` or `q`.
     fn named(key: Key) -> Option<Slot> {
         match key {
