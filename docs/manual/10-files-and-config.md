@@ -144,7 +144,7 @@ delay's tails, with it.
 
 ### Saved songs may break
 
-Lattice is pre-alpha, and its file format changes as Lattice does, without keeping old files
+Lattice is in beta, and its file format changes as Lattice does, without keeping old files
 working. A song saved by an older Lattice may not open in a newer one, or may open with some of
 its settings back at their defaults.
 

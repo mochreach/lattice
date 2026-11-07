@@ -187,7 +187,7 @@ IF SOMETHING'S WRONG
     keyboard types, so on AZERTY or QWERTZ some move. :layout tries other layouts.
   Lattice crashed: an unsaved song is saved beside its file as NAME.rescue.lattice,
     or in the log's folder if it had no file, and the log says what went wrong.
-  A song won't open: the error gives the line and column. Lattice is pre-alpha and
+  A song won't open: the error gives the line and column. Lattice is in beta and
     the file format still changes, so a song from an older version may need mending
     by hand.
   The full manual is :manual inside Lattice, or docs/manual in the source,

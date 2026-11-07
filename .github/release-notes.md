@@ -1,5 +1,5 @@
-Lattice is pre-alpha: made for me, shared in case it suits you too. Expect rough edges, and
-songs saved now may not open in later versions.
+Lattice is in beta: ready for others to try, though made for me, and shared in case it suits
+you too. Expect rough edges, and songs saved now may not open in later versions.
 
 ## Installing
 

@@ -177,7 +177,7 @@ archive for each kind of computer. Then start with `lattice --tutor`.
 
 ## Building from source
 
-Lattice is pre-alpha. You need a Rust toolchain recent enough for the 2024 edition; on Linux,
+Lattice is in beta. You need a Rust toolchain recent enough for the 2024 edition; on Linux,
 `pkg-config` and ALSA's development files too (`alsa-lib`, or `libasound2-dev` on Debian and
 Ubuntu). With Nix, `nix develop` gives you all of that. Then:
 

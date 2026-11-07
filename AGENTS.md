@@ -52,7 +52,7 @@ script.
 - **Teach what's new.** Every new action or command goes in the tutor, the manual
   (`docs/manual`, explained in full), the help page and, where it changes the design,
   DESIGN.
-- **Saved songs may break.** Lattice is pre-alpha: change the file format freely, without
+- **Saved songs may break.** Lattice is in beta: change the file format freely, without
   keeping old files working.
 - **Colours** come from the terminal's palette, through the theme.
 - **One commit per feature**, its message starting "Adds…" or "Makes…" and saying what it does
