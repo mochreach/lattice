@@ -1,0 +1,117 @@
+# Builds Lattice for each platform when a version tag (v0.1.0, say) is pushed, and puts the
+# archives on a GitHub release, where install.sh and install.ps1 find them. Run by hand
+# (workflow_dispatch), it builds the archives without releasing them, to check they build.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux on an older Ubuntu, so the binaries run on distributions with an older glibc.
+          # The baseline build runs on any x86_64; the v3 one needs AVX2, and its DSP is about
+          # 1.6× as fast, so the installer picks it where the CPU has it.
+          - name: x86_64-linux
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            cpu: x86-64
+          - name: x86_64-linux-v3
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            cpu: x86-64-v3
+          # Raspberry Pi 4, and the Pi 3 on a 64-bit OS.
+          - name: aarch64-linux
+            os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            cpu: generic
+          - name: aarch64-macos
+            os: macos-14
+            target: aarch64-apple-darwin
+            cpu: apple-m1
+          # Intel Macs, built on an Apple Silicon one.
+          - name: x86_64-macos
+            os: macos-14
+            target: x86_64-apple-darwin
+            cpu: x86-64
+          - name: x86_64-windows
+            os: windows-2022
+            target: x86_64-pc-windows-msvc
+            cpu: x86-64
+    runs-on: ${{ matrix.os }}
+    env:
+      # Replaces .cargo/config.toml's target-cpu=native, which would build for the runner's CPU.
+      RUSTFLAGS: -C target-cpu=${{ matrix.cpu }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: ALSA
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
+      - name: The tag matches the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Cargo.toml says $version but the tag is $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          dir=lattice-${{ matrix.name }}
+          mkdir "$dir"
+          cp README.md LICENCE "$dir"/
+          cp -R examples "$dir"/
+          if [ "$RUNNER_OS" = Windows ]; then
+            cp target/${{ matrix.target }}/release/lattice.exe "$dir"/
+            7z a -tzip "$dir.zip" "$dir" > /dev/null
+            archive=$dir.zip
+          else
+            cp target/${{ matrix.target }}/release/lattice "$dir"/
+            tar -czf "$dir.tar.gz" "$dir"
+            archive=$dir.tar.gz
+          fi
+          if command -v sha256sum > /dev/null; then
+            sha256sum "$archive" > "$archive.sha256"
+          else
+            shasum -a 256 "$archive" > "$archive.sha256"
+          fi
+          echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: |
+            ${{ env.ARCHIVE }}
+            ${{ env.ARCHIVE }}.sha256
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat dist/*.sha256 > dist/SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "Lattice $GITHUB_REF_NAME" \
+            --notes-file .github/release-notes.md

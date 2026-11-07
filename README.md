@@ -146,6 +146,35 @@ it, and `:manual TOPIC` goes to what it says about a topic. To learn the keys by
 with the tutor: `lattice --tutor`, or `:tutor` from inside. `:help` lists every key and command
 as they're bound.
 
+## Installing
+
+On **Linux** or a **Mac**, in a terminal:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/mochreach/lattice/main/install.sh | sh
+```
+
+It picks the build for your computer, checks it, and puts `lattice` in `~/.local/bin` and the
+example songs in `~/.local/share/lattice/examples`, without sudo; then it says what else you
+need, such as adding that folder to your `PATH` or, on Linux, installing ALSA's library. Run it
+again to update. To read it before running it, as you should with anything piped to `sh`, open
+[install.sh](install.sh).
+
+On **Windows**, in PowerShell (untried, see [Platforms](#platforms)):
+
+```powershell
+irm https://raw.githubusercontent.com/mochreach/lattice/main/install.ps1 | iex
+```
+
+That puts `lattice.exe` and the examples in `%LOCALAPPDATA%\Programs\lattice`, and adds it to
+your `PATH`.
+
+With **Nix**, NixOS included, where the downloaded builds won't run: `nix run
+github:mochreach/lattice`, or add the flake's package to your system.
+
+The builds are also on the [releases page](https://github.com/mochreach/lattice/releases), one
+archive for each kind of computer. Then start with `lattice --tutor`.
+
 ## Building from source
 
 Lattice is pre-alpha. You need a Rust toolchain recent enough for the 2024 edition; on Linux,

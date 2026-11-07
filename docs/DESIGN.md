@@ -742,9 +742,16 @@ to check. Things to get right:
 
 fundsp and similar libraries are still useful as references, and as reference output in tests.
 
-## Releases (planned)
+## Releases
 
-Not needed until there's something to release; this is the plan for when there is.
+Pushing a version tag (`v0.1.0`, matching `Cargo.toml`) runs `.github/workflows/release.yml`,
+which builds the archives below on GitHub's runners and puts them on a release with their
+checksums; run by hand, it builds them without releasing, to check. `install.sh` (Linux and
+macOS) and `install.ps1` (Windows) download the right one from the latest release. Each archive
+holds the binary, the README, the licence and the examples. What follows was the plan, and
+still describes it, except that the workflow and installers are written by hand rather than by
+`dist`: it couldn't choose the v3 build, and they're short enough to read in full, as anyone
+piping an installer to `sh` should.
 
 - **Prebuilt binaries on GitHub Releases**, built by GitHub Actions when a version tag is pushed,
   one archive per target:
@@ -754,7 +761,8 @@ Not needed until there's something to release; this is the plan for when there i
   | `x86_64-linux` | most Linux laptops and desktops (baseline, SSE2) |
   | `x86_64-linux-v3` | the same with AVX2 (x86-64-v3), about 1.6× faster DSP |
   | `aarch64-linux` | Raspberry Pi 4, and the Pi 3 on a 64-bit OS |
-  | `aarch64-macos`, `x86_64-macos` | Macs, if wanted |
+  | `aarch64-macos`, `x86_64-macos` | Macs, Apple Silicon and Intel |
+  | `x86_64-windows` | Windows, untried |
 
 - **An install script on top** (`curl … | sh`) that checks the OS and architecture and downloads
   the matching archive, and on x86_64 picks the v3 build if `/proc/cpuinfo` lists `avx2`.
@@ -764,6 +772,9 @@ Not needed until there's something to release; this is the plan for when there i
 - **Linux details:** binaries link the system ALSA library, which is fine on desktop Linux and
   Raspberry Pi OS; PulseAudio is spoken directly, needing no library. Build against an older glibc (an older Ubuntu runner, or `cargo-zigbuild`) so
   binaries run on older distributions.
+- **NixOS** can't run the downloaded Linux builds, which expect libraries where other distributions
+  keep them, so the flake has a package: `nix run github:mochreach/lattice`. It's built for any CPU
+  of its kind, as Nix may build it on another machine or fetch it from a cache.
 - **Building from source** stays supported: `cargo install`, or a package in the Nix flake, with
   `-C target-cpu=native` for a build tuned to the exact CPU. The repository's
   `.cargo/config.toml` sets this for every local build, so release builds must set `RUSTFLAGS`
