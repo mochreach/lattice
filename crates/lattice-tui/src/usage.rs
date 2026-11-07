@@ -171,6 +171,8 @@ FILES
 
 IF SOMETHING'S WRONG
   Look in the log first: `lattice ctl log` while it runs, or the file above after.
+  Lattice won't start, saying no audio output would open: it needs one to start. Check
+    sound plays from other programs, and on Linux that PulseAudio or PipeWire is running.
   No sound: :output lists the audio devices and :output N picks one, kept for next
     time. On Linux Lattice plays through PulseAudio (or PipeWire's), else ALSA.
   The sound crackles: the computer can't keep up. Stop other busy programs, or try

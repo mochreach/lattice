@@ -277,7 +277,12 @@ impl Machine {
         let path = config::default_path().map(|p| p.with_file_name("audio.toml"));
         let text = path.as_ref().and_then(|p| std::fs::read_to_string(p).ok());
         let settings = Settings::read(text.as_deref().unwrap_or(""));
-        let (output, handle, problem) = audio::start(&host, grid, bpm, settings.output.as_deref())?;
+        let (output, handle, problem) = audio::start(&host, grid, bpm, settings.output.as_deref())
+            .context(
+                "Lattice can't start without somewhere to play its sound, and no audio output \
+                 would open. Check that sound plays from other programs (on Linux, that \
+                 PulseAudio or PipeWire is running), then try again; lattice --help has more",
+            )?;
         if let Some(problem) = problem {
             editor.message = Some(problem);
         }
