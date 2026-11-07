@@ -460,8 +460,9 @@ the selection. A terminal that doesn't say leaves beat rows unshaded and the sel
 
 My laptop's keyboard lights each key on its own, so Lattice lights the keys that matter now, as
 Ableton's Push and Novation's Launchpad light their pads to show what each one plays. It needs
-`qs-rgbd`, a service I wrote that shares the keyboard between programs; without it nothing is
-lit and nothing goes wrong, so there's nothing to set up or turn off.
+`qs-rgbd`, a service I wrote that shares the keyboard between programs. It isn't released, so
+for now the lights are tied to my laptop; without it nothing is lit and nothing goes wrong, so
+there's nothing to set up or turn off.
 
 - **In normal and select mode** every key that does something lights up, dimly, in a colour
   for the kind of thing it does, as the actions are sorted under [Every action, by

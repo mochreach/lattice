@@ -9,6 +9,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use lattice_engine::midi_out::{Messages, Sent};
+#[cfg(unix)]
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
 
@@ -130,12 +131,23 @@ struct Port {
     connection: MidiOutputConnection,
 }
 
+/// Lattice's own port, which other programs connect to, rather than one it sends to.
+#[cfg(unix)]
+fn own_port() -> Result<MidiOutputConnection, String> {
+    MidiOutput::new(CLIENT)
+        .map_err(|e| e.to_string())
+        .and_then(|out| out.create_virtual("out").map_err(|e| e.to_string()))
+}
+
+/// Windows can't make a port of its own: notes go only to ports named.
+#[cfg(not(unix))]
+fn own_port() -> Result<MidiOutputConnection, String> {
+    Err("Windows has no virtual MIDI ports: name a port to send to".into())
+}
+
 /// Sends what's come due, for as long as Lattice runs.
 fn run(receiver: Receiver<Order>) {
-    let own = MidiOutput::new(CLIENT)
-        .map_err(|e| e.to_string())
-        .and_then(|out| out.create_virtual("out").map_err(|e| e.to_string()));
-    let mut own = match own {
+    let mut own = match own_port() {
         Ok(own) => Some(own),
         Err(e) => {
             log!("can't open Lattice's own MIDI port: {e}");

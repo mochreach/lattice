@@ -148,11 +148,9 @@ as they're bound.
 
 ## Building from source
 
-Lattice is pre-alpha, and it's built and run on Linux. You need a Rust toolchain recent enough for
-the 2024 edition, `pkg-config`, and ALSA's development files (`alsa-lib`, or `libasound2-dev` on
-Debian and Ubuntu). It plays through PulseAudio, which PipeWire also serves, or ALSA without it.
-
-With Nix, `nix develop` gives you all of that. Then:
+Lattice is pre-alpha. You need a Rust toolchain recent enough for the 2024 edition; on Linux,
+`pkg-config` and ALSA's development files too (`alsa-lib`, or `libasound2-dev` on Debian and
+Ubuntu). With Nix, `nix develop` gives you all of that. Then:
 
 ```sh
 cargo build --release
@@ -164,6 +162,34 @@ target/release/lattice --tutor         # the tutor
 To put `lattice` on your path, `cargo install --path crates/lattice-tui`. The other options
 (`--no-splash`, `--no-click`, `--config`, …) are in
 [Starting Lattice](docs/manual/01-introduction.md#starting-lattice).
+
+### Platforms
+
+- **Linux** is where I make and play Lattice, so it's the one I know works. It plays through
+  PulseAudio, which PipeWire also serves, or ALSA without it.
+- **macOS** should work, as its sound and MIDI go through libraries that support it (cpal and
+  midir), and it builds and passes its tests, but I haven't played on it. It can't record
+  another app's sound on its own, which needs PulseAudio.
+- **Windows** builds and passes its tests too, but is untried, and goes without `lattice ctl`,
+  recording another app's sound, and a MIDI port of its own for other programs to connect to.
+
+The keyboard lights ([Keyboard lights](docs/manual/10-files-and-config.md#keyboard-lights)) need a
+service of mine that isn't released, so for now they're tied to my laptop; elsewhere Lattice does
+without them.
+
+### On a Mac
+
+Lattice needs a terminal that tells it about every key, Alt and Ctrl combinations included, so
+use [kitty](https://sw.kovidgoyal.net/kitty/), [WezTerm](https://wezterm.org) or
+[Ghostty](https://ghostty.org) rather than Terminal.app. Lattice's `A-` keys are Alt, which is
+Option on a Mac, so set Option to work as Alt rather than typing accented letters:
+
+- kitty: `macos_option_as_alt yes` in `kitty.conf`;
+- WezTerm: `send_composed_key_when_left_alt_is_pressed = false` and
+  `send_composed_key_when_right_alt_is_pressed = false`;
+- Ghostty: `macos-option-as-alt = true`.
+
+Right Option is then the loop pedal, as right Alt is elsewhere.
 
 ## Examples
 
@@ -199,6 +225,11 @@ The design, and what was learned from a first attempt as a GUI
 cargo test --workspace
 cargo clippy --all-targets
 ```
+
+## Issues and pull requests
+
+Lattice is made for me, so issues and pull requests are welcome, but I make no promises about
+what I'll take on, or when.
 
 ## Licence
 

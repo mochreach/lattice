@@ -15,6 +15,7 @@ use lattice_editor::lights::{Glow, Kind, Playhead};
 use lattice_editor::{Editor, Key};
 use lattice_engine::Status;
 
+#[cfg(unix)]
 use crate::keyboard_lights::Keyboard;
 use crate::log::HEALTH;
 
@@ -272,6 +273,39 @@ fn name(key: Key) -> Option<String> {
         _ => return None,
     };
     Some(name)
+}
+
+/// Without Unix sockets there's no service to ask, so nothing lights.
+#[cfg(not(unix))]
+struct Keyboard;
+
+#[cfg(not(unix))]
+impl Keyboard {
+    fn connect(_layer: &str) -> Self {
+        Self
+    }
+
+    fn is_connected(&self) -> bool {
+        false
+    }
+
+    fn set(&mut self, _priority: u16, _keys: &[(&str, &str)]) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn patch(&mut self, _keys: &[(&str, &str)]) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn animate(
+        &mut self,
+        _key: &str,
+        _colour: &str,
+        _effect: &str,
+        _period: f32,
+    ) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

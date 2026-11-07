@@ -14,109 +14,21 @@
 //!
 //! A request is one line, and the answer is the rest of what's sent back; a refusal starts
 //! `error: `.
-
-use std::io::{BufRead, BufReader, Read, Write};
-use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
-use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::PathBuf;
-use std::time::Duration;
+//!
+//! The socket is a Unix one, so on Windows there's none, and `lattice ctl` says so.
 
 use anyhow::{Context, Result, bail};
 use lattice_editor::{COMMANDS, Editor, Effect, Key, Mode, Page, PromptKind};
 use lattice_engine::Status;
 use ratatui::buffer::Buffer;
 
-use crate::log::log;
-
-/// How long a request has to arrive once connected, and an answer to come back.
-const PATIENCE: Duration = Duration::from_secs(2);
+#[cfg(unix)]
+pub use socket::Server;
+#[cfg(not(unix))]
+pub use without_socket::Server;
 
 /// Commands that would throw away the song, refused unless saving is allowed.
 const DISCARDING: &[&str] = &["new!", "open!", "quit!", "tutor!"];
-
-/// Where the sockets are: `$XDG_RUNTIME_DIR/lattice`, or beside the log without one.
-fn dir() -> Option<PathBuf> {
-    std::env::var_os("XDG_RUNTIME_DIR")
-        .filter(|d| !d.is_empty())
-        .map(|d| PathBuf::from(d).join("lattice"))
-        .or_else(|| Some(crate::log::path()?.with_file_name("sockets")))
-}
-
-/// The listening side, in Lattice itself.
-pub struct Server {
-    listener: UnixListener,
-    path: PathBuf,
-    /// Whether requests may save, open, quit or throw the song away.
-    pub allow_save: bool,
-}
-
-impl Server {
-    /// Listens, if it can; Lattice carries on without it if not.
-    pub fn start(allow_save: bool) -> Option<Self> {
-        let dir = dir()?;
-        let made = std::fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(&dir);
-        let path = dir.join(format!("{}.sock", std::process::id()));
-        // One left by a process that had this pid before.
-        let _ = std::fs::remove_file(&path);
-        let listener = match made.and_then(|()| UnixListener::bind(&path)) {
-            Ok(listener) => listener,
-            Err(e) => {
-                log!("no control socket at {}: {e}", path.display());
-                return None;
-            }
-        };
-        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
-        listener.set_nonblocking(true).ok()?;
-        log!("control socket at {}", path.display());
-        Some(Self {
-            listener,
-            path,
-            allow_save,
-        })
-    }
-
-    /// The requests waiting.
-    pub fn requests(&self) -> Vec<Request> {
-        let mut requests = vec![];
-        while let Ok((stream, _)) = self.listener.accept() {
-            let _ = stream.set_nonblocking(false);
-            let _ = stream.set_read_timeout(Some(PATIENCE));
-            let _ = stream.set_write_timeout(Some(PATIENCE));
-            let mut line = String::new();
-            let Ok(mut reader) = stream.try_clone().map(BufReader::new) else {
-                continue;
-            };
-            // A client looking for the Lattice running hangs up without asking anything.
-            if reader.read_line(&mut line).is_ok_and(|n| n > 0) {
-                let line = line.trim_end_matches(['\r', '\n']).to_string();
-                log!("ctl: {line}");
-                requests.push(Request { stream, line });
-            }
-        }
-        requests
-    }
-}
-
-impl Drop for Server {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
-    }
-}
-
-/// One request, to answer.
-pub struct Request {
-    stream: UnixStream,
-    pub line: String,
-}
-
-impl Request {
-    pub fn answer(mut self, text: &str) {
-        let _ = self.stream.write_all(text.as_bytes());
-    }
-}
 
 /// What a request asks for.
 pub enum Ask {
@@ -295,12 +207,7 @@ pub fn client(args: &[String]) -> Result<()> {
         }
         return Ok(());
     }
-    let mut stream = connect(pid.as_deref())?;
-    stream.set_read_timeout(Some(PATIENCE * 2))?;
-    writeln!(stream, "{}", args.join(" "))?;
-    stream.shutdown(std::net::Shutdown::Write)?;
-    let mut answer = String::new();
-    stream.read_to_string(&mut answer)?;
+    let answer = ask(pid.as_deref(), &args.join(" "))?;
     if let Some(error) = answer.strip_prefix("error: ") {
         bail!("{}", error.trim_end());
     }
@@ -311,45 +218,197 @@ pub fn client(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// The Lattice with `pid`, or the only one running.
-fn connect(pid: Option<&str>) -> Result<UnixStream> {
-    let dir = dir().context("nowhere to look for Lattice's socket")?;
-    if let Some(pid) = pid {
-        let path = dir.join(format!("{pid}.sock"));
-        return UnixStream::connect(&path).with_context(|| format!("no Lattice with pid {pid}"));
+/// The socket, on Unix.
+#[cfg(unix)]
+mod socket {
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    use std::os::unix::net::{UnixListener, UnixStream};
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    use anyhow::{Context, Result, bail};
+
+    use crate::log::log;
+
+    /// How long a request has to arrive once connected, and an answer to come back.
+    const PATIENCE: Duration = Duration::from_secs(2);
+
+    /// Where the sockets are: `$XDG_RUNTIME_DIR/lattice`, or beside the log without one.
+    fn dir() -> Option<PathBuf> {
+        std::env::var_os("XDG_RUNTIME_DIR")
+            .filter(|d| !d.is_empty())
+            .map(|d| PathBuf::from(d).join("lattice"))
+            .or_else(|| Some(crate::log::path()?.with_file_name("sockets")))
     }
-    let mut running = vec![];
-    for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
-        let path = entry.path();
-        if path.extension().is_none_or(|e| e != "sock") {
-            continue;
+
+    /// The listening side, in Lattice itself.
+    pub struct Server {
+        listener: UnixListener,
+        path: PathBuf,
+        /// Whether requests may save, open, quit or throw the song away.
+        pub allow_save: bool,
+    }
+
+    impl Server {
+        /// Listens, if it can; Lattice carries on without it if not.
+        pub fn start(allow_save: bool) -> Option<Self> {
+            let dir = dir()?;
+            let made = std::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(&dir);
+            let path = dir.join(format!("{}.sock", std::process::id()));
+            // One left by a process that had this pid before.
+            let _ = std::fs::remove_file(&path);
+            let listener = match made.and_then(|()| UnixListener::bind(&path)) {
+                Ok(listener) => listener,
+                Err(e) => {
+                    log!("no control socket at {}: {e}", path.display());
+                    return None;
+                }
+            };
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+            listener.set_nonblocking(true).ok()?;
+            log!("control socket at {}", path.display());
+            Some(Self {
+                listener,
+                path,
+                allow_save,
+            })
         }
-        match UnixStream::connect(&path) {
-            Ok(stream) => running.push((path, stream)),
-            // Left by a Lattice that didn't get to tidy up.
-            Err(_) => {
-                let _ = std::fs::remove_file(&path);
+
+        /// The requests waiting.
+        pub fn requests(&self) -> Vec<Request> {
+            let mut requests = vec![];
+            while let Ok((stream, _)) = self.listener.accept() {
+                let _ = stream.set_nonblocking(false);
+                let _ = stream.set_read_timeout(Some(PATIENCE));
+                let _ = stream.set_write_timeout(Some(PATIENCE));
+                let mut line = String::new();
+                let Ok(mut reader) = stream.try_clone().map(BufReader::new) else {
+                    continue;
+                };
+                // A client looking for the Lattice running hangs up without asking anything.
+                if reader.read_line(&mut line).is_ok_and(|n| n > 0) {
+                    let line = line.trim_end_matches(['\r', '\n']).to_string();
+                    log!("ctl: {line}");
+                    requests.push(Request { stream, line });
+                }
+            }
+            requests
+        }
+    }
+
+    impl Drop for Server {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+
+    /// One request, to answer.
+    pub struct Request {
+        stream: UnixStream,
+        pub line: String,
+    }
+
+    impl Request {
+        pub fn answer(mut self, text: &str) {
+            let _ = self.stream.write_all(text.as_bytes());
+        }
+    }
+
+    /// Sends `line` to the Lattice with `pid`, or the only one running, and returns its answer.
+    pub fn ask(pid: Option<&str>, line: &str) -> Result<String> {
+        let mut stream = connect(pid)?;
+        stream.set_read_timeout(Some(PATIENCE * 2))?;
+        writeln!(stream, "{line}")?;
+        stream.shutdown(std::net::Shutdown::Write)?;
+        let mut answer = String::new();
+        stream.read_to_string(&mut answer)?;
+        Ok(answer)
+    }
+
+    /// The Lattice with `pid`, or the only one running.
+    fn connect(pid: Option<&str>) -> Result<UnixStream> {
+        let dir = dir().context("nowhere to look for Lattice's socket")?;
+        if let Some(pid) = pid {
+            let path = dir.join(format!("{pid}.sock"));
+            return UnixStream::connect(&path)
+                .with_context(|| format!("no Lattice with pid {pid}"));
+        }
+        let mut running = vec![];
+        for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|e| e != "sock") {
+                continue;
+            }
+            match UnixStream::connect(&path) {
+                Ok(stream) => running.push((path, stream)),
+                // Left by a Lattice that didn't get to tidy up.
+                Err(_) => {
+                    let _ = std::fs::remove_file(&path);
+                }
+            }
+        }
+        match running.len() {
+            0 => bail!("no Lattice is running"),
+            1 => running
+                .pop()
+                .map(|(_, stream)| stream)
+                .context("no Lattice is running"),
+            _ => {
+                let pids: Vec<String> = (running.iter())
+                    .filter_map(|(p, _)| Some(p.file_stem()?.to_string_lossy().into_owned()))
+                    .collect();
+                bail!(
+                    "{} are running ({}): say which with --pid",
+                    running.len(),
+                    pids.join(", ")
+                )
             }
         }
     }
-    match running.len() {
-        0 => bail!("no Lattice is running"),
-        1 => running
-            .pop()
-            .map(|(_, stream)| stream)
-            .context("no Lattice is running"),
-        _ => {
-            let pids: Vec<String> = (running.iter())
-                .filter_map(|(p, _)| Some(p.file_stem()?.to_string_lossy().into_owned()))
-                .collect();
-            bail!(
-                "{} are running ({}): say which with --pid",
-                running.len(),
-                pids.join(", ")
-            )
+}
+
+/// No socket, where there are no Unix sockets: nothing to listen on or ask.
+#[cfg(not(unix))]
+mod without_socket {
+    use anyhow::{Result, bail};
+
+    /// Never started.
+    pub struct Server {
+        pub allow_save: bool,
+    }
+
+    impl Server {
+        pub fn start(_allow_save: bool) -> Option<Self> {
+            None
+        }
+
+        pub fn requests(&self) -> Vec<Request> {
+            vec![]
         }
     }
+
+    /// Never asked.
+    pub struct Request {
+        pub line: String,
+    }
+
+    impl Request {
+        pub fn answer(self, _text: &str) {}
+    }
+
+    pub fn ask(_pid: Option<&str>, _line: &str) -> Result<String> {
+        bail!("lattice ctl talks to Lattice over a Unix socket, which Windows doesn't have")
+    }
 }
+
+#[cfg(unix)]
+use socket::ask;
+#[cfg(not(unix))]
+use without_socket::ask;
 
 #[cfg(test)]
 mod tests {

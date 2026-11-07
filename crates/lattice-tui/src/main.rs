@@ -9,6 +9,11 @@
         clippy::indexing_slicing
     )
 )]
+// Recording an app's own sound goes through PulseAudio, which is Linux's.
+#[cfg(target_os = "linux")]
+mod apps;
+#[cfg(not(target_os = "linux"))]
+#[path = "no_apps.rs"]
 mod apps;
 mod audio;
 mod bars;
@@ -25,7 +30,8 @@ mod help_page;
 mod history;
 mod inst_page;
 mod key_log;
-// qs-rgb's client, kept as it comes, with more than Lattice uses.
+// qs-rgb's client, kept as it comes, with more than Lattice uses. It talks over a Unix socket.
+#[cfg(unix)]
 #[expect(dead_code, reason = "the client's whole, as qs-rgb ships it")]
 mod keyboard_lights;
 mod keys;
