@@ -199,11 +199,14 @@ mod tests {
         song.grid.tracks[0].instrument = Instrument::new(InstKind::Chop);
         song.grid.tracks[0].instrument.file = Some(folder.join("loops/amen.wav"));
         song.grid.tracks[1].instrument = Instrument::new(InstKind::Sampler);
-        song.grid.tracks[1].instrument.file = Some("/elsewhere/kick.wav".into());
+        // Absolute on every platform: Windows's needs a drive.
+        let elsewhere = std::env::temp_dir().join("elsewhere").join("kick.wav");
+        song.grid.tracks[1].instrument.file = Some(elsewhere.clone());
         write(&path, &song).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("file: \"loops/amen.wav\""), "{text}");
-        assert!(text.contains("file: \"/elsewhere/kick.wav\""), "{text}");
+        let saved = format!("file: {:?}", elsewhere.display().to_string());
+        assert!(text.contains(&saved), "{text}");
         let (read, _) = open(&path).unwrap();
         std::fs::remove_dir_all(&folder).unwrap();
         assert_eq!(read.grid.tracks, song.grid.tracks);
