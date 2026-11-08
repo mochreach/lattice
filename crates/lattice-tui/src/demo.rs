@@ -7,7 +7,9 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use lattice_core::fx::{comp, delay, drive, filter, reverb};
-use lattice_core::instrument::{clap, hat, kick, krell, monochord, snare, switched, synth, tom};
+use lattice_core::instrument::{
+    clap, hat, kick, krell, monochord, snare, switched, synth, tom, tuss,
+};
 use lattice_core::{
     Arrangement, Bus, Buses, Change, Condition, DRUM_ROOT, Entry, Fx, FxKind, Grid, Group,
     InstKind, Instrument, Lane, Lock, Note, Pattern, Rule, Song, Step, Track, Transform,
@@ -167,7 +169,8 @@ const ACID: usize = 8;
 const STAB: usize = 9;
 const PAD: usize = 10;
 const PLUCK: usize = 11;
-const TRACKS: usize = 12;
+const KEYS: usize = 12;
+const TRACKS: usize = 13;
 
 const SAW: f32 = 0.0;
 
@@ -378,8 +381,29 @@ fn tracks() -> Vec<Track> {
     pluck.mix.pan = 0.45;
     pluck.mix.send = -9.0;
 
+    // An electric piano, struck hard enough to bark, drifting a little, answering the acid.
+    let mut keys = track(
+        "keys",
+        instrument(
+            Tuss,
+            &[
+                (tuss::STRIKE, 0.6),
+                (tuss::BELL, 0.5),
+                (tuss::PICKUP, 0.8),
+                (tuss::BARK, 0.55),
+                (tuss::DECAY, 4.0),
+                (tuss::DAMPER, 0.6),
+                (tuss::DRIFT, 0.15),
+                (tuss::GAIN, 0.6),
+            ],
+        ),
+    );
+    keys.mix.level = -11.0;
+    keys.mix.pan = 0.3;
+    keys.mix.send = -10.0;
+
     vec![
-        kick, clap, snare, hat, open, perc, ride, bass, acid, stab, pad, pluck,
+        kick, clap, snare, hat, open, perc, ride, bass, acid, stab, pad, pluck, keys,
     ]
 }
 
@@ -520,6 +544,11 @@ fn stabs() -> Vec<Step> {
 fn pad() -> Vec<Step> {
     notes("C4_16 . . . . . . . . . . . . . . . | F3_16 . . . . . . . . . . . . . . .")
 }
+/// Fourths and fifths, the root, fifth, ninth and seventh, which stay in every chord the changes
+/// move them to.
+fn keys() -> Vec<Step> {
+    notes("C5? . Eb5 . G4_3 . . F4! . . C5? . Eb5_4 . . .")
+}
 /// Seven steps, turned a step back every other pass, and turning round on its G, so it goes
 /// back and forth; its F slides there from the note before.
 fn pluck() -> (Vec<Step>, Vec<Rule>) {
@@ -602,6 +631,7 @@ fn sections() -> Vec<(&'static str, u32, Vec<Lane>)> {
                 (STAB, stabs(), changes()),
                 (PAD, pad(), changes()),
                 pluck(),
+                (KEYS, keys(), changes()),
             ]),
         ),
         (
@@ -632,6 +662,7 @@ fn sections() -> Vec<(&'static str, u32, Vec<Lane>)> {
                 (STAB, stabs(), changes()),
                 (PAD, pad(), changes()),
                 pluck(),
+                (KEYS, keys(), changes()),
             ]),
         ),
         (

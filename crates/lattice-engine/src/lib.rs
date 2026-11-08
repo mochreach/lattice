@@ -43,6 +43,7 @@ pub mod routing;
 pub mod sampler;
 pub mod switched;
 pub mod synth;
+pub mod tuss;
 mod waveguide;
 
 pub use chop::Chop;

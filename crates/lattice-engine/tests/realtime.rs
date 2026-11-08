@@ -9,7 +9,7 @@
 )]
 
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
-use lattice_core::instrument::{kick, krell, monochord, switched};
+use lattice_core::instrument::{kick, krell, monochord, switched, tuss};
 use lattice_core::{
     Condition, Fx, FxKind, Grid, InstKind, Instrument, Lane, Lock, Macro, MacroTarget, Rule, Step,
     Track, Transform,
@@ -169,6 +169,11 @@ fn rendering_never_allocates() {
     ));
     let mut krell = Some(lattice_engine::instrument::build(
         &Instrument::new(InstKind::Krell),
+        48_000.0,
+        None,
+    ));
+    let mut tuss = Some(lattice_engine::instrument::build(
+        &Instrument::new(InstKind::Tuss),
         48_000.0,
         None,
     ));
@@ -473,6 +478,34 @@ fn rendering_never_allocates() {
                 }
                 830 => {
                     handle.send(Command::StopRecording);
+                }
+                840 => {
+                    handle.send(Command::SetInstrument {
+                        index: 0,
+                        instrument: tuss.take().unwrap(),
+                    });
+                    handle.send(Command::SetParam {
+                        target: Target::Instrument(0),
+                        id: tuss::TUNING,
+                        value: 1.0,
+                    });
+                    handle.send(Command::Preview {
+                        track: 0,
+                        pitch: 45,
+                        velocity: 127,
+                        held: true,
+                    });
+                }
+                845 => {
+                    handle.send(Command::SetParam {
+                        target: Target::Instrument(0),
+                        id: tuss::DRIFT,
+                        value: 1.0,
+                    });
+                    handle.send(Command::Release {
+                        track: 0,
+                        pitch: 45,
+                    });
                 }
                 850 => {
                     handle.send(Command::SetLength(16));

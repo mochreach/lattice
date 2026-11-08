@@ -13,6 +13,7 @@ use crate::rhythmicon;
 use crate::sampler::{Sample, Sampler};
 use crate::switched::Switched;
 use crate::synth::Synth;
+use crate::tuss::Tuss;
 
 /// The processor for `instrument`, starting at its settings, with `sample` loaded from its file if
 /// it plays one. Allocates, so call it off the audio thread.
@@ -28,6 +29,7 @@ pub fn build(
         InstKind::Monochord => Box::new(Monochord::with_values(sample_rate, &instrument.values)),
         InstKind::Switched => Box::new(Switched::with_values(sample_rate, &instrument.values)),
         InstKind::Krell => Box::new(Krell::with_values(sample_rate, &instrument.values)),
+        InstKind::Tuss => Box::new(Tuss::with_values(sample_rate, &instrument.values)),
         // Sending nothing: the frontend builds one that sends, with somewhere for it to go.
         InstKind::Midi => Box::new(MidiOut::silent(sample_rate, &instrument.values)),
         // Every other instrument is a drum; were one not, it'd play as a synth.

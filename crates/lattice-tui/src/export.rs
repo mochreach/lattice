@@ -335,6 +335,7 @@ mod tests {
                 lattice_core::InstKind::Synth
                     | lattice_core::InstKind::Switched
                     | lattice_core::InstKind::Krell
+                    | lattice_core::InstKind::Tuss
                     | lattice_core::InstKind::Monochord
             );
             let mut export = export(16);

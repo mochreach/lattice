@@ -1,10 +1,10 @@
 # Instruments
 
 Every track plays one instrument. It turns the track's notes into sound: a kick drum, a stack
-of saws through a screaming filter, a plucked string, an alien harpsichord, a sound file. This
-chapter covers choosing an instrument, the instrument page where you shape it, each of Lattice's
-eleven instruments and every one of their settings, the sampler and chop for playing sound
-files, and presets and faces, which make an instrument into one of its own.
+of saws through a screaming filter, a plucked string, an alien harpsichord, an electric piano, a
+sound file. This chapter covers choosing an instrument, the instrument page where you shape it,
+each of Lattice's twelve instruments and every one of their settings, the sampler and chop for
+playing sound files, and presets and faces, which make an instrument into one of its own.
 
 The effects that come after the instrument, the mixer, and macros in full are in
 [chapter 8](08-mixer-and-effects.md). Gestures that change how a single note plays (`<`, `O`,
@@ -13,7 +13,7 @@ chapter 8.
 
 ## The instruments at a glance
 
-Lattice has eleven instruments. All are built in: the engine is written by hand, in Rust, for
+Lattice has twelve instruments. All are built in: the engine is written by hand, in Rust, for
 Lattice alone. A twelfth, `midi`, makes no sound of its own: it plays gear outside Lattice (see
 [MIDI tracks](#midi-tracks-playing-other-gear-midi)).
 
@@ -23,6 +23,7 @@ Lattice alone. A twelfth, `midi`, makes no sound of its own: it plays gear outsi
 | `switched`  | Switched   | a modular: a stack of saws through a screaming ladder filter | 8      |
 | `monochord` | Monochord  | a plucked or bowed string, modelled as a waveguide           | 8      |
 | `krell`     | Krell      | an alien harpsichord: choirs of quill-plucked strings        | 8      |
+| `tuss`      | Tuss       | an electric piano: struck tines, barking pickups, tunings    | 8      |
 | `sampler`   |            | plays a WAV file, pitched by the note or cut into slices     | 16     |
 | `chop`      |            | a WAV file cut into pieces, a step playing each              | 16     |
 | `kick`      | Rhythmicon | a bass drum                                                  | 1      |
@@ -55,9 +56,9 @@ selections reach; on the mixer, instrument and fx pages, the track under the cur
 :inst kick           and now a bass drum
 ```
 
-The names are `synth`, `switched`, `monochord`, `krell`, `sampler`, `chop`, `kick`, `snare`,
-`hat`, `clap` and `tom`, and `midi` for gear outside Lattice. Type `:inst ` and the command line
-lists them; a name it doesn't know is refused with the list:
+The names are `synth`, `switched`, `monochord`, `krell`, `tuss`, `sampler`, `chop`, `kick`,
+`snare`, `hat`, `clap` and `tom`, and `midi` for gear outside Lattice. Type `:inst ` and the
+command line lists them; a name it doesn't know is refused with the list:
 `no instrument called "string"; there's synth, switched, …`.
 
 What changing it does:
@@ -93,6 +94,8 @@ than a wall of generic controls:
   the Moog synthesiser in front of everyone.
 - **Krell**, the harpsichord, after the vanished civilisation of the 1956 film *Forbidden
   Planet*, whose score, by Louis and Bebe Barron, was the first made all electronically.
+- **Tuss**, the electric piano, after The Tuss, a name Richard D. James, Aphex Twin, put records
+  out under in 2007.
 
 Each engine's section below tells the story behind its name. The design notes put it this way:
 Lattice is a personal instrument first, and its engines should be "interesting and quirky,
@@ -296,6 +299,7 @@ engine is named after:
 | `switched`  | a Moog's wall of modules, its patch cables swaying                           |
 | `monochord` | Pythagoras's monochord, its string over a bridge set at a fifth              |
 | `krell`     | the Great Machine of the Krell, from Forbidden Planet, and its halls         |
+| `tuss`      | a tine and its tone bar, struck by the hammer, swinging before the pickup    |
 | `sampler`   | a reel-to-reel, as at the Radiophonic Workshop, its reels turning            |
 | `chop`      | a break's waveform sliced up, a slice and its pad lit in turn                |
 | the drums   | the Rhythmicon's lamp through its spinning disc of holes onto its photocells |
@@ -370,8 +374,8 @@ starting from a wave and filtering it. Lattice uses two kinds:
   are waveguides.
 - **Modal synthesis** models a resonant body (a drumhead, a bell, a plate of glass) as a set
   of **modes**, each a frequency at which it rings and a time it rings for. Hit it, and each mode
-  rings at its own pitch and dies at its own rate. The drums' shells and Krell's body are
-  modal.
+  rings at its own pitch and dies at its own rate. The drums' shells, Krell's body and Tuss's
+  tines are modal.
 
 **Choke.** A choke group (set on the mixer, see chapter 8) silences one track when another in its
 group plays, as an open hi-hat is cut off by the closed one. What a choke does depends on the
@@ -622,6 +626,96 @@ More about the controls:
 Its notes don't glide. Choking the track fades the body with the strings. The `great-machine`
 preset is Krell at its most alien: all five choirs drifting apart over a glass body, down
 echoing halls, with the Great Machine of the Krell drawn on its face.
+
+### Tuss, the electric piano (`tuss`)
+
+In 2007 two records came out on Rephlex, *Confederation Trough* and *Rushup Edge*, by The Tuss:
+Brian and Karen Tregaskin, a brother and sister from Cornwall, said the sleeves. Nobody had heard
+of them, and they sounded a great deal like Richard D. James, Aphex Twin, who grew up in
+Cornwall and co-founded Rephlex. It's widely taken to have been him. (The name is a word of
+Cornish dialect best not translated here.) I named Tuss in his honour, and built it for a song
+in the spirit of his "Flim" (1997), whose soft, glassy keys float over drums that never sit
+still. He's known, too, for retuning his synthesisers away from equal temperament, and helped
+Korg put microtuning into the monologue; so Tuss can play in other tunings.
+
+**An electric piano**, as the Fender Rhodes of the 1960s and 70s, has no strings. Each key
+throws a felt-tipped hammer at a **tine**, a thin steel rod clamped at one end, which rings with
+a heavier **tone bar** clamped beside it, the two a tuning fork. Facing the tine's free end is a
+**pickup**, a coil round a magnet: the tine swinging through its field makes a current, as a
+guitar string does over its pickup. The field isn't even, so what comes out isn't quite the
+tine's swing. Struck hard, the tine swings far into the field's curve and the note **barks**,
+the growl of a Rhodes played hard. Where the pickup sits across the tine changes the tone too,
+and technicians set it by hand, note by note: in line with the tine, it hears it twice a swing,
+hollow, an octave up; off to one side, once, round and full.
+
+**How it sounds.** Tuss's tine is modal (see
+[how the engines make sound](#how-the-engines-make-sound)): its fundamental, which rings on for
+seconds, and two of a clamped bar's upper modes, 6.27 and 17.55 times the note, out of tune with it.
+They clang at the start of the note and are gone in under half a second: the bell. How much of them
+the hammer rings depends on how long it touches the tine, shorter for a harder hammer and a harder
+note, so soft notes are round and hard ones bright. Hard notes are louder, by much more than on
+Krell, and swing the tine further into the pickup's field, so they bark too. Each note's pickup
+hears its tine through a field that falls away either side of the pole, `1 / (1 + u²)`, where `u` is
+how far across the tine is.
+
+`drift` sends each note out of tune its own way and sets them all wavering together, as on a
+stretched, worn tape, and sits each in stereo the way it's drifted. `tuning` and `key` play the
+notes in other tunings than equal temperament.
+
+| Setting  | Range                 | Default | What it does                                    |
+|----------|-----------------------|---------|-------------------------------------------------|
+| `strike` | 0 to 1                | 0.5     | the hammer, from soft felt to hard              |
+| `bell`   | 0 to 1                | 0.4     | how loud the tine's clanging upper modes are    |
+| `pickup` | 0 to 1                | 0.7     | where the pickup sits, from in line to one side |
+| `bark`   | 0 to 1                | 0.3     | how hard the pickup's driven: clean to growling |
+| `decay`  | 0.2 to 20 s           | 6 s     | time for low notes to fade by 60 dB, key held   |
+| `damper` | 0 to 1                | 0.7     | how fast tines stop when the key comes up       |
+| `drift`  | 0 to 1                | 0.1     | how far the notes drift out of tune and waver   |
+| `tuning` | `equal` to `harmonic` | `equal` | the tuning the notes play in                    |
+| `key`    | `C` to `B`            | `C`     | the key note the tuning's built on              |
+| `gain`   | 0 to 1                | 0.5     | the output level                                |
+
+More about the controls:
+
+- **`strike`** at 0 is a soft felt hammer: round and dark, the bell barely there whatever
+  `bell` says. At 1 it's hard, and the bell rings out. Velocity always counts: a hard note
+  touches the tine for less time than a soft one, so it's brighter.
+- **`bell`** sets how loud the clang can be. At 0 there's none, only the tine's fundamental
+  and what the pickup makes of it; at 1, with a hard `strike`, the start of each note is a bell.
+- **`pickup`** at 0 sits in line with the tine, so it hears the note an octave up, hollow and
+  quiet when played softly; at 1, off to the side, the note itself, round and full.
+- **`bark`** at 0 is clean however hard a note is played; turned up, hard notes growl and soft
+  ones stay sweet, so playing harder and softer changes the tone as much as the level.
+- **`decay`** is for C-3; higher notes ring for less, an octave up three quarters as long, as on
+  a real electric piano.
+- **`damper`** at 0 leaves the tines ringing when the key comes up; at 1 they stop in about
+  50 ms.
+- **`drift`** at a little (0.1 to 0.3) is an old tape: each note up to 20 cents off its own way
+  at the top, all wavering 8 cents together, about three times every ten seconds. Turned up,
+  the chords smear and spread across the stereo field.
+
+**Tunings.** Equal temperament, every piano's, splits the octave into twelve equal semitones,
+so every key sounds alike and none is quite in tune: its major third is 14 cents wider than the
+pure 5/4 of two strings ringing together. The other tunings make some intervals pure at the cost
+of others, so they're built on a `key`, the note they're in tune from. In `just` on A, an A
+major chord rings without beating, while chords far from A sound strange. The key note itself
+stays where equal temperament has it, so Tuss stays in tune with the rest of the song on it.
+
+- `equal`: twelve equal semitones, as every other instrument in Lattice plays.
+- `just`: five-limit just intonation, every interval from the key a ratio of small whole
+  numbers: 1/1, 16/15, 9/8, 6/5, 5/4, 4/3, 45/32, 3/2, 8/5, 5/3, 9/5, 15/8. Pure major and minor
+  thirds, the sweetest chords on the key and those near it.
+- `pythagorean`: pure 3/2 fifths stacked up, as medieval music was tuned. Bright, wide thirds.
+- `meantone`: quarter-comma meantone, the Renaissance's tuning: fifths narrowed so their thirds
+  are pure, with one "wolf" fifth, from G♯ to E♭ when the key is C, that howls.
+- `werckmeister`: Werckmeister III (1691), a well temperament, every key playable but each
+  with its own colour, as Bach's keyboards may have been tuned.
+- `harmonic`: the harmonic series, folded into an octave: its seventh (7/4) and eleventh (11/8)
+  are far from anything equal temperament has, bluesy and strange.
+
+Its notes don't glide. The `tregaskin` preset is a warm electric piano on a worn tape, through
+an ensemble into a small room, with the tine on its face; its `worn` macro turns up the drift
+and the chorus, and `growl` the bark.
 
 ## Rhythmicon, the drum engine
 
@@ -1029,6 +1123,7 @@ instrument page.
 | `thunderhead`    | `tom`       | a low, rolling tom in a storm             | `roll` `storm`      |
 | `hollow-log`     | `tom`       | a knock on wood                           | `knock` `hollow`    |
 | `great-machine`  | `krell`     | five drifting choirs over a glass body    | `alien` `halls`     |
+| `tregaskin`      | `tuss`      | a warm electric piano on a worn tape      | `worn` `growl`      |
 
 ### Saving a preset
 

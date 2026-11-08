@@ -30,6 +30,7 @@ pub mod macros;
 pub mod preset;
 pub mod song;
 pub mod transform;
+pub mod tuning;
 
 pub use arrangement::{
     Arrangement, DEFAULT_BEATS_PER_BAR, Entry, Lane, MAX_BARS, MAX_BEATS_PER_BAR, MAX_ENTRIES,

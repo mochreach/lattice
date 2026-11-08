@@ -20,6 +20,11 @@
 //! had the first all-electronic score, Louis and Bebe Barron's: choirs of quill-plucked strings
 //! at 16', 8', 4' and 2', which can drift apart, over a body of plates and glass that rings in
 //! sympathy.
+//!
+//! The electric piano is Tuss, after The Tuss, the name Richard D. James put out records under
+//! in 2007, as two Cornish siblings who never existed: a tine struck by a hammer, ringing in
+//! front of a magnetic pickup that barks when it's struck hard, which can drift out of tune and
+//! play in other tunings than equal temperament.
 
 use serde::{Deserialize, Serialize};
 
@@ -53,16 +58,18 @@ pub enum InstKind {
     Chop,
     Switched,
     Krell,
+    Tuss,
     /// Not an instrument of Lattice's own: notes and settings go out over MIDI.
     Midi,
 }
 
 impl InstKind {
-    pub const ALL: [InstKind; 12] = [
+    pub const ALL: [InstKind; 13] = [
         InstKind::Synth,
         InstKind::Switched,
         InstKind::Monochord,
         InstKind::Krell,
+        InstKind::Tuss,
         InstKind::Sampler,
         InstKind::Chop,
         InstKind::Kick,
@@ -90,6 +97,7 @@ impl InstKind {
             InstKind::Chop => &chop::PARAMS,
             InstKind::Switched => &switched::PARAMS,
             InstKind::Krell => &krell::PARAMS,
+            InstKind::Tuss => &tuss::PARAMS,
             InstKind::Midi => &midi::PARAMS,
         }
     }
@@ -109,6 +117,7 @@ impl Kind for InstKind {
             InstKind::Chop => "chop",
             InstKind::Switched => "switched",
             InstKind::Krell => "krell",
+            InstKind::Tuss => "tuss",
             InstKind::Midi => "midi",
         }
     }
@@ -458,6 +467,62 @@ pub mod krell {
         param(BODY, "body", (0.0, 1.0, 0.3), "", Curve::Linear),
         param(HULL, "hull", (40.0, 2_000.0, 196.0), "Hz", Curve::Log),
         param(GLASS, "glass", (0.0, 1.0, 0.5), "", Curve::Linear),
+        param(GAIN, "gain", (0.0, 1.0, 0.5), "", Curve::Linear),
+    ];
+}
+
+/// Tuss's electric piano: a hammer strikes a tine, which rings in front of a magnetic pickup,
+/// damped as the key comes up.
+pub mod tuss {
+    use super::*;
+
+    /// The hammer, from soft felt, round and dark, to hard, bringing out the tine's bell. Hard
+    /// notes strike harder still.
+    pub const STRIKE: u32 = 0;
+    /// How loud the tine's clangorous upper modes are, which ring out of tune with the note and
+    /// fade fast: the bell at the start of each note.
+    pub const BELL: u32 = 1;
+    /// Where the pickup sits: in line with the tine, hollow, hearing it twice a swing, an octave
+    /// up, to off to one side, round and full.
+    pub const PICKUP: u32 = 2;
+    /// How hard the pickup is driven: clean, to growling on hard notes, as the tine swings far
+    /// into its field.
+    pub const BARK: u32 = 3;
+    /// Time for the lowest notes to fade by 60 dB while the key's held; high notes die sooner.
+    pub const DECAY: u32 = 4;
+    /// How quickly the damper stops a tine when its key comes up, from not at all to at once.
+    pub const DAMPER: u32 = 5;
+    /// How far each note drifts out of tune, its own way, and wavers, as a tape stretched and
+    /// worn: each sits in stereo the way it's drifted.
+    pub const DRIFT: u32 = 6;
+    /// The tuning the notes play in, from [`crate::tuning::TUNINGS`].
+    pub const TUNING: u32 = 7;
+    /// The key note the tuning's built on.
+    pub const KEY: u32 = 8;
+    pub const GAIN: u32 = 9;
+
+    pub(super) const PARAMS: [ParamInfo; 10] = [
+        param(STRIKE, "strike", (0.0, 1.0, 0.5), "", Curve::Linear),
+        param(BELL, "bell", (0.0, 1.0, 0.4), "", Curve::Linear),
+        param(PICKUP, "pickup", (0.0, 1.0, 0.7), "", Curve::Linear),
+        param(BARK, "bark", (0.0, 1.0, 0.3), "", Curve::Linear),
+        param(DECAY, "decay", (0.2, 20.0, 6.0), "s", Curve::Log),
+        param(DAMPER, "damper", (0.0, 1.0, 0.7), "", Curve::Linear),
+        param(DRIFT, "drift", (0.0, 1.0, 0.1), "", Curve::Linear),
+        param(
+            TUNING,
+            "tuning",
+            (0.0, 5.0, 0.0),
+            "",
+            Curve::Choice(crate::tuning::TUNINGS),
+        ),
+        param(
+            KEY,
+            "key",
+            (0.0, 11.0, 0.0),
+            "",
+            Curve::Choice(crate::tuning::KEYS),
+        ),
         param(GAIN, "gain", (0.0, 1.0, 0.5), "", Curve::Linear),
     ];
 }

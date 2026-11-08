@@ -25,6 +25,9 @@ pub fn engine(kind: InstKind) -> &'static str {
         InstKind::Switched => include_str!("art/switched.txt"),
         // The Great Machine of the Krell, from *Forbidden Planet*, and its halls.
         InstKind::Krell => include_str!("art/krell.txt"),
+        // An electric piano's tine and the tone bar over it, clamped in their block, struck by
+        // the hammer and swinging in front of the pickup.
+        InstKind::Tuss => include_str!("art/tuss.txt"),
         // A MIDI socket, its five pins, and a note on going out down the wire, bit by bit.
         InstKind::Midi => include_str!("art/midi.txt"),
     }

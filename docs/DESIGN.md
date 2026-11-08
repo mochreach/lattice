@@ -314,6 +314,59 @@ strings are Monochord's, plucked rather than bowed.
 Its notes don't glide. The voices benchmark plays eight voices of two choirs at around 650 times
 real time, a third quicker than the string, as it doesn't bow.
 
+### Tuss, the electric piano engine
+
+The fifth engine, named after The Tuss, the alias Richard D. James put out *Confederation
+Trough* and *Rushup Edge* under in 2007, as Brian and Karen Tregaskin, a Cornish brother and
+sister no one ever met. It was built for Flam, a song in the spirit of his "Flim": soft, glassy
+keys over restless drums. One instrument, `:inst tuss`: a Rhodes-like electric piano, struck
+tines in front of magnetic pickups, which can drift out of tune and play in other tunings.
+
+- **The tine** is modal: three modes, each a phasor (a point turned by `r e^{iω}` each sample,
+  its output the imaginary part), so a mode can be retuned as it rings without its level
+  jumping, as a two-pole resonator's would. The fundamental rings for `decay` at C-3 and less
+  above it, by `(130.8 / hz)^0.4`, never more. The upper modes are a clamped-free bar's, 6.267
+  and 17.55 times the note, ringing at most 0.45 s and 0.09 s; modes past 0.45 of the sample
+  rate are left silent.
+- **The hammer** adds to each mode's real part, so a tine struck while it rings is struck
+  again, not restarted. The fundamental gets `(velocity / 127)^1.5`; the upper modes that times
+  `bell`, 3 and 1.2, and how much of them a hammer touching for `τ` reaches against the
+  fundamental, `(1 + (π f₁ τ)²) / (1 + (π f τ)²)`. `τ` goes from 3 ms (felt) to 0.3 ms (hard)
+  as `strike` turns, times `1.6 - velocity / 127`, so harder notes are brighter.
+- **The pickup** hears the tine's swing `x` through a field `h(u) = 1 / (1 + u²)`: its output is
+  `h(o) - h(o + d x)`, `o` the pickup's offset from the tine's line (0 to 0.6, by `pickup`) and
+  `d` the drive (0.5 to 4, by `bark`, exponentially). In line, `h` is even, so it's the second
+  harmonic; off the line, mostly the first. The output's divided by its most for a swing of 1,
+  worked out as the settings change, and each note has its own DC blocker (10 Hz), since the
+  field's output isn't centred, before its fade, so a choke leaves no step behind.
+- **Drift**: at each new note, a voice draws a direction from -1 to 1 and a phase. It's
+  `drift × (20 × direction + 8 × sin(2π (0.31 t + phase)))` cents off, retuned every 32 samples,
+  and panned equal-power by `0.8 × drift × direction`.
+- **The dampers**: when the key comes up, every mode's ring falls to `decay × (0.05 /
+  decay)^damper`, if that's shorter.
+- **Tunings** are in `lattice-core`'s `tuning`, kept apart from the engine so other engines, or
+  the song, can use them later: six tables of cents above the key note (`equal`, `just`,
+  `pythagorean`, `meantone`, `werckmeister`, `harmonic`), and `tuning::offset(note, tuning, key)`,
+  how far a note is from equal temperament. The key note itself never moves, so a retuned
+  instrument stays in tune with the rest of the song on it. Changing the tuning or key retunes
+  the tines ringing.
+
+| Control | Range | |
+| --- | --- | --- |
+| strike | 0–1 | the hammer, felt to hard |
+| bell | 0–1 | how loud the tine's upper modes are |
+| pickup | 0–1 | in line with the tine (an octave up, hollow) to off to one side (round) |
+| bark | 0–1 | how hard the pickup's driven: hard notes growl |
+| decay | 0.2–20 s | while the key's held, at C-3; higher notes die sooner |
+| damper | 0–1 | how fast the tines stop when the key comes up |
+| drift | 0–1 | how far the notes drift apart and waver, up to 20 cents and 8 more |
+| tuning | `equal` `just` `pythagorean` `meantone` `werckmeister` `harmonic` | |
+| key | `C` to `B` | the tuning's key note |
+| gain | 0–1 | |
+
+Its notes don't glide. The voices benchmark plays eight voices at around 1,600 times real time,
+the cheapest of the pitched engines but the test synth.
+
 ### Sampler
 
 Plays a WAV file: a region of it (`start`, `end`), pitched from C-4, or cut into up to 16
@@ -605,6 +658,7 @@ comes from. Candidates:
 | Nemo | Nemo Studios (Vangelis) | expressive brass and pads, shaped by pressure |
 | Oxygen | *Oxygène* (Jean-Michel Jarre) | string machine and phaser |
 | Krell | the vanished civilisation of *Forbidden Planet*, scored by Louis and Bebe Barron | alien harpsichord (built: `:inst krell`) |
+| Tuss | The Tuss, Richard D. James's 2007 alias as a made-up Cornish brother and sister | electric piano and tunings (built: `:inst tuss`) |
 | Seven | *Seven Waves* (Suzanne Ciani) | west-coast: wavefolding, low-pass gates, plucks |
 | Oblique | Oblique Strategies (Brian Eno) | generative pads that evolve on their own |
 | Snowflake | *Snowflakes Are Dancing* (Isao Tomita) | orchestral imitation, whistles and choirs |

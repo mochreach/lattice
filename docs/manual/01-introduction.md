@@ -201,7 +201,7 @@ Here is the demo song as it opens, in a terminal 92 columns wide:
  LATTICE  PATTERN   ■ STOP    [scratch]   pat peak   bpm 130   oct 4   vel 100   step 1   pa
 
     ╭─ DRUMS ▸ ────────╮ ╭─ LOW ───────────────╮
-    K  C  S  H  O  P  R  BASS        ACID        STAB        PAD         PLUCK
+    K  C  S  H  O  P  R  BASS        ACID        STAB        PAD         PLUCK       ›
     16 16 16 16 16 5  16 16          12          16          32          7
                             -3dB  ▌     -7dB ▉      -9dB ▌      -12dB       -13dB
                               C          R15         L25        ▐L40         R45

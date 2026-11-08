@@ -167,12 +167,14 @@ pub const PRESETS: &[&str] = &[
     "hollow-log",
     // Krell.
     "great-machine",
+    // Tuss.
+    "tregaskin",
 ];
 
 /// A preset Lattice comes with, by name.
 pub fn preset(name: &str) -> Option<Preset> {
-    use crate::fx::{comp, delay, drive, filter, pitch, reverb};
-    use crate::instrument::{clap, hat, kick, krell, monochord, snare, synth, tom};
+    use crate::fx::{comp, delay, drive, ensemble, filter, pitch, reverb};
+    use crate::instrument::{clap, hat, kick, krell, monochord, snare, synth, tom, tuss};
 
     let inst = |kind, values: &[(u32, f32)]| {
         let mut instrument = Instrument::new(kind);
@@ -969,6 +971,58 @@ pub fn preset(name: &str) -> Option<Preset> {
                     "halls",
                     0.0,
                     &[(Some(1), reverb::MIX, 0.4), (Some(0), delay::FEEDBACK, 0.3)],
+                ),
+            ],
+        },
+        // Tuss, named for the Tuss's made-up Cornish siblings: a warm electric piano on a worn
+        // tape, wavering through a chorus into a soft room. Its face is the tine.
+        "tregaskin" => Preset {
+            face: Face {
+                art: crate::art::engine_face(InstKind::Tuss).art,
+                ..face("Tregaskin", &[tuss::STRIKE, tuss::BARK, tuss::DRIFT])
+            },
+            instrument: inst(
+                InstKind::Tuss,
+                &[
+                    (tuss::STRIKE, 0.6),
+                    (tuss::BELL, 0.5),
+                    (tuss::PICKUP, 0.75),
+                    (tuss::BARK, 0.35),
+                    (tuss::DECAY, 6.0),
+                    (tuss::DAMPER, 0.6),
+                    (tuss::DRIFT, 0.25),
+                    (tuss::GAIN, 0.7),
+                ],
+            ),
+            effects: vec![
+                fx(
+                    FxKind::Ensemble,
+                    &[
+                        (ensemble::RATE, 0.4),
+                        (ensemble::DEPTH, 0.35),
+                        (ensemble::MIX, 0.4),
+                    ],
+                ),
+                fx(
+                    FxKind::Reverb,
+                    &[
+                        (reverb::SIZE, 0.5),
+                        (reverb::DECAY, 0.5),
+                        (reverb::MIX, 0.2),
+                    ],
+                ),
+            ]
+            .into(),
+            macros: vec![
+                mac(
+                    "worn",
+                    0.0,
+                    &[(None, tuss::DRIFT, 0.5), (Some(0), ensemble::DEPTH, 0.4)],
+                ),
+                mac(
+                    "growl",
+                    0.0,
+                    &[(None, tuss::BARK, 0.5), (None, tuss::STRIKE, 0.3)],
                 ),
             ],
         },
