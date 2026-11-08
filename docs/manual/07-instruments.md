@@ -715,7 +715,12 @@ stays where equal temperament has it, so Tuss stays in tune with the rest of the
 
 Its notes don't glide. The `tregaskin` preset is a warm electric piano on a worn tape, through
 an ensemble into a small room, with the tine on its face; its `worn` macro turns up the drift
-and the chorus, and `growl` the bark.
+and the chorus, and `growl` the bark. Six more go round the piano's corners: `flim` is soft and
+glassy, a felt hammer close up, for a quiet phrase over a busy beat; `suitcase` the seventies
+stage piano, barking through a phaser; `music-box` short, bright tines into a long echo;
+`hollow-tine` has the pickup in line, an octave up and hollow; `monologue` is tuned to the
+harmonic series and drifts, after the microtunings Aphex Twin made for Korg's monologue
+synthesiser; and `pentagon` is a barking bass piano, held level by a compressor.
 
 ## Rhythmicon, the drum engine
 
@@ -1124,6 +1129,12 @@ instrument page.
 | `hollow-log`     | `tom`       | a knock on wood                           | `knock` `hollow`    |
 | `great-machine`  | `krell`     | five drifting choirs over a glass body    | `alien` `halls`     |
 | `tregaskin`      | `tuss`      | a warm electric piano on a worn tape      | `worn` `growl`      |
+| `flim`           | `tuss`      | a soft, glassy piano, close up            | `glass` `hush`      |
+| `suitcase`       | `tuss`      | a seventies stage piano, barking, phased  | `bark` `swirl`      |
+| `music-box`      | `tuss`      | short, bright tines into a long echo      | `chime` `echo`      |
+| `hollow-tine`    | `tuss`      | an octave up and hollow, far off          | `hollow` `space`    |
+| `monologue`      | `tuss`      | the harmonic series, drifting, in echo    | `wonk` `tape`       |
+| `pentagon`       | `tuss`      | a barking bass piano, squashed            | `snarl` `squash`    |
 
 ### Saving a preset
 

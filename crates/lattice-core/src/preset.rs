@@ -169,11 +169,17 @@ pub const PRESETS: &[&str] = &[
     "great-machine",
     // Tuss.
     "tregaskin",
+    "flim",
+    "suitcase",
+    "music-box",
+    "hollow-tine",
+    "monologue",
+    "pentagon",
 ];
 
 /// A preset Lattice comes with, by name.
 pub fn preset(name: &str) -> Option<Preset> {
-    use crate::fx::{comp, delay, drive, ensemble, filter, pitch, reverb};
+    use crate::fx::{comp, delay, drive, ensemble, filter, phaser, pitch, reverb};
     use crate::instrument::{clap, hat, kick, krell, monochord, snare, synth, tom, tuss};
 
     let inst = |kind, values: &[(u32, f32)]| {
@@ -207,6 +213,8 @@ pub fn preset(name: &str) -> Option<Preset> {
         controls: controls.iter().map(|&c| c as u8).collect(),
         art: vec![],
     };
+    // The Tuss presets' faces: its tine.
+    let tine = || crate::art::engine_face(InstKind::Tuss).art;
     let preset = match name {
         // A steel string, plucked bright near the bridge, in a large glassy room.
         "glasshouse" => Preset {
@@ -978,7 +986,7 @@ pub fn preset(name: &str) -> Option<Preset> {
         // tape, wavering through a chorus into a soft room. Its face is the tine.
         "tregaskin" => Preset {
             face: Face {
-                art: crate::art::engine_face(InstKind::Tuss).art,
+                art: tine(),
                 ..face("Tregaskin", &[tuss::STRIKE, tuss::BARK, tuss::DRIFT])
             },
             instrument: inst(
@@ -1023,6 +1031,271 @@ pub fn preset(name: &str) -> Option<Preset> {
                     "growl",
                     0.0,
                     &[(None, tuss::BARK, 0.5), (None, tuss::STRIKE, 0.3)],
+                ),
+            ],
+        },
+        // Soft and glassy, close up: a felt hammer, the bell only just there, a short room,
+        // for a quiet phrase that rings on under a busy beat.
+        "flim" => Preset {
+            face: Face {
+                art: tine(),
+                ..face("Flim", &[tuss::STRIKE, tuss::BELL, tuss::DECAY])
+            },
+            instrument: inst(
+                InstKind::Tuss,
+                &[
+                    (tuss::STRIKE, 0.25),
+                    (tuss::BELL, 0.45),
+                    (tuss::PICKUP, 0.8),
+                    (tuss::BARK, 0.1),
+                    (tuss::DECAY, 8.0),
+                    (tuss::DAMPER, 0.5),
+                    (tuss::DRIFT, 0.08),
+                    (tuss::GAIN, 0.7),
+                ],
+            ),
+            effects: vec![fx(
+                FxKind::Reverb,
+                &[
+                    (reverb::SIZE, 0.3),
+                    (reverb::DECAY, 0.4),
+                    (reverb::MIX, 0.15),
+                ],
+            )]
+            .into(),
+            macros: vec![
+                mac("glass", 0.0, &[(None, tuss::BELL, 0.5)]),
+                mac(
+                    "hush",
+                    0.0,
+                    &[(None, tuss::STRIKE, -0.25), (Some(0), reverb::MIX, 0.2)],
+                ),
+            ],
+        },
+        // The seventies stage piano: a hard hammer into a pickup driven till it barks, through
+        // a phaser and a little drive.
+        "suitcase" => Preset {
+            face: Face {
+                art: tine(),
+                ..face("Suitcase", &[tuss::STRIKE, tuss::BARK, tuss::PICKUP])
+            },
+            instrument: inst(
+                InstKind::Tuss,
+                &[
+                    (tuss::STRIKE, 0.65),
+                    (tuss::BELL, 0.35),
+                    (tuss::PICKUP, 0.55),
+                    (tuss::BARK, 0.6),
+                    (tuss::DECAY, 5.0),
+                    (tuss::DAMPER, 0.75),
+                    (tuss::DRIFT, 0.1),
+                    (tuss::GAIN, 0.6),
+                ],
+            ),
+            effects: vec![
+                fx(
+                    FxKind::Phaser,
+                    &[
+                        (phaser::RATE, 0.4),
+                        (phaser::DEPTH, 0.6),
+                        (phaser::FEEDBACK, 0.3),
+                        (phaser::MIX, 0.5),
+                    ],
+                ),
+                fx(FxKind::Drive, &[(drive::DRIVE, 0.25), (drive::MIX, 0.5)]),
+            ]
+            .into(),
+            macros: vec![
+                mac("bark", 0.0, &[(None, tuss::BARK, 0.4)]),
+                mac(
+                    "swirl",
+                    0.0,
+                    &[(Some(0), phaser::RATE, 0.3), (Some(0), phaser::MIX, 0.4)],
+                ),
+            ],
+        },
+        // A hard little hammer on short tines, the bell all the way up, dying quickly into a
+        // long echo: a music box played through a tape delay.
+        "music-box" => Preset {
+            face: Face {
+                art: tine(),
+                ..face("Music Box", &[tuss::BELL, tuss::DECAY])
+            },
+            instrument: inst(
+                InstKind::Tuss,
+                &[
+                    (tuss::STRIKE, 0.9),
+                    (tuss::BELL, 1.0),
+                    (tuss::PICKUP, 0.9),
+                    (tuss::BARK, 0.1),
+                    (tuss::DECAY, 1.2),
+                    (tuss::DAMPER, 0.3),
+                    (tuss::DRIFT, 0.05),
+                    (tuss::GAIN, 0.6),
+                ],
+            ),
+            effects: vec![
+                fx(
+                    FxKind::Delay,
+                    &[
+                        (delay::TIME, 0.375),
+                        (delay::FEEDBACK, 0.55),
+                        (delay::TONE, 3_000.0),
+                        (delay::MIX, 0.35),
+                    ],
+                ),
+                fx(FxKind::Reverb, &[(reverb::SIZE, 0.6), (reverb::MIX, 0.25)]),
+            ]
+            .into(),
+            macros: vec![
+                mac(
+                    "chime",
+                    0.0,
+                    &[(None, tuss::STRIKE, 0.1), (None, tuss::DECAY, 0.3)],
+                ),
+                mac(
+                    "echo",
+                    0.0,
+                    &[(Some(0), delay::FEEDBACK, 0.3), (Some(0), delay::MIX, 0.3)],
+                ),
+            ],
+        },
+        // The pickup in line with the tine, so each note sounds an octave up and hollow, far off
+        // in a large room.
+        "hollow-tine" => Preset {
+            face: Face {
+                art: tine(),
+                ..face("Hollow Tine", &[tuss::PICKUP, tuss::STRIKE])
+            },
+            instrument: inst(
+                InstKind::Tuss,
+                &[
+                    (tuss::STRIKE, 0.45),
+                    (tuss::BELL, 0.3),
+                    (tuss::PICKUP, 0.05),
+                    (tuss::BARK, 0.25),
+                    (tuss::DECAY, 10.0),
+                    (tuss::DAMPER, 0.4),
+                    (tuss::DRIFT, 0.12),
+                    (tuss::GAIN, 0.75),
+                ],
+            ),
+            effects: vec![fx(
+                FxKind::Reverb,
+                &[
+                    (reverb::SIZE, 0.85),
+                    (reverb::DECAY, 0.8),
+                    (reverb::PREDELAY, 0.03),
+                    (reverb::MIX, 0.4),
+                ],
+            )]
+            .into(),
+            macros: vec![
+                mac("hollow", 0.0, &[(None, tuss::PICKUP, 0.6)]),
+                mac(
+                    "space",
+                    0.0,
+                    &[(Some(0), reverb::MIX, 0.4), (Some(0), reverb::DECAY, 0.15)],
+                ),
+            ],
+        },
+        // After the microtunings Aphex Twin made for Korg's monologue: tuned to the harmonic
+        // series, its sevenths flat, each note drifting its own way, into an echo.
+        "monologue" => Preset {
+            face: Face {
+                art: tine(),
+                ..face("Monologue", &[tuss::DRIFT, tuss::TUNING, tuss::KEY])
+            },
+            instrument: inst(
+                InstKind::Tuss,
+                &[
+                    (tuss::STRIKE, 0.5),
+                    (tuss::BELL, 0.5),
+                    (tuss::PICKUP, 0.7),
+                    (tuss::BARK, 0.3),
+                    (tuss::DECAY, 5.0),
+                    (tuss::DAMPER, 0.6),
+                    (tuss::DRIFT, 0.45),
+                    (tuss::TUNING, 5.0),
+                    (tuss::GAIN, 0.7),
+                ],
+            ),
+            effects: vec![
+                fx(
+                    FxKind::Delay,
+                    &[
+                        (delay::TIME, 0.5),
+                        (delay::FEEDBACK, 0.4),
+                        (delay::TONE, 2_500.0),
+                        (delay::MIX, 0.25),
+                    ],
+                ),
+                fx(
+                    FxKind::Ensemble,
+                    &[
+                        (ensemble::RATE, 0.3),
+                        (ensemble::DEPTH, 0.3),
+                        (ensemble::MIX, 0.3),
+                    ],
+                ),
+            ]
+            .into(),
+            macros: vec![
+                mac("wonk", 0.0, &[(None, tuss::DRIFT, 0.5)]),
+                mac(
+                    "tape",
+                    0.0,
+                    &[
+                        (Some(1), ensemble::DEPTH, 0.5),
+                        (Some(0), delay::TONE, -0.3),
+                    ],
+                ),
+            ],
+        },
+        // A Rhodes down in the bass, barking hard, held level by a compressor.
+        "pentagon" => Preset {
+            face: Face {
+                art: tine(),
+                ..face("Pentagon", &[tuss::BARK, tuss::STRIKE, tuss::DAMPER])
+            },
+            instrument: inst(
+                InstKind::Tuss,
+                &[
+                    (tuss::STRIKE, 0.6),
+                    (tuss::BELL, 0.2),
+                    (tuss::PICKUP, 0.6),
+                    (tuss::BARK, 0.8),
+                    (tuss::DECAY, 4.0),
+                    (tuss::DAMPER, 0.85),
+                    (tuss::DRIFT, 0.05),
+                    (tuss::GAIN, 0.6),
+                ],
+            ),
+            effects: vec![
+                fx(
+                    FxKind::Comp,
+                    &[
+                        (comp::THRESHOLD, -20.0),
+                        (comp::RATIO, 4.0),
+                        (comp::MAKEUP, 4.0),
+                    ],
+                ),
+                fx(FxKind::Drive, &[(drive::DRIVE, 0.2), (drive::MIX, 0.4)]),
+            ]
+            .into(),
+            macros: vec![
+                mac(
+                    "snarl",
+                    0.0,
+                    &[(None, tuss::BARK, 0.2), (Some(1), drive::DRIVE, 0.4)],
+                ),
+                mac(
+                    "squash",
+                    0.0,
+                    &[
+                        (Some(0), comp::RATIO, 0.4),
+                        (Some(0), comp::THRESHOLD, -0.3),
+                    ],
                 ),
             ],
         },
