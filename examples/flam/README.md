@@ -13,13 +13,18 @@ chords shimmer against the equal-tempered bass. `gs` shows the arrangement, 105 
 
 1. **intro** (8 bars): the chords alone, then the bass and the hats creeping in, the kick's
    pickup and a snare roll into
-2. **A** (16): the tune on `tune`, a falling phrase over Amaj7, C♯m7, Dmaj7 and Dm6, two bars a
-   chord, the minor sixth chord on D turning back home, as a plagal cadence does. The second eight
-   bars break up its long notes, an answer on the off-beat. The `glint`, a hard little hammer
-   through an echo, is muted the first time.
-3. **B** (16): F♯m7, Dmaj9, Bm7, Esus4 resolving to E, the tune climbing higher in long notes,
-   the glint answering its first two notes a beat late.
-4. **A** again, the glint doubling the tune an octave up.
+2. **A** (16): the tune on `tune`, over Amaj7, C♯m7, Dmaj7 and Dm6, two bars a chord. Its hook
+   is in 3+3+2 sixteenths, cutting across the chords' eighths: up a third, down to the root,
+   then a leap of a sixth and a slow fall onto G♯, the chord's seventh. It answers itself a step
+   higher over C♯m7, its F♯ leaning on the E it falls to, climbs to A6 over Dmaj7, where its G♯
+   is the Lydian fourth, bright and floating, and falls back over Dm6, the minor sixth chord on D
+   turning home as a plagal cadence does, its C♯ arriving early, before the chord has turned.
+   The second eight bars play it again with turns and sixteenth runs, reaching higher. The
+   `glint`, a hard little hammer through an echo, rings the tune's long notes an octave up; it's
+   muted the first time.
+3. **B** (16): F♯m7, Dmaj9, Bm7, Esus4 resolving to E, the tune in longer notes, off the beat,
+   climbing a chord at a time to B6, the glint answering each phrase a beat late.
+4. **A** again, with the glint.
 5. **break** (8): the chords held whole, fragments of the tune far apart, the hat alone, then the
    kick on every beat, and the snare rolling faster and louder (`R2` to `R4`) into the low toms.
 6. **B** and **A** again, everything at once.
