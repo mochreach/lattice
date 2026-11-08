@@ -191,6 +191,22 @@ mod tests {
     }
 
     #[test]
+    fn the_flam_example_opens_on_tuss_tuned_just_on_a() {
+        use lattice_core::instrument::tuss;
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/flam/flam.lattice");
+        let (song, _) = open(&path).unwrap();
+        let names: Vec<_> = (song.arrangement.entries.iter())
+            .map(|e| song.arrangement.patterns[e.pattern].name.as_str())
+            .collect();
+        assert_eq!(names, ["intro", "A", "B", "A", "break", "B", "A", "outro"]);
+        let tune = &song.grid.tracks[0];
+        assert_eq!(tune.instrument.kind, InstKind::Tuss);
+        assert_eq!(tune.instrument.values[tuss::TUNING as usize], 1.0, "just");
+        assert_eq!(tune.instrument.values[tuss::KEY as usize], 9.0, "on A");
+        assert_eq!(tune.macros.len(), 2);
+    }
+
+    #[test]
     fn sound_files_beside_the_song_are_saved_relative_to_it() {
         let folder = std::env::temp_dir().join(format!("lattice-file-{}", std::process::id()));
         std::fs::create_dir_all(&folder).unwrap();

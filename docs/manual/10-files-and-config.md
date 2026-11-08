@@ -779,7 +779,7 @@ lattice ctl state | grep modified        # "modified": true
 
 ## The examples
 
-Three songs in the `examples` folder show what Lattice can do. Open them from the folder Lattice
+Four songs in the `examples` folder show what Lattice can do. Open them from the folder Lattice
 is in (`lattice examples/amen/amen.lattice`), then `C-space` to play the song. Each folder's
 `README.md` goes through it bar by bar. Copy one before changing it, so the original stays as it
 was.
@@ -812,3 +812,12 @@ arpeggiator, a run split between two tracks, chance), a canon and rolls that pla
 fill, the conductor slowing into each half's close, and repeats orchestrated differently by
 mutes in the arrangement. Its notes come from the Mutopia Project's edition, and it's shared
 under the Creative Commons Attribution-ShareAlike 4.0 licence.
+
+### flam
+
+Flam, an original piece in the spirit of Aphex Twin's "Flim" (1997): a soft, falling tune and
+rocking chords on Tuss, the electric piano, over drums far too busy for them, at 152 BPM. Every
+Tuss track is tuned in just intonation on A. It shows chords split across tracks in a group,
+3+3+2 rhythms, gestures (flams, rolls, chance on the ghost notes and hats), a choke between the
+hats, tom fills that play only in a fill, a face and macros from the `tuss/flim` preset, and the
+conductor slowing it to a stop.
