@@ -431,6 +431,51 @@ every setting it turns with it (see [The mixer and effects](08-mixer-and-effects
 alone clears all their locks. When a selection covers a whole track, from its first step to its
 last, the columns go too, freeing room for others (`%` then `:unlock gain`).
 
+### Surround: `ms`, `mr` and `md`
+
+To change a setting over a passage, a filter dip over two bars or a burst of reverb on a fill,
+takes two locks: one at the start, and one after the end that puts the setting back to what it
+was. The second is the one that's easy to get wrong, as what it was depends on the locks
+before. Vim's surround plugin, which Helix took into its match menu as `ms`, `mr` and `md`,
+puts a pair of brackets round a word, changes them, or takes them away. Here the pair is
+locks, and they go round the selected steps.
+
+`ms` opens the command line with `:surround ` typed, for a setting and a value, as `:lock`
+takes them: `ms` `cutoff 500` `ret`. On each selection, on each track it reaches, the setting is
+locked at the value on the first step, and on the step after the last, put back: to the
+setting's lock before the selection if it has one, or the mixer's own value (`--`) if not. A
+`~` before the value slides there instead. Over steps 08 to 15 of the bass, with nothing locked
+before:
+
+```
+ 07  ···
+ 08  C-2   cutoff 500   ┐  the first lock, from ms
+ 09  ···                │
+ ..                     │  the selected steps
+ 15  ···                ┘
+ 16  C-2   cutoff --       the second, back to the mixer's
+```
+
+The message says what went in: `cutoff 500Hz from 08 to 15, then cutoff --`. A lock of the
+setting already on the step after is left, as it already says what comes next; that's also what
+lets `mr` work. A selection that runs to the end of the track gets no second lock, as playing
+stops there or goes round to the top.
+
+`mr` changes a pair: with the cursor inside, it selects where the lock holds (`mil`) and opens
+the command line with `:surround cutoff ` typed, for the new value. `md` takes the pair away:
+the lock holding at each cursor, and the setting's next lock too if it puts the setting back to
+what it was, so the steps play as they did before. If the next lock sets something else, it
+stays, and only the first goes.
+
+Which setting? The lock column the cursor's in, or, on the note field, the one locked nearest
+above the cursor on its track.
+
+| Keys | Action             | Command     | What it does                                        |
+|------|--------------------|-------------|-----------------------------------------------------|
+| `ms` | `surround_add`     | `:surround` | lock a setting over the selection, back after it    |
+| `mr` | `surround_replace` |             | select where the lock holds, to give it a new value |
+| `md` | `surround_delete`  |             | take away the lock, and the one putting it back     |
+
 ### Typing in a lock column
 
 In a lock column, insert mode's keys type values rather than play notes:

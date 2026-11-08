@@ -417,6 +417,81 @@ cursor. `A-,` drops the primary instead, and the next becomes primary; it won't 
 selection. `(` and `)` move which selection is primary, round and round, so you can bring each
 into view, or choose which `,` keeps.
 
+## Objects: `mi`, `ma` and `mm`
+
+### Selecting what the cursor is in
+
+In Helix, `miw` selects the word the cursor is in, `mi(` everything inside the brackets round
+it, and `ma(` the brackets too. I use those all the time: rather than steering both ends of a
+selection, you name the thing and it's selected. Vim calls them text objects (`diw`, `ci(`);
+Kakoune and Helix keep them but, as ever, select first. A grid has no words or brackets, but it
+has things of its own that a passage falls into: notes, phrases, beats, bars, groups, chords,
+and the stretch a lock holds over. `m` is Helix's match menu, and here it selects those.
+
+`mi`, then a key, selects **inside** the object each selection's cursor is in; `ma`
+selects **around** it. Like every other selection key, it works at every selection at once, so
+`%` `s C` `ret` `min` grows every C in the pattern into its whole held note.
+
+| Key | Object | Inside (`mi`)                                  | Around (`ma`)               |
+|-----|--------|------------------------------------------------|-----------------------------|
+| `n` | note   | the note, and the steps it's held for          | and the rest after it       |
+| `p` | phrase | notes up to a rest of a beat or more           | and the rest after it       |
+| `b` | beat   | the beat, on the tracks selected               | across every track          |
+| `m` | bar    | the bar, on the tracks selected                | across every track          |
+| `g` | group  | the group's tracks, over the steps selected    | over every step             |
+| `c` | chord  | each note sounding on the row, its first step  | each of those notes, whole  |
+| `l` | lock   | where the lock holds, up to the setting's next | and the setting's next lock |
+
+In text, around means the object and the space after it, and so it does for a note and a
+phrase: `man` takes the note and the rest up to the next one, the way `maw` takes a word and the
+space after it. A beat or bar has no space after it, so around takes it across the whole grid
+instead, as `x` does rows: `mib` is this beat of the bass, `mab` this beat of everything.
+
+**Notes.** A note's steps are the ones it's held for, drawn `│` under it, but never into the
+next note. With the cursor in the rest after a note, `min` takes the note before, as the rest
+is part of that note's around; before the first note there's nothing, and the message says so.
+
+**Phrases.** A phrase is a run of notes with no gap of a beat or more between them, so the
+notes of a riff stay together while the rest between riffs splits them. A shorter gap would
+split a syncopated line into single notes; a longer one would run phrases together. Here the
+bass's first phrase is 00 to 06 (a rest of three steps is less than a beat of four), and step
+12 starts another after a rest of a whole beat:
+
+```
+ 00  C-2  ┐                         00  C-2  ┐
+ 01  ···  │                         01  ···  │
+ 02  D#2  │  mip                    02  D#2  │  map: and the rest,
+ 03  ···  │                         03  ···  │  up to the next phrase
+ ..       │                         ..       │
+ 06  G-2  ┘                         06  G-2  │
+ 07  ···                            ..       │
+ ..                                 11  ···  ┘
+ 12  C-3                            12  C-3
+```
+
+**Chords.** `mic` puts a cursor on every note sounding on the cursor's row, on each one's first
+step, held over from above or struck there, so `C-a` then raises the whole chord. `mac` selects
+each of those notes whole, to copy or delete.
+
+**Locks.** `mil` selects where a lock holds: from the step it's on to the step before the
+setting's next lock. Which setting is the lock column the cursor's in, or, on a note, the one
+locked nearest above the cursor on its track. `mal` takes the next lock in too, which makes it
+the pair that `ms` puts in (see [Surround](05-gestures.md#surround-ms-mr-and-md)).
+
+**Matching: `mm`.** In Helix, `mm` goes to the bracket matching the one under the cursor. Here
+it goes to the other end of the note the cursor's in: from its first step to the last step it's
+held for, and from anywhere else in it back to its first. In a lock column it does the same with
+where the lock holds. In select mode it stretches the selection, so `vmm` selects a held note.
+
+| Keys | Action          | What it does                                        |
+|------|-----------------|-----------------------------------------------------|
+| `mi` | `select_inside` | then a key: select inside the object at each cursor |
+| `ma` | `select_around` | then a key: select around it                        |
+| `mm` | `match_end`     | to the other end of the note, or lock               |
+
+`ms`, `mr` and `md` are surround, which puts a pair of locks round the selection: see
+[Surround](05-gestures.md#surround-ms-mr-and-md). Mute, which `m` was before, is `tm`.
+
 ## Entering notes
 
 ### Insert mode

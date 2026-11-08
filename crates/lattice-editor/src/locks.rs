@@ -7,7 +7,7 @@ use lattice_core::{
     Track,
 };
 
-use crate::{Editor, Effect, Row, Strip, TrackId, changed};
+use crate::{Cursor, Editor, Effect, Row, Strip, TrackId, changed};
 
 /// What the first `L` on the mixer page remembers: a track's settings as they were, and how far
 /// back undo went.
@@ -188,6 +188,17 @@ fn find(track: &Track, name: &str) -> Option<Setting> {
     }
 }
 
+/// The lock that puts `column`'s setting back to what it is before `step`: its lock before, or
+/// the mixer's value if there's none.
+pub(crate) fn restoring(steps: &[Step], column: LockColumn, step: usize) -> Lock {
+    let before = (steps.get(..step).into_iter().flatten().rev())
+        .find_map(|s| s.locks.iter().find(|l| l.column() == column));
+    match before {
+        Some(l) if l.change != Change::Reset => column.lock(l.value, Change::Set),
+        _ => column.lock(0.0, Change::Reset),
+    }
+}
+
 fn step_mut(grid: &mut Grid, t: usize, step: usize) -> Option<&mut Step> {
     grid.tracks.get_mut(t)?.steps.get_mut(step)
 }
@@ -291,6 +302,147 @@ impl Editor {
             }
         }
         Ok(changed(columns.into_iter().map(|(t, _)| t)))
+    }
+
+    /// `:surround PARAM VALUE`, or `ms`: locks the setting at VALUE (or `~VALUE`, sliding there)
+    /// on each selection's first step, and on the step after its last, back to what it was
+    /// before: the setting's lock before the selection, or the mixer's own value. A lock of the
+    /// setting already there after the selection is left, as it already says what comes next.
+    pub(crate) fn surround(&mut self, args: &str) -> Result<Vec<Effect>, String> {
+        let Some((name, word)) = args.trim().split_once(' ') else {
+            return Err("surround with which setting, at what? :surround cutoff 800".into());
+        };
+        let (change, word) = match word.trim().strip_prefix('~') {
+            Some(w) => (Change::Slide, w),
+            None => (Change::Set, word.trim()),
+        };
+        let columns: Vec<_> = (self.selections.iter())
+            .flat_map(|s| self.columns(s.region()))
+            .filter(|(_, steps)| !steps.is_empty())
+            .collect();
+        // Every track has to have the setting, and room for its column, before anything changes.
+        let mut edits = vec![];
+        for (t, steps) in &columns {
+            let track = self.grid.tracks.get(*t).ok_or("no such track")?;
+            let setting = find(track, name).ok_or_else(|| {
+                let names: Vec<String> = settings(track).iter().map(|s| s.name(track)).collect();
+                format!("{} has no {name}: try {}", track.name, names.join(", "))
+            })?;
+            let mut with = track.clone();
+            add_columns(&mut with, [&setting.lock(0.0)])?;
+            let column = setting.column();
+            let lock = column.lock(value(setting.info, word)?, change);
+            let back = restoring(&track.steps, column, steps.start);
+            // Past the end, playing stops or goes round to the top, which sets its own.
+            let after = (track.steps.get(steps.end))
+                .filter(|s| !s.locks.iter().any(|l| l.column() == column))
+                .map(|_| (steps.end, back));
+            edits.push((*t, with.columns, steps.clone(), lock, after));
+        }
+        self.checkpoint();
+        for (t, columns, steps, lock, after) in &edits {
+            let Some(track) = self.grid.tracks.get_mut(*t) else {
+                continue;
+            };
+            track.columns = columns.clone();
+            // Each track has a column for the setting, so room on every step.
+            for (step, lock) in [(steps.start, *lock)].into_iter().chain(*after) {
+                if let Some(step) = track.steps.get_mut(step) {
+                    step.locks.set(lock);
+                }
+            }
+        }
+        if let [(t, _, steps, lock, after)] = &edits[..]
+            && let Some(track) = self.grid.tracks.get(*t)
+        {
+            let (first, end) = (steps.start, steps.end);
+            let lock = describe(track, lock);
+            self.message = Some(match after {
+                Some((_, back)) => format!(
+                    "{lock} from {first:02} to {:02}, then {}",
+                    end - 1,
+                    describe(track, back)
+                ),
+                None if end < track.steps.len() => {
+                    format!(
+                        "{lock} from {first:02} to {:02}, up to the lock on {end:02}",
+                        end - 1
+                    )
+                }
+                None => format!("{lock} from {first:02} to the end"),
+            });
+        }
+        Ok(changed(columns.into_iter().map(|(t, _)| t)))
+    }
+
+    /// The lock holding at the cursor, as `mr` and `md` find it: on its track, its step, and
+    /// where the setting's next lock is, if it has one.
+    fn surrounding(&self, c: Cursor) -> Option<(LockColumn, usize, Option<usize>)> {
+        let column = self.lock_column_at(c)?;
+        let steps = &self.grid.tracks.get(c.track)?.steps;
+        let has = |i: &usize| {
+            (steps.get(*i)).is_some_and(|s| s.locks.iter().any(|l| l.column() == column))
+        };
+        let first = (0..=c.step).rev().find(has)?;
+        let next = (first + 1..steps.len()).find(has);
+        Some((column, first, next))
+    }
+
+    /// `mr`: selects where the lock at the cursor holds, and starts `:surround` with its
+    /// setting, to give it a new value there.
+    pub(crate) fn surround_replace(&mut self) {
+        let c = self.cursor();
+        let Some((column, first, next)) = self.surrounding(c) else {
+            self.message = Some("no lock here to change: ms puts one round the selection".into());
+            self.key_failed = true;
+            return;
+        };
+        let Some(label) = (self.lock_columns(c.track).into_iter()).find(|l| l.column == column)
+        else {
+            return;
+        };
+        let last = next.map_or(usize::MAX, |n| n - 1);
+        let (from, to) = (Cursor { step: first, ..c }, Cursor { step: last, ..c });
+        self.set_selections(vec![self.clamped(from, to)], 0);
+        self.open_command(&format!("surround {} ", label.full));
+    }
+
+    /// `md`: takes away the lock holding at each cursor, and the setting's next lock too if it
+    /// puts the setting back to what it was before, so the steps play as they did.
+    pub(crate) fn surround_delete(&mut self) -> Vec<Effect> {
+        let found: Vec<_> = (self.selections.iter())
+            .filter_map(|s| Some((s.cursor.track, self.surrounding(s.cursor)?)))
+            .collect();
+        if found.is_empty() {
+            self.message = Some("no lock here to take away".into());
+            self.key_failed = true;
+            return vec![];
+        }
+        self.checkpoint();
+        let mut pairs = 0;
+        for &(t, (column, first, next)) in &found {
+            let Some(track) = self.grid.tracks.get_mut(t) else {
+                continue;
+            };
+            let back = restoring(&track.steps, column, first);
+            if let Some(step) = track.steps.get_mut(first) {
+                step.locks.retain(|l| l.column() != column);
+            }
+            let puts_back =
+                |l: &Lock| l.column() == column && l.change == back.change && l.value == back.value;
+            if let Some(step) = next.and_then(|n| track.steps.get_mut(n))
+                && step.locks.iter().any(puts_back)
+            {
+                step.locks.retain(|l| !puts_back(l));
+                pairs += 1;
+            }
+        }
+        self.message = Some(match (found.len(), pairs) {
+            (1, 1) => "took away the lock and the one putting it back".into(),
+            (1, _) => "took away the lock".into(),
+            (n, p) => format!("took away {n} locks, and {p} putting them back"),
+        });
+        changed(found.into_iter().map(|(t, _)| t))
     }
 
     /// `L` on the mixer page. The first press remembers the track's settings; change them, and
@@ -1029,6 +1181,76 @@ mod tests {
         e.grid.tracks[0].effects.remove(0);
         e.shift_locks(0, 0, false);
         assert_eq!(columns(&e), 1);
+    }
+
+    #[test]
+    fn surround_locks_a_passage_and_puts_the_setting_back_after() {
+        let mut e = editor();
+        let keys = |e: &mut Editor, k: &str| crate::tests::keys(e, k);
+        keys(&mut e, "jvj");
+        run(&mut e, "surround cutoff 100").unwrap();
+        assert_eq!(locks(&e, 1), ["cutoff 100Hz"]);
+        assert!(locks(&e, 2).is_empty());
+        assert_eq!(locks(&e, 3), ["cutoff --"], "back to the mixer's");
+        assert_eq!(
+            e.message.as_deref(),
+            Some("cutoff 100Hz from 01 to 02, then cutoff --")
+        );
+        // After an earlier lock, back to its value; and over the end, nothing after.
+        e.handle(crate::Key::Esc);
+        keys(&mut e, "gg");
+        run(&mut e, "lock cutoff 200").unwrap();
+        keys(&mut e, "3jvj");
+        run(&mut e, "surround cutoff ~300").unwrap();
+        assert_eq!(locks(&e, 3), ["cutoff ~300Hz"]);
+        assert_eq!(
+            e.message.as_deref(),
+            Some("cutoff ~300Hz from 03 to the end")
+        );
+        // A pair's end, already there, is left.
+        e.handle(crate::Key::Esc);
+        keys(&mut e, ";ggjv");
+        run(&mut e, "surround cutoff 400").unwrap();
+        assert_eq!(locks(&e, 1), ["cutoff 400Hz"]);
+        assert_eq!(locks(&e, 3), ["cutoff ~300Hz"]);
+        assert!(run(&mut e, "surround cutoff").is_err());
+        assert!(run(&mut e, "surround nothing 1").is_err());
+    }
+
+    #[test]
+    fn md_takes_away_a_pair_and_mr_changes_it() {
+        let mut e = editor();
+        let keys = |e: &mut Editor, k: &str| crate::tests::keys(e, k);
+        keys(&mut e, "jvj");
+        run(&mut e, "surround cutoff 100").unwrap();
+        e.handle(crate::Key::Esc);
+        keys(&mut e, ";mr");
+        assert_eq!(e.selection().first_step, 1);
+        assert_eq!(e.selection().last_step, 2);
+        let crate::Mode::Command(prompt) = &e.mode else {
+            panic!("the command line opens")
+        };
+        assert_eq!(prompt.line, "surround cutoff ");
+        keys(&mut e, "500");
+        e.handle(crate::Key::Enter);
+        assert_eq!(locks(&e, 1), ["cutoff 500Hz"]);
+        assert_eq!(locks(&e, 3), ["cutoff --"]);
+        assert_eq!(
+            e.message.as_deref(),
+            Some("cutoff 500Hz from 01 to 02, up to the lock on 03")
+        );
+        keys(&mut e, ";md");
+        assert!(locks(&e, 1).is_empty() && locks(&e, 3).is_empty());
+        // A lock whose next doesn't put it back keeps that one.
+        keys(&mut e, "gg");
+        run(&mut e, "lock cutoff 100").unwrap();
+        keys(&mut e, "2j");
+        run(&mut e, "lock cutoff 300").unwrap();
+        keys(&mut e, "kmd");
+        assert!(locks(&e, 0).is_empty());
+        assert_eq!(locks(&e, 2), ["cutoff 300Hz"]);
+        keys(&mut e, "ggmd");
+        assert!(e.message.is_some(), "nothing holds at 00 now");
     }
 
     #[test]

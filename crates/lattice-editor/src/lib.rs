@@ -38,6 +38,7 @@ mod locks;
 mod manual;
 mod midi;
 mod midi_out;
+mod objects;
 pub use fields::{StepField, number_velocity, velocity_number};
 pub use locks::{ColumnLabel, lock_text};
 mod looper;
@@ -391,6 +392,10 @@ enum Pending {
     Record,
     /// `q`: the next key picks the register whose keys to replay, so many times.
     Replay(usize),
+    /// `mi` or `ma`: the next key picks the object to select inside, or around.
+    Object {
+        around: bool,
+    },
 }
 
 /// What the infobox shows while a key is pending.
@@ -998,6 +1003,7 @@ impl Editor {
             Pending::Register => Some(self.registers_infobox()),
             Pending::Record => Some(self.keys_infobox(false)),
             Pending::Replay(_) => Some(self.keys_infobox(true)),
+            Pending::Object { around } => Some(self.objects_infobox(around)),
             Pending::Replace => Some(Infobox {
                 title: "replace".into(),
                 items: vec![
@@ -1246,6 +1252,10 @@ impl Editor {
                 self.goto_field(key);
                 return vec![];
             }
+            Some(Pending::Object { around }) => {
+                self.select_object(key, around);
+                return vec![];
+            }
             Some(Pending::Menu(prefix)) => {
                 let n = self.count.take().unwrap_or(1);
                 let binding = match self.keymap.normal.get(&prefix) {
@@ -1282,10 +1292,16 @@ impl Editor {
             let times = self.count.take().unwrap_or(1);
             return self.replay(key, times);
         }
-        // Pages with no notes to select have `s` solo, as `m` mutes on every page.
-        if matches!(self.page, Page::Mixer | Page::Fx | Page::Instrument) && key == Key::Char('s') {
+        // Pages with no notes to select have `m` mute and `s` solo, as the song page does.
+        if matches!(self.page, Page::Mixer | Page::Fx | Page::Instrument)
+            && let Key::Char(c @ ('m' | 's')) = key
+        {
             self.count = None;
-            return self.act(Action::ToggleSolo, 1);
+            let action = match c {
+                'm' => Action::ToggleMute,
+                _ => Action::ToggleSolo,
+            };
+            return self.act(action, 1);
         }
         match self.keymap.normal.get(&key).cloned() {
             // Keep the count for the action after the register, as for a menu's.
@@ -1402,6 +1418,14 @@ impl Editor {
             saved_primary: self.primary,
             ..Prompt::default()
         });
+    }
+
+    /// Opens the command line with `line` typed, for the player to finish.
+    pub(crate) fn open_command(&mut self, line: &str) {
+        self.open_prompt(PromptKind::Command);
+        if let Mode::Command(prompt) = &mut self.mode {
+            prompt.line = line.into();
+        }
     }
 
     /// Leaves the prompt, putting back the selections a note prompt started from.
@@ -1844,6 +1868,12 @@ impl Editor {
                 let len = self.selections.len().max(1);
                 self.primary = (self.primary + len - n % len) % len;
             }
+            Action::MatchEnd => self.match_end(),
+            Action::SelectInside => self.pending = Some(Pending::Object { around: false }),
+            Action::SelectAround => self.pending = Some(Pending::Object { around: true }),
+            Action::SurroundAdd => self.open_command("surround "),
+            Action::SurroundReplace => self.surround_replace(),
+            Action::SurroundDelete => return self.surround_delete(),
             Action::SelectNotes => self.open_prompt(PromptKind::Select),
             Action::KeepNotes => self.open_prompt(PromptKind::Keep),
             Action::RemoveNotes => self.open_prompt(PromptKind::Remove),
@@ -2175,7 +2205,7 @@ impl Editor {
     }
 
     /// Steps in a bar of the pattern being edited.
-    fn bar(&self) -> usize {
+    pub(crate) fn bar(&self) -> usize {
         (self.arrangement).bar(&self.grid, self.arrangement.current) as usize
     }
 

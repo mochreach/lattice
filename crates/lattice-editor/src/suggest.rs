@@ -142,8 +142,8 @@ impl Editor {
                     ("none".into(), "no clock".into()),
                 ])
                 .collect(),
-            ("lock" | "unlock", 0) => suggest_settings(track),
-            ("lock", 1) => match before.first() {
+            ("lock" | "unlock" | "surround", 0) => suggest_settings(track),
+            ("lock" | "surround", 1) => match before.first() {
                 Some(setting) => words(&suggest_choices(track, setting)),
                 None => vec![],
             },

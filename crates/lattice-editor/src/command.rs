@@ -208,6 +208,12 @@ pub const COMMANDS: &[Spec] = &[
         describe: "lock a setting on the selected steps; FROM..TO sweeps, ~V slides, -- puts back; alone, adds its column",
     },
     Spec {
+        name: "surround",
+        alias: None,
+        params: &[text("PARAM VALUE", "setting and value")],
+        describe: "lock a setting over each selection, and back to what it was after it; ~V slides",
+    },
+    Spec {
         name: "unlock",
         alias: None,
         params: &[optional_text("[PARAM]", "setting")],
@@ -1602,6 +1608,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
         }
         "lock" => editor.lock(command.text(0)?),
         "unlock" => editor.unlock(command.text(0)?),
+        "surround" => editor.surround(command.text(0)?),
         "macro" => editor.add_macro(command.text(0)?),
         "map" => editor.map_macro(command.text(0)?),
         "unmap" => editor.unmap_macro(command.text(0)?),

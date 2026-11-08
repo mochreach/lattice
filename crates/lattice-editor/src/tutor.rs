@@ -515,6 +515,29 @@ const LESSONS: &[Lesson] = &[
         solution: ",;",
     },
     Lesson {
+        title: "Objects",
+        text: "{select_inside} and {select_around}, then a key, select the thing each cursor \
+               is in, as Helix's `mi` and `ma` do with words and brackets: `n` a note, as long \
+               as it's held, `p` a phrase, notes up to a rest of a beat, `c` the chord \
+               sounding on the row, `l` where a lock holds, `g` the track's group, and `b` and \
+               `m` the beat and the bar. Around a note or phrase takes in the rest after it; \
+               around a beat or bar takes in every track. {match_end} goes to the other end of \
+               the note the cursor's in.\n\nSelect a whole bar, across every track.",
+        teaches: &[Action::SelectInside, Action::SelectAround, Action::MatchEnd],
+        commands: &[],
+        setup: nothing,
+        watch: never,
+        done: |e, _| {
+            let r = e.selection();
+            let bar = e.bar();
+            r.first_track == 0
+                && r.last_track + 1 == e.grid.tracks.len()
+                && r.first_step % bar == 0
+                && r.rows() == bar
+        },
+        solution: "mam",
+    },
+    Lesson {
         title: "The command line",
         text: "{command_line} opens the command line; it suggests commands as you type, and \
                `tab` takes one, then the values that fit each word, such as the effects after \
@@ -561,7 +584,8 @@ const LESSONS: &[Lesson] = &[
     Lesson {
         title: "Mute and solo",
         text: "Some keys open a menu of what can follow, shown in the corner. {toggle_mute} \
-               mutes the tracks the selections reach (`m` alone does too, on every page), and \
+               mutes the tracks the selections reach (`m` alone does too, on the pages without \
+               notes and the song page), and \
                {toggle_solo} solos them (as `s` alone does where there are no notes to select); \
                {toggle_pattern_mute} (or `:pattern-mute`) mutes them in this pattern only.\n\nMute the BASS \
                track, listen, and unmute it.",
@@ -766,6 +790,50 @@ const LESSONS: &[Lesson] = &[
             })
         },
         solution: "glgg:lock cutoff 2000<ret>",
+    },
+    Lesson {
+        title: "Surround",
+        text: "To change a setting over a passage and then put it back takes two locks: one \
+               at the start, and one after the end with the value from before. {surround_add} \
+               (`:surround`) puts both round the selection: `ms`, then `cutoff 500` and `ret`, \
+               and the cutoff is 500 over the selected steps and back to what it was after \
+               them. With the cursor inside, {surround_replace} gives the passage a new value, \
+               and {surround_delete} takes both locks away.\n\nDip the LEAD track's cutoff \
+               over steps 04 to 07, and back after.",
+        teaches: &[
+            Action::SurroundAdd,
+            Action::SurroundReplace,
+            Action::SurroundDelete,
+        ],
+        commands: &["surround"],
+        setup: nothing,
+        watch: never,
+        done: |e, _| {
+            let Some(lead) = track(e, "LEAD") else {
+                return false;
+            };
+            let Some(cutoff) = (lead.instrument.params().iter()).find(|p| p.name == "cutoff")
+            else {
+                return false;
+            };
+            let column = lattice_core::LockColumn {
+                fx: None,
+                param: cutoff.id as u8,
+            };
+            let lock = |step: usize| {
+                (lead.steps.get(step))
+                    .and_then(|s| s.locks.iter().find(|l| l.column() == column).copied())
+            };
+            // A lock, and a later one putting back what was before it.
+            (1..lead.steps.len()).any(|a| {
+                let back = crate::locks::restoring(&lead.steps, column, a);
+                lock(a).is_some_and(|l| l != back)
+                    && (a + 1..lead.steps.len())
+                        .find_map(lock)
+                        .is_some_and(|l| l == back)
+            })
+        },
+        solution: "glgg4jv3jmscutoff 500<ret>",
     },
     Lesson {
         title: "Macros",

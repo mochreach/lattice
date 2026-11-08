@@ -370,6 +370,7 @@ corner lists what can follow, so you needn't remember it:
 | `]` | next       | `b` beat, `m` bar, `n` note, `p` pattern                                |
 | `[` | previous   | the same, backwards                                                     |
 | `t` | track      | select, mute, solo, add, remove, copy, paste, move, group, fold, open   |
+| `m` | match      | `i` `a` select inside or around a note, bar…, `m` its end, `s` surround |
 
 A key that isn't in the menu closes it and does nothing. `f`, `r` and `s` also wait for what
 follows (a field, a note, a pattern of notes), but say so in their own ways. The config file can

@@ -213,6 +213,17 @@ pub enum Action {
     /// Prompt for notes, and keep only the selections with a match, or without one.
     KeepNotes,
     RemoveNotes,
+    /// To the other end of the note, or lock, the cursor's in.
+    MatchEnd,
+    /// Select the object each cursor's in, by the next key: inside it, or around it.
+    SelectInside,
+    SelectAround,
+    /// Lock a setting over the selected steps, putting it back after: `:surround`.
+    SurroundAdd,
+    /// Change the value of the lock holding at the cursor, over where it holds.
+    SurroundReplace,
+    /// Take away the lock holding at the cursor, and the one after that puts it back.
+    SurroundDelete,
     Insert,
     Append,
     /// Song page: add an entry after the cursor's, or before.
@@ -352,6 +363,12 @@ impl Action {
         Action::SelectNotes,
         Action::KeepNotes,
         Action::RemoveNotes,
+        Action::MatchEnd,
+        Action::SelectInside,
+        Action::SelectAround,
+        Action::SurroundAdd,
+        Action::SurroundReplace,
+        Action::SurroundDelete,
         Action::Insert,
         Action::Append,
         Action::OpenBelow,
@@ -431,6 +448,7 @@ impl Action {
                 | Action::PrevBar
                 | Action::NextNote
                 | Action::PrevNote
+                | Action::MatchEnd
                 | Action::PrevTrack
                 | Action::NextTrack
         )
@@ -500,6 +518,14 @@ impl Action {
             Action::SelectNotes => "select matching notes",
             Action::KeepNotes => "keep selections with matching notes",
             Action::RemoveNotes => "remove selections with matching notes",
+            Action::MatchEnd => "to the other end of the note, or lock",
+            Action::SelectInside => "select inside a note, phrase, beat, bar, group, chord or lock",
+            Action::SelectAround => "select around a note, phrase, beat, bar, group, chord or lock",
+            Action::SurroundAdd => "lock a setting over the selection, and back after it",
+            Action::SurroundReplace => "change the value of the lock holding here",
+            Action::SurroundDelete => {
+                "take away the lock holding here, and the one putting it back"
+            }
             Action::Insert => "insert at start",
             Action::Append => "insert after end",
             Action::OpenBelow => "add an entry after",
@@ -836,6 +862,19 @@ impl Default for Keymap {
             ],
         );
 
+        // Helix's match mode, on the grid: objects and lock pairs rather than brackets.
+        let matching = Menu::new(
+            "match",
+            &[
+                (Char('m'), MatchEnd),
+                (Char('i'), SelectInside),
+                (Char('a'), SelectAround),
+                (Char('s'), SurroundAdd),
+                (Char('r'), SurroundReplace),
+                (Char('d'), SurroundDelete),
+            ],
+        );
+
         let normal = common
             .into_iter()
             .chain([
@@ -872,7 +911,6 @@ impl Default for Keymap {
                 (Char('K'), KeepNotes),
                 (Char('L'), LockSetting),
                 (Char('|'), LoopSelection),
-                (Char('m'), ToggleMute),
                 (Alt('K'), RemoveNotes),
                 (Char('i'), Insert),
                 (Char('a'), Append),
@@ -907,6 +945,7 @@ impl Default for Keymap {
                 (Char(']'), Binding::Menu(next)),
                 (Char('['), Binding::Menu(previous)),
                 (Char('t'), Binding::Menu(track)),
+                (Char('m'), Binding::Menu(matching)),
             ])
             .collect();
 

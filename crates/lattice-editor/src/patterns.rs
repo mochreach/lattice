@@ -722,6 +722,7 @@ mod tests {
     fn muting_says_so_and_so_do_notes_played_on_a_track_unheard() {
         let mut e = editor();
         let name = e.grid.tracks[0].name.clone();
+        e.handle(Key::Char('t'));
         e.handle(Key::Char('m'));
         assert_eq!(e.message, Some(format!("{name} muted")));
         e.message = None;
@@ -729,6 +730,7 @@ mod tests {
         e.handle(Key::Char('z'));
         assert_eq!(e.message, Some(format!("{name} is muted, so not heard")));
         e.handle(Key::Esc);
+        e.handle(Key::Char('t'));
         e.handle(Key::Char('m'));
         assert_eq!(e.message, Some(format!("{name} unmuted")));
         // Another track soloed silences it too.

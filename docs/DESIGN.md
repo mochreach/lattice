@@ -957,6 +957,16 @@ line's prompt and previews the result as you type. Helix's `C` copies a selectio
 line; here it's the rows below, offset by the selection's height. There's no sideways copy onto
 the next track: a selection already spans tracks, so widening it does the same job.
 
+`m` is Helix's match menu, with the grid's own objects in place of words and brackets
+(`objects.rs`). `mi` or `ma` then a key selects the note, phrase, beat, bar, group, chord or
+lock's reach at each cursor. Around means what it does in text, the object and the gap after,
+for a note or phrase; a beat or bar has no gap, so there it means across every track, as `x`
+does rows. A phrase breaks at a rest of a beat or more: any shorter splits a syncopated line
+into single notes. A chord is one selection per note sounding on the row, since a selection is
+a rectangle and the notes needn't start on one row. `mm` goes between a note's ends, or a
+lock's reach in a lock column. Taking `m` from mute on the pattern page was worth it: mute is
+also `tm`, and the pages with no notes to select keep `m` for it, as they keep `s` for solo.
+
 Tracks can be added, removed and moved while playing. The engine keeps room for `MAX_TRACKS` (16)
 players, each a boxed pattern, instrument and set of buffers. The UI thread builds a player and
 sends it over the command queue, and removed players go back over the garbage queue to be freed,
@@ -1143,7 +1153,13 @@ before its chain changes, so each setting goes back on the effect it was locked 
 then each effect's in order. `EFFECT.PARAM` picks an effect, by its kind's name or its number from
 1, and `inst.PARAM` picks the instrument. The value is a number in the setting's range, or a
 choice by name. `FROM..TO` sweeps across each selection, evenly along the setting's curve, so a
-cutoff sweep rises by the same interval each step. `L` on the mixer page
+cutoff sweep rises by the same interval each step. `:surround PARAM VALUE` (`ms`), after Vim's
+surround plugin and Helix's `ms`, locks the setting on each selection's first step and puts it
+back on the step after its last: to its lock before the selection, or `--` with none, which is
+what's easy to get wrong by hand. A lock of the setting already after it is left, so `mr`,
+which selects a lock's reach and runs `:surround` again, changes the first lock alone. `md`
+removes the lock holding at the cursor, and the next only if it restores the value before.
+`L` on the mixer page
 remembers the strip's track's instrument and effects (`Locking`); `L` again locks every setting
 that differs onto the steps the selections cover (whichever tracks they were made on), puts the
 settings back, and drops the undo steps the changes made, so the whole thing is one undo. `esc`,

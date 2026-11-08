@@ -784,8 +784,10 @@ there are no notes to play here. The instrument page records settings the same w
 ```
 
 A plain name is looked for on the instrument first, then on each effect in order, then among the
-macros. `:unlock PARAM` clears that setting's locks from the selected steps, and `:unlock` alone
-clears all of them; done along a whole track, the setting's column goes too.
+macros. `:surround PARAM VALUE` (`ms`) locks it over each selection and puts it back after,
+as [Surround](05-gestures.md#surround-ms-mr-and-md) explains. `:unlock PARAM` clears that
+setting's locks from the selected steps, and `:unlock` alone clears all of them; done along a
+whole track, the setting's column goes too.
 
 While a lock holds a setting during playback, the mixer and fx pages show the locked value, in
 the accent colour and marked `◆`, in place of the track's own, so the knobs move with the

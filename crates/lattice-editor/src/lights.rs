@@ -231,18 +231,21 @@ fn kind(action: Action) -> Kind {
     match action {
         Left | Right | Up | Down | HalfPageUp | HalfPageDown | PageUp | PageDown | FirstStep
         | LastStep | FirstTrack | LastTrack | NextBeat | PrevBeat | NextBar | PrevBar
-        | NextPattern | PrevPattern | NextNote | PrevNote | PrevTrack | NextTrack | GotoField => {
-            Kind::Move
-        }
+        | NextPattern | PrevPattern | NextNote | PrevNote | PrevTrack | NextTrack | GotoField
+        | MatchEnd => Kind::Move,
         GotoMixer | GotoPattern | GotoSong | GotoInstrument | GotoEffects | ToggleView
         | ToggleOpen | ToggleFold => Kind::Page,
         SelectRows | SelectAll | SelectTracks | Collapse | Flip | SelectMode | CopyDown
         | CopyUp | SplitRows | MergeAll | KeepPrimary | RemovePrimary | RotateForward
-        | RotateBackward | SelectNotes | KeepNotes | RemoveNotes => Kind::Select,
+        | RotateBackward | SelectNotes | KeepNotes | RemoveNotes | SelectInside | SelectAround => {
+            Kind::Select
+        }
         ReverseSteps | RepeatSteps | RotateStepsForward | RotateStepsBackward | Delete | Clear
         | ClearAdvance | Yank | Paste | PasteInsert | Replace | SelectRegister | RecordKeys
         | ReplayKeys | Undo | Redo | NoteUp | NoteDown | NoteOctaveUp | NoteOctaveDown | Longer
-        | Shorter | LockSetting | Fill => Kind::Edit,
+        | Shorter | LockSetting | Fill | SurroundAdd | SurroundReplace | SurroundDelete => {
+            Kind::Edit
+        }
         Insert | Append | OpenBelow | OpenAbove | Open | Change | CommandLine | Escape
         | KeyboardOctaveUp | KeyboardOctaveDown | Quit => Kind::Mode,
         ToggleMute | TogglePatternMute | ToggleSolo | AddTrack | RemoveTrack | YankTracks
