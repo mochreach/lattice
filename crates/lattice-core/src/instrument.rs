@@ -25,6 +25,10 @@
 //! in 2007, as two Cornish siblings who never existed: a tine struck by a hammer, ringing in
 //! front of a magnetic pickup that barks when it's struck hard, which can drift out of tune and
 //! play in other tunings than equal temperament.
+//!
+//! The FM synthesiser is Bessel, after Friedrich Bessel, whose functions give the strength of
+//! each partial frequency modulation makes: four operators, sine oscillators that bend each
+//! other's phase, in one of eight algorithms, as in Yamaha's four-operator synthesisers.
 
 use serde::{Deserialize, Serialize};
 
@@ -59,14 +63,16 @@ pub enum InstKind {
     Switched,
     Krell,
     Tuss,
+    Bessel,
     /// Not an instrument of Lattice's own: notes and settings go out over MIDI.
     Midi,
 }
 
 impl InstKind {
-    pub const ALL: [InstKind; 13] = [
+    pub const ALL: [InstKind; 14] = [
         InstKind::Synth,
         InstKind::Switched,
+        InstKind::Bessel,
         InstKind::Monochord,
         InstKind::Krell,
         InstKind::Tuss,
@@ -98,6 +104,7 @@ impl InstKind {
             InstKind::Switched => &switched::PARAMS,
             InstKind::Krell => &krell::PARAMS,
             InstKind::Tuss => &tuss::PARAMS,
+            InstKind::Bessel => &bessel::PARAMS,
             InstKind::Midi => &midi::PARAMS,
         }
     }
@@ -118,6 +125,7 @@ impl Kind for InstKind {
             InstKind::Switched => "switched",
             InstKind::Krell => "krell",
             InstKind::Tuss => "tuss",
+            InstKind::Bessel => "bessel",
             InstKind::Midi => "midi",
         }
     }
@@ -524,6 +532,179 @@ pub mod tuss {
             Curve::Choice(crate::tuning::KEYS),
         ),
         param(GAIN, "gain", (0.0, 1.0, 0.5), "", Curve::Linear),
+    ];
+}
+
+/// Bessel's FM synthesiser: four operators, each a sine oscillator with its own envelope, bending
+/// each other's phase in one of eight algorithms. Operator `n`'s settings are named with its
+/// number, `ratio1` to `wave4`, and `op(n, RATIO)` finds their ids.
+pub mod bessel {
+    use super::*;
+
+    /// How the operators modulate each other, from [`ALGORITHMS`].
+    pub const ALGORITHM: u32 = 0;
+    /// How much operator 4 modulates itself: a sine, through a saw, to noise.
+    pub const FEEDBACK: u32 = 1;
+    /// How far, in semitones, every operator's pitch starts from the note's, falling back to it
+    /// over `sweep`: a kick's thump, a tom's fall, a laser's zap.
+    pub const PITCH: u32 = 2;
+    /// How long the pitch takes to fall back, in seconds to fall by 1/e.
+    pub const SWEEP: u32 = 3;
+    /// How much higher notes are duller and die sooner, as a real instrument's do.
+    pub const KEYSCALE: u32 = 4;
+    /// The tuning the notes play in, from [`crate::tuning::TUNINGS`], and its key note.
+    pub const TUNING: u32 = 5;
+    pub const KEY: u32 = 6;
+    pub const GAIN: u32 = 7;
+
+    /// An operator's settings, by their offset among its own: operator `n`'s are at
+    /// [`op`]`(n, …)`.
+    ///
+    /// Its pitch as a multiple of the note's (with `track` at 1) or of C-4's (at 0).
+    pub const RATIO: u32 = 0;
+    /// Its pitch nudged, in cents.
+    pub const DETUNE: u32 = 1;
+    /// How loud it is, if it's heard; how much it bends another's phase, if it modulates.
+    pub const LEVEL: u32 = 2;
+    /// Its envelope: rising to full, falling to `sustain`, and fading once the note's off.
+    pub const ATTACK: u32 = 3;
+    pub const DECAY: u32 = 4;
+    pub const SUSTAIN: u32 = 5;
+    pub const RELEASE: u32 = 6;
+    /// How much softer notes make it quieter, or bend less.
+    pub const VELOCITY: u32 = 7;
+    /// How far its pitch follows the note: 1 all the way, 0 not at all, fixed, for drums.
+    pub const TRACK: u32 = 8;
+    /// Its waveform, from [`WAVES`].
+    pub const WAVE: u32 = 9;
+    /// How many settings each operator has, after the voice's own.
+    pub const PER_OP: u32 = 10;
+    pub const OPS: usize = 4;
+
+    pub const RATIO1: u32 = 8;
+    pub const DETUNE1: u32 = 9;
+    pub const LEVEL1: u32 = 10;
+    pub const ATTACK1: u32 = 11;
+    pub const DECAY1: u32 = 12;
+    pub const SUSTAIN1: u32 = 13;
+    pub const RELEASE1: u32 = 14;
+    pub const VELOCITY1: u32 = 15;
+    pub const TRACK1: u32 = 16;
+    pub const WAVE1: u32 = 17;
+    pub const RATIO2: u32 = 18;
+    pub const DETUNE2: u32 = 19;
+    pub const LEVEL2: u32 = 20;
+    pub const ATTACK2: u32 = 21;
+    pub const DECAY2: u32 = 22;
+    pub const SUSTAIN2: u32 = 23;
+    pub const RELEASE2: u32 = 24;
+    pub const VELOCITY2: u32 = 25;
+    pub const TRACK2: u32 = 26;
+    pub const WAVE2: u32 = 27;
+    pub const RATIO3: u32 = 28;
+    pub const DETUNE3: u32 = 29;
+    pub const LEVEL3: u32 = 30;
+    pub const ATTACK3: u32 = 31;
+    pub const DECAY3: u32 = 32;
+    pub const SUSTAIN3: u32 = 33;
+    pub const RELEASE3: u32 = 34;
+    pub const VELOCITY3: u32 = 35;
+    pub const TRACK3: u32 = 36;
+    pub const WAVE3: u32 = 37;
+    pub const RATIO4: u32 = 38;
+    pub const DETUNE4: u32 = 39;
+    pub const LEVEL4: u32 = 40;
+    pub const ATTACK4: u32 = 41;
+    pub const DECAY4: u32 = 42;
+    pub const SUSTAIN4: u32 = 43;
+    pub const RELEASE4: u32 = 44;
+    pub const VELOCITY4: u32 = 45;
+    pub const TRACK4: u32 = 46;
+    pub const WAVE4: u32 = 47;
+
+    /// The id of operator `n`'s (1 to 4) setting `offset`, such as `op(2, LEVEL)`.
+    pub const fn op(n: u32, offset: u32) -> u32 {
+        8 + (n - 1) * PER_OP + offset
+    }
+
+    /// The algorithms, as in Yamaha's four-operator synthesisers though not in their order:
+    /// `stack` 4→3→2→1; `branch` 4→3→1 and 2→1; `crown` 2, 3 and 4 all into 1; `pairs` 4→3 and
+    /// 2→1, both heard; `fan` 4 into each of 1, 2 and 3; `chain` 4→3→2, and 1 alone; `trio` 4→3,
+    /// heard with 1 and 2; `organ` all four heard, none modulating.
+    pub const ALGORITHMS: &[&str] = &[
+        "stack", "branch", "crown", "pairs", "fan", "chain", "trio", "organ",
+    ];
+    /// The waveforms: a sine; its top half only, the bottom flattened; both halves turned up,
+    /// an octave higher; and half a sine twice as fast, then nothing, bright and nasal.
+    pub const WAVES: &[&str] = &["sine", "half", "abs", "pulse"];
+
+    pub(super) const PARAMS: [ParamInfo; 48] = [
+        param(
+            ALGORITHM,
+            "algorithm",
+            (0.0, 7.0, 3.0),
+            "",
+            Curve::Choice(ALGORITHMS),
+        ),
+        param(FEEDBACK, "feedback", (0.0, 1.0, 0.0), "", Curve::Linear),
+        param(PITCH, "pitch", (-48.0, 48.0, 0.0), "st", Curve::Linear),
+        param(SWEEP, "sweep", (0.002, 2.0, 0.05), "s", Curve::Log),
+        param(KEYSCALE, "keyscale", (0.0, 1.0, 0.3), "", Curve::Linear),
+        param(
+            TUNING,
+            "tuning",
+            (0.0, 5.0, 0.0),
+            "",
+            Curve::Choice(crate::tuning::TUNINGS),
+        ),
+        param(
+            KEY,
+            "key",
+            (0.0, 11.0, 0.0),
+            "",
+            Curve::Choice(crate::tuning::KEYS),
+        ),
+        param(GAIN, "gain", (0.0, 1.0, 0.5), "", Curve::Linear),
+        param(RATIO1, "ratio1", (0.125, 32.0, 1.0), "", Curve::Log),
+        param(DETUNE1, "detune1", (-100.0, 100.0, 0.0), "c", Curve::Linear),
+        param(LEVEL1, "level1", (0.0, 1.0, 0.9), "", Curve::Linear),
+        param(ATTACK1, "attack1", (0.0005, 10.0, 0.002), "s", Curve::Log),
+        param(DECAY1, "decay1", (0.005, 20.0, 2.0), "s", Curve::Log),
+        param(SUSTAIN1, "sustain1", (0.0, 1.0, 0.3), "", Curve::Linear),
+        param(RELEASE1, "release1", (0.005, 20.0, 0.3), "s", Curve::Log),
+        param(VELOCITY1, "velocity1", (0.0, 1.0, 0.3), "", Curve::Linear),
+        param(TRACK1, "track1", (0.0, 1.0, 1.0), "", Curve::Linear),
+        param(WAVE1, "wave1", (0.0, 3.0, 0.0), "", Curve::Choice(WAVES)),
+        param(RATIO2, "ratio2", (0.125, 32.0, 1.0), "", Curve::Log),
+        param(DETUNE2, "detune2", (-100.0, 100.0, 0.0), "c", Curve::Linear),
+        param(LEVEL2, "level2", (0.0, 1.0, 0.55), "", Curve::Linear),
+        param(ATTACK2, "attack2", (0.0005, 10.0, 0.002), "s", Curve::Log),
+        param(DECAY2, "decay2", (0.005, 20.0, 1.2), "s", Curve::Log),
+        param(SUSTAIN2, "sustain2", (0.0, 1.0, 0.2), "", Curve::Linear),
+        param(RELEASE2, "release2", (0.005, 20.0, 0.3), "s", Curve::Log),
+        param(VELOCITY2, "velocity2", (0.0, 1.0, 0.7), "", Curve::Linear),
+        param(TRACK2, "track2", (0.0, 1.0, 1.0), "", Curve::Linear),
+        param(WAVE2, "wave2", (0.0, 3.0, 0.0), "", Curve::Choice(WAVES)),
+        param(RATIO3, "ratio3", (0.125, 32.0, 1.0), "", Curve::Log),
+        param(DETUNE3, "detune3", (-100.0, 100.0, 0.0), "c", Curve::Linear),
+        param(LEVEL3, "level3", (0.0, 1.0, 0.6), "", Curve::Linear),
+        param(ATTACK3, "attack3", (0.0005, 10.0, 0.002), "s", Curve::Log),
+        param(DECAY3, "decay3", (0.005, 20.0, 1.5), "s", Curve::Log),
+        param(SUSTAIN3, "sustain3", (0.0, 1.0, 0.2), "", Curve::Linear),
+        param(RELEASE3, "release3", (0.005, 20.0, 0.3), "s", Curve::Log),
+        param(VELOCITY3, "velocity3", (0.0, 1.0, 0.5), "", Curve::Linear),
+        param(TRACK3, "track3", (0.0, 1.0, 1.0), "", Curve::Linear),
+        param(WAVE3, "wave3", (0.0, 3.0, 0.0), "", Curve::Choice(WAVES)),
+        param(RATIO4, "ratio4", (0.125, 32.0, 14.0), "", Curve::Log),
+        param(DETUNE4, "detune4", (-100.0, 100.0, 0.0), "c", Curve::Linear),
+        param(LEVEL4, "level4", (0.0, 1.0, 0.4), "", Curve::Linear),
+        param(ATTACK4, "attack4", (0.0005, 10.0, 0.002), "s", Curve::Log),
+        param(DECAY4, "decay4", (0.005, 20.0, 0.08), "s", Curve::Log),
+        param(SUSTAIN4, "sustain4", (0.0, 1.0, 0.0), "", Curve::Linear),
+        param(RELEASE4, "release4", (0.005, 20.0, 0.3), "s", Curve::Log),
+        param(VELOCITY4, "velocity4", (0.0, 1.0, 0.8), "", Curve::Linear),
+        param(TRACK4, "track4", (0.0, 1.0, 1.0), "", Curve::Linear),
+        param(WAVE4, "wave4", (0.0, 3.0, 0.0), "", Curve::Choice(WAVES)),
     ];
 }
 

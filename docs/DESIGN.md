@@ -367,6 +367,69 @@ tines in front of magnetic pickups, which can drift out of tune and play in othe
 Its notes don't glide. The voices benchmark plays eight voices at around 1,600 times real time,
 the cheapest of the pitched engines but the test synth.
 
+### Bessel, the FM engine
+
+The sixth engine, named after Friedrich Bessel, whose functions `Jₙ(β)` give the strength of the
+`n`th sideband pair when a sine is modulated with index `β`. It fills the gap the physical
+engines leave: bells, glassy keys, plucked and slapped basses, brass, and drums, from one engine
+with presets, as on Yamaha's four-operator synthesisers (DX21, DX100, TX81Z). One instrument,
+`:inst bessel`.
+
+- **Operators**: four, each a phase accumulator in cycles and a wave read at `phase + bend`: a
+  sine (a ninth-order odd polynomial on `[-¼, ¼]` after folding, within 2e-5), or the TX81Z's
+  `half`, `abs` and `pulse`, each with its mean taken off so a carrier adds no DC. Strictly
+  phase modulation, as the DX7's: the sidebands are FM's, and the pitch doesn't drift with the
+  index.
+- **Algorithms**: eight, each a bitmask per operator of the operators modulating it, always
+  higher-numbered, so each sample runs from 4 down to 1 with no delay between operators, and a
+  mask of those heard. A modulator's output is `env × level² × 2 cycles` (an index up to 4π, the
+  DX7's), times the velocity term and key scaling's `2^(-octaves above C-4 × keyscale / 2)`,
+  never more than 1. A carrier's is `env × level² × velocity term / carriers`, so changing the
+  algorithm doesn't jump the level.
+- **Feedback**: operator 4 adds `feedback² × 0.4 × (y[n-1] + y[n-2])` cycles to its own phase,
+  the average of its last two outputs, as the DX7 does, which stops it ringing at Nyquist.
+- **Pitch**: an operator plays `ratio × 2^(detune / 1200) × 261.63 × (note hz / 261.63)^track`
+  Hz, the note's frequency taken through `tuning::offset`, as Tuss's, so it can play in the same
+  tunings; with `track` at 0 it's fixed, for drums. The pitch envelope multiplies every
+  operator by `2^(pitch × e^(-age / sweep) / 12)`, retuned every 32 samples, and ends after
+  seven of its time constants, landing exactly on the note. Each is clamped below 0.45 of the
+  sample rate.
+- **Envelopes**: one per operator, each sample `env = target + (env - target) × keep + rise`:
+  the attack rises linearly (`keep` 1, `rise` = 1 / attack samples) until it reaches 1, then
+  falls towards `sustain` (`keep` the decay's 60 dB coefficient), and on release towards 0.
+  Key scaling multiplies every time by `2^(-octaves above C-4 × keyscale)`. Velocity scales
+  each operator by `1 - s + s × (velocity / 127)^1.5`, `s` its `velocity`.
+- **Voices**: eight, laid out as lanes of an `f32x8`, every operator of every voice running side
+  by side, sounding or not; the envelope's change of stage is a blend, so the lanes never
+  branch. A voice stops when all its carriers are past their attacks and under 1e-4, and is
+  then zeroed. Stealing is Tuss's: the voice playing that note, else a silent one, else the
+  oldest. A new note starts every phase from 0, so every drum hit is the same; one played
+  again on a sounding voice keeps the phases and rises from its envelopes' levels, so it
+  doesn't click. A choke fades the voice by 1/e in 3 ms.
+
+| Control | Range | |
+| --- | --- | --- |
+| algorithm | `stack` `branch` `crown` `pairs` `fan` `chain` `trio` `organ` | |
+| feedback | 0–1 | operator 4 into itself |
+| pitch | ±48 st | where the pitch envelope starts |
+| sweep | 0.002–2 s | its time constant |
+| keyscale | 0–1 | high notes shorter and less bent |
+| tuning, key | as Tuss's | |
+| gain | 0–1 | |
+| ratio1–4 | 0.125–32 | times the note, or C-4 |
+| detune1–4 | ±100 cents | |
+| level1–4 | 0–1 | squared: loudness, or index up to 4π |
+| attack1–4, decay1–4, release1–4 | 0.5 ms–10 s, 5 ms–20 s | 60 dB times |
+| sustain1–4 | 0–1 | |
+| velocity1–4 | 0–1 | |
+| track1–4 | 0–1 | 0 fixes the pitch |
+| wave1–4 | `sine` `half` `abs` `pulse` | |
+
+Its notes don't glide. The voices benchmark plays eight voices of the default electric piano, all
+four operators, at around 400 times real time, about as costly as Switched: per voice it's four
+oscillators and four envelopes, with no filters, but nothing is ever skipped. Run as scalars, a
+voice at a time, it was a third as fast.
+
 ### Sampler
 
 Plays a WAV file: a region of it (`start`, `end`), pitched from C-4, or cut into up to 16
@@ -659,6 +722,7 @@ comes from. Candidates:
 | Oxygen | *Oxygène* (Jean-Michel Jarre) | string machine and phaser |
 | Krell | the vanished civilisation of *Forbidden Planet*, scored by Louis and Bebe Barron | alien harpsichord (built: `:inst krell`) |
 | Tuss | The Tuss, Richard D. James's 2007 alias as a made-up Cornish brother and sister | electric piano and tunings (built: `:inst tuss`) |
+| Bessel | Friedrich Bessel, whose functions give FM's sidebands | four-operator FM (built: `:inst bessel`) |
 | Seven | *Seven Waves* (Suzanne Ciani) | west-coast: wavefolding, low-pass gates, plucks |
 | Oblique | Oblique Strategies (Brian Eno) | generative pads that evolve on their own |
 | Snowflake | *Snowflakes Are Dancing* (Isao Tomita) | orchestral imitation, whistles and choirs |

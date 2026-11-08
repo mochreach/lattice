@@ -656,7 +656,8 @@ const LESSONS: &[Lesson] = &[
                shape it as you play, and {escape} stops. \
                `:inst switched` changes it too (a big stack of saws through a screaming ladder \
                filter), `:inst krell` gives it an alien harpsichord, `:inst tuss` an \
-               electric piano, and `:sample kick.wav` plays a sound file on it. \
+               electric piano, `:inst bessel` an FM synthesiser, bells and basses and \
+               drums, and `:sample kick.wav` plays a sound file on it. \
                `:port minilogue` plays a synth of your own over MIDI instead, its notes and \
                locks going out to it, `:cc 74 40` sends it a controller, and \
                `:clock digitakt` keeps a drum machine in time. \

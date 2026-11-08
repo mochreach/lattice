@@ -170,7 +170,8 @@ const STAB: usize = 9;
 const PAD: usize = 10;
 const PLUCK: usize = 11;
 const KEYS: usize = 12;
-const TRACKS: usize = 13;
+const BELL: usize = 13;
+const TRACKS: usize = 14;
 
 const SAW: f32 = 0.0;
 
@@ -402,8 +403,25 @@ fn tracks() -> Vec<Track> {
     keys.mix.pan = 0.3;
     keys.mix.send = -10.0;
 
+    // Chowning's bell, from Bessel's presets, face and all, tolling over the break and the peak.
+    let mut bell = match lattice_core::preset("bessel/chowning") {
+        Some(preset) => Track {
+            effects: preset.effects,
+            macros: preset.macros,
+            face: Some(preset.face),
+            ..track("bell", preset.instrument)
+        },
+        None => {
+            misread();
+            track("bell", Instrument::new(Bessel))
+        }
+    };
+    bell.mix.level = -16.0;
+    bell.mix.pan = -0.3;
+    bell.mix.send = -8.0;
+
     vec![
-        kick, clap, snare, hat, open, perc, ride, bass, acid, stab, pad, pluck, keys,
+        kick, clap, snare, hat, open, perc, ride, bass, acid, stab, pad, pluck, keys, bell,
     ]
 }
 
@@ -549,6 +567,10 @@ fn pad() -> Vec<Step> {
 fn keys() -> Vec<Step> {
     notes("C5? . Eb5 . G4_3 . . F4! . . C5? . Eb5_4 . . .")
 }
+/// The fifth, held, then falling to the third and the second, which the changes keep in key.
+fn bell() -> Vec<Step> {
+    notes("C6_12 . . . . . . . . . . . . . . . | . . . . . . . . Ab5_4 . . . G5_4 . . .")
+}
 /// Seven steps, turned a step back every other pass, and turning round on its G, so it goes
 /// back and forth; its F slides there from the note before.
 fn pluck() -> (Vec<Step>, Vec<Rule>) {
@@ -632,6 +654,7 @@ fn sections() -> Vec<(&'static str, u32, Vec<Lane>)> {
                 (PAD, pad(), changes()),
                 pluck(),
                 (KEYS, keys(), changes()),
+                (BELL, bell(), changes()),
             ]),
         ),
         (
@@ -663,6 +686,7 @@ fn sections() -> Vec<(&'static str, u32, Vec<Lane>)> {
                 (PAD, pad(), changes()),
                 pluck(),
                 (KEYS, keys(), changes()),
+                (BELL, bell(), changes()),
             ]),
         ),
         (

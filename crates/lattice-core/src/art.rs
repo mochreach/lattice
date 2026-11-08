@@ -28,6 +28,10 @@ pub fn engine(kind: InstKind) -> &'static str {
         // An electric piano's tine and the tone bar over it, clamped in their block, struck by
         // the hammer and swinging in front of the pickup.
         InstKind::Tuss => include_str!("art/tuss.txt"),
+        // A carrier bent by a modulator, squeezed more each frame, over its spectrum: the
+        // carrier and its sidebands, as strong as Bessel's functions say, the carrier gone at an
+        // index of 2.4.
+        InstKind::Bessel => include_str!("art/bessel.txt"),
         // A MIDI socket, its five pins, and a note on going out down the wire, bit by bit.
         InstKind::Midi => include_str!("art/midi.txt"),
     }

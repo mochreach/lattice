@@ -9,7 +9,7 @@
 )]
 
 use assert_no_alloc::{AllocDisabler, assert_no_alloc};
-use lattice_core::instrument::{kick, krell, monochord, switched, tuss};
+use lattice_core::instrument::{bessel, kick, krell, monochord, switched, tuss};
 use lattice_core::{
     Condition, Fx, FxKind, Grid, InstKind, Instrument, Lane, Lock, Macro, MacroTarget, Rule, Step,
     Track, Transform,
@@ -174,6 +174,11 @@ fn rendering_never_allocates() {
     ));
     let mut tuss = Some(lattice_engine::instrument::build(
         &Instrument::new(InstKind::Tuss),
+        48_000.0,
+        None,
+    ));
+    let mut bessel = Some(lattice_engine::instrument::build(
+        &Instrument::new(InstKind::Bessel),
         48_000.0,
         None,
     ));
@@ -501,6 +506,34 @@ fn rendering_never_allocates() {
                         target: Target::Instrument(0),
                         id: tuss::DRIFT,
                         value: 1.0,
+                    });
+                    handle.send(Command::Release {
+                        track: 0,
+                        pitch: 45,
+                    });
+                }
+                846 => {
+                    handle.send(Command::SetInstrument {
+                        index: 0,
+                        instrument: bessel.take().unwrap(),
+                    });
+                    handle.send(Command::SetParam {
+                        target: Target::Instrument(0),
+                        id: bessel::PITCH,
+                        value: 24.0,
+                    });
+                    handle.send(Command::Preview {
+                        track: 0,
+                        pitch: 45,
+                        velocity: 127,
+                        held: true,
+                    });
+                }
+                848 => {
+                    handle.send(Command::SetParam {
+                        target: Target::Instrument(0),
+                        id: bessel::ALGORITHM,
+                        value: 0.0,
                     });
                     handle.send(Command::Release {
                         track: 0,

@@ -16,6 +16,7 @@
     )
 )]
 
+pub mod bessel;
 pub mod chop;
 mod click;
 pub mod clock;

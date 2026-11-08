@@ -1,9 +1,10 @@
 # Instruments
 
 Every track plays one instrument. It turns the track's notes into sound: a kick drum, a stack
-of saws through a screaming filter, a plucked string, an alien harpsichord, an electric piano, a
-sound file. This chapter covers choosing an instrument, the instrument page where you shape it,
-each of Lattice's twelve instruments and every one of their settings, the sampler and chop for
+of saws through a screaming filter, a plucked string, an alien harpsichord, an electric piano,
+the bells and basses of FM, a sound file. This chapter covers choosing an instrument, the
+instrument page where you shape it, each of Lattice's fourteen instruments and every one of their
+settings, the sampler and chop for
 playing sound files, and presets and faces, which make an instrument into one of its own.
 
 The effects that come after the instrument, the mixer, and macros in full are in
@@ -13,9 +14,9 @@ chapter 8.
 
 ## The instruments at a glance
 
-Lattice has twelve instruments. All are built in: the engine is written by hand, in Rust, for
-Lattice alone. A twelfth, `midi`, makes no sound of its own: it plays gear outside Lattice (see
-[MIDI tracks](#midi-tracks-playing-other-gear-midi)).
+Lattice has fourteen instruments. All are built in: the engine is written by hand, in Rust, for
+Lattice alone. Thirteen are below; a fourteenth, `midi`, makes no sound of its own: it plays
+gear outside Lattice (see [MIDI tracks](#midi-tracks-playing-other-gear-midi)).
 
 | Name        | Engine     | What it is                                                   | Voices |
 |-------------|------------|--------------------------------------------------------------|--------|
@@ -24,6 +25,7 @@ Lattice alone. A twelfth, `midi`, makes no sound of its own: it plays gear outsi
 | `monochord` | Monochord  | a plucked or bowed string, modelled as a waveguide           | 8      |
 | `krell`     | Krell      | an alien harpsichord: choirs of quill-plucked strings        | 8      |
 | `tuss`      | Tuss       | an electric piano: struck tines, barking pickups, tunings    | 8      |
+| `bessel`    | Bessel     | FM: four operators, for bells, basses, brass and drums       | 8      |
 | `sampler`   |            | plays a WAV file, pitched by the note or cut into slices     | 16     |
 | `chop`      |            | a WAV file cut into pieces, a step playing each              | 16     |
 | `kick`      | Rhythmicon | a bass drum                                                  | 1      |
@@ -56,8 +58,8 @@ selections reach; on the mixer, instrument and fx pages, the track under the cur
 :inst kick           and now a bass drum
 ```
 
-The names are `synth`, `switched`, `monochord`, `krell`, `tuss`, `sampler`, `chop`, `kick`,
-`snare`, `hat`, `clap` and `tom`, and `midi` for gear outside Lattice. Type `:inst ` and the
+The names are `synth`, `switched`, `monochord`, `krell`, `tuss`, `bessel`, `sampler`, `chop`,
+`kick`, `snare`, `hat`, `clap` and `tom`, and `midi` for gear outside Lattice. Type `:inst ` and the
 command line lists them; a name it doesn't know is refused with the list:
 `no instrument called "string"; there's synth, switched, …`.
 
@@ -96,6 +98,8 @@ than a wall of generic controls:
   Planet*, whose score, by Louis and Bebe Barron, was the first made all electronically.
 - **Tuss**, the electric piano, after The Tuss, a name Richard D. James, Aphex Twin, put records
   out under in 2007.
+- **Bessel**, the FM synthesiser, after Friedrich Bessel, the astronomer whose functions say how
+  loud each partial of an FM sound is.
 
 Each engine's section below tells the story behind its name. The design notes put it this way:
 Lattice is a personal instrument first, and its engines should be "interesting and quirky,
@@ -300,6 +304,7 @@ engine is named after:
 | `monochord` | Pythagoras's monochord, its string over a bridge set at a fifth              |
 | `krell`     | the Great Machine of the Krell, from Forbidden Planet, and its halls         |
 | `tuss`      | a tine and its tone bar, struck by the hammer, swinging before the pickup    |
+| `bessel`    | a sine bent by FM, over its sidebands, Bessel's functions, as it bends more  |
 | `sampler`   | a reel-to-reel, as at the Radiophonic Workshop, its reels turning            |
 | `chop`      | a break's waveform sliced up, a slice and its pad lit in turn                |
 | the drums   | the Rhythmicon's lamp through its spinning disc of holes onto its photocells |
@@ -376,6 +381,9 @@ starting from a wave and filtering it. Lattice uses two kinds:
   of **modes**, each a frequency at which it rings and a time it rings for. Hit it, and each mode
   rings at its own pitch and dies at its own rate. The drums' shells, Krell's body and Tuss's
   tines are modal.
+
+**FM synthesis** makes rich sounds from plain sine waves, by one bending another's pitch so fast
+that the bending becomes new partials. Bessel is FM, and its section explains it in full.
 
 **Choke.** A choke group (set on the mixer, see chapter 8) silences one track when another in its
 group plays, as an open hi-hat is cut off by the closed one. What a choke does depends on the
@@ -701,7 +709,7 @@ of others, so they're built on a `key`, the note they're in tune from. In `just`
 major chord rings without beating, while chords far from A sound strange. The key note itself
 stays where equal temperament has it, so Tuss stays in tune with the rest of the song on it.
 
-- `equal`: twelve equal semitones, as every other instrument in Lattice plays.
+- `equal`: twelve equal semitones, as the rest of Lattice plays.
 - `just`: five-limit just intonation, every interval from the key a ratio of small whole
   numbers: 1/1, 16/15, 9/8, 6/5, 5/4, 4/3, 45/32, 3/2, 8/5, 5/3, 9/5, 15/8. Pure major and minor
   thirds, the sweetest chords on the key and those near it.
@@ -721,6 +729,164 @@ stage piano, barking through a phaser; `music-box` short, bright tines into a lo
 `hollow-tine` has the pickup in line, an octave up and hollow; `monologue` is tuned to the
 harmonic series and drifts, after the microtunings Aphex Twin made for Korg's monologue
 synthesiser; and `pentagon` is a barking bass piano, held level by a compressor.
+
+### Bessel, the FM synthesiser (`bessel`)
+
+Friedrich Bessel (1784–1846) was an astronomer at Königsberg, the first to measure how far away
+a star is: in 1838, by watching 61 Cygni shift against the stars behind it as the Earth went
+round the Sun. Working out the planets' orbits, he set down a family of functions that turn up
+wherever something swings round and round, and they're the arithmetic of this engine: how loud
+each partial is when one sine wave bends another. I named it for him because his functions are
+what you hear.
+
+The bending was found by ear. In 1967 John Chowning, a composer at Stanford, was trying out
+vibrato on a computer and sped it up past anything a singer could do: at some point it stopped
+being vibrato and became a new tone, bright or metallic or bell-like, from just two sine waves.
+He published it in 1973, Stanford licensed it to Yamaha, and in 1983 Yamaha's DX7 put it in
+every studio, the first digital synthesiser most people heard and, for years, the best selling
+of any kind. Its electric piano is on half the ballads of the 1980s, its basses, bells and brass
+on most of the rest. The cheaper four-operator Yamahas that followed, like the TX81Z (1987),
+went into house and techno, whose bass lines are full of them. Bessel is one of those: four
+operators, eight algorithms, and the extra waveforms the TX81Z added.
+
+**Frequency modulation.** Vibrato moves a note's pitch up and down a few times a second. Move it
+hundreds of times a second, as fast as a note, and you no longer hear the pitch moving: you hear
+new partials, **sidebands**, either side of the note, spaced by the modulating frequency. The
+wave being bent is the **carrier**, the one bending it the **modulator**, and how far it bends
+is the **index**. Bessel's functions `Jₙ(index)` say how loud the `n`th pair of sidebands is;
+the carrier itself is `J₀`. Here's a carrier `c` and its sidebands, `c ± n` times the
+modulator's frequency, bent three ways:
+
+```
+index 0.5 (level 0.2)          index 2 (level 0.4)          index 5 (level 0.63)
+               ▆▆
+               ██                         ▂▂    ▂▂
+               ██                      ▃▃ ██    ██ ▃▃           ▅▅ ▄▄    ▂▂    ▂▂    ▄▄ ▅▅
+         ▁▁ ██ ██ ██ ▁▁          ▁▁ ▄▄ ██ ██ ▇▇ ██ ██ ▄▄ ▁▁   ▄▄ ██ ██ ██ ▁▁ ██ ▆▆ ██ ▁▁ ██ ██ ██ ▄▄
+         -2 -1  c +1 +2          -4 -3 -2 -1  c +1 +2 +3 +4   -6 -5 -4 -3 -2 -1  c +1 +2 +3 +4 +5 +6
+```
+
+A little bending adds a pair or two of sidebands, warm, like a filter opening a little. More
+spreads the sound wider, about `index + 1` pairs each side, and the carrier fades, even to
+nothing: at an index of 2.405, the first zero of `J₀`, it's gone, and only the sidebands are
+left. So a modulator's level is like a filter's cutoff, except that it doesn't only let
+harmonics through but makes them, and moving it through the note, by the modulator's own
+envelope, is what makes FM come alive: a piano bright as it's struck and mellowing as it rings,
+brass that brightens as it swells.
+
+**Ratios** say where the sidebands land. With the modulator at a whole number times the carrier
+(1, 2, 3), they fall on the note's harmonics, so it sounds pitched, like a string or a horn: a
+ratio of 1 makes every harmonic, like a saw, and 2 only the odd ones, hollow, like a clarinet.
+At a ratio that isn't whole (1.4, 3.5) they fall between the harmonics, as a bell's partials do,
+and it clangs.
+
+**Operators** are what Yamaha called the sine waves: each a sine oscillator with its own envelope,
+a carrier if it's heard, a modulator if it bends another. **Feedback** sends operator 4 back into
+itself: a little brightens its sine towards a saw, a lot turns it to noise, which is how FM makes
+a snare's rattle and a hat's hiss. Strictly, Bessel bends the phase, not the frequency, as
+Yamaha's did: the same sidebands, and the pitch stays put however hard it's bent.
+
+**The algorithms** wire the operators together. Each operator modulates only ones numbered lower
+than itself; `▼` is heard:
+
+```
+  stack        branch        crown         pairs
+    4            4                         2     4
+    │            │           2  3  4       │     │
+    3            3   2       └──┼──┘       1     3
+    │            └─┬─┘          1          ▼     ▼
+    2              1            ▼
+    │              ▼
+    1
+    ▼
+
+  fan          chain         trio          organ
+    4            4                 4
+ ┌──┼──┐         │                 │
+ 1  2  3         3   1       1  2  3       1  2  3  4
+ ▼  ▼  ▼         │   ▼       ▼  ▼  ▼       ▼  ▼  ▼  ▼
+                 2
+                 ▼
+```
+
+`stack` is the brightest, each operator making the next richer; `pairs` is two two-operator
+voices at once, as the DX7's electric piano was built; `fan` puts one modulator on three
+carriers tuned apart; and `organ` bends nothing, four sines added, as a drawbar organ adds pipes.
+Two or more carriers share the output equally, so changing the algorithm doesn't jump the level.
+
+**Drums.** Set an operator's `track` to 0 and its pitch stops following the note: it plays its
+`ratio` times C-4 (261.6 Hz) whatever note is played. With the `pitch` envelope, which starts
+every operator up to four octaves away and sweeps it back over `sweep`, that makes drums: a sine
+swept down from high is a kick, a body under a carrier bent by feedback noise is a snare, high
+operators at ratios nothing like each other are a hat. The presets below have one of each.
+
+Its settings are the voice's own, then ten for each operator, numbered 1 to 4: `ratio1` is
+operator 1's ratio, `level4` operator 4's level. On the instrument page they're in that order.
+
+| Setting     | Range                 | Default | What it does                                 |
+|-------------|-----------------------|---------|----------------------------------------------|
+| `algorithm` | `stack` to `organ`    | `pairs` | how the operators are wired, as drawn above  |
+| `feedback`  | 0 to 1                | 0       | operator 4 bending itself: sine, saw, noise  |
+| `pitch`     | -48 to 48 st          | 0       | where every operator's pitch starts          |
+| `sweep`     | 0.002 to 2 s          | 0.05 s  | how fast it falls back, to 1/e               |
+| `keyscale`  | 0 to 1                | 0.3     | how much higher notes are shorter and duller |
+| `tuning`    | `equal` to `harmonic` | `equal` | the tuning notes play in, as on Tuss         |
+| `key`       | `C` to `B`            | `C`     | the key note the tuning's built on           |
+| `gain`      | 0 to 1                | 0.5     | the output level                             |
+
+And for each operator, `1` to `4`:
+
+| Settings                                        | Range          | What it does                  |
+|-------------------------------------------------|----------------|-------------------------------|
+| `ratio1` `ratio2` `ratio3` `ratio4`             | 0.125–32       | its pitch, times the note's   |
+| `detune1` `detune2` `detune3` `detune4`         | ±100 c         | its pitch nudged              |
+| `level1` `level2` `level3` `level4`             | 0–1            | how loud, or how far it bends |
+| `attack1` `attack2` `attack3` `attack4`         | 0.5 ms–10 s    | how long it takes to rise     |
+| `decay1` `decay2` `decay3` `decay4`             | 5 ms–20 s      | how long it takes to fall     |
+| `sustain1` `sustain2` `sustain3` `sustain4`     | 0–1            | what it falls to, key held    |
+| `release1` `release2` `release3` `release4`     | 5 ms–20 s      | how long it fades, key up     |
+| `velocity1` `velocity2` `velocity3` `velocity4` | 0–1            | how much soft notes soften it |
+| `track1` `track2` `track3` `track4`             | 0–1            | how far it follows the note   |
+| `wave1` `wave2` `wave3` `wave4`                 | `sine`–`pulse` | its waveform                  |
+
+The defaults are an electric piano, on `pairs`: operators 1 and 3 heard, 2 bending 1 at the same
+pitch for the body, and 4 bending 3 at fourteen times it, gone in a moment, for the tine's ping.
+
+More about the controls:
+
+- **`level`** is heard as loudness on a carrier. On a modulator it's the index, squared so the
+  bottom of its travel is finely graded: 0.2 bends gently (an index of 0.5), 0.4 brightly (2),
+  and 1 as far as a DX7 can (4π, about 12.6), a harsh, glittering wall of sidebands.
+- **`ratio`** below 1 puts a modulator under the note, which makes sidebands below it too, for
+  growling basses; on a carrier, it plays the note an octave or more down.
+- **The envelope**: the attack rises in a straight line, the decay falls towards `sustain` and the
+  release towards nothing, each by 60 dB in its time, as Lattice's other decays do. Most FM
+  sounds give the modulators shorter decays than the carriers, so notes start bright and
+  mellow.
+- **`velocity`** at 0 plays every note the same; at 1, a soft note is all but silent from a
+  carrier and barely bends from a modulator, so harder notes are louder and brighter at once.
+- **`keyscale`** shortens every envelope for notes above C-4 and lengthens it below: at 1, an
+  octave up lasts half as long. It also bends the modulators of high notes less, as a real
+  piano's high strings are shorter-lived and purer.
+- **`wave`**: `sine`; `half`, the top half of a sine with the bottom flattened, brighter and
+  rounder; `abs`, both halves turned up, an octave higher and buzzy; and `pulse`, a whole sine
+  squeezed into half the cycle, then nothing, nasal and bright. Bent, each makes its own family
+  of sidebands.
+- **`feedback`** brightens the sine a little at 0.2, makes a saw's harmonics by 0.6, and noise
+  past 0.7.
+- **`tuning`** and **`key`** are Tuss's (see [Tuss](#tuss-the-electric-piano-tuss)).
+
+Its notes don't glide; the pitch envelope sweeps instead. Choking the track fades it in a few
+milliseconds.
+
+**The presets** are in `bessel/`. Its keys and bells: `ballad`, the eighties electric piano,
+with an ensemble; `chowning`, the bell in Chowning's 1973 paper, a modulator at 1.4 times the
+carrier bent hard at the strike and less as it rings; `campanile`, tubular bells, a modulator
+at 3.5 times; and `rosewood`, a marimba. Its basses: `lately`, the plucked bass of house
+records, after a famous preset of the TX81Z's; `slap`, a slapped bass's pop over a round body;
+and `sawmill`, the four in a stack, feeding back into a growl. Then `fanfare`, a brass section
+swelling brighter as it's blown. And its drums: `boom`, a kick; `rimshot`, a snare; `tinsel`, a
+hat; and `more-cowbell`, the drum machine's, at 540 and 800 Hz.
 
 ## Rhythmicon, the drum engine
 
@@ -1146,6 +1312,18 @@ instrument page. Each is in the folder of its instrument, so `flim` below is `tu
 | `hollow-tine`    | `tuss`      | an octave up and hollow, far off          | `hollow` `space`    |
 | `monologue`      | `tuss`      | the harmonic series, drifting, in echo    | `wonk` `tape`       |
 | `pentagon`       | `tuss`      | a barking bass piano, squashed            | `snarl` `squash`    |
+| `ballad`         | `bessel`    | the eighties' electric piano, chorused    | `bark` `chorus`     |
+| `chowning`       | `bessel`    | Chowning's bell, clanging then humming    | `clang` `toll`      |
+| `campanile`      | `bessel`    | tubular bells in a tower                  | `strike` `tower`    |
+| `rosewood`       | `bessel`    | a marimba                                 | `mallet` `ring`     |
+| `lately`         | `bessel`    | a plucked house bass                      | `snap` `grit`       |
+| `slap`           | `bessel`    | a slapped bass                            | `pop` `thump`       |
+| `fanfare`        | `bessel`    | a brass section, swelling                 | `blare` `swell`     |
+| `sawmill`        | `bessel`    | a feeding-back growl                      | `tear` `dark`       |
+| `boom`           | `bessel`    | an FM kick                                | `punch` `tail`      |
+| `rimshot`        | `bessel`    | an FM snare, rattling with noise          | `wires` `crack`     |
+| `tinsel`         | `bessel`    | an FM hat, metallic                       | `open` `hiss`       |
+| `more-cowbell`   | `bessel`    | the drum machine's cowbell                | `clank` `ring`      |
 
 ### Saving a preset
 

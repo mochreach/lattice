@@ -170,12 +170,24 @@ pub const PRESETS: &[&str] = &[
     "tuss/hollow-tine",
     "tuss/monologue",
     "tuss/pentagon",
+    "bessel/ballad",
+    "bessel/chowning",
+    "bessel/campanile",
+    "bessel/rosewood",
+    "bessel/lately",
+    "bessel/slap",
+    "bessel/fanfare",
+    "bessel/sawmill",
+    "bessel/boom",
+    "bessel/rimshot",
+    "bessel/tinsel",
+    "bessel/more-cowbell",
 ];
 
 /// A preset Lattice comes with, by name, folder and all: `tuss/flim`.
 pub fn preset(name: &str) -> Option<Preset> {
     use crate::fx::{comp, delay, drive, ensemble, filter, phaser, pitch, reverb};
-    use crate::instrument::{clap, hat, kick, krell, monochord, snare, synth, tom, tuss};
+    use crate::instrument::{bessel, clap, hat, kick, krell, monochord, snare, synth, tom, tuss};
 
     let inst = |kind, values: &[(u32, f32)]| {
         let mut instrument = Instrument::new(kind);
@@ -210,6 +222,29 @@ pub fn preset(name: &str) -> Option<Preset> {
     };
     // The Tuss presets' faces: its tine.
     let tine = || crate::art::engine_face(InstKind::Tuss).art;
+    // The Bessel presets': its wave and the sidebands bending it makes.
+    let sidebands = || crate::art::engine_face(InstKind::Bessel).art;
+    // An operator's settings, `n` 1 to 4: its ratio, level, and envelope.
+    let op = |n: u32,
+              ratio: f32,
+              level: f32,
+              (attack, decay, sustain, release): (f32, f32, f32, f32)| {
+        use bessel::{ATTACK, DECAY, LEVEL, RATIO, RELEASE, SUSTAIN, op};
+        [
+            (op(n, RATIO), ratio),
+            (op(n, LEVEL), level),
+            (op(n, ATTACK), attack),
+            (op(n, DECAY), decay),
+            (op(n, SUSTAIN), sustain),
+            (op(n, RELEASE), release),
+        ]
+    };
+    let fm = |settings: &[(u32, f32)], ops: [[(u32, f32); 6]; 4]| {
+        let values: Vec<(u32, f32)> = (ops.iter().flatten().copied())
+            .chain(settings.iter().copied())
+            .collect();
+        inst(InstKind::Bessel, &values)
+    };
     let preset = match name {
         // A steel string, plucked bright near the bridge, in a large glassy room.
         "monochord/glasshouse" => Preset {
@@ -1291,6 +1326,540 @@ pub fn preset(name: &str) -> Option<Preset> {
                         (Some(0), comp::RATIO, 0.4),
                         (Some(0), comp::THRESHOLD, -0.3),
                     ],
+                ),
+            ],
+        },
+        // The eighties ballad's electric piano, as on half the records of 1984: two pairs, a
+        // modulator at the note's own pitch for the warm body, and one fourteen times higher,
+        // gone in a moment, for the tine's ping. Harder notes bend further, so they bark.
+        "bessel/ballad" => Preset {
+            face: Face {
+                art: sidebands(),
+                ..face("Ballad", &[bessel::LEVEL2, bessel::LEVEL4, bessel::DECAY1])
+            },
+            instrument: fm(
+                &[
+                    (bessel::ALGORITHM, 3.0),
+                    (bessel::KEYSCALE, 0.4),
+                    (bessel::GAIN, 1.0),
+                    (bessel::VELOCITY2, 0.8),
+                    (bessel::VELOCITY4, 0.9),
+                    (bessel::DETUNE3, 4.0),
+                ],
+                [
+                    op(1, 1.0, 1.0, (0.002, 2.5, 0.15, 0.4)),
+                    op(2, 1.0, 0.45, (0.002, 1.2, 0.1, 0.4)),
+                    op(3, 1.0, 0.8, (0.002, 1.8, 0.1, 0.4)),
+                    op(4, 14.0, 0.35, (0.001, 0.12, 0.0, 0.1)),
+                ],
+            ),
+            effects: vec![
+                fx(
+                    FxKind::Ensemble,
+                    &[(ensemble::DEPTH, 0.3), (ensemble::MIX, 0.35)],
+                ),
+                fx(
+                    FxKind::Reverb,
+                    &[
+                        (reverb::SIZE, 0.5),
+                        (reverb::DECAY, 0.5),
+                        (reverb::MIX, 0.2),
+                    ],
+                ),
+            ]
+            .into(),
+            macros: vec![
+                mac(
+                    "bark",
+                    0.0,
+                    &[(None, bessel::LEVEL2, 0.3), (None, bessel::LEVEL4, 0.25)],
+                ),
+                mac("chorus", 0.0, &[(Some(0), ensemble::MIX, 0.5)]),
+            ],
+        },
+        // John Chowning's bell, from the paper that started it all (1973): a modulator at 1.4
+        // times the carrier, so the sidebands fall between the harmonics, bending it hard at the
+        // strike and less and less as it rings, so the bell's clang mellows into a hum.
+        "bessel/chowning" => Preset {
+            face: Face {
+                art: sidebands(),
+                ..face(
+                    "Chowning",
+                    &[bessel::LEVEL2, bessel::DECAY2, bessel::DECAY1],
+                )
+            },
+            instrument: fm(
+                &[
+                    (bessel::ALGORITHM, 3.0),
+                    (bessel::KEYSCALE, 0.5),
+                    (bessel::GAIN, 0.8),
+                ],
+                [
+                    op(1, 1.0, 1.0, (0.001, 6.0, 0.0, 6.0)),
+                    op(2, 1.4, 0.8, (0.001, 3.0, 0.0, 3.0)),
+                    op(3, 3.0, 0.3, (0.001, 1.5, 0.0, 1.5)),
+                    op(4, 4.2, 0.4, (0.001, 0.8, 0.0, 0.8)),
+                ],
+            ),
+            effects: vec![fx(
+                FxKind::Reverb,
+                &[
+                    (reverb::SIZE, 0.8),
+                    (reverb::DECAY, 0.7),
+                    (reverb::MIX, 0.3),
+                ],
+            )]
+            .into(),
+            macros: vec![
+                mac(
+                    "clang",
+                    0.0,
+                    &[(None, bessel::LEVEL2, 0.2), (None, bessel::LEVEL4, 0.3)],
+                ),
+                mac(
+                    "toll",
+                    0.0,
+                    &[(None, bessel::DECAY1, 0.2), (None, bessel::DECAY2, 0.2)],
+                ),
+            ],
+        },
+        // Tubular bells: a modulator at 3.5 times the carrier, so the partials are those of a
+        // hanging tube, not a string, and a second pair a little detuned so the strike beats.
+        "bessel/campanile" => Preset {
+            face: Face {
+                art: sidebands(),
+                ..face("Campanile", &[bessel::LEVEL2, bessel::DECAY1])
+            },
+            instrument: fm(
+                &[
+                    (bessel::ALGORITHM, 3.0),
+                    (bessel::KEYSCALE, 0.3),
+                    (bessel::GAIN, 0.8),
+                    (bessel::DETUNE3, 7.0),
+                    (bessel::DETUNE4, 7.0),
+                    (bessel::VELOCITY2, 0.6),
+                ],
+                [
+                    op(1, 1.0, 1.0, (0.001, 5.0, 0.0, 5.0)),
+                    op(2, 3.5, 0.55, (0.001, 2.0, 0.0, 2.0)),
+                    op(3, 1.0, 0.7, (0.001, 4.0, 0.0, 4.0)),
+                    op(4, 3.5, 0.5, (0.001, 1.5, 0.0, 1.5)),
+                ],
+            ),
+            effects: vec![fx(
+                FxKind::Reverb,
+                &[
+                    (reverb::SIZE, 0.9),
+                    (reverb::DECAY, 0.75),
+                    (reverb::MIX, 0.35),
+                ],
+            )]
+            .into(),
+            macros: vec![
+                mac(
+                    "strike",
+                    0.0,
+                    &[(None, bessel::LEVEL2, 0.3), (None, bessel::LEVEL4, 0.3)],
+                ),
+                mac("tower", 0.0, &[(Some(0), reverb::MIX, 0.4)]),
+            ],
+        },
+        // A marimba: wooden bars tuned so their first overtone is two octaves up, the second
+        // ten times the note, struck with a soft mallet that knocks for an instant.
+        "bessel/rosewood" => Preset {
+            face: Face {
+                art: sidebands(),
+                ..face("Rosewood", &[bessel::LEVEL2, bessel::DECAY1])
+            },
+            instrument: fm(
+                &[
+                    (bessel::ALGORITHM, 3.0),
+                    (bessel::KEYSCALE, 0.6),
+                    (bessel::GAIN, 1.0),
+                    (bessel::VELOCITY1, 0.6),
+                    (bessel::VELOCITY2, 0.9),
+                ],
+                [
+                    op(1, 1.0, 1.0, (0.001, 0.6, 0.0, 0.6)),
+                    op(2, 4.0, 0.35, (0.0005, 0.03, 0.0, 0.03)),
+                    op(3, 4.0, 0.4, (0.0005, 0.12, 0.0, 0.12)),
+                    op(4, 10.0, 0.2, (0.0005, 0.02, 0.0, 0.02)),
+                ],
+            ),
+            effects: vec![fx(
+                FxKind::Reverb,
+                &[
+                    (reverb::SIZE, 0.4),
+                    (reverb::DECAY, 0.4),
+                    (reverb::MIX, 0.15),
+                ],
+            )]
+            .into(),
+            macros: vec![
+                mac(
+                    "mallet",
+                    0.0,
+                    &[(None, bessel::LEVEL2, 0.3), (None, bessel::LEVEL3, 0.2)],
+                ),
+                mac("ring", 0.0, &[(None, bessel::DECAY1, 0.2)]),
+            ],
+        },
+        // The plucked FM bass the eighties' soul and funk records were built on: a modulator
+        // at the note's pitch, bending hard for a moment, so each note snaps then rounds off,
+        // and another, made gritty by its own feedback, under it.
+        "bessel/lately" => Preset {
+            face: Face {
+                art: sidebands(),
+                ..face(
+                    "Lately",
+                    &[bessel::LEVEL2, bessel::DECAY2, bessel::FEEDBACK],
+                )
+            },
+            instrument: fm(
+                &[
+                    (bessel::ALGORITHM, 1.0),
+                    (bessel::FEEDBACK, 0.35),
+                    (bessel::KEYSCALE, 0.0),
+                    (bessel::GAIN, 0.8),
+                    (bessel::VELOCITY2, 0.8),
+                ],
+                [
+                    op(1, 1.0, 1.0, (0.001, 1.5, 0.55, 0.08)),
+                    op(2, 1.0, 0.5, (0.001, 0.25, 0.15, 0.08)),
+                    op(3, 1.0, 0.35, (0.001, 0.5, 0.25, 0.08)),
+                    op(4, 1.0, 0.4, (0.001, 0.8, 0.4, 0.08)),
+                ],
+            ),
+            effects: vec![fx(
+                FxKind::Comp,
+                &[
+                    (comp::THRESHOLD, -14.0),
+                    (comp::RATIO, 3.0),
+                    (comp::MAKEUP, 2.0),
+                ],
+            )]
+            .into(),
+            macros: vec![
+                mac(
+                    "snap",
+                    0.0,
+                    &[(None, bessel::LEVEL2, 0.3), (None, bessel::DECAY2, -0.1)],
+                ),
+                mac("grit", 0.0, &[(None, bessel::FEEDBACK, 0.4)]),
+            ],
+        },
+        // A slapped bass: the thumb's pop, a modulator three times higher gone in forty
+        // milliseconds, and the string slapping the frets, seven times higher and shorter
+        // still, over a round body.
+        "bessel/slap" => Preset {
+            face: Face {
+                art: sidebands(),
+                ..face("Slap", &[bessel::LEVEL3, bessel::LEVEL4, bessel::DECAY1])
+            },
+            instrument: fm(
+                &[
+                    (bessel::ALGORITHM, 2.0),
+                    (bessel::KEYSCALE, 0.0),
+                    (bessel::GAIN, 0.8),
+                    (bessel::VELOCITY3, 0.9),
+                    (bessel::VELOCITY4, 0.9),
+                ],
+                [
+                    op(1, 1.0, 1.0, (0.001, 2.0, 0.4, 0.08)),
+                    op(2, 1.0, 0.4, (0.001, 0.6, 0.2, 0.08)),
+                    op(3, 3.0, 0.55, (0.0005, 0.04, 0.0, 0.04)),
+                    op(4, 7.0, 0.4, (0.0005, 0.015, 0.0, 0.015)),
+                ],
+            ),
+            effects: vec![fx(
+                FxKind::Comp,
+                &[
+                    (comp::THRESHOLD, -16.0),
+                    (comp::RATIO, 4.0),
+                    (comp::ATTACK, 0.005),
+                    (comp::MAKEUP, 3.0),
+                ],
+            )]
+            .into(),
+            macros: vec![
+                mac(
+                    "pop",
+                    0.0,
+                    &[(None, bessel::LEVEL3, 0.25), (None, bessel::LEVEL4, 0.25)],
+                ),
+                mac("thump", 0.0, &[(None, bessel::LEVEL2, -0.3)]),
+            ],
+        },
+        // A brass section: modulators at the note's pitch that rise more slowly than the
+        // notes, so each swells brighter as it's blown, as brass does, in two pairs a few
+        // cents apart for the section's width.
+        "bessel/fanfare" => Preset {
+            face: Face {
+                art: sidebands(),
+                ..face(
+                    "Fanfare",
+                    &[bessel::LEVEL2, bessel::ATTACK2, bessel::FEEDBACK],
+                )
+            },
+            instrument: fm(
+                &[
+                    (bessel::ALGORITHM, 3.0),
+                    (bessel::FEEDBACK, 0.2),
+                    (bessel::KEYSCALE, 0.2),
+                    (bessel::GAIN, 0.6),
+                    (bessel::DETUNE3, 8.0),
+                    (bessel::DETUNE4, 8.0),
+                    (bessel::VELOCITY2, 0.6),
+                    (bessel::VELOCITY4, 0.6),
+                ],
+                [
+                    op(1, 1.0, 1.0, (0.04, 1.0, 0.85, 0.2)),
+                    op(2, 1.0, 0.55, (0.08, 0.6, 0.75, 0.2)),
+                    op(3, 1.0, 1.0, (0.04, 1.0, 0.85, 0.2)),
+                    op(4, 1.0, 0.5, (0.08, 0.6, 0.75, 0.2)),
+                ],
+            ),
+            effects: vec![fx(
+                FxKind::Reverb,
+                &[
+                    (reverb::SIZE, 0.6),
+                    (reverb::DECAY, 0.55),
+                    (reverb::MIX, 0.2),
+                ],
+            )]
+            .into(),
+            macros: vec![
+                mac(
+                    "blare",
+                    0.0,
+                    &[(None, bessel::LEVEL2, 0.3), (None, bessel::LEVEL4, 0.3)],
+                ),
+                mac(
+                    "swell",
+                    0.0,
+                    &[(None, bessel::ATTACK2, 0.3), (None, bessel::ATTACK4, 0.3)],
+                ),
+            ],
+        },
+        // All four in a stack, the top one feeding back on itself: a saw, roughened, into a
+        // growl, for basses and leads that tear.
+        "bessel/sawmill" => Preset {
+            face: Face {
+                art: sidebands(),
+                ..face(
+                    "Sawmill",
+                    &[bessel::FEEDBACK, bessel::LEVEL3, bessel::LEVEL2],
+                )
+            },
+            instrument: fm(
+                &[
+                    (bessel::ALGORITHM, 0.0),
+                    (bessel::FEEDBACK, 0.6),
+                    (bessel::KEYSCALE, 0.0),
+                    (bessel::GAIN, 0.7),
+                    (bessel::DETUNE3, 5.0),
+                ],
+                [
+                    op(1, 1.0, 1.0, (0.002, 2.0, 0.8, 0.1)),
+                    op(2, 0.5, 0.3, (0.002, 1.0, 0.6, 0.1)),
+                    op(3, 1.0, 0.35, (0.002, 0.4, 0.5, 0.1)),
+                    op(4, 1.0, 0.45, (0.002, 2.0, 0.7, 0.1)),
+                ],
+            ),
+            effects: vec![fx(
+                FxKind::Filter,
+                &[(filter::CUTOFF, 4_000.0), (filter::RESONANCE, 0.2)],
+            )]
+            .into(),
+            macros: vec![
+                mac(
+                    "tear",
+                    0.0,
+                    &[(None, bessel::FEEDBACK, 0.4), (None, bessel::LEVEL3, 0.2)],
+                ),
+                mac("dark", 0.0, &[(Some(0), filter::CUTOFF, -0.4)]),
+            ],
+        },
+        // A kick: a fixed sine at 52 Hz, whatever the note, swept down three octaves in an
+        // instant, and bent at the start by the other three, all fixed too: one at its own
+        // pitch for the punch, one high for the click, one feeding back for a breath of noise.
+        "bessel/boom" => Preset {
+            face: Face {
+                art: sidebands(),
+                ..face("Boom", &[bessel::PITCH, bessel::DECAY1, bessel::LEVEL3])
+            },
+            instrument: fm(
+                &[
+                    (bessel::ALGORITHM, 2.0),
+                    (bessel::PITCH, 36.0),
+                    (bessel::SWEEP, 0.025),
+                    (bessel::FEEDBACK, 1.0),
+                    (bessel::KEYSCALE, 0.0),
+                    (bessel::GAIN, 1.0),
+                    (bessel::TRACK1, 0.0),
+                    (bessel::TRACK2, 0.0),
+                    (bessel::TRACK3, 0.0),
+                    (bessel::TRACK4, 0.0),
+                    (bessel::VELOCITY1, 0.5),
+                ],
+                [
+                    op(1, 0.2, 1.0, (0.0005, 0.5, 0.0, 0.5)),
+                    op(2, 0.2, 0.35, (0.0005, 0.03, 0.0, 0.03)),
+                    op(3, 8.0, 0.2, (0.0005, 0.012, 0.0, 0.012)),
+                    op(4, 13.0, 0.3, (0.0005, 0.012, 0.0, 0.012)),
+                ],
+            ),
+            effects: vec![fx(FxKind::Drive, &[(drive::DRIVE, 0.2), (drive::MIX, 0.4)])].into(),
+            macros: vec![
+                mac(
+                    "punch",
+                    0.0,
+                    &[(None, bessel::LEVEL2, 0.3), (None, bessel::LEVEL3, 0.3)],
+                ),
+                mac("tail", 0.0, &[(None, bessel::DECAY1, 0.2)]),
+            ],
+        },
+        // A snare: a fixed body at 183 Hz that drops a little, and the wires' rattle, a carrier
+        // bent by operator 4 feeding back so hard it's noise.
+        "bessel/rimshot" => Preset {
+            face: Face {
+                art: sidebands(),
+                ..face("Rimshot", &[bessel::LEVEL1, bessel::LEVEL3, bessel::DECAY3])
+            },
+            instrument: fm(
+                &[
+                    (bessel::ALGORITHM, 3.0),
+                    (bessel::PITCH, 7.0),
+                    (bessel::SWEEP, 0.02),
+                    (bessel::FEEDBACK, 1.0),
+                    (bessel::KEYSCALE, 0.0),
+                    (bessel::GAIN, 1.0),
+                    (bessel::TRACK1, 0.0),
+                    (bessel::TRACK2, 0.0),
+                    (bessel::TRACK3, 0.0),
+                    (bessel::TRACK4, 0.0),
+                ],
+                [
+                    op(1, 0.7, 1.0, (0.0005, 0.12, 0.0, 0.12)),
+                    op(2, 1.6, 0.3, (0.0005, 0.05, 0.0, 0.05)),
+                    op(3, 6.0, 1.0, (0.0005, 0.18, 0.0, 0.18)),
+                    op(4, 9.0, 1.0, (0.0005, 0.3, 0.0, 0.3)),
+                ],
+            ),
+            effects: vec![fx(
+                FxKind::Reverb,
+                &[
+                    (reverb::SIZE, 0.3),
+                    (reverb::DECAY, 0.3),
+                    (reverb::MIX, 0.15),
+                ],
+            )]
+            .into(),
+            macros: vec![
+                mac(
+                    "wires",
+                    0.0,
+                    &[(None, bessel::LEVEL3, 0.1), (None, bessel::DECAY3, 0.15)],
+                ),
+                mac(
+                    "crack",
+                    0.0,
+                    &[(None, bessel::LEVEL2, 0.4), (None, bessel::PITCH, 0.1)],
+                ),
+            ],
+        },
+        // A hi-hat: two pairs of fixed operators at ratios nothing like each other, high up and
+        // bent hard, so their sidebands crowd into a metallic hiss, gone in a moment.
+        "bessel/tinsel" => Preset {
+            face: Face {
+                art: sidebands(),
+                ..face("Tinsel", &[bessel::DECAY1, bessel::DECAY3, bessel::LEVEL2])
+            },
+            instrument: fm(
+                &[
+                    (bessel::ALGORITHM, 3.0),
+                    (bessel::FEEDBACK, 0.7),
+                    (bessel::KEYSCALE, 0.0),
+                    (bessel::GAIN, 1.0),
+                    (bessel::TRACK1, 0.0),
+                    (bessel::TRACK2, 0.0),
+                    (bessel::TRACK3, 0.0),
+                    (bessel::TRACK4, 0.0),
+                    (bessel::WAVE1, 3.0),
+                    (bessel::WAVE3, 3.0),
+                    (bessel::VELOCITY1, 0.7),
+                    (bessel::VELOCITY3, 0.7),
+                ],
+                [
+                    op(1, 27.3, 1.0, (0.0005, 0.05, 0.0, 0.05)),
+                    op(2, 19.7, 0.9, (0.0005, 0.08, 0.0, 0.08)),
+                    op(3, 21.1, 1.0, (0.0005, 0.04, 0.0, 0.04)),
+                    op(4, 31.4, 0.9, (0.0005, 0.08, 0.0, 0.08)),
+                ],
+            ),
+            effects: vec![fx(
+                FxKind::Filter,
+                &[(filter::TYPE, 2.0), (filter::CUTOFF, 6_000.0)],
+            )]
+            .into(),
+            macros: vec![
+                mac(
+                    "open",
+                    0.0,
+                    &[(None, bessel::DECAY1, 0.35), (None, bessel::DECAY3, 0.35)],
+                ),
+                mac(
+                    "hiss",
+                    0.0,
+                    &[(None, bessel::LEVEL2, 0.1), (None, bessel::FEEDBACK, 0.3)],
+                ),
+            ],
+        },
+        // The drum machine's cowbell: two fixed tones at 540 and 800 Hz, nasal half-sines,
+        // barely bent, ringing for a quarter of a second.
+        "bessel/more-cowbell" => Preset {
+            face: Face {
+                art: sidebands(),
+                ..face("More Cowbell", &[bessel::DECAY1, bessel::LEVEL2])
+            },
+            instrument: fm(
+                &[
+                    (bessel::ALGORITHM, 3.0),
+                    (bessel::KEYSCALE, 0.0),
+                    (bessel::GAIN, 0.9),
+                    (bessel::TRACK1, 0.0),
+                    (bessel::TRACK2, 0.0),
+                    (bessel::TRACK3, 0.0),
+                    (bessel::TRACK4, 0.0),
+                    (bessel::WAVE1, 1.0),
+                    (bessel::WAVE3, 1.0),
+                ],
+                [
+                    op(1, 2.064, 1.0, (0.0005, 0.25, 0.0, 0.25)),
+                    op(2, 2.064, 0.2, (0.0005, 0.05, 0.0, 0.05)),
+                    op(3, 3.058, 0.8, (0.0005, 0.2, 0.0, 0.2)),
+                    op(4, 3.058, 0.2, (0.0005, 0.05, 0.0, 0.05)),
+                ],
+            ),
+            effects: vec![fx(
+                FxKind::Filter,
+                &[
+                    (filter::TYPE, 1.0),
+                    (filter::CUTOFF, 1_200.0),
+                    (filter::RESONANCE, 0.2),
+                ],
+            )]
+            .into(),
+            macros: vec![
+                mac(
+                    "clank",
+                    0.0,
+                    &[(None, bessel::LEVEL2, 0.3), (None, bessel::LEVEL4, 0.3)],
+                ),
+                mac(
+                    "ring",
+                    0.0,
+                    &[(None, bessel::DECAY1, 0.2), (None, bessel::DECAY3, 0.2)],
                 ),
             ],
         },
