@@ -494,6 +494,15 @@ impl Switched {
     }
 
     fn render(&mut self, left: &mut [f32], right: &mut [f32]) {
+        if self.silent {
+            // Nothing moves while every voice is idle: the envelopes and saws wait where they
+            // stopped, so the control updates would work out the same again, and a note sets its
+            // own pitch and glide afresh. Only the clock runs on.
+            left.fill(0.0);
+            right.fill(0.0);
+            self.clock += left.len() as u64;
+            return;
+        }
         let zero = f32x8::splat(0.0);
         let one = f32x8::splat(1.0);
         let two = f32x8::splat(2.0);
