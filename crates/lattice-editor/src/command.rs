@@ -283,13 +283,13 @@ pub const COMMANDS: &[Spec] = &[
         name: "preset",
         alias: None,
         params: &[text("NAME", "name")],
-        describe: "put a preset on the track: its instrument, effects, macros and face, in place of the track's own",
+        describe: "put a preset on the track: its instrument, effects, macros and face, in place of the track's own; Lattice's are in their engine's folder, as tuss/flim",
     },
     Spec {
         name: "preset-save",
         alias: None,
         params: &[text("NAME", "name")],
-        describe: "save the track's instrument, effects and macros as a preset, giving it a face if it has none",
+        describe: "save the track's instrument, effects and macros as a preset, giving it a face if it has none; mine/NAME saves it in a folder",
     },
     Spec {
         name: "face",

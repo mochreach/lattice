@@ -1362,6 +1362,14 @@ likewise asks with `Effect::LoadFaceArt`, and `Editor::put_face_art` checks the 
 replaces the face's. The built-in chains
 are `lattice_core::CHAINS` and `built_in_chain`, so `PRESETS` and `preset` mean these.
 
+Presets are named like paths, in folders split by `/`, so the command line's list stays short:
+Lattice's own are each in their engine's folder (`tuss/flim`, checked by a test), and saved ones
+in folders under `presets` (`mine/cold-iron` is `presets/mine/cold-iron.toml`, found up to four
+folders deep). The editor gets every name, folders and all, in `Editor::presets`, and completes
+them as `:open` completes files, folders first (`suggest.rs`, `preset_paths`), except that a
+name typed without a folder also finds the presets of that name in any folder. `:preset` takes a
+name alone, too, when only one folder has it (`find_preset`); with more, it asks which.
+
 ### Registers
 
 Everything that copies goes into a register (`lattice-editor/src/registers.rs`), Vim and Helix's

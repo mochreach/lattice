@@ -793,9 +793,12 @@ const LESSONS: &[Lesson] = &[
         title: "Presets",
         text: "A preset is an instrument made into one of its own: its settings, the effects \
                after it and the macros that turn them, put on a track at once by `:preset \
-               night-bus`, in place of the track's own. Lattice comes with some; \
-               `:preset-save cold-iron` saves the track's as another, to put on any track of \
-               any song. A preset gives its track a face: a title, `:face Cold Iron` to change \
+               synth/night-bus`, in place of the track's own. Lattice comes with some, each in \
+               the folder of its engine: type `:preset ` and the folders are listed, `tab` \
+               fills one in and lists what's in it, and a name on its own, `:preset fli`, \
+               finds it in whichever folder it's in. `:preset-save cold-iron` saves the \
+               track's as another, to put on any track of any song, and `:preset-save \
+               mine/cold-iron` saves it in a folder of your own. A preset gives its track a face: a title, `:face Cold Iron` to change \
                it, and the controls it puts forward, its macros and whichever settings \
                `:face-show cutoff` adds (`:face-hide cutoff` takes one back). Changing the \
                instrument for another kind takes the face away. The instrument page \
@@ -805,7 +808,7 @@ const LESSONS: &[Lesson] = &[
                and note; `:face-art lamp.txt` draws one from a text file of your own. A track \
                without a face shows its engine's drawing. {open} on its title opens \
                all the settings, and again goes back.\n\n\
-               Put `night-bus` on the LEAD track, and show its resonance on its face.",
+               Put `synth/night-bus` on the LEAD track, and show its resonance on its face.",
         teaches: &[],
         commands: &[
             "preset",
@@ -827,7 +830,7 @@ const LESSONS: &[Lesson] = &[
                     && resonance.is_some_and(|r| face.controls.contains(&(r as u8)))
             })
         },
-        solution: "gpgl:preset night-bus<ret>:face-show resonance<ret>",
+        solution: "gpgl:preset synth/night-bus<ret>:face-show resonance<ret>",
     },
     Lesson {
         title: "Chopping",

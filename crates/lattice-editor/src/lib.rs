@@ -3079,6 +3079,40 @@ mod tests {
     }
 
     #[test]
+    fn presets_are_suggested_by_folder() {
+        let mut e = editor();
+        e.presets.push("mine/cold-iron".into());
+        let texts = |e: &Editor| {
+            e.completions()
+                .into_iter()
+                .map(|c| c.text)
+                .collect::<Vec<_>>()
+        };
+        // The folders, the engines' first, each once.
+        typing(&mut e, ":preset ");
+        let folders = texts(&e);
+        assert_eq!(folders[..2], ["synth/", "monochord/"]);
+        assert_eq!(folders.last().unwrap(), "mine/");
+        assert!(folders.iter().all(|f| f.ends_with('/')), "{folders:?}");
+        assert_eq!(e.completions()[0].describe, "8 presets");
+        // Then a folder's own.
+        typing(&mut e, "tuss/");
+        assert_eq!(texts(&e)[..2], ["tuss/tregaskin", "tuss/flim"]);
+        typing(&mut e, "h");
+        assert_eq!(texts(&e), ["tuss/hollow-tine"]);
+        e.handle(Key::Esc);
+        // A name finds a preset in any folder.
+        typing(&mut e, ":preset fli");
+        assert_eq!(texts(&e), ["tuss/flim"]);
+        e.handle(Key::Tab);
+        assert_eq!(line(&e), "preset tuss/flim");
+        e.handle(Key::Esc);
+        // Saving, only the folders.
+        typing(&mut e, ":preset-save mi");
+        assert_eq!(texts(&e), ["mine/"]);
+    }
+
+    #[test]
     fn rules_suggest_their_amounts_and_when_they_apply() {
         let mut e = editor();
         let suggested = |e: &Editor| {

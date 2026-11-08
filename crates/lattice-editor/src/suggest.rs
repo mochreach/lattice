@@ -57,6 +57,11 @@ impl Editor {
             return vec![];
         };
         let before: Vec<&str> = words.collect();
+        match (spec.name, before.len()) {
+            ("preset", 0) => return self.preset_paths(typed, false),
+            ("preset-save", 0) => return self.preset_paths(typed, true),
+            _ => {}
+        }
         match files(spec.name) {
             Some(extension) if before.is_empty() => paths(typed, extension),
             _ => {
@@ -116,17 +121,6 @@ impl Editor {
                         "saved"
                     };
                     (name.clone(), whose.into())
-                })
-                .collect(),
-            ("preset", 0) => (self.presets.iter())
-                .map(|name| {
-                    let whose = match lattice_core::preset(name) {
-                        Some(preset) => {
-                            format!("{} · {}", preset.face.title, preset.instrument.kind.name())
-                        }
-                        None => "saved".into(),
-                    };
-                    (name.clone(), whose)
                 })
                 .collect(),
             ("face-show" | "face-hide", 0) => (track.instrument.params().iter())
@@ -193,6 +187,80 @@ impl Editor {
 }
 
 impl Editor {
+    /// The presets and folders matching `typed`, a preset's name typed so far, as [`paths`]
+    /// finds files: in the folder it names, those whose names match what's after its last `/`,
+    /// folders first. A name typed with no folder also finds the presets of that name in any
+    /// folder, so `flim` finds `tuss/flim`. Only folders, for `folders_only`, to save into.
+    fn preset_paths(&self, typed: &str, folders_only: bool) -> Vec<Completion> {
+        // Just after a `/` is always a char boundary, so it always splits.
+        let after = typed.rfind('/').map_or(0, |i| i + 1);
+        let (folder, name) = typed.split_at_checked(after).unwrap_or(("", typed));
+        let describe = |preset: &str| match lattice_core::preset(preset) {
+            Some(p) => format!("{} · {}", p.face.title, p.instrument.kind.name()),
+            None => "saved".into(),
+        };
+        // Each with whether it's a folder, its score, and where its own name starts.
+        let mut found: Vec<(bool, i32, usize, Completion)> = vec![];
+        let mut push = |is_folder, text: String, leaf: usize, describe| {
+            let Some((score, matched)) = text.get(leaf..).and_then(|l| fuzzy(name, l)) else {
+                return;
+            };
+            if found.iter().any(|f| f.3.text == text) {
+                return;
+            }
+            let completion = Completion {
+                matched: matched.iter().map(|m| m + leaf).collect(),
+                text,
+                signature: String::new(),
+                describe,
+                any: false,
+            };
+            found.push((is_folder, score, leaf, completion));
+        };
+        for preset in &self.presets {
+            let Some(rest) = preset.strip_prefix(folder) else {
+                continue;
+            };
+            match rest.split_once('/') {
+                Some((sub, _)) => {
+                    let text = format!("{folder}{sub}/");
+                    let n = (self.presets.iter())
+                        .filter(|p| p.starts_with(&text))
+                        .count();
+                    let s = if n == 1 { "" } else { "s" };
+                    push(true, text, folder.len(), format!("{n} preset{s}"));
+                }
+                None if !folders_only => {
+                    push(false, preset.clone(), folder.len(), describe(preset));
+                }
+                None => {}
+            }
+        }
+        if folder.is_empty() && !name.is_empty() && !folders_only {
+            for preset in &self.presets {
+                if let Some((_, leaf)) = preset.rsplit_once('/') {
+                    push(
+                        false,
+                        preset.clone(),
+                        preset.len() - leaf.len(),
+                        describe(preset),
+                    );
+                }
+            }
+        }
+        // Stable, so ties keep the presets' own order.
+        found.sort_by_key(|(is_folder, score, _, _)| (!is_folder, -score));
+        // A name's first letters narrow the list to it, as for other values.
+        let starts = |(_, _, leaf, c): &(bool, i32, usize, Completion)| {
+            (c.text.get(*leaf..))
+                .is_some_and(|t| t.to_lowercase().starts_with(&name.to_lowercase()))
+        };
+        if found.iter().any(starts) {
+            found.retain(starts);
+        }
+        found.into_iter().map(|(_, _, _, c)| c).collect()
+    }
+
     /// What fits a rule's next word: its amount, as an interval or a number of steps, then when
     /// it applies, `every N [OFFSET]` or `pass K`.
     fn rule_choices(&self, name: &str, before: &[&str]) -> Vec<(String, String)> {

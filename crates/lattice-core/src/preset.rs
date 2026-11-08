@@ -138,46 +138,41 @@ impl TryFrom<SavedPreset> for Preset {
     }
 }
 
-/// The presets Lattice comes with.
+/// The presets Lattice comes with, each in the folder of its instrument's engine: `tuss/flim`.
 pub const PRESETS: &[&str] = &[
-    // Synths.
-    "night-bus",
-    "paper-lanterns",
-    "cathedral",
-    "sodium",
-    "wasp",
-    "acid-rain",
-    "rubber",
-    "sub-zero",
-    // Strings.
-    "glasshouse",
-    "dust-harp",
-    "cello-ghost",
-    "tidewater",
-    "monsoon",
-    // Drums.
-    "foundry",
-    "velvet-boom",
-    "tin-roof",
-    "brushfire",
-    "cicada",
-    "brass-bell",
-    "crowd-pleaser",
-    "thunderhead",
-    "hollow-log",
-    // Krell.
-    "great-machine",
-    // Tuss.
-    "tregaskin",
-    "flim",
-    "suitcase",
-    "music-box",
-    "hollow-tine",
-    "monologue",
-    "pentagon",
+    "synth/night-bus",
+    "synth/paper-lanterns",
+    "synth/cathedral",
+    "synth/sodium",
+    "synth/wasp",
+    "synth/acid-rain",
+    "synth/rubber",
+    "synth/sub-zero",
+    "monochord/glasshouse",
+    "monochord/dust-harp",
+    "monochord/cello-ghost",
+    "monochord/tidewater",
+    "monochord/monsoon",
+    "kick/foundry",
+    "kick/velvet-boom",
+    "snare/tin-roof",
+    "snare/brushfire",
+    "hat/cicada",
+    "hat/brass-bell",
+    "clap/crowd-pleaser",
+    "tom/thunderhead",
+    "tom/hollow-log",
+    "krell/great-machine",
+    "tuss/tregaskin",
+    "tuss/flim",
+    "tuss/suitcase",
+    "tuss/music-box",
+    "tuss/hollow-tine",
+    "tuss/monologue",
+    "tuss/pentagon",
 ];
 
-/// A preset Lattice comes with, by name.
+/// A preset Lattice comes with, by name, folder and all: `tuss/flim`.
 pub fn preset(name: &str) -> Option<Preset> {
     use crate::fx::{comp, delay, drive, ensemble, filter, phaser, pitch, reverb};
     use crate::instrument::{clap, hat, kick, krell, monochord, snare, synth, tom, tuss};
@@ -217,7 +212,7 @@ pub fn preset(name: &str) -> Option<Preset> {
     let tine = || crate::art::engine_face(InstKind::Tuss).art;
     let preset = match name {
         // A steel string, plucked bright near the bridge, in a large glassy room.
-        "glasshouse" => Preset {
+        "monochord/glasshouse" => Preset {
             face: face("Glasshouse", &[monochord::PLUCK, monochord::DECAY]),
             instrument: inst(
                 InstKind::Monochord,
@@ -252,7 +247,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // A slow saw pad, dark until it's opened, in Lattice's shimmer.
-        "night-bus" => {
+        "synth/night-bus" => {
             let mut effects = crate::chain::built_in_chain("shimmer")?;
             effects.first_mut()?.set(reverb::MIX, 0.45);
             Preset {
@@ -281,7 +276,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             }
         }
         // A square bass that squelches as it's opened, a little driven.
-        "rubber" => Preset {
+        "synth/rubber" => Preset {
             face: face("Rubber", &[synth::DECAY]),
             instrument: inst(
                 InstKind::Synth,
@@ -307,7 +302,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // A hard kick, driven, with a low filter to darken it.
-        "foundry" => Preset {
+        "kick/foundry" => Preset {
             face: face("Foundry", &[kick::TUNE, kick::DECAY]),
             instrument: inst(
                 InstKind::Kick,
@@ -337,7 +332,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // A sitar, in a dotted echo that thickens as the rain comes on.
-        "monsoon" => Preset {
+        "monochord/monsoon" => Preset {
             face: face("Monsoon", &[monochord::POSITION]),
             instrument: inst(
                 InstKind::Monochord,
@@ -366,7 +361,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             )],
         },
         // A 303's squelch: a saw through a filter that snaps open on each note, dripping echoes.
-        "acid-rain" => Preset {
+        "synth/acid-rain" => Preset {
             face: face("Acid Rain", &[synth::CUTOFF, synth::DECAY]),
             instrument: inst(
                 InstKind::Synth,
@@ -406,7 +401,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // A square organ held in a stone nave, its reverb as long as the building.
-        "cathedral" => Preset {
+        "synth/cathedral" => Preset {
             face: face("Cathedral", &[synth::ATTACK, synth::RELEASE]),
             instrument: inst(
                 InstKind::Synth,
@@ -440,7 +435,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // A bright plucked lead, orange as a streetlight, trailing echoes.
-        "sodium" => Preset {
+        "synth/sodium" => Preset {
             face: face("Sodium Lamp", &[synth::CUTOFF, synth::DECAY]),
             instrument: inst(
                 InstKind::Synth,
@@ -476,7 +471,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // A low, round bass under everything, squeezed even.
-        "sub-zero" => Preset {
+        "synth/sub-zero" => Preset {
             face: face("Sub Zero", &[synth::RELEASE]),
             instrument: inst(
                 InstKind::Synth,
@@ -501,7 +496,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // A slow pad drifting through a swaying band-pass, as if lit from inside.
-        "paper-lanterns" => Preset {
+        "synth/paper-lanterns" => Preset {
             face: face("Paper Lanterns", &[synth::ATTACK, synth::RELEASE]),
             instrument: inst(
                 InstKind::Synth,
@@ -543,7 +538,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // A square lead, driven till it buzzes.
-        "wasp" => Preset {
+        "synth/wasp" => Preset {
             face: face("Wasp", &[synth::CUTOFF, synth::RESONANCE]),
             instrument: inst(
                 InstKind::Synth,
@@ -579,7 +574,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // A soft nylon string, long and dark, in a far-off room.
-        "dust-harp" => Preset {
+        "monochord/dust-harp" => Preset {
             face: face("Dust Harp", &[monochord::PLUCK, monochord::TONE]),
             instrument: inst(
                 InstKind::Monochord,
@@ -617,7 +612,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // A bowed string, breathy and long, haunting the room an octave up.
-        "cello-ghost" => Preset {
+        "monochord/cello-ghost" => Preset {
             face: face("Cello Ghost", &[monochord::POSITION, monochord::BOW]),
             instrument: inst(
                 InstKind::Monochord,
@@ -655,7 +650,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // A steel string plucked hard at the bridge, twanging off a slapback echo.
-        "tidewater" => Preset {
+        "monochord/tidewater" => Preset {
             face: face("Tidewater", &[monochord::POSITION, monochord::DECAY]),
             instrument: inst(
                 InstKind::Monochord,
@@ -689,7 +684,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // An 808's long, soft boom, glued with a compressor.
-        "velvet-boom" => Preset {
+        "kick/velvet-boom" => Preset {
             face: face("Velvet Boom", &[kick::TUNE, kick::DECAY]),
             instrument: inst(
                 InstKind::Kick,
@@ -707,7 +702,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // A 909's crack off a tin roof: bright, short, in a small room.
-        "tin-roof" => Preset {
+        "snare/tin-roof" => Preset {
             face: face("Tin Roof", &[snare::TUNE, snare::SNAP]),
             instrument: inst(
                 InstKind::Snare,
@@ -738,7 +733,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // A snare all wires and no shell, dulled like brushes.
-        "brushfire" => Preset {
+        "snare/brushfire" => Preset {
             face: face("Brushfire", &[snare::DECAY, snare::TONE]),
             instrument: inst(
                 InstKind::Snare,
@@ -760,7 +755,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // A hat of almost all noise, ticking, with a sweep through it like a swarm.
-        "cicada" => Preset {
+        "hat/cicada" => Preset {
             face: face("Cicada", &[hat::DECAY, hat::TONE]),
             instrument: inst(
                 InstKind::Hat,
@@ -793,7 +788,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // The hat's metal, tuned low and left to ring like a bell, echoing.
-        "brass-bell" => Preset {
+        "hat/brass-bell" => Preset {
             face: face("Brass Bell", &[hat::TUNE, hat::DECAY]),
             instrument: inst(
                 InstKind::Hat,
@@ -828,7 +823,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // A clap from a crowd of hands, loose and roomy.
-        "crowd-pleaser" => Preset {
+        "clap/crowd-pleaser" => Preset {
             face: face("Crowd Pleaser", &[clap::DECAY, clap::TUNE]),
             instrument: inst(
                 InstKind::Clap,
@@ -858,7 +853,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // A low tom that drops and rolls on, in a storm of a reverb.
-        "thunderhead" => Preset {
+        "tom/thunderhead" => Preset {
             face: face("Thunderhead", &[tom::TUNE, tom::BEND]),
             instrument: inst(
                 InstKind::Tom,
@@ -895,7 +890,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // A short, high, hard tom: a knock on a hollow log.
-        "hollow-log" => Preset {
+        "tom/hollow-log" => Preset {
             face: face("Hollow Log", &[tom::TUNE, tom::DECAY]),
             instrument: inst(
                 InstKind::Tom,
@@ -927,7 +922,7 @@ pub fn preset(name: &str) -> Option<Preset> {
         },
         // Krell, the harpsichord of Forbidden Planet's lost race: all five choirs drifting apart
         // over a glass body, echoing down the Great Machine's halls. Its face is the machine.
-        "great-machine" => Preset {
+        "krell/great-machine" => Preset {
             face: Face {
                 art: crate::art::engine_face(InstKind::Krell).art,
                 ..face(
@@ -984,7 +979,7 @@ pub fn preset(name: &str) -> Option<Preset> {
         },
         // Tuss, named for the Tuss's made-up Cornish siblings: a warm electric piano on a worn
         // tape, wavering through a chorus into a soft room. Its face is the tine.
-        "tregaskin" => Preset {
+        "tuss/tregaskin" => Preset {
             face: Face {
                 art: tine(),
                 ..face("Tregaskin", &[tuss::STRIKE, tuss::BARK, tuss::DRIFT])
@@ -1036,7 +1031,7 @@ pub fn preset(name: &str) -> Option<Preset> {
         },
         // Soft and glassy, close up: a felt hammer, the bell only just there, a short room,
         // for a quiet phrase that rings on under a busy beat.
-        "flim" => Preset {
+        "tuss/flim" => Preset {
             face: Face {
                 art: tine(),
                 ..face("Flim", &[tuss::STRIKE, tuss::BELL, tuss::DECAY])
@@ -1074,7 +1069,7 @@ pub fn preset(name: &str) -> Option<Preset> {
         },
         // The seventies stage piano: a hard hammer into a pickup driven till it barks, through
         // a phaser and a little drive.
-        "suitcase" => Preset {
+        "tuss/suitcase" => Preset {
             face: Face {
                 art: tine(),
                 ..face("Suitcase", &[tuss::STRIKE, tuss::BARK, tuss::PICKUP])
@@ -1116,7 +1111,7 @@ pub fn preset(name: &str) -> Option<Preset> {
         },
         // A hard little hammer on short tines, the bell all the way up, dying quickly into a
         // long echo: a music box played through a tape delay.
-        "music-box" => Preset {
+        "tuss/music-box" => Preset {
             face: Face {
                 art: tine(),
                 ..face("Music Box", &[tuss::BELL, tuss::DECAY])
@@ -1162,7 +1157,7 @@ pub fn preset(name: &str) -> Option<Preset> {
         },
         // The pickup in line with the tine, so each note sounds an octave up and hollow, far off
         // in a large room.
-        "hollow-tine" => Preset {
+        "tuss/hollow-tine" => Preset {
             face: Face {
                 art: tine(),
                 ..face("Hollow Tine", &[tuss::PICKUP, tuss::STRIKE])
@@ -1201,7 +1196,7 @@ pub fn preset(name: &str) -> Option<Preset> {
         },
         // After the microtunings Aphex Twin made for Korg's monologue: tuned to the harmonic
         // series, its sevenths flat, each note drifting its own way, into an echo.
-        "monologue" => Preset {
+        "tuss/monologue" => Preset {
             face: Face {
                 art: tine(),
                 ..face("Monologue", &[tuss::DRIFT, tuss::TUNING, tuss::KEY])
@@ -1253,7 +1248,7 @@ pub fn preset(name: &str) -> Option<Preset> {
             ],
         },
         // A Rhodes down in the bass, barking hard, held level by a compressor.
-        "pentagon" => Preset {
+        "tuss/pentagon" => Preset {
             face: Face {
                 art: tine(),
                 ..face("Pentagon", &[tuss::BARK, tuss::STRIKE, tuss::DAMPER])
@@ -1324,6 +1319,16 @@ mod tests {
             assert_eq!(Preset::try_from(saved), Ok(preset));
         }
         assert!(preset("nothing").is_none());
+        assert!(preset("flim").is_none(), "only by its folder");
+        for name in PRESETS {
+            use crate::device::Kind;
+            let kind = preset(name).unwrap().instrument.kind;
+            assert_eq!(
+                name.split_once('/').unwrap().0,
+                kind.name(),
+                "{name}'s folder"
+            );
+        }
         let titles: std::collections::HashSet<String> = (PRESETS.iter())
             .map(|n| preset(n).unwrap().face.title)
             .collect();
@@ -1368,7 +1373,7 @@ mod tests {
         );
         assert!(art(&["a\tb"]).check(InstKind::Synth).is_err());
         // The Great Machine wears Krell's.
-        let machine = preset("great-machine").unwrap().face;
+        let machine = preset("krell/great-machine").unwrap().face;
         assert_eq!(machine.art, crate::art::engine_face(InstKind::Krell).art);
     }
 }

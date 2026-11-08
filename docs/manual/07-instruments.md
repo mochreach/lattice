@@ -1077,7 +1077,7 @@ chopped, or a loop recorded live by the looper, which records into a chop track 
 
 A preset makes an instrument into one of its own: an instrument and its settings, the effects
 after it, the macros that turn them, and a face, put on a track all at once. Lattice comes with
-23, and you can save your own.
+30, and you can save your own.
 
 ### Loading a preset
 
@@ -1085,23 +1085,34 @@ after it, the macros that turn them, and a face, put on a track all at once. Lat
 fx page's strip, or on the pattern page the cursor's track.
 
 ```
-:preset night-bus
+:preset synth/night-bus
 ```
 
-The status line says `bass is Night Bus (night-bus)`. Type `:preset ` and the command line lists
-them all, each with its title and instrument. A preset replaces the track's instrument, its whole
-chain of effects and its macros, and gives the track its face. Locks on the old effects and
-macros go with them, and so do locks on the old instrument's settings, unless the preset is the
-same kind of instrument, when they're kept. It's one step of undo.
+Presets live in folders, and a preset's name is its path, as a file's is: Lattice's own are each
+in the folder of their instrument's engine, `synth/`, `monochord/`, `kick/` and so on to
+`tuss/`, and yours wherever you saved them. The status line says
+`bass is Night Bus (synth/night-bus)`. A preset replaces the track's instrument, its whole chain
+of effects and its macros, and gives the track its face. Locks on the old effects and macros go
+with them, and so do locks on the old instrument's settings, unless the preset is the same kind
+of instrument, when they're kept. It's one step of undo.
 
-A name Lattice doesn't know is refused with the list:
-`no preset called nope; there's night-bus, paper-lanterns, …`. Lattice's own come first, then
-those you've saved, by name.
+You needn't remember the folders. Type `:preset ` and the command line lists them, each with how
+many presets it holds; `tab` fills one in, and then the list is what's inside it, each with its
+title and instrument. Or type a name without a folder and the list finds it in whichever folder
+it's in: `:preset fli` suggests `tuss/flim`. A name on its own loads, too, as long as only one
+folder has it, so `:preset night-bus` still puts on `synth/night-bus`; if two have it, the
+status line names both and asks which. I wanted the list short enough to read at a glance: with
+thirty presets and more saved, a flat list ran off the bottom of the screen, while the folders
+fit, and an engine's folder is where you'd look for its sounds anyway.
+
+A name Lattice doesn't know is refused with what's at the top:
+`no preset called nope; there's synth/, monochord/, …`. Lattice's folders come first, then
+yours.
 
 ### The presets Lattice comes with
 
 Each has its effects, a face, and one or two macros, named on its face. Turn them on the
-instrument page.
+instrument page. Each is in the folder of its instrument, so `flim` below is `tuss/flim`.
 
 | Preset           | Instrument  | Sound                                     | Macros              |
 |------------------|-------------|-------------------------------------------|---------------------|
@@ -1143,16 +1154,21 @@ called `NAME`, to put on any track of any song:
 
 ```
 :preset-save cold-iron
+:preset-save mine/cold-iron
 ```
 
-A name is letters, digits, `-` and `_` (it's the file's name). If the track has no face, it's
-given one titled after the name, `Cold Iron`, which the track then wears. A name Lattice's own
-presets use is refused (`night-bus is one Lattice comes with: save it under another name`), as
-`:preset` would always find Lattice's first; saving under a name of your own that's already
-there replaces that file.
+A name is letters, digits, `-` and `_` (it's the file's name), with a `/` after each folder it's
+in, so the second saves it in a folder called `mine`, made if it isn't there. While you type,
+the command line lists the folders there are to save into. If the track has no face, it's given
+one titled after the name, `Cold Iron`, which the track then wears. A name Lattice's own presets
+use is refused (`synth/night-bus is one Lattice comes with: save it under another name`), as
+`:preset` would always find Lattice's first; saving in an engine's folder under a name of your
+own is fine, and your preset is listed there beside Lattice's. Saving under a name of yours
+that's already there replaces that file.
 
 Presets are saved as TOML files, one each, in `presets` beside the config file:
-`~/.config/lattice/presets/cold-iron.toml` (or under `$XDG_CONFIG_HOME` if it's set). The status
+`~/.config/lattice/presets/cold-iron.toml`, or `presets/mine/cold-iron.toml` in a folder (or
+under `$XDG_CONFIG_HOME` if it's set). Folders inside folders work too, four deep. The status
 line says where. You can edit them by hand, copy them between machines and share them. Here is a
 snare saved with a macro called `crack` that turns its `snap` and `tone`, a reverb, and a face
 putting `snap` forward:

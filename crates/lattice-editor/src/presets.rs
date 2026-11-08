@@ -2,6 +2,9 @@
 //! in place of the track's own, and gives the track its face; `:preset-save NAME` saves the
 //! track's as one. Lattice comes with some ([`lattice_core::PRESETS`]); the rest are files the
 //! frontend reads and writes, asked to with [`Effect::SavePreset`] and [`Effect::LoadPreset`].
+//! Presets are in folders, named like paths: Lattice's in their engine's (`tuss/flim`), saved
+//! ones wherever they were saved (`mine/cold-iron`). A name on its own finds the one preset
+//! anywhere that has it.
 //!
 //! `:face TITLE` names the track's face, giving it one if it has none, and `:face-show` and
 //! `:face-hide` put the instrument's settings forward on it, or take them back. `:face-art FILE`
@@ -26,7 +29,7 @@ impl Editor {
     }
 
     pub(crate) fn load_preset(&mut self, name: &str) -> Result<Vec<Effect>, String> {
-        let name = preset_name(name)?;
+        let name = self.find_preset(&preset_name(name)?)?;
         let t = self.preset_track()?;
         Ok(match preset(&name) {
             Some(preset) => self.put_preset(t, &name, preset),
@@ -50,7 +53,8 @@ impl Editor {
         if !has_face {
             self.checkpoint();
             if let Some(track) = self.grid.tracks.get_mut(t) {
-                track.face = Some(Face::new(&title(&name)));
+                let leaf = name.rsplit('/').next().unwrap_or(&name);
+                track.face = Some(Face::new(&title(leaf)));
             }
         }
         let track = self.grid.tracks.get(t).ok_or("no such track")?;
@@ -61,6 +65,28 @@ impl Editor {
             macros: track.macros.clone(),
         };
         Ok(vec![Effect::SavePreset(name, Box::new(preset))])
+    }
+
+    /// The preset `name` means: itself if there's one by that name, else, for a name with no
+    /// folder, the one preset in any folder called that. One that isn't there at all goes to
+    /// the frontend as it is, to say so.
+    fn find_preset(&self, name: &str) -> Result<String, String> {
+        if name.contains('/') || self.presets.iter().any(|p| p == name) {
+            return Ok(name.into());
+        }
+        let found: Vec<&String> = (self.presets.iter())
+            .filter(|p| p.rsplit_once('/').is_some_and(|(_, leaf)| leaf == name))
+            .collect();
+        match &found[..] {
+            [] => Ok(name.into()),
+            [one] => Ok(one.to_string()),
+            more => Err(format!(
+                "there's a {name} in {}: say which",
+                (more.iter().map(|p| p.as_str()))
+                    .collect::<Vec<_>>()
+                    .join(" and ")
+            )),
+        }
     }
 
     /// Puts `preset`, loaded as `name`, on track `t`, in place of its instrument, chain and
@@ -237,12 +263,14 @@ impl Editor {
     }
 }
 
-/// A preset's name, which is its file's: letters, digits, `-` and `_`.
+/// A preset's name, which is its file's, in its folders: letters, digits, `-` and `_`, with a
+/// `/` after each folder, as in `mine/cold-iron`.
 fn preset_name(name: &str) -> Result<String, String> {
     let name = name.trim();
     let ok = |c: char| c.is_alphanumeric() || c == '-' || c == '_';
-    if name.is_empty() || !name.chars().all(ok) {
-        return Err("a preset's name is letters, digits, - and _".into());
+    let word = |w: &str| !w.is_empty() && w.chars().all(ok);
+    if !name.split('/').all(word) {
+        return Err("a preset's name is letters, digits, - and _, in folders split by /".into());
     }
     Ok(name.to_string())
 }
@@ -295,6 +323,7 @@ mod tests {
         };
         e.grid.tracks[0].steps[0].locks.set(lock(None, 5));
         e.grid.tracks[0].steps[1].locks.set(lock(Some(0), 0));
+        // By its name alone: there's only one night-bus, in synth/.
         let effects = e.run_command("preset night-bus");
         assert_eq!(
             effects,
@@ -311,7 +340,7 @@ mod tests {
         assert!(track.steps[1].locks.is_empty(), "the old chain's goes");
 
         // A kick has none of a synth's settings.
-        e.run_command("preset foundry");
+        e.run_command("preset kick/foundry");
         assert!(e.grid.tracks[0].steps[0].locks.is_empty());
         // Changing its kind takes the face with it.
         e.run_command("inst synth");
@@ -324,13 +353,34 @@ mod tests {
             e.run_command("preset mine"),
             [Effect::LoadPreset("mine".into())]
         );
-        assert!(e.run_command("preset my/preset").is_empty());
+        assert_eq!(
+            e.run_command("preset my/preset"),
+            [Effect::LoadPreset("my/preset".into())]
+        );
+        for bad in ["my//preset", "/preset", "my/", "../preset", "my preset/x"] {
+            assert!(e.run_command(&format!("preset {bad}")).is_empty(), "{bad}");
+        }
+
+        // Saved in another folder, a name's no longer enough.
+        e.presets.push("mine/flim".into());
+        assert!(e.run_command("preset flim").is_empty());
+        assert!(
+            e.message
+                .as_ref()
+                .unwrap()
+                .contains("tuss/flim and mine/flim")
+        );
+        e.run_command("preset tuss/flim");
+        assert_eq!(e.grid.tracks[0].face.as_ref().unwrap().title, "Flim");
     }
 
     #[test]
     fn saving_gives_the_track_a_face() {
         let mut e = editor();
-        assert!(e.run_command("preset-save glasshouse").is_empty(), "taken");
+        assert!(
+            e.run_command("preset-save monochord/glasshouse").is_empty(),
+            "taken"
+        );
         let effects = e.run_command("preset-save cold-iron");
         let [Effect::SavePreset(name, preset)] = &effects[..] else {
             panic!("{effects:?}");
@@ -348,6 +398,15 @@ mod tests {
         assert_eq!(face.controls, [5, 7]);
         e.run_command("face-hide cutoff");
         assert_eq!(e.grid.tracks[0].face.as_ref().unwrap().controls, [7]);
+
+        // In a folder, titled after the name, not the folder.
+        e.grid.tracks[0].face = None;
+        let effects = e.run_command("preset-save mine/cold-iron");
+        let [Effect::SavePreset(name, preset)] = &effects[..] else {
+            panic!("{effects:?}");
+        };
+        assert_eq!(name, "mine/cold-iron");
+        assert_eq!(preset.face.title, "Cold Iron");
     }
 
     #[test]
