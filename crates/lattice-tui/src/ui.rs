@@ -1568,7 +1568,6 @@ fn grid_row(
                     false => style,
                 }
             }
-            _ if on_note => own.patch(band),
             _ if selected && !conducting => own.patch(band).bg(theme.selection),
             _ => highlight(own),
         };
