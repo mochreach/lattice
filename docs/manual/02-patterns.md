@@ -926,10 +926,10 @@ editing keys act on that field alone, and the notes stay as they are:
 | `r`           | says to type the value in insert mode instead                             |
 | `+` `-`       | say a length is the note's: `fn` goes to the note column                  |
 
-You can see what an edit will act on. On the notes, the selected steps are shaded whole. In a
-field, the rest of each selected step keeps that shade, and the field's own cells are lighter:
-with the cursor on the velocity, every velocity in the selection stands out, and those are what
-`d`, `C-a` or `~` will change.
+You can see what an edit will act on: in the selected steps, the column the cursor's in is
+shaded lighter than the rest. With the cursor on the notes, the notes are lighter; move it to the
+velocity and every velocity in the selection stands out instead, and those are what `d`, `C-a`
+or `~` will change. The darker shade is the rest of the selection, which the edit leaves alone.
 
 It's the same however many tracks the selections reach. Every one of them opens out to show its
 fields while you're in one, and the edit goes to the same field on each: the velocity on every

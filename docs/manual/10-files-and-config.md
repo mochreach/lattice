@@ -459,7 +459,7 @@ TOML lets a key be written bare only if it's letters, digits, `-` and `_`, so qu
 | `visual`    | the page's name, select mode's cursor and badge         | blue                     |
 | `error`     | mistakes on the command line, `REC`, the count-in       | red                      |
 | `selection` | the background of selected steps                        | shaded from the terminal |
-| `target`    | in a field, the selected steps' values an edit acts on  | shaded from the terminal |
+| `target`    | the column of the selected steps that an edit acts on   | shaded from the terminal |
 | `beat-row`  | the background of rows on the beat, or `"none"`         | shaded from the terminal |
 | `tracks`    | the tracks' colours, a list used in turn                | six of the sixteen       |
 

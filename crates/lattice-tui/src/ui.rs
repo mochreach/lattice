@@ -1528,20 +1528,26 @@ fn grid_row(
         let in_field = target.filter(|_| at(primary));
         // A cursor in a field is marked there rather than on the note.
         let cursor_here = here.iter().any(|s| at(s.cursor));
+        // The column edits act on is lighter than the rest of the selected steps: the notes,
+        // unless the cursor's in a field.
+        let shade = match editing {
+            true => theme.selection,
+            false => theme.target,
+        };
         if conducting && selected {
             // The selection's in the conductor, not the track.
         } else if at(primary) && !editing {
             style = theme.block(mode_colour);
         } else if cursor_here && target.is_none() {
             // The other selections' cursors: marked, but not as a block like the primary's.
-            style = style.bg(theme.selection).patch(theme.secondary_cursor);
+            style = style.bg(shade).patch(theme.secondary_cursor);
             if mode_colour != Color::Reset {
                 style = style.fg(mode_colour);
             }
         } else if c.playhead == Some(row) {
             style = theme.block(c.colour);
         } else if selected {
-            style = style.bg(theme.selection);
+            style = style.bg(shade);
         }
 
         // In the track's colour, unless the cell is highlighted.
@@ -1562,7 +1568,8 @@ fn grid_row(
                     false => style,
                 }
             }
-            _ if editing && selected => own.patch(band).bg(theme.selection),
+            _ if on_note => own.patch(band),
+            _ if selected && !conducting => own.patch(band).bg(theme.selection),
             _ => highlight(own),
         };
         match mark {

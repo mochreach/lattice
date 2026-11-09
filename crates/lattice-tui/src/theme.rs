@@ -8,7 +8,7 @@ use terminal_colorsaurus::QueryOptions;
 const BEAT_ROW_SHADE: f32 = 0.12;
 /// The same for selected steps.
 const SELECTION_SHADE: f32 = 0.3;
-/// The same for the field an edit acts on within them.
+/// The same for the column an edit acts on within them.
 const TARGET_SHADE: f32 = 0.5;
 
 #[derive(Debug, Clone)]
@@ -29,8 +29,8 @@ pub struct Theme {
     pub error: Color,
     /// Background of selected steps.
     pub selection: Color,
-    /// Background of the field an edit will act on, in the selected steps, with the cursor in
-    /// one: lighter than the selection, to tell it from the rest of the step.
+    /// Background of the column an edit will act on in the selected steps, the notes or a
+    /// field: lighter than the selection, to tell it from the rest of the step.
     pub target: Color,
     /// The cursors of selections other than the primary, over the selection's background. The
     /// primary's cursor is a solid block, so these are only marked out, to keep it distinct.
