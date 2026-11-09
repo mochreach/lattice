@@ -131,7 +131,7 @@ OPTIONS
   --config PATH        read this config file in place of the usual one
   --no-click           start with the metronome off
   --show-keys          show keys as they're pressed, for screencasts
-  --no-splash          leave out the opening animation
+  --no-splash          leave out the opening animation and the thanks after it
   --allow-agent-save   let `lattice ctl` save, open and quit, which it otherwise can't
   -h, --help           print this
   -V, --version        print the version

@@ -54,6 +54,7 @@ mod tracks;
 mod ui;
 mod usage;
 mod wave;
+mod welcome;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
@@ -329,6 +330,8 @@ fn run(
     hung_up: &AtomicBool,
 ) -> Result<()> {
     let mut view = ui::ViewState::default();
+    // Thanks, once the opening's over.
+    let mut welcome = splash.is_some();
     let mut playhead = Playhead::default();
     let mut tap = keys::Tap::default();
     let mut lights = lights::Lights::start();
@@ -446,6 +449,8 @@ fn run(
                 if let Some(splash) = &splash {
                     let area = frame.area();
                     splash.draw(frame.buffer_mut(), area, theme, now);
+                } else if welcome {
+                    welcome::draw(frame, theme);
                 }
             })?;
             screen = (requests.iter().any(|r| r.line.trim() == "screen"))
@@ -547,6 +552,12 @@ fn run(
                 // A key skips the opening, and does nothing else. Only a press: the release of
                 // the Enter that started Lattice comes through too.
                 if kind == KeyEventKind::Press && splash.take().is_some() {
+                    break;
+                }
+                // The thanks after it waits for space or Esc, and keeps other keys from the
+                // editor beneath, where they'd change the song unseen.
+                if welcome {
+                    welcome = !(kind == KeyEventKind::Press && welcome::closes(key));
                     break;
                 }
                 let now = Instant::now();

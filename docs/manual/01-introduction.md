@@ -156,7 +156,7 @@ Lattice before it starts, with the reason (see [song files](10-files-and-config.
 | `--config PATH`        | read that config file in place of `~/.config/lattice/config.toml`    |
 | `--no-click`           | start with the metronome off, whatever the song says                 |
 | `--show-keys`          | show the keys as they're pressed, above the status line              |
-| `--no-splash`          | leave out the opening animation                                      |
+| `--no-splash`          | leave out the opening animation and the thanks after it              |
 | `--allow-agent-save`   | let `lattice ctl` save, open and quit (see below)                    |
 | `-h`, `--help`         | print a summary: options, first keys, files and what to do if stuck  |
 | `-V`, `--version`      | print the version, and the commit it was built from                  |
@@ -181,7 +181,8 @@ know stops it before it starts, and names the nearest it does know: `--no-spalsh
 - `--show-keys` is for screencasts: the keys you press appear in a box above the status line,
   with repeats counted (`j×4`) and what you type on the command line as text, fading two
   seconds after the last. `:keys` turns it on and off while Lattice runs.
-- `--no-splash` skips the opening. Any key skips it too, and does nothing else.
+- `--no-splash` skips the opening and the thanks after it. Any key skips the opening too, and
+  does nothing else.
 - `--allow-agent-save` lets scripts and agents driving Lattice through `lattice ctl` save, open
   and quit. Without it they can't overwrite your files or throw away your song: see
   [lattice ctl](10-files-and-config.md#driving-lattice-from-scripts-lattice-ctl).
@@ -192,6 +193,21 @@ Each time Lattice starts, a fractal lattice grows out from the logo in the top c
 fills the screen, then sweeps away from the same corner to show the editor beneath. Each launch
 picks its own pattern (Sierpiński's triangle and carpet among them), scale, shape and colours.
 It lasts about two seconds; any key, or `--no-splash`, skips it.
+
+Then a small box thanks you for using Lattice, and says where to find more of it:
+
+| What    | Where                          |
+|---------|--------------------------------|
+| website | https://mochreach.dev          |
+| videos  | https://youtube.com/@mochreach |
+| discord | https://discord.gg/NJbzRZav7w  |
+| support | https://ko-fi.com/mochreach    |
+
+My site has notes on Lattice and what else I'm making; the videos show it being played; the
+Discord is the place to ask questions, share songs and tell me what's broken; and Ko-fi is there
+if you'd like to help me keep working on it. Space or Esc closes the box. Until you do, other
+keys do nothing, so nothing changes in the song behind it unseen. `--no-splash` leaves it out
+along with the opening, which suits scripts and screencasts.
 
 ## The screen
 
