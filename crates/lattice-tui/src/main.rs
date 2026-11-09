@@ -180,8 +180,15 @@ fn main() -> Result<()> {
         midi_out::clock(ticks);
     }
     let mut theme = Theme::detect();
+    let mut settings = config::Settings::default();
     if let Some(path) = named.clone().or_else(config::default_path)
-        && let Some(problem) = config::load(&path, named.is_some(), &mut editor.keymap, &mut theme)
+        && let Some(problem) = config::load(
+            &path,
+            named.is_some(),
+            &mut editor.keymap,
+            &mut theme,
+            &mut settings,
+        )
     {
         editor.message = Some(problem);
     }
@@ -218,7 +225,8 @@ fn main() -> Result<()> {
         )
         .is_ok();
     editor.releases = enhanced;
-    let splash = (!options.no_splash).then(|| Splash::new(Instant::now()));
+    // `--no-splash`, or `splash = false` in the config, leaves out the opening and the thanks.
+    let splash = (settings.splash && !options.no_splash).then(|| Splash::new(Instant::now()));
     let server = ctl::Server::start(options.allow_agent_save);
     let hung_up = hang_ups();
     let mut keeper = autosave::Keeper::new(Arc::clone(&hung_up));

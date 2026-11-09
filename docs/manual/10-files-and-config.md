@@ -365,7 +365,8 @@ numbered so that a new one never replaces one a track plays: `song-selection-1.w
 
 ## The config file
 
-Lattice reads a config file when it starts, to change its keys and colours:
+Lattice reads a config file when it starts, to change its keys and colours, and whether it opens
+with the splash:
 `~/.config/lattice/config.toml`, or `$XDG_CONFIG_HOME/lattice/config.toml` if that's set.
 `lattice --config PATH` reads another in its place. You needn't have one: without it, Lattice
 uses its own keys and the terminal's colours.
@@ -373,6 +374,8 @@ uses its own keys and the terminal's colours.
 The file is [TOML](https://toml.io), as Helix's is, and laid out as Helix lays out its keys:
 
 ```toml
+splash = false               # no opening animation, nor the thanks after it
+
 [keys.normal]
 C-s = ":w"                   # a command
 X = "none"                   # unbound
@@ -402,6 +405,10 @@ wrong, the status line says what as Lattice opens, with how many more mistakes t
 ```
 
 and everything else in the file still applies. A file that isn't valid TOML applies nothing.
+
+`splash = false` leaves out [the opening](01-introduction.md#the-opening) and the box of thanks
+after it every time, as `--no-splash` does for one run. It goes at the top, before any
+`[section]`, since TOML would otherwise read it as part of that section.
 
 ### Binding keys
 

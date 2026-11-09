@@ -1,6 +1,9 @@
-//! The config file, `~/.config/lattice/config.toml`: keys and colours, as Helix sets its own.
+//! The config file, `~/.config/lattice/config.toml`: keys and colours, as Helix sets its own,
+//! and whether to open with the splash.
 //!
 //! ```toml
+//! splash = false               # no opening, nor the thanks after it
+//!
 //! [keys.normal]
 //! C-s = ":w"
 //! x = "delete"
@@ -38,15 +41,34 @@ pub fn default_path() -> Option<PathBuf> {
     Some(base.join("lattice").join("config.toml"))
 }
 
-/// Reads the config at `path` into the keymap and theme, and says what was wrong with it, if
-/// anything. A missing file is only wrong if it was asked for by name.
-pub fn load(path: &Path, named: bool, keymap: &mut Keymap, theme: &mut Theme) -> Option<String> {
+/// What the config sets beyond keys and colours.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Settings {
+    /// Whether to open with the splash, and the thanks after it.
+    pub splash: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self { splash: true }
+    }
+}
+
+/// Reads the config at `path` into the keymap, theme and settings, and says what was wrong with
+/// it, if anything. A missing file is only wrong if it was asked for by name.
+pub fn load(
+    path: &Path,
+    named: bool,
+    keymap: &mut Keymap,
+    theme: &mut Theme,
+    settings: &mut Settings,
+) -> Option<String> {
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound && !named => return None,
         Err(e) => return Some(format!("{}: {e}", path.display())),
     };
-    let problems = apply(&text, keymap, theme);
+    let problems = apply(&text, keymap, theme, settings);
     let first = problems.first()?;
     Some(match problems.len() {
         1 => format!("{}: {first}", path.display()),
@@ -55,7 +77,12 @@ pub fn load(path: &Path, named: bool, keymap: &mut Keymap, theme: &mut Theme) ->
 }
 
 /// Applies a config's text, returning what was wrong with it.
-fn apply(text: &str, keymap: &mut Keymap, theme: &mut Theme) -> Vec<String> {
+fn apply(
+    text: &str,
+    keymap: &mut Keymap,
+    theme: &mut Theme,
+    settings: &mut Settings,
+) -> Vec<String> {
     let table: Table = match text.parse() {
         Ok(table) => table,
         Err(e) => return vec![e.message().to_string()],
@@ -65,6 +92,8 @@ fn apply(text: &str, keymap: &mut Keymap, theme: &mut Theme) -> Vec<String> {
         match (name.as_str(), value) {
             ("keys", Value::Table(keys)) => apply_keys(keys, keymap, &mut problems),
             ("theme", Value::Table(colours)) => apply_theme(colours, theme, &mut problems),
+            ("splash", Value::Boolean(on)) => settings.splash = *on,
+            ("splash", _) => problems.push("splash should be true or false".into()),
             _ => problems.push(format!("unknown section [{name}]")),
         }
     }
@@ -171,8 +200,18 @@ mod tests {
 
     fn applied(text: &str) -> (Keymap, Theme, Vec<String>) {
         let (mut keymap, mut theme) = (Keymap::default(), Theme::terminal());
-        let problems = apply(text, &mut keymap, &mut theme);
+        let problems = apply(text, &mut keymap, &mut theme, &mut Settings::default());
         (keymap, theme, problems)
+    }
+
+    #[test]
+    fn can_leave_out_the_splash() {
+        let mut settings = Settings::default();
+        let (mut keymap, mut theme) = (Keymap::default(), Theme::terminal());
+        let problems = apply("splash = false", &mut keymap, &mut theme, &mut settings);
+        assert!(problems.is_empty() && !settings.splash, "{problems:?}");
+        let problems = apply("splash = \"no\"", &mut keymap, &mut theme, &mut settings);
+        assert_eq!(problems, ["splash should be true or false"]);
     }
 
     #[test]

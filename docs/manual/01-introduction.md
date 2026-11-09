@@ -182,7 +182,8 @@ know stops it before it starts, and names the nearest it does know: `--no-spalsh
   with repeats counted (`j×4`) and what you type on the command line as text, fading two
   seconds after the last. `:keys` turns it on and off while Lattice runs.
 - `--no-splash` skips the opening and the thanks after it. Any key skips the opening too, and
-  does nothing else.
+  does nothing else. To leave them out every time, put `splash = false` in the
+  [config file](10-files-and-config.md#the-config-file).
 - `--allow-agent-save` lets scripts and agents driving Lattice through `lattice ctl` save, open
   and quit. Without it they can't overwrite your files or throw away your song: see
   [lattice ctl](10-files-and-config.md#driving-lattice-from-scripts-lattice-ctl).
@@ -207,7 +208,8 @@ My site has notes on Lattice and what else I'm making; the videos show it being 
 Discord is the place to ask questions, share songs and tell me what's broken; and Ko-fi is there
 if you'd like to help me keep working on it. Space or Esc closes the box. Until you do, other
 keys do nothing, so nothing changes in the song behind it unseen. `--no-splash` leaves it out
-along with the opening, which suits scripts and screencasts.
+along with the opening, which suits scripts and screencasts, and `splash = false` in the config
+file leaves both out for good.
 
 ## The screen
 

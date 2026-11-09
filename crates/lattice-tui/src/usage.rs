@@ -161,6 +161,7 @@ DRIVING IT FROM SCRIPTS OR AN AGENT (macOS and Linux)
 FILES
   {config}
       keys and colours: a [keys] table binds keys, a [theme] table sets colours
+      and splash = false leaves out the opening
   {audio}
       the audio devices chosen with :output and :input
   {log}
