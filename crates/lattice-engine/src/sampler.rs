@@ -398,6 +398,11 @@ impl Processor for Sampler {
             Segment::Event(event) => match event.kind {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
                 EventKind::NoteOff { pitch } => self.note_off(pitch),
+                // Each note may be its own slice, so it starts again.
+                EventKind::Retune { from, to, velocity } => {
+                    self.note_off(from);
+                    self.note_on(to, velocity);
+                }
                 EventKind::Choke => self.player.choke(),
                 EventKind::Shape(shape) => self.shape = shape,
                 EventKind::Program(_) => {}

@@ -607,6 +607,11 @@ impl Processor for Krell {
             Segment::Event(event) => match event.kind {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
                 EventKind::NoteOff { pitch } => self.note_off(pitch),
+                // A string is plucked again.
+                EventKind::Retune { from, to, velocity } => {
+                    self.note_off(from);
+                    self.note_on(to, velocity);
+                }
                 EventKind::Choke => self.choke(),
                 // Its notes don't glide.
                 EventKind::Shape(_) | EventKind::Program(_) => {}

@@ -1289,9 +1289,12 @@ it comes back.
 
 The engine plays them with **events due later in a step**. Each `TrackPlayer` has a queue
 (`due`, room for `MAX_DUE`, made when it is) of note events at frames counted from the engine's
-start: a delayed note starting (`Later::Start`), a held note playing again as itself or as an
-arpeggio's next pitch (`Later::Change`, which follows the held note's pitch so its note-off
-ends what's sounding), and a cut ending every held note (`Later::Cut`). A step's gestures queue
+start: a delayed note starting (`Later::Start`), a held note playing again as itself
+(`Later::Change`), an arpeggio's next pitch (`Later::Retune`, sent as `EventKind::Retune`: the
+synths retune the voice sounding and leave its envelope be, as a tracker does, so a fast
+arpeggio fuses into a chord rather than a pile of overlapping attacks, while a string, tine,
+drum, sample or MIDI note plays it as a new note), both following the held note's pitch so its
+note-off ends what's sounding, and a cut ending every held note (`Later::Cut`). A step's gestures queue
 what they play when the step does, timed from its length at the tempo of the moment; anything
 left due before the next step is played first, and the rest before the block ends
 (`Engine::play_due`), each at its exact offset. A retrigger or arpeggio only acts on a note still

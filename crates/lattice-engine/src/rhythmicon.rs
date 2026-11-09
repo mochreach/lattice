@@ -126,7 +126,13 @@ impl<V: Voice> Processor for Drum<V> {
         segments(events, left, right, |segment| match segment {
             Segment::Render(l, r) => self.render(l, r),
             Segment::Event(event) => match event.kind {
-                EventKind::NoteOn { pitch, velocity } => {
+                // An arpeggio's next note is another hit.
+                EventKind::NoteOn { pitch, velocity }
+                | EventKind::Retune {
+                    to: pitch,
+                    velocity,
+                    ..
+                } => {
                     let semitones = f32::from(pitch) - f32::from(DRUM_ROOT);
                     self.voice
                         .trigger(2f32.powf(semitones / 12.0), f32::from(velocity) / 127.0);

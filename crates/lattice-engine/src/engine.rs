@@ -807,8 +807,11 @@ struct Due {
 enum Later {
     /// A delayed note starts, if it's still held.
     Start { pitch: u8, velocity: u8 },
-    /// The held note `from` plays again as `to`: a retrigger, or an arpeggio's next note.
+    /// The held note `from` plays again as `to`: a retrigger.
     Change { from: u8, to: u8, velocity: u8 },
+    /// The held note `from` carries on as `to`, without starting again: an arpeggio's next
+    /// note.
+    Retune { from: u8, to: u8, velocity: u8 },
     /// Every held note ends.
     Cut,
     /// The track's next step, played faster than the song's.
@@ -949,6 +952,18 @@ impl TrackPlayer {
                 if let Some(h) = self.held.iter_mut().find(|h| h.pitch == from) {
                     push(&mut self.events, note_off(offset, from));
                     start(&mut self.events, offset, to, velocity, h.shape);
+                    h.pitch = to;
+                }
+            }
+            Later::Retune { from, to, velocity } => {
+                if let Some(h) = self.held.iter_mut().find(|h| h.pitch == from) {
+                    // Shaped as the note is, so a gliding arpeggio slides round its chord.
+                    if h.shape != Shape::default() {
+                        let kind = EventKind::Shape(h.shape);
+                        push(&mut self.events, Event { offset, kind });
+                    }
+                    let kind = EventKind::Retune { from, to, velocity };
+                    push(&mut self.events, Event { offset, kind });
                     h.pitch = to;
                 }
             }
@@ -2724,7 +2739,7 @@ fn arpeggiate(
         };
         let to = root.saturating_add(up).min(127);
         let at = start + (end.saturating_sub(start)) * k / ARPEGGIO;
-        queue(due, at, Later::Change { from, to, velocity });
+        queue(due, at, Later::Retune { from, to, velocity });
         from = to;
     }
 }
@@ -3410,6 +3425,8 @@ mod tests {
                             log.push((at, true, pitch, velocity))
                         }
                         EventKind::NoteOff { pitch } => log.push((at, false, pitch, 0)),
+                        // Written as a note on at no velocity: see `retune`.
+                        EventKind::Retune { to, .. } => log.push((at, true, to, 0)),
                         _ => {}
                     }
                 }
@@ -3626,6 +3643,8 @@ mod tests {
         render(&mut engine, 256, 30_000);
         let on = |at, pitch, velocity| (at, true, pitch, velocity);
         let off = |at, pitch| (at, false, pitch, 0);
+        // The note sounding carries on at `pitch`.
+        let retune = |at, pitch| (at, true, pitch, 0);
         assert_eq!(
             *notes.lock().unwrap(),
             [
@@ -3642,18 +3661,13 @@ mod tests {
                 off(12_000, 62),
                 on(12_000, 64, 100),
                 off(13_500, 64),
-                // The note, +3 and +7, a sixth of a step each.
+                // The note, +3 and +7, a sixth of a step each, the one note retuned.
                 on(18_000, 65, 100),
-                off(19_000, 65),
-                on(19_000, 68, 100),
-                off(20_000, 68),
-                on(20_000, 72, 100),
-                off(21_000, 72),
-                on(21_000, 65, 100),
-                off(22_000, 65),
-                on(22_000, 68, 100),
-                off(23_000, 68),
-                on(23_000, 72, 100),
+                retune(19_000, 68),
+                retune(20_000, 72),
+                retune(21_000, 65),
+                retune(22_000, 68),
+                retune(23_000, 72),
                 // Accented, then a second hit at half that.
                 off(24_000, 72),
                 on(24_000, 67, 127),

@@ -454,6 +454,22 @@ impl Bessel {
         self.stage(i, Stage::Attack);
     }
 
+    /// An arpeggio's next note: the latest voice held at `from` goes on at `to`, its operators'
+    /// envelopes where they are; with none, `to` starts afresh.
+    fn retune(&mut self, from: u8, to: u8, velocity: u8) {
+        let (tuning, key) = (self.tuning, self.key);
+        let held = (self.voices.iter_mut())
+            .filter(|v| v.pitch == from && v.held && v.sounding)
+            .max_by_key(|v| v.started);
+        match held {
+            Some(voice) => {
+                voice.pitch = to;
+                voice.hz = Self::pitch_hz(to, tuning, key);
+            }
+            None => self.note_on(to, velocity),
+        }
+    }
+
     fn note_off(&mut self, pitch: u8) {
         for i in 0..VOICES {
             let Some(voice) = self.voices.get_mut(i) else {
@@ -584,6 +600,7 @@ impl Processor for Bessel {
             Segment::Event(event) => match event.kind {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
                 EventKind::NoteOff { pitch } => self.note_off(pitch),
+                EventKind::Retune { from, to, velocity } => self.retune(from, to, velocity),
                 EventKind::Choke => self.choke(),
                 // Its notes don't glide: the pitch envelope sweeps instead.
                 EventKind::Shape(_) | EventKind::Program(_) => {}

@@ -397,6 +397,43 @@ impl Switched {
         self.release(|voice_pitch| voice_pitch == pitch);
     }
 
+    /// An arpeggio's next note: the latest voice sounding `from` goes on at `to`, its envelope
+    /// and filter where they are, as a tracker's would, gliding there if the note glides; with
+    /// none sounding, `to` starts afresh.
+    fn retune(&mut self, from: u8, to: u8, velocity: u8) {
+        let voices = (self.stage.iter().zip(&self.pitch).zip(&self.started)).enumerate();
+        let sounding = voices
+            .filter(|(_, ((stage, pitch), _))| {
+                **pitch == from && matches!(stage, Stage::Attack | Stage::Decay)
+            })
+            .max_by_key(|&(_, (_, &started))| started);
+        let Some((i, _)) = sounding else {
+            return self.note_on(to, velocity);
+        };
+        let hz = midi_to_hz(to) / self.sample_rate;
+        let glide = std::mem::take(&mut self.shape).glide;
+        let now = self.inc.to_array().get(i).copied().unwrap_or(hz);
+        let (Some(pitch), Some(left), Some(ratio), Some(glide_to)) = (
+            self.pitch.get_mut(i),
+            self.glide_left.get_mut(i),
+            self.glide_ratio.get_mut(i),
+            self.glide_to.get_mut(i),
+        ) else {
+            return;
+        };
+        (*pitch, *glide_to) = (to, hz);
+        self.last = Some(to);
+        // Gliding, from wherever it's got to.
+        if glide > 0 && now > 0.0 {
+            let periods = glide.div_ceil(CONTROL_PERIOD as u32).max(1);
+            *left = periods;
+            *ratio = (hz / now).powf(1.0 / periods as f32);
+        } else {
+            *left = 0;
+            set_lane(&mut self.inc, i, hz);
+        }
+    }
+
     fn choke(&mut self) {
         self.release(|_| true);
     }
@@ -635,6 +672,7 @@ impl Processor for Switched {
             Segment::Event(event) => match event.kind {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
                 EventKind::NoteOff { pitch } => self.note_off(pitch),
+                EventKind::Retune { from, to, velocity } => self.retune(from, to, velocity),
                 EventKind::Choke => self.choke(),
                 EventKind::Shape(shape) => self.shape = shape,
                 EventKind::Program(_) => {}

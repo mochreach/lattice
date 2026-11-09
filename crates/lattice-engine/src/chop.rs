@@ -118,6 +118,11 @@ impl Processor for Chop {
             Segment::Event(event) => match event.kind {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
                 EventKind::NoteOff { pitch } => self.player.release(pitch),
+                // Each note's its own piece, so it starts again.
+                EventKind::Retune { from, to, velocity } => {
+                    self.player.release(from);
+                    self.note_on(to, velocity);
+                }
                 EventKind::Choke => self.player.choke(),
                 EventKind::Shape(shape) => self.shape = shape,
                 EventKind::Program(_) => {}

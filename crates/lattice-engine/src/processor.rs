@@ -38,6 +38,14 @@ pub enum EventKind {
     Shape(Shape),
     /// A `P12` gesture: change to program 12. Only MIDI out does anything with it.
     Program(u8),
+    /// The note sounding at `from` carries on at `to`, as an arpeggio's next note: an
+    /// instrument with oscillators retunes the voice, leaving its envelope where it is, as a
+    /// tracker does. One that can't, a string or a drum, plays `to` as a new note at `velocity`.
+    Retune {
+        from: u8,
+        to: u8,
+        velocity: u8,
+    },
 }
 
 /// How a note plays, beyond its pitch and velocity: what a step's `<`, `O` and `G` gestures

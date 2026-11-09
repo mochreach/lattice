@@ -180,6 +180,13 @@ digit goes from 0 to 9, so an octave is out of reach. `A10` goes note, a semiton
 trill, as the Scarlatti plays where Scarlatti wrote one. This is the tracker's chord trick,
 described above; on a monophonic part it gives the impression of a chord.
 
+As on a tracker, it's one note changing pitch, not a run of new ones. On the synths (the synth,
+Switched and Bessel) the note's envelope and filter carry on through the arpeggio, so at a sixth
+of a step the notes fuse into a buzzing chord rather than a smear of fresh attacks, each ringing
+over the next. Instruments whose notes can't change pitch once started play each as a new note:
+a string on Krell or Monochord is plucked again, a tine on Tuss struck again, a drum hit again,
+a sample started again, and MIDI gear sent a new note.
+
 **Accent, `!`.** The note plays at full velocity, 127, whatever its own: a quick way to lean on
 the first note of a bar without changing what's written.
 

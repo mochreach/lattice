@@ -185,6 +185,17 @@ impl MidiOut {
                 }
             }
             EventKind::Choke => self.release(at),
+            // Gear can't be told to retune a note, so the next is played.
+            EventKind::Retune { from, to, velocity } => {
+                self.event(at, EventKind::NoteOff { pitch: from });
+                self.event(
+                    at,
+                    EventKind::NoteOn {
+                        pitch: to,
+                        velocity,
+                    },
+                );
+            }
             EventKind::Program(program) => {
                 self.send(at, &[0xc0 | self.channel, program.min(127)]);
             }

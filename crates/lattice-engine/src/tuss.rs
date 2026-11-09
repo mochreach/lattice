@@ -420,6 +420,11 @@ impl Processor for Tuss {
             Segment::Event(event) => match event.kind {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
                 EventKind::NoteOff { pitch } => self.note_off(pitch),
+                // A tine can't change its pitch, so the next is struck.
+                EventKind::Retune { from, to, velocity } => {
+                    self.note_off(from);
+                    self.note_on(to, velocity);
+                }
                 EventKind::Choke => self.choke(),
                 // A tine can't glide.
                 EventKind::Shape(_) | EventKind::Program(_) => {}

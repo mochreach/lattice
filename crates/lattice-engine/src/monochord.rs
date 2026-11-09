@@ -475,6 +475,11 @@ impl Processor for Monochord {
             Segment::Event(event) => match event.kind {
                 EventKind::NoteOn { pitch, velocity } => self.note_on(pitch, velocity),
                 EventKind::NoteOff { pitch } => self.note_off(pitch),
+                // A string is plucked again.
+                EventKind::Retune { from, to, velocity } => {
+                    self.note_off(from);
+                    self.note_on(to, velocity);
+                }
                 EventKind::Choke => self.choke(),
                 EventKind::Shape(shape) => self.shape = shape,
                 EventKind::Program(_) => {}

@@ -43,7 +43,8 @@ pub enum Gesture {
     Delay(u8),
     /// `X6`: ends the note 6 24ths into the step.
     Cut(u8),
-    /// `A37`: plays the note, then 3 and 7 semitones up, in turn, a sixth of a step each.
+    /// `A37`: plays the note, then 3 and 7 semitones up, in turn, a sixth of a step each: the
+    /// one note retuned, where the instrument can.
     Arpeggio(u8, u8),
     /// `!`: plays the note at full velocity.
     Accent,
