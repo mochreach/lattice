@@ -971,7 +971,7 @@ impl Editor {
     /// The keys available after a prefix key, while it waits for the next one.
     pub fn infobox(&self) -> Option<Infobox> {
         let Some(pending) = self.pending else {
-            return self.device_infobox();
+            return self.device_infobox().or_else(|| self.gesture_infobox());
         };
         match pending {
             // The open track's fields, by the keys that go to them.

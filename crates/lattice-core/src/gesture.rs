@@ -31,6 +31,31 @@ pub const MAX_WAIT: u8 = 99;
 /// The sixteenths of a sound file, or a chop's piece, an offset starts a note in.
 pub const OFFSETS: u8 = 16;
 
+/// Each gesture as it's typed, an example of it, and what it does, as the infobox lists them
+/// while one's typed.
+pub const FORMS: &[(&str, &str)] = &[
+    ("R3", "retrigger: 2 to 9 hits in the step"),
+    ("r3", "retrigger, each hit quieter"),
+    ("D8", "delay: 1 to 23 24ths late"),
+    ("X6", "cut: 1 to 23 24ths in"),
+    ("A37", "arpeggio: the note, +3, +7"),
+    ("!", "accent: full velocity"),
+    ("<", "reverse the sample"),
+    ("O8", "start 0 to 15 16ths into the sample"),
+    ("G6", "glide from the last note, in 24ths"),
+    ("?50", "chance: plays on 1 to 99% of passes"),
+    ("1:4", "plays on pass 1 of every 4"),
+    ("F", "plays only in a fill"),
+    ("F-", "plays only without a fill"),
+    ("J12", "then jump to step 12"),
+    ("J?", "then jump to any step"),
+    ("W2", "wait here 2 more steps"),
+    ("B", "backwards from here"),
+    ("*2", "2 to 4 times as fast"),
+    ("/2", "half to a quarter as fast"),
+    ("P12", "MIDI program change"),
+];
+
 /// Something a track does once, on a step. Written as it's typed: `R3`, `r3`, `D8`, `X6`, `A37`,
 /// `!`, `<`, `O8`, `G6`, `?50`, `1:4`, `F`, `F-`, `J12`, `J?`, `W2`, `B`, `*2`, `/2`, `P12`. Steps are numbered from 0, as they're shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -343,6 +368,13 @@ pub(crate) mod fields {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_form_listed_is_a_gesture() {
+        for (example, _) in FORMS {
+            assert!(example.parse::<Gesture>().is_ok(), "{example}");
+        }
+    }
 
     #[test]
     fn gestures_read_as_they_are_written() {

@@ -464,6 +464,8 @@ over from the conductor's.
 In insert mode, type a gesture in either case (`t140` is `T140`). It goes in once it can't go on
 (`T140`, `X`, `T--`, `M-16`), or with enter or `esc` (`P3`, which might have been `P31`; `M2`,
 which might have been `M12`). A letter that can't follow puts in what was there before it.
+As on a track, a window lists the conductor's gestures while you type, narrowing to those that
+begin with the key typed.
 
 `^a` and `^x` nudge a tempo by 1 BPM, and `>` and `<` by 10. `&` fills tempos evenly between a
 selection's ends, both of which need a tempo. `d`, `y` and `p` work as in any field.

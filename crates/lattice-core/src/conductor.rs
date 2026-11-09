@@ -18,6 +18,18 @@ pub const MAX_BPM: u16 = 400;
 /// Gesture fields on each step, the conductor's and each track's.
 pub const GESTURES: usize = 2;
 
+/// Each of the conductor's gestures as it's typed, an example of it, and what it does, as the
+/// infobox lists them while one's typed.
+pub const FORMS: &[(&str, &str)] = &[
+    ("T140", "tempo: 20 to 400 bpm from here"),
+    ("~140", "slide to the tempo, arriving here"),
+    ("T--", "back to the song's tempo"),
+    ("X", "stop at the end of this step"),
+    ("P3", "cue pattern 3 for the next bar"),
+    ("M2", "mute track 2; M-2 unmutes"),
+    ("S2", "solo track 2; S-2 unsolos"),
+];
+
 /// Something the conductor does once, on a step. Written as it's typed: `T140`, `~140`, `T--`,
 /// `X`, `P3`, `M2` `M-2`, `S2` `S-2`. Patterns and tracks are numbered from 1, as they're shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -259,6 +271,13 @@ impl TryFrom<SparseConductor> for Conductor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_form_listed_is_a_gesture() {
+        for (example, _) in FORMS {
+            assert!(example.parse::<SongGesture>().is_ok(), "{example}");
+        }
+    }
 
     #[test]
     fn gestures_read_as_they_are_written() {

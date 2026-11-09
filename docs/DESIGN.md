@@ -946,7 +946,10 @@ unshaded and the selection is dark grey. Themes that set every colour can come l
 Editing follows Helix rather than vim: select, then act. The selection is always present, a
 rectangle across tracks and steps, so every action shows what it will touch before it happens,
 and edits such as transposing keep the selection so they can be repeated. Prefix keys (`g`, `r`)
-open an infobox listing what can follow, which makes the keymap discoverable as it grows. Keys
+open an infobox listing what can follow, which makes the keymap discoverable as it grows; so
+does typing into a gesture field, listing the gestures that can go there from the table beside
+each parser (`gesture::FORMS`, `conductor::FORMS`, which a test parses), narrowed to those the
+key typed begins and the instrument plays (`Editor::gesture_infobox`). Keys
 are data (`Keymap`, `Binding::Menu`), so new menus need no new code in the frontend.
 
 There can be several selections, as in Helix: a list of rectangles, one of them primary, kept in

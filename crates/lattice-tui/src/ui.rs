@@ -1769,6 +1769,19 @@ fn status_line(editor: &Editor, theme: &Theme, width: u16) -> Line<'static> {
             ),
             theme.dim,
         ),
+        // In a field, the keys type its values rather than playing notes.
+        Mode::Insert if editor.page == Page::Pattern && editor.edits_field() => {
+            let hints = match editor.field_edited_on(editor.cursor().track) {
+                Some(StepField::Gesture(_) | StepField::Conductor(_)) => {
+                    "type a gesture, as listed · ret if that's all · ⌫ back a key, or clear · esc done"
+                }
+                Some(StepField::Lock(_)) => {
+                    "two digits 00–99 · ~ first slides · - the mixer's · ⌫ clear · esc done"
+                }
+                _ => "two digits 00–99 · ⌫ clear · esc done",
+            };
+            (hints.into(), theme.dim)
+        }
         Mode::Insert if editor.in_folded_group() => (
             format!("1–9 pads · {notes} · {{ }} octave · ⌫ clear · esc done"),
             theme.dim,

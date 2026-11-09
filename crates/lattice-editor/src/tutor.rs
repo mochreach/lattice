@@ -1134,7 +1134,7 @@ const LESSONS: &[Lesson] = &[
         title: "Gestures",
         text: "Beside its velocity, an open track has two gesture fields on each step \
                ({goto_field} `g` `G`), for things that happen once there. In insert mode, type \
-               one. Some act on the step's note, or on the one still sounding if the step has \
+               one: a window lists those you can, narrowing as you type. Some act on the step's note, or on the one still sounding if the step has \
                none: `R3` plays it three times in the step, `r3` fading away, `D8` starts it \
                8/24 of a step late, `X6` cuts it 6/24 in, `A37` goes round it and the notes 3 \
                and 7 semitones up, and `!` accents it. Some change its sound, for that note \

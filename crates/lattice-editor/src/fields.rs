@@ -12,7 +12,7 @@ use lattice_core::{
 };
 
 use crate::keymap::Key;
-use crate::{Cursor, Editor, Effect, Mode, Page, changed, locks};
+use crate::{Cursor, Editor, Effect, Infobox, Mode, Page, changed, locks};
 
 /// A track the selections reach, the steps they reach on it, and the field as it is there.
 type FieldColumn = (usize, std::ops::Range<usize>, StepField);
@@ -348,6 +348,46 @@ impl Editor {
                 && self.page == Page::Pattern
                 && reached
                 && self.fields_of(home).contains(&f)
+        })
+    }
+
+    /// In insert mode in a gesture field, the gestures that can be typed there: those the
+    /// track's instrument plays, and once a key's typed, those it starts.
+    pub(crate) fn gesture_infobox(&self) -> Option<Infobox> {
+        if self.mode != Mode::Insert {
+            return None;
+        }
+        let t = self.cursor().track;
+        let (title, forms) = match self.field_edited_on(t)? {
+            StepField::Gesture(_) => {
+                let kind = self.grid.tracks.get(t)?.instrument.kind;
+                let plays =
+                    |example: &str| (example.parse::<Gesture>()).is_ok_and(|g| g.works_on(kind));
+                let forms = lattice_core::gesture::FORMS.iter();
+                (
+                    "gestures",
+                    forms.filter(|(e, _)| plays(e)).collect::<Vec<_>>(),
+                )
+            }
+            StepField::Conductor(_) => (
+                "the conductor's gestures",
+                lattice_core::conductor::FORMS.iter().collect(),
+            ),
+            _ => return None,
+        };
+        // Typed as it's written, so `r` and `R` differ; `1:4` begins with any digit.
+        let typed = &self.typing.gesture;
+        let begins = |example: &str| match (typed.chars().next(), example.chars().next()) {
+            (None, _) => true,
+            (Some(a), Some(b)) => a == b || (a.is_ascii_digit() && b.is_ascii_digit()),
+            (Some(_), None) => false,
+        };
+        Some(Infobox {
+            title: title.into(),
+            items: (forms.into_iter())
+                .filter(|(example, _)| begins(example))
+                .map(|(example, what)| (example.to_string(), what.to_string()))
+                .collect(),
         })
     }
 
@@ -1238,6 +1278,32 @@ mod tests {
         keys(&mut e, "%i60\x1bggvtld");
         assert_eq!(column(&e, 0)[0], None);
         assert!(e.grid.tracks.iter().all(|t| t.steps[0].note.is_some()));
+    }
+
+    #[test]
+    fn typing_a_gesture_lists_what_can_be_typed() {
+        let mut e = editor();
+        let keys_of = |e: &Editor| -> Vec<String> {
+            e.infobox()
+                .unwrap()
+                .items
+                .into_iter()
+                .map(|(k, _)| k)
+                .collect()
+        };
+        keys(&mut e, "fgi");
+        assert_eq!(e.infobox().unwrap().title, "gestures");
+        let all = keys_of(&e);
+        assert!(all.contains(&"R3".to_string()) && all.contains(&"A37".to_string()));
+        assert!(!all.contains(&"<".to_string()), "a synth can't reverse");
+        // Narrowed to what the keys typed begin.
+        keys(&mut e, "j");
+        assert_eq!(keys_of(&e), ["J12", "J?"]);
+        keys(&mut e, "\x1b");
+        assert!(e.infobox().is_none(), "gone with insert mode");
+        // On the notes, the keys play notes, so there's nothing to list.
+        keys(&mut e, "fni");
+        assert!(e.infobox().is_none());
     }
 
     #[test]

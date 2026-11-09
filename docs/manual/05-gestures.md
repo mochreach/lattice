@@ -112,6 +112,23 @@ A37            whole at three characters
 <esc>          leaves insert mode, putting in what's typed if it's a gesture
 ```
 
+In insert mode on a gesture field, a window lists the gestures you can type there, each with an
+example and what it does, so you needn't remember them: those the track's instrument plays (`<`
+and `O8` only on a sampler or chop, `G6` on a synth, Switched or Monochord, `P12` on a MIDI
+track). Type a key and it narrows to the gestures that begin with it: after `J`, `J12` and `J?`.
+It goes when you leave insert mode.
+
+```
+ ┌ gestures ────────────────────────────────┐
+ │ R3   retrigger: 2 to 9 hits in the step  │
+ │ r3   retrigger, each hit quieter         │
+ │ D8   delay: 1 to 23 24ths late           │
+ │ X6   cut: 1 to 23 24ths in               │
+ │ A37  arpeggio: the note, +3, +7          │
+ │ …                                        │
+ └──────────────────────────────────────────┘
+```
+
 While you type, the status line shows what's typed so far, `D8_  (enter if that's all)`, and
 once it's in, what it does: `R3: retrigger, 3 hits`. `⌫` takes back a character. A letter that
 can't follow what's typed puts in what was there before it, if that's a gesture, and starts
