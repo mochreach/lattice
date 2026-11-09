@@ -205,8 +205,11 @@ terminal closes, so closing it by mistake loses little: `:recover` brings them b
 - **macOS** should work, as its sound and MIDI go through libraries that support it (cpal and
   midir), and it builds and passes its tests, but I haven't played on it. It can't record
   another app's sound on its own, which needs PulseAudio.
-- **Windows** builds and passes its tests too, but is untried, and goes without `lattice ctl`,
-  recording another app's sound, and a MIDI port of its own for other programs to connect to.
+- **Windows** builds and passes its tests too, and installs and runs in Windows Terminal, but
+  has barely been played. It goes without `lattice ctl`, recording another app's sound, and a
+  MIDI port of its own for other programs to connect to. Any terminal there reports keys being
+  let go, so held notes sustain, but the numpad isn't told apart from the number row, so there
+  are no pads, and right Alt alone isn't seen, so the loop pedal is `!`.
 
 The keyboard lights ([Keyboard lights](docs/manual/10-files-and-config.md#keyboard-lights)) need a
 service of mine that isn't released, so for now they're tied to my laptop; elsewhere Lattice does

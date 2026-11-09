@@ -224,7 +224,8 @@ fn main() -> Result<()> {
             )
         )
         .is_ok();
-    editor.releases = enhanced;
+    // Windows' console reports every key's release without being asked.
+    editor.releases = enhanced || cfg!(windows);
     // `--no-splash`, or `splash = false` in the config, leaves out the opening and the thanks.
     let splash = (settings.splash && !options.no_splash).then(|| Splash::new(Instant::now()));
     let server = ctl::Server::start(options.allow_agent_save);
@@ -341,7 +342,7 @@ fn run(
     // Thanks, once the opening's over.
     let mut welcome = splash.is_some();
     let mut playhead = Playhead::default();
-    let mut tap = keys::Tap::default();
+    let mut tap = keys::Tap::new(editor.releases);
     let mut lights = lights::Lights::start();
     let mut sequencer = Sequencer::default();
     let mut watch = Watch::new();

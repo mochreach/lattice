@@ -1008,9 +1008,9 @@ insert or select mode for normal.
 
 Every note you enter plays as you type it, on the cursor's track, through its instrument and
 effects, so you hear what goes in. In a terminal that reports key releases (kitty, WezTerm, foot,
-Ghostty, recent Alacritty; not inside tmux), the note sounds for as long as you hold the key, so a
-pad or bowed string sustains and several keys held ring together as a chord. Elsewhere each note
-is a short blip.
+Ghostty, recent Alacritty, any on Windows; not inside tmux), the note sounds while you hold the
+key, so a pad or bowed string sustains and several keys held ring together as a chord. Elsewhere
+each note is a short blip.
 
 `r`'s note, and the last note changed by `C-a` `C-x` `>` `<`, play too, briefly. Moving the cursor
 doesn't play anything. The numpad's pads play the cursor's group's drums or a scale whenever you

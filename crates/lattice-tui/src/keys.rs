@@ -4,14 +4,26 @@ use ratatui::crossterm::event::{
 };
 
 /// Sees Right Alt tapped on its own, among the presses and releases of every key, which
-/// terminals report kitty's way: AltGr, as it is on a UK keyboard, too.
+/// terminals report kitty's way: AltGr, as it is on a UK keyboard, too. Also tells a held key's
+/// repeats from presses where the terminal doesn't, as Windows' console doesn't.
 #[derive(Default)]
 pub struct Tap {
     /// Whether Right Alt is down with nothing pressed since.
     down: bool,
+    /// Whether releases are reported, so a key pressed again without one is being held.
+    releases: bool,
+    /// The key last pressed, until a key's let go.
+    last: Option<KeyCode>,
 }
 
 impl Tap {
+    pub fn new(releases: bool) -> Self {
+        Self {
+            releases,
+            ..Self::default()
+        }
+    }
+
     /// The key `event` is, and how: `Key::RightAlt` pressed once Right Alt's let go untouched.
     pub fn key(&mut self, event: KeyEvent) -> Option<(Key, KeyEventKind)> {
         let right_alt = matches!(
@@ -28,7 +40,23 @@ impl Tap {
             _ if !right_alt => self.down = false,
             _ => {}
         }
-        convert(event).map(|key| (key, event.kind))
+        // Windows repeats a held key as more presses. Only the last key pressed repeats, and
+        // any key let go stops it, which also forgets a key that's changed case with Shift.
+        let kind = match event.kind {
+            KeyEventKind::Press if self.releases && self.last == Some(event.code) => {
+                KeyEventKind::Repeat
+            }
+            KeyEventKind::Press => {
+                self.last = Some(event.code);
+                KeyEventKind::Press
+            }
+            KeyEventKind::Release => {
+                self.last = None;
+                KeyEventKind::Release
+            }
+            KeyEventKind::Repeat => KeyEventKind::Repeat,
+        };
+        convert(event).map(|key| (key, kind))
     }
 }
 
@@ -101,5 +129,49 @@ mod tests {
         tap.key(event(right_alt, KeyEventKind::Press));
         tap.key(event(KeyCode::Char('q'), KeyEventKind::Release));
         assert!(tap.key(event(right_alt, KeyEventKind::Release)).is_some());
+    }
+
+    #[test]
+    fn a_key_pressed_again_before_its_release_is_held() {
+        let event = |c, kind| KeyEvent::new_with_kind(KeyCode::Char(c), KeyModifiers::NONE, kind);
+        let mut tap = Tap::new(true);
+        let kind = |tap: &mut Tap, c, kind| tap.key(event(c, kind)).map(|(_, kind)| kind);
+        assert_eq!(
+            kind(&mut tap, 'z', KeyEventKind::Press),
+            Some(KeyEventKind::Press)
+        );
+        assert_eq!(
+            kind(&mut tap, 'z', KeyEventKind::Press),
+            Some(KeyEventKind::Repeat)
+        );
+        assert_eq!(
+            kind(&mut tap, 'z', KeyEventKind::Release),
+            Some(KeyEventKind::Release)
+        );
+        assert_eq!(
+            kind(&mut tap, 'z', KeyEventKind::Press),
+            Some(KeyEventKind::Press)
+        );
+        // Another key between them, or Shift let go first, breaks the hold.
+        assert_eq!(
+            kind(&mut tap, 'x', KeyEventKind::Press),
+            Some(KeyEventKind::Press)
+        );
+        assert_eq!(
+            kind(&mut tap, 'Z', KeyEventKind::Release),
+            Some(KeyEventKind::Release)
+        );
+        assert_eq!(
+            kind(&mut tap, 'x', KeyEventKind::Press),
+            Some(KeyEventKind::Press)
+        );
+
+        // Without releases, every press is one.
+        let mut tap = Tap::new(false);
+        kind(&mut tap, 'z', KeyEventKind::Press);
+        assert_eq!(
+            kind(&mut tap, 'z', KeyEventKind::Press),
+            Some(KeyEventKind::Press)
+        );
     }
 }

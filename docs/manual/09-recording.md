@@ -73,7 +73,8 @@ sixteen-step one.
 ### How long notes are
 
 In a terminal that reports keys being let go (kitty, WezTerm, foot, Ghostty and recent
-Alacritty, through the kitty keyboard protocol), a recorded note lasts as long as you held the
+Alacritty, through the kitty keyboard protocol, and any terminal on Windows, whose console
+reports them without being asked), a recorded note lasts as long as you held the
 key, rounded to whole steps: at least one, at most the track's length. Held keys don't repeat
 while recording, so a long note goes in once. Elsewhere, including inside tmux, Lattice can't
 tell when a key comes up, and every recorded note is one step long. A MIDI keyboard would avoid
@@ -118,7 +119,7 @@ locks, in [the mixer chapter](08-mixer-and-effects.md#recording-locks-as-you-pla
 
 The **numpad** is a set of performance pads, in any mode, as on a drum machine. It needs a
 terminal that tells the numpad's keys apart from the number row (kitty, WezTerm, foot, Ghostty,
-recent Alacritty).
+recent Alacritty). On Windows it isn't told apart yet, so there are no pads there.
 
 | Pad         | What it does                                                     |
 |-------------|------------------------------------------------------------------|
@@ -199,8 +200,8 @@ recording, playing back and overdubbing all hang off a single press. Lattice's l
 On a UK keyboard, and many others, that key is AltGr; it counts too. Holding it for a chord or an
 AltGr letter doesn't, so it never goes off by accident, and it sits under your right thumb, out
 of the way of anything you type. Only terminals that report every key through the kitty keyboard
-protocol send a lone Alt (kitty, WezTerm, foot, Ghostty and recent Alacritty; not through tmux):
-`!` does the same everywhere.
+protocol send a lone Alt (kitty, WezTerm, foot, Ghostty and recent Alacritty; not through tmux
+or on Windows): `!` does the same everywhere.
 
 Tap it, and the cursor's track records its next pass:
 

@@ -294,8 +294,8 @@ and a snare roll in place of the backbeat.
 
 Knowing when a key comes up needs a terminal that reports key releases (Lattice asks for the
 kitty keyboard protocol: kitty, WezTerm, foot, Ghostty and recent Alacritty have it; tmux
-doesn't pass it on). Elsewhere, backtick starts a fill and pressing it again ends it. Stopping
-ends a fill too.
+doesn't pass it on. On Windows, every terminal reports them). Elsewhere, backtick starts a fill
+and pressing it again ends it. Stopping ends a fill too.
 
 `F` might become `F-`, so it goes in with enter.
 

@@ -182,6 +182,7 @@ IF SOMETHING'S WRONG
     keyboard protocol, as kitty, WezTerm (with enable_kitty_keyboard = true), Ghostty,
     foot and Alacritty do. Without it Lattice still works, but notes recorded from the
     keyboard can't last as long as they're held, and the numpad isn't told apart.
+    On Windows any terminal will do; there's no numpad there yet.
   Alt keys (A-…) do nothing on a Mac: set Option to act as Alt in the terminal, as
     macos_option_as_alt in kitty or macos-option-as-alt in Ghostty.
   Note keys are in odd places: insert mode lays notes out by the characters a QWERTY
