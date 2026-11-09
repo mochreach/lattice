@@ -923,7 +923,7 @@ checksum = "bf36173d4167ed999940f804952e6b08197cae5ad5d572eb4db150ce8ad5d58f"
 
 [[package]]
 name = "lattice-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ron",
  "serde",
@@ -931,14 +931,14 @@ dependencies = [
 
 [[package]]
 name = "lattice-editor"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "lattice-core",
 ]
 
 [[package]]
 name = "lattice-engine"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "assert_no_alloc",
  "lattice-core",
@@ -948,7 +948,7 @@ dependencies = [
 
 [[package]]
 name = "lattice-tui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "assert_no_alloc",
