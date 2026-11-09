@@ -30,8 +30,8 @@ pub fn draw(frame: &mut Frame, theme: &Theme) {
     let accent = Style::new().fg(theme.accent).add_modifier(Modifier::BOLD);
     let label = LINKS.iter().map(|(l, _)| l.len()).max().unwrap_or(0);
     let mut lines = vec![
-        Line::from("Thanks for using Lattice! I hope you make"),
-        Line::from("something you love with it."),
+        Line::from("Thanks for using Lattice!"),
+        Line::from("I hope you love it as much as I do."),
         Line::default(),
     ];
     lines.extend(LINKS.iter().map(|(what, link)| {
