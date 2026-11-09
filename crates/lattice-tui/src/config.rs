@@ -139,6 +139,7 @@ fn apply_theme(colours: &Table, theme: &mut Theme, problems: &mut Vec<String>) {
                     "visual" => theme.visual = c,
                     "error" => theme.error = c,
                     "selection" => theme.selection = c,
+                    "target" => theme.target = c,
                     "beat-row" => theme.beat_row = Some(c),
                     _ => return Err("not a colour Lattice has".into()),
                 }
@@ -227,6 +228,7 @@ mod tests {
             text = "#102030"
             beat-row = "none"
             selection = 236
+            target = 240
             tracks = ["red", "12"]
             "##,
         );
@@ -235,6 +237,7 @@ mod tests {
         assert_eq!(theme.text.fg, Some(Color::Rgb(0x10, 0x20, 0x30)));
         assert_eq!(theme.beat_row, None);
         assert_eq!(theme.selection, Color::Indexed(236));
+        assert_eq!(theme.target, Color::Indexed(240));
         assert_eq!(theme.tracks, [Color::Red, Color::Indexed(12)]);
     }
 

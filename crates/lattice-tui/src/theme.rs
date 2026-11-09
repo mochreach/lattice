@@ -8,6 +8,8 @@ use terminal_colorsaurus::QueryOptions;
 const BEAT_ROW_SHADE: f32 = 0.12;
 /// The same for selected steps.
 const SELECTION_SHADE: f32 = 0.3;
+/// The same for the field an edit acts on within them.
+const TARGET_SHADE: f32 = 0.5;
 
 #[derive(Debug, Clone)]
 pub struct Theme {
@@ -27,6 +29,9 @@ pub struct Theme {
     pub error: Color,
     /// Background of selected steps.
     pub selection: Color,
+    /// Background of the field an edit will act on, in the selected steps, with the cursor in
+    /// one: lighter than the selection, to tell it from the rest of the step.
+    pub target: Color,
     /// The cursors of selections other than the primary, over the selection's background. The
     /// primary's cursor is a solid block, so these are only marked out, to keep it distinct.
     pub secondary_cursor: Style,
@@ -51,6 +56,7 @@ impl Theme {
             visual: Color::Blue,
             error: Color::Red,
             selection: Color::DarkGray,
+            target: Color::Gray,
             secondary_cursor: Style::new().add_modifier(Modifier::UNDERLINED | Modifier::BOLD),
             beat_row: None,
             tracks: vec![
@@ -72,7 +78,7 @@ impl Theme {
         }
     }
 
-    /// The terminal theme, plus shading for beat rows and the selection mixed from the terminal's actual background
+    /// The terminal theme, plus shading for beat rows, the selection and its target mixed from the terminal's actual background
     /// and foreground colours. The palette alone has no subtle shade of the background. Must run
     /// before the terminal UI starts, as it reads the terminal's reply from stdin. If the terminal
     /// doesn't say what its colours are, beat rows stay unshaded and the selection is dark grey.
@@ -85,6 +91,7 @@ impl Theme {
             );
             theme.beat_row = Some(mix(background, foreground, BEAT_ROW_SHADE));
             theme.selection = mix(background, foreground, SELECTION_SHADE);
+            theme.target = mix(background, foreground, TARGET_SHADE);
         }
         theme
     }

@@ -769,7 +769,8 @@ const LESSONS: &[Lesson] = &[
                {note_down} nudge them, {delete} {yank} {paste} work on them, and {fill} fills \
                a selection evenly between the values at its ends. The column the cursor's in \
                decides what an edit acts on: on the notes, whole steps; in a field, that field \
-               alone, on every track the selection reaches.\n\n\
+               alone, on every track the selection reaches, drawn lighter than the rest of the \
+               step so you can see what an edit will change.\n\n\
                Lock the LEAD track's cutoff on step 00.",
         teaches: &[
             Action::LockSetting,

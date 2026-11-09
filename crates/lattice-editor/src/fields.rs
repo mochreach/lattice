@@ -351,6 +351,16 @@ impl Editor {
         })
     }
 
+    /// Whether edits go to a field rather than whole steps.
+    pub fn edits_field(&self) -> bool {
+        self.on_field().is_some()
+    }
+
+    /// The field edits go to on track `t`: `None` on the notes, or where `t` hasn't the field.
+    pub fn field_edited_on(&self, t: usize) -> Option<StepField> {
+        self.on_field().and_then(|f| self.field_on(t, f))
+    }
+
     /// `h` `l`: `n` fields left or right through the open track, then on into the next track's,
     /// as each opens when the cursor gets there.
     pub(crate) fn step_field(&mut self, right: bool, n: usize) {

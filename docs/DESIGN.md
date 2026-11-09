@@ -1194,7 +1194,9 @@ every track the selections reach (`Editor::on_field`). The field remembers the t
 on (`Editor::field_home`), as a lock column's index is into that track's columns; on the others
 it's found by its setting (`Editor::field_on`), and tracks without it are passed over and named.
 Rearranging in a field (`~` `*` `A-(` `A-)`) moves only its values, a velocity among the notes
-alone. A field's
+alone. The selection shows what an edit will act on: on the notes the whole step is
+shaded, and in a field its cells are drawn in a lighter shade (`Theme::target`) than the rest of
+the selected step, on every track that has it (`Editor::field_edited_on`). A field's
 values are numbers from 00 to 99 (`fields::Value`), read and written through the setting's curve
 or the note's velocity, so typing, nudging, copying and `&`'s fill work the same way on every
 field. Copying a field fills the register's values, rather than its steps, so `p` can put a

@@ -1518,15 +1518,21 @@ fn grid_row(
         };
         let selected = here.iter().any(|s| s.region().contains(i, row));
         let plain = style;
-        // The field the cursor's in, if it's moved off the note.
-        let in_field = Some(editor.field())
-            .filter(|&f| at(primary) && f != StepField::Note && c.fields.is_some());
         let conducting = editor.in_conductor();
+        // With the cursor in a field, the one edits go to on this track, if it has it.
+        let editing = editor.edits_field() && !conducting;
+        let target = editor
+            .field_edited_on(i)
+            .filter(|_| editing && c.fields.is_some());
+        // The field the cursor's in, if it's moved off the note.
+        let in_field = target.filter(|_| at(primary));
+        // A cursor in a field is marked there rather than on the note.
+        let cursor_here = here.iter().any(|s| at(s.cursor));
         if conducting && selected {
             // The selection's in the conductor, not the track.
-        } else if at(primary) && in_field.is_none() && !conducting {
+        } else if at(primary) && !editing {
             style = theme.block(mode_colour);
-        } else if here.iter().any(|s| at(s.cursor)) {
+        } else if cursor_here && target.is_none() {
             // The other selections' cursors: marked, but not as a block like the primary's.
             style = style.bg(theme.selection).patch(theme.secondary_cursor);
             if mode_colour != Color::Reset {
@@ -1546,8 +1552,17 @@ fn grid_row(
             _ if on_note => own.patch(band),
             _ => style,
         };
-        let cursor = |field: StepField, own: Style| match in_field {
-            Some(f) if f == field => theme.block(mode_colour),
+        // In the selected steps, the field edits go to is lighter than the rest of the step.
+        let cursor = |field: StepField, own: Style| match () {
+            _ if in_field == Some(field) => theme.block(mode_colour),
+            _ if editing && selected && target == Some(field) => {
+                let style = own.patch(band).bg(theme.target);
+                match cursor_here {
+                    true => style.patch(theme.secondary_cursor),
+                    false => style,
+                }
+            }
+            _ if editing && selected => own.patch(band).bg(theme.selection),
             _ => highlight(own),
         };
         match mark {

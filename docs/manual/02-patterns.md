@@ -926,6 +926,11 @@ editing keys act on that field alone, and the notes stay as they are:
 | `r`           | says to type the value in insert mode instead                             |
 | `+` `-`       | say a length is the note's: `fn` goes to the note column                  |
 
+You can see what an edit will act on. On the notes, the selected steps are shaded whole. In a
+field, the rest of each selected step keeps that shade, and the field's own cells are lighter:
+with the cursor on the velocity, every velocity in the selection stands out, and those are what
+`d`, `C-a` or `~` will change.
+
 It's the same however many tracks the selections reach. Every one of them opens out to show its
 fields while you're in one, and the edit goes to the same field on each: the velocity on every
 track, or a lock column on every track that locks the same setting, whatever order its columns
