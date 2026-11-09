@@ -124,6 +124,7 @@ USAGE
                              with no SONG, a demo song to play with
   lattice ctl [--pid PID] VERB [ARGS]
                              drive a Lattice that's already running (below)
+  lattice update             install the newest release in place of this one
   lattice --help | --version
 
 OPTIONS
@@ -161,7 +162,8 @@ DRIVING IT FROM SCRIPTS OR AN AGENT (macOS and Linux)
 FILES
   {config}
       keys and colours: a [keys] table binds keys, a [theme] table sets colours
-      and splash = false leaves out the opening
+      and splash = false leaves out the opening; update-check = false stops Lattice
+      asking GitHub, once a day, whether there's a newer release
   {audio}
       the audio devices chosen with :output and :input
   {log}

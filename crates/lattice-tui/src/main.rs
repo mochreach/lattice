@@ -52,6 +52,7 @@ mod splash;
 mod theme;
 mod tracks;
 mod ui;
+mod update;
 mod usage;
 mod wave;
 mod welcome;
@@ -108,6 +109,10 @@ fn main() -> Result<()> {
     // `lattice ctl …` talks to a Lattice that's running.
     if args.first().is_some_and(|a| a == "ctl") {
         return ctl::client(args.get(1..).unwrap_or_default());
+    }
+    // `lattice update` installs the newest release in place of this one.
+    if args.first().is_some_and(|a| a == "update") {
+        return update::run();
     }
     let options = match usage::parse(&args)? {
         usage::Run::Start(options) => options,
@@ -191,6 +196,10 @@ fn main() -> Result<()> {
         )
     {
         editor.message = Some(problem);
+    }
+    update::tidy();
+    if settings.update_check {
+        update::check();
     }
     if !editor.tutoring()
         && let Some(waiting) = autosave::waiting(editor.path.as_deref())
@@ -434,6 +443,12 @@ fn run(
             ) {
                 return Ok(());
             }
+        }
+        if let Some(news) = update::news() {
+            editor.message = Some(match editor.message.take() {
+                Some(before) => format!("{before}; {news}"),
+                None => news,
+            });
         }
         let now = Instant::now();
         if splash.as_ref().is_some_and(|s| s.done(now)) {

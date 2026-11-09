@@ -871,6 +871,12 @@ still describes it, except that the workflow and installers are written by hand 
 `dist`: it couldn't choose the v3 build, and they're short enough to read in full, as anyone
 piping an installer to `sh` should.
 
+`lattice update` runs the same installer again, for the newest release, into the folder the
+running binary is in, so updating takes no code of its own beyond moving a running `.exe` aside
+on Windows. As it starts, Lattice asks GitHub where the "latest release" link leads, through
+`curl` rather than an HTTP library, on a thread of its own and at most once a day, and the
+status line says if there's a newer one. A Lattice in `/nix/store` is updated through Nix.
+
 - **Prebuilt binaries on GitHub Releases**, built by GitHub Actions when a version tag is pushed,
   one archive per target:
 
@@ -880,7 +886,7 @@ piping an installer to `sh` should.
   | `x86_64-linux-v3` | the same with AVX2 (x86-64-v3), about 1.6× faster DSP |
   | `aarch64-linux` | Raspberry Pi 4, and the Pi 3 on a 64-bit OS |
   | `aarch64-macos`, `x86_64-macos` | Macs, Apple Silicon and Intel |
-  | `x86_64-windows` | Windows, untried |
+  | `x86_64-windows` | Windows, tried in Windows Terminal |
 
 - **An install script on top** (`curl … | sh`) that checks the OS and architecture and downloads
   the matching archive, and on x86_64 picks the v3 build if `/proc/cpuinfo` lists `avx2`.

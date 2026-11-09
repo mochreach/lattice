@@ -161,6 +161,7 @@ Lattice before it starts, with the reason (see [song files](10-files-and-config.
 | `-h`, `--help`         | print a summary: options, first keys, files and what to do if stuck  |
 | `-V`, `--version`      | print the version, and the commit it was built from                  |
 | `ctl …`                | talk to a Lattice that's running, rather than start one              |
+| `update`               | install the newest release in place of this one                      |
 
 The options can come in any order. The first word that doesn't start with `-` (and isn't the
 path after `--config`) is the song, and only one song can be given. An option Lattice doesn't
@@ -187,6 +188,28 @@ know stops it before it starts, and names the nearest it does know: `--no-spalsh
 - `--allow-agent-save` lets scripts and agents driving Lattice through `lattice ctl` save, open
   and quit. Without it they can't overwrite your files or throw away your song: see
   [lattice ctl](10-files-and-config.md#driving-lattice-from-scripts-lattice-ctl).
+
+### Updating
+
+Once a day, as it starts, Lattice asks GitHub which release is the newest, and if it's newer
+than the one running, the status line says so:
+
+```
+Lattice 0.3.0 is out (this is 0.2.0): quit and run lattice update
+```
+
+`lattice update`, in a terminal, then runs the installer again for the newest release, which
+picks the build for your computer, checks its checksum and puts it where this one is. It says
+`lattice 0.2.0 is the latest` if there's nothing newer. On Windows, which won't write over a
+program that's running, it moves the old `lattice.exe` aside first and clears it away the next
+time Lattice starts. A Lattice from Nix is updated through Nix instead, and says so.
+
+The check is one small request to GitHub, made in the background so Lattice never waits for
+it; if there's no network, nothing is said. Its answer is kept for a day in a file called
+`latest-release` beside the log, so Lattice doesn't ask again on every start. To stop it asking
+at all, put `update-check = false` in the
+[config file](10-files-and-config.md#the-config-file). It needs `curl`, which macOS, Windows
+10 and later, and most Linux systems have.
 
 ### The opening
 

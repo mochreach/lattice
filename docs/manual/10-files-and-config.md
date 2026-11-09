@@ -365,8 +365,8 @@ numbered so that a new one never replaces one a track plays: `song-selection-1.w
 
 ## The config file
 
-Lattice reads a config file when it starts, to change its keys and colours, and whether it opens
-with the splash:
+Lattice reads a config file when it starts, to change its keys and colours, whether it opens
+with the splash, and whether it checks for updates:
 `~/.config/lattice/config.toml`, or `$XDG_CONFIG_HOME/lattice/config.toml` if that's set.
 `lattice --config PATH` reads another in its place. You needn't have one: without it, Lattice
 uses its own keys and the terminal's colours.
@@ -375,6 +375,7 @@ The file is [TOML](https://toml.io), as Helix's is, and laid out as Helix lays o
 
 ```toml
 splash = false               # no opening animation, nor the thanks after it
+update-check = false         # don't ask GitHub whether there's a newer Lattice
 
 [keys.normal]
 C-s = ":w"                   # a command
@@ -408,7 +409,9 @@ and everything else in the file still applies. A file that isn't valid TOML appl
 
 `splash = false` leaves out [the opening](01-introduction.md#the-opening) and the box of thanks
 after it every time, as `--no-splash` does for one run. It goes at the top, before any
-`[section]`, since TOML would otherwise read it as part of that section.
+`[section]`, since TOML would otherwise read it as part of that section. So does
+`update-check = false`, which stops Lattice asking GitHub, once a day, whether there's a newer
+release (see [Updating](01-introduction.md#updating)).
 
 ### Binding keys
 
@@ -695,6 +698,7 @@ Besides songs and the config, Lattice keeps a few files of its own:
 | `~/.local/state/lattice/history`        | the command line's history, a command a line       |
 | `~/.local/state/lattice/rescue.lattice` | a never-saved song, rescued from a crash           |
 | `~/.local/state/lattice/autosave/`      | unsaved changes kept for `:recover`                |
+| `~/.local/state/lattice/latest-release` | the newest release, and when GitHub was last asked |
 
 The config folder moves with `$XDG_CONFIG_HOME`, and the state folder with `$XDG_STATE_HOME`.
 On Windows, which has no `~`, they're in your user folder, `%USERPROFILE%`, all the same.

@@ -24,7 +24,7 @@ you too. Expect rough edges, and songs saved now may not open in later versions.
 curl -fsSL https://raw.githubusercontent.com/mochreach/lattice/main/install.sh | sh
 ```
 
-**Windows**, in PowerShell (untried):
+**Windows**, in PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/mochreach/lattice/main/install.ps1 | iex

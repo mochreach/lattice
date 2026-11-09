@@ -1,8 +1,9 @@
 //! The config file, `~/.config/lattice/config.toml`: keys and colours, as Helix sets its own,
-//! and whether to open with the splash.
+//! whether to open with the splash, and whether to check for updates.
 //!
 //! ```toml
 //! splash = false               # no opening, nor the thanks after it
+//! update-check = false         # don't ask GitHub for a newer Lattice
 //!
 //! [keys.normal]
 //! C-s = ":w"
@@ -46,11 +47,16 @@ pub fn default_path() -> Option<PathBuf> {
 pub struct Settings {
     /// Whether to open with the splash, and the thanks after it.
     pub splash: bool,
+    /// Whether to ask GitHub, once a day, if there's a newer Lattice.
+    pub update_check: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { splash: true }
+        Self {
+            splash: true,
+            update_check: true,
+        }
     }
 }
 
@@ -94,6 +100,8 @@ fn apply(
             ("theme", Value::Table(colours)) => apply_theme(colours, theme, &mut problems),
             ("splash", Value::Boolean(on)) => settings.splash = *on,
             ("splash", _) => problems.push("splash should be true or false".into()),
+            ("update-check", Value::Boolean(on)) => settings.update_check = *on,
+            ("update-check", _) => problems.push("update-check should be true or false".into()),
             _ => problems.push(format!("unknown section [{name}]")),
         }
     }
@@ -212,6 +220,16 @@ mod tests {
         assert!(problems.is_empty() && !settings.splash, "{problems:?}");
         let problems = apply("splash = \"no\"", &mut keymap, &mut theme, &mut settings);
         assert_eq!(problems, ["splash should be true or false"]);
+        let problems = apply(
+            "update-check = false",
+            &mut keymap,
+            &mut theme,
+            &mut settings,
+        );
+        assert!(
+            problems.is_empty() && !settings.update_check,
+            "{problems:?}"
+        );
     }
 
     #[test]

@@ -156,18 +156,22 @@ curl -fsSL https://raw.githubusercontent.com/mochreach/lattice/main/install.sh |
 
 It picks the build for your computer, checks it, and puts `lattice` in `~/.local/bin` and the
 example songs in `~/.local/share/lattice/examples`, without sudo; then it says what else you
-need, such as adding that folder to your `PATH` or, on Linux, installing ALSA's library. Run it
-again to update. To read it before running it, as you should with anything piped to `sh`, open
-[install.sh](install.sh).
+need, such as adding that folder to your `PATH` or, on Linux, installing ALSA's library. To read
+it before running it, as you should with anything piped to `sh`, open [install.sh](install.sh).
 
-On **Windows**, in PowerShell (untried, see [Platforms](#platforms)):
+On **Windows**, in PowerShell (see [Platforms](#platforms) for what it does without there):
 
 ```powershell
 irm https://raw.githubusercontent.com/mochreach/lattice/main/install.ps1 | iex
 ```
 
 That puts `lattice.exe` and the examples in `%LOCALAPPDATA%\Programs\lattice`, and adds it to
-your `PATH`.
+your `PATH`. Any terminal will do, Windows Terminal included.
+
+Once a day, as it starts, Lattice asks GitHub whether there's a newer release, and the status
+line says if there is. `lattice update` then installs it in place of the one you have, by
+running the installer again. `update-check = false` in the
+[config file](docs/manual/10-files-and-config.md#the-config-file) stops it asking.
 
 With **Nix**, NixOS included, where the downloaded builds won't run: `nix run
 github:mochreach/lattice`, or add the flake's package to your system.
