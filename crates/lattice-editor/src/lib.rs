@@ -496,6 +496,9 @@ pub struct Editor {
     open: Vec<TrackId>,
     /// The field the cursor's in on an open track; see [`Editor::field`].
     field: StepField,
+    /// The track `field` was picked on, which a lock column's index is into: edits keep to its
+    /// column while a selection reaches it, wherever the cursor's gone.
+    field_home: Option<TrackId>,
     /// The conductor's mutes and solos (`M2`, `S-2`) over the tracks' own while the song plays:
     /// shown, but not the song's.
     conducted: Vec<(TrackId, Option<bool>, Option<bool>)>,
@@ -669,6 +672,7 @@ impl Editor {
             locking: None,
             open: vec![],
             field: StepField::Note,
+            field_home: None,
             conducted: vec![],
             typing: Default::default(),
             live_lock: None,
@@ -913,7 +917,7 @@ impl Editor {
         self.fx = FxCursor::default();
         self.inst = InstCursor::default();
         self.open.clear();
-        self.field = StepField::Note;
+        self.set_field(StepField::Note);
         self.typing = Default::default();
         self.undo.clear();
         self.redo.clear();
@@ -1720,7 +1724,9 @@ impl Editor {
                     if action == Action::Delete {
                         self.yank_field(field);
                     }
-                    return self.clear_field(field);
+                    let effects = self.clear_field(field);
+                    self.collapse_to_starts();
+                    return effects;
                 }
                 Action::ClearAdvance => {
                     let effects = self.clear_field(field);
@@ -1737,8 +1743,25 @@ impl Editor {
                     self.yank_field(field);
                     return vec![];
                 }
-                Action::Paste | Action::PasteInsert if self.pastes_values() => {
-                    return self.paste_field(field, n);
+                // Values can't push the steps below down, so `P` pastes over, as `p` does.
+                Action::Paste | Action::PasteInsert => return self.paste_field(field, n),
+                Action::ReverseSteps => return self.rearrange_field(field, |v| v.reverse()),
+                Action::RepeatSteps => {
+                    return self.rearrange_field(field, |v| rearrange::repeat(v, n));
+                }
+                Action::RotateStepsForward | Action::RotateStepsBackward => {
+                    let by = if action == Action::RotateStepsForward {
+                        by
+                    } else {
+                        -by
+                    };
+                    return self.rearrange_field(field, |v| rearrange::rotate(v, by));
+                }
+                Action::Longer | Action::Shorter => {
+                    self.message =
+                        Some("lengths are the note's: fn goes to the note column".into());
+                    self.key_failed = true;
+                    return vec![];
                 }
                 Action::Replace => {
                     self.message = Some("in a field, i and two digits set its value".into());
@@ -1892,14 +1915,7 @@ impl Editor {
                     self.yank();
                 }
                 let effects = self.edit(|s| *s = Step::default());
-                self.map_selections(|e, s| {
-                    let region = s.region();
-                    let start = Cursor {
-                        track: region.first_track,
-                        step: region.first_step,
-                    };
-                    e.clamped(start, start)
-                });
+                self.collapse_to_starts();
                 return effects;
             }
             Action::ClearAdvance => {
@@ -2170,6 +2186,18 @@ impl Editor {
         self.set_selections(selections, self.primary);
     }
 
+    /// Collapses each selection onto its first step, as deleting leaves it.
+    fn collapse_to_starts(&mut self) {
+        self.map_selections(|e, s| {
+            let region = s.region();
+            let start = Cursor {
+                track: region.first_track,
+                step: region.first_step,
+            };
+            e.clamped(start, start)
+        });
+    }
+
     /// Moves every selection's cursor to where `target` says, collapsing the selection onto it
     /// unless in select mode.
     fn motion(&mut self, target: impl Fn(&Self, Cursor) -> Cursor) {
@@ -2181,12 +2209,12 @@ impl Editor {
             e.clamped(if extend { s.anchor } else { to }, to)
         });
         // On another track, the cursor's on its notes, kept to the track's length if it's left
-        // the conductor's.
-        if self.cursor().track != track {
-            self.field = StepField::Note;
-            if conducting {
-                self.clamp_selection();
-            }
+        // the conductor's; a selection growing keeps to the column it started in.
+        if self.cursor().track != track && !extend {
+            self.set_field(StepField::Note);
+        }
+        if self.cursor().track != track && conducting {
+            self.clamp_selection();
         }
     }
 
@@ -2577,9 +2605,18 @@ impl Editor {
     }
 
     /// Whether track `t` shows its fields: velocity and lock columns beside its notes. The
-    /// cursor's track always does.
+    /// cursor's track always does, and with the cursor in a field, every track the selections
+    /// reach, as edits go to the field on each of them.
     pub fn is_open(&self, t: usize) -> bool {
-        t == self.cursor().track || self.ids.get(t).is_some_and(|id| self.open.contains(id))
+        let editing = self.page == Page::Pattern
+            && !matches!(self.on_field(), None | Some(StepField::Conductor(_)))
+            && (self.selections.iter()).any(|s| {
+                let region = s.region();
+                (region.first_track..=region.last_track).contains(&t)
+            });
+        t == self.cursor().track
+            || editing
+            || self.ids.get(t).is_some_and(|id| self.open.contains(id))
     }
 
     /// Where the track with `id` is now, if it's still there.

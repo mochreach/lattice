@@ -14,6 +14,9 @@ use lattice_core::{
 use crate::keymap::Key;
 use crate::{Cursor, Editor, Effect, Mode, Page, changed, locks};
 
+/// A track the selections reach, the steps they reach on it, and the field as it is there.
+type FieldColumn = (usize, std::ops::Range<usize>, StepField);
+
 /// Which of a step's fields the cursor is in.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum StepField {
@@ -310,22 +313,42 @@ impl Editor {
         }
     }
 
-    /// The field the cursor's in, on the pattern page: its note unless it's moved to another.
+    /// The field the cursor's in on its own track, on the pattern page: its note unless it's
+    /// moved to another, or a selection's taken it to a track without that column.
     pub fn field(&self) -> StepField {
-        let fields = self.fields_of(self.cursor().track);
-        match self.field {
-            field if self.page == Page::Pattern && fields.contains(&field) => field,
-            _ => StepField::Note,
-        }
+        (self.on_field())
+            .and_then(|f| self.field_on(self.cursor().track, f))
+            .unwrap_or(StepField::Note)
     }
 
-    /// The field edits go to, if not the notes: only while every selection is on the cursor's
-    /// track. Across tracks, edits take whole steps.
+    /// Picks the field on the cursor's track.
+    pub(crate) fn set_field(&mut self, field: StepField) {
+        self.field = field;
+        self.field_home = self.ids.get(self.cursor().track).copied();
+    }
+
+    /// The track the field was picked on: see [`Editor::field_home`].
+    fn field_track(&self) -> usize {
+        (self.field_home)
+            .and_then(|id| self.track_index(id))
+            .unwrap_or(self.cursor().track)
+    }
+
+    /// The field edits go to, as it is on the track it was picked on, if not whole steps: the
+    /// column the cursor's in decides, on every track the selections reach, however wide they
+    /// are. The note column is the whole step.
     pub(crate) fn on_field(&self) -> Option<StepField> {
-        let track = self.cursor().track;
-        let one_track = (self.selections.iter())
-            .all(|s| s.region().first_track == track && s.region().last_track == track);
-        Some(self.field()).filter(|&f| f != StepField::Note && one_track)
+        let home = self.field_track();
+        let reached = (self.selections.iter()).any(|s| {
+            let region = s.region();
+            (region.first_track..=region.last_track).contains(&home)
+        });
+        Some(self.field).filter(|&f| {
+            f != StepField::Note
+                && self.page == Page::Pattern
+                && reached
+                && self.fields_of(home).contains(&f)
+        })
     }
 
     /// `h` `l`: `n` fields left or right through the open track, then on into the next track's,
@@ -341,7 +364,7 @@ impl Editor {
                 at.checked_sub(1)
             };
             if let Some(&field) = next.and_then(|i| fields.get(i)) {
-                self.field = field;
+                self.set_field(field);
                 // The conductor's as long as it is, not the track.
                 self.clamp_selection();
                 continue;
@@ -350,10 +373,10 @@ impl Editor {
             self.motion(|e, c| e.offset(c, by, 0));
             let now = self.cursor().track;
             if now != track {
-                self.field = match right {
+                self.set_field(match right {
                     true => StepField::Note,
                     false => self.fields_of(now).last().copied().unwrap_or_default(),
-                };
+                });
             }
         }
     }
@@ -366,7 +389,7 @@ impl Editor {
         };
         if c == 'C' {
             self.motion(|_, c| Cursor { track: 0, ..c });
-            self.field = StepField::Conductor(0);
+            self.set_field(StepField::Conductor(0));
             self.clamp_selection();
             return;
         }
@@ -382,7 +405,7 @@ impl Editor {
         };
         match field.filter(|f| self.fields_of(t).contains(f)) {
             Some(field) => {
-                self.field = field;
+                self.set_field(field);
                 self.clamp_selection();
             }
             None if c == 'g' || c == 'G' => {
@@ -429,12 +452,14 @@ impl Editor {
         Some(self.put_field(field, value))
     }
 
-    /// Writes `value` into `field` at every cursor, and moves on.
+    /// Writes `value` into `field` at every cursor with the field on its track, and moves on.
     fn put_field(&mut self, field: StepField, value: Value) -> Vec<Effect> {
         self.checkpoint();
         let cursors: Vec<_> = self.selections.iter().map(|s| s.cursor).collect();
         for c in &cursors {
-            self.write_field(c.track, c.step, field, Some(value));
+            if let Some(field) = self.field_on(c.track, field) {
+                self.write_field(c.track, c.step, field, Some(value));
+            }
         }
         self.advance();
         Self::field_changed(field, cursors.iter().map(|c| c.track))
@@ -523,25 +548,105 @@ impl Editor {
         }
     }
 
-    /// Changes `field`'s value on every step the selections reach that has one.
-    fn map_field(&mut self, field: StepField, f: impl Fn(Value) -> Option<Value>) -> Vec<Effect> {
-        self.checkpoint();
-        let columns: Vec<_> = (self.selections.iter())
-            .flat_map(|s| self.columns(s.region()))
-            .collect();
-        for (t, steps) in &columns {
-            for at in steps.clone() {
-                if let Some(value) = self.read_field(*t, at, field) {
-                    self.write_field(*t, at, field, f(value));
+    /// The steps the selections reach on each track that has `field`, with the field as it is
+    /// there; and the tracks passed over for not having it.
+    fn field_columns(&self, field: StepField) -> (Vec<FieldColumn>, Vec<usize>) {
+        let mut columns = vec![];
+        let mut missing = vec![];
+        for s in &self.selections {
+            for (t, steps) in self.columns(s.region()) {
+                match self.field_on(t, field) {
+                    Some(field) => columns.push((t, steps, field)),
+                    // The conductor's is the pattern's, not a track's, so no track misses it.
+                    None if !matches!(field, StepField::Conductor(_)) => missing.push(t),
+                    None => {}
                 }
             }
         }
-        Self::field_changed(field, columns.into_iter().map(|(t, _)| t))
+        missing.sort_unstable();
+        missing.dedup();
+        (columns, missing)
+    }
+
+    /// `field`, as picked, as it is on track `t`: a lock column found by its setting, as each
+    /// track keeps its columns in its own order. `None` where `t` hasn't it: no column for
+    /// the setting, or folded into its group. The conductor's is the pattern's, so it's only
+    /// on the first track.
+    pub(crate) fn field_on(&self, t: usize, field: StepField) -> Option<StepField> {
+        let field = match field {
+            StepField::Note => return None,
+            StepField::Conductor(_) => return (t == 0).then_some(field),
+            StepField::Lock(i) => {
+                let home = self.grid.tracks.get(self.field_track())?;
+                let column = *home.lock_columns().get(i)?;
+                let track = self.grid.tracks.get(t)?;
+                StepField::Lock(track.lock_columns().iter().position(|c| *c == column)?)
+            }
+            field => field,
+        };
+        self.fields_of(t).contains(&field).then_some(field)
+    }
+
+    /// What the field's values are called: `velocities`, `gestures`, `cutoff locks`.
+    fn field_values(&self, field: StepField) -> String {
+        match field {
+            StepField::Note => "notes".into(),
+            StepField::Velocity => "velocities".into(),
+            StepField::Gesture(_) => "gestures".into(),
+            StepField::Conductor(_) => "conductor's gestures".into(),
+            StepField::Lock(i) => match self.lock_columns(self.field_track()).get(i) {
+                Some(label) => format!("{} locks", label.full),
+                None => "locks".into(),
+            },
+        }
+    }
+
+    /// `; KICK, SNARE have no cutoff column` after a message, for the tracks an edit to a field
+    /// passed over, or nothing.
+    fn passed_over(&self, field: StepField, missing: &[usize]) -> String {
+        let names: Vec<String> = (missing.iter())
+            .filter_map(|&t| self.grid.tracks.get(t))
+            .map(|t| t.name.to_uppercase())
+            .collect();
+        let have = if names.len() == 1 { "has" } else { "have" };
+        match (names.is_empty(), field) {
+            (true, _) => String::new(),
+            (false, StepField::Lock(i)) => {
+                let name = (self.lock_columns(self.field_track()).get(i))
+                    .map_or_else(|| "this".into(), |l| l.full.clone());
+                format!("; {} {have} no {name} column", names.join(", "))
+            }
+            (false, _) => format!("; {} folded, so left", names.join(", ")),
+        }
+    }
+
+    /// Changes `field`'s value on every step the selections reach that has one, on every track
+    /// with the field. Says how many changed, and which tracks hadn't the field.
+    fn map_field(
+        &mut self,
+        field: StepField,
+        f: impl Fn(Value) -> Option<Value>,
+    ) -> (Vec<Effect>, usize, Vec<usize>) {
+        let (columns, missing) = self.field_columns(field);
+        self.checkpoint();
+        let mut changes = 0;
+        for (t, steps, field) in &columns {
+            for at in steps.clone() {
+                if let Some(value) = self.read_field(*t, at, *field) {
+                    self.write_field(*t, at, *field, f(value));
+                    if self.read_field(*t, at, *field) != Some(value) {
+                        changes += 1;
+                    }
+                }
+            }
+        }
+        let effects = Self::field_changed(field, columns.into_iter().map(|(t, ..)| t));
+        (effects, changes, missing)
     }
 
     /// `^a` `^x` on a field: each value up or down by `by`, out of 99.
     pub(crate) fn nudge_field(&mut self, field: StepField, by: i32) -> Vec<Effect> {
-        self.map_field(field, |value| {
+        let (effects, _, missing) = self.map_field(field, |value| {
             Some(match value {
                 Value::Number(n, slide) => {
                     Value::Number((i32::from(n) + by).clamp(0, 99) as u8, slide)
@@ -550,68 +655,113 @@ impl Editor {
                 Value::Conductor(gesture) => Value::Conductor(nudge_song_gesture(gesture, by)),
                 Value::Gesture(gesture) => Value::Gesture(nudge_gesture(gesture, by)),
             })
-        })
+        });
+        if !missing.is_empty() {
+            let passed = self.passed_over(field, &missing);
+            self.message = Some(passed.trim_start_matches("; ").into());
+        }
+        effects
     }
 
-    /// `d` on a field: clears its values, a velocity back to the one notes go in at.
+    /// `d` on a field: clears its values, a velocity back to the one notes go in at, as a note
+    /// always has one; and says what it did, as a velocity already there changes nothing.
     pub(crate) fn clear_field(&mut self, field: StepField) -> Vec<Effect> {
-        self.map_field(field, |_| None)
+        let (effects, changes, missing) = self.map_field(field, |_| None);
+        let what = self.field_values(field);
+        let default = velocity_number(self.velocity);
+        let said = match (field, changes) {
+            (StepField::Velocity, 0) => {
+                format!("the velocities here are already {default:02}, the one notes go in at")
+            }
+            (StepField::Velocity, n) => format!("{n} {what} back to {default:02}"),
+            (_, 0) => format!("no {what} here to delete"),
+            (_, n) => format!("took away {n} {what}"),
+        };
+        self.message = Some(said + &self.passed_over(field, &missing));
+        effects
     }
 
-    /// `y` on a field: copies its values, step by step, from each selection.
+    /// `y` on a field: copies its values, step by step, from each selection, a column for each
+    /// track it reaches; one without the field gives an empty column.
     pub(crate) fn yank_field(&mut self, field: StepField) {
         let mut clips = vec![];
+        let mut values = 0;
         for s in &self.selections {
-            let region = s.region();
-            let t = region.first_track;
-            let len = self.track_len(t);
-            let values = (region.first_step..=region.last_step.min(len.saturating_sub(1)))
-                .filter(|&at| at < len)
-                .map(|at| self.read_field(t, at, field))
+            let clip: Vec<Vec<Option<Value>>> = (self.columns(s.region()))
+                .map(|(t, steps)| match self.field_on(t, field) {
+                    Some(field) => steps.map(|at| self.read_field(t, at, field)).collect(),
+                    None => vec![],
+                })
                 .collect();
-            clips.push(values);
+            values += clip.iter().map(Vec::len).sum::<usize>();
+            clips.push(clip);
         }
-        let steps = clips.iter().map(Vec::len).sum::<usize>();
         let register = self.register_mut();
         register.fields = clips;
         register.values_last = true;
-        self.message = Some(format!("copied {steps} values{}", self.copied_into()));
+        self.message = Some(format!("copied {values} values{}", self.copied_into()));
     }
 
     /// `p` on a field: writes the values copied from a field down from each selection's first
-    /// step, `n` times, as `p` does steps. Steps copied since are pasted as steps instead.
+    /// step on each track, `n` times, as `p` does steps: each track's own column, or the last
+    /// if fewer were copied. Steps copied since give their values in this field, so copying
+    /// steps and pasting in the velocity column pastes only their velocities.
     pub(crate) fn paste_field(&mut self, field: StepField, n: usize) -> Vec<Effect> {
-        let copied = self
-            .register()
-            .map(|r| r.fields.clone())
-            .unwrap_or_default();
-        if copied.iter().all(Vec::is_empty) {
-            self.message = Some(format!(
-                "{}: y in a field copies them",
-                self.nothing_to_paste("values")
-            ));
+        let values = self.pastes_values();
+        let Some(register) = self.register().cloned() else {
+            self.message = Some(self.nothing_to_paste("values"));
+            return vec![];
+        };
+        let empty = match values {
+            true => register.fields.iter().flatten().all(Vec::is_empty),
+            false => register.steps.iter().flatten().all(Vec::is_empty),
+        };
+        if empty {
+            self.message = Some(self.nothing_to_paste("values"));
             return vec![];
         }
         self.checkpoint();
         let mut tracks = vec![];
+        let mut missing = vec![];
         for (i, s) in self.selections.clone().iter().enumerate() {
-            let region = s.region();
-            let Some(clip) = (copied.get(i)).or(copied.last()).cloned() else {
-                continue;
-            };
-            let t = region.first_track;
-            let len = self.track_len(t);
-            let values = clip.iter().cycle().take(clip.len() * n);
-            for (at, &value) in (region.first_step..len).zip(values) {
-                self.write_field(t, at, field, value);
+            let columns: Vec<_> = self.columns(s.region()).collect();
+            for (k, (t, steps)) in columns.into_iter().enumerate() {
+                let Some(field) = self.field_on(t, field) else {
+                    missing.push(t);
+                    continue;
+                };
+                let column: Vec<Option<Value>> = if values {
+                    let clip = register.fields.get(i).or(register.fields.last());
+                    (clip.and_then(|c| c.get(k).or(c.last())))
+                        .cloned()
+                        .unwrap_or_default()
+                } else {
+                    let clip = register.steps.get(i).or(register.steps.last());
+                    let column = clip.and_then(|c| c.get(k).or(c.last()));
+                    let Some(track) = self.grid.tracks.get(t) else {
+                        continue;
+                    };
+                    (column.into_iter().flatten())
+                        .map(|step| read(track, step, field))
+                        .collect()
+                };
+                let len = self.track_len(t);
+                let repeated = column.iter().cycle().take(column.len() * n);
+                for (at, &value) in (steps.start..len).zip(repeated) {
+                    self.write_field(t, at, field, value);
+                }
+                tracks.push(t);
             }
-            tracks.push(t);
         }
+        missing.sort_unstable();
+        missing.dedup();
+        let what = self.field_values(field);
+        self.message = Some(format!("pasted {what}") + &self.passed_over(field, &missing));
         Self::field_changed(field, tracks)
     }
 
-    /// `&` on a field: fills each selection evenly between the values at its ends, which both
-    /// need one. Velocities go only on notes.
+    /// `&` on a field: fills each selection evenly between the values at its ends, on each
+    /// track, where both ends have one. Velocities go only on notes.
     pub(crate) fn fill_field(&mut self) -> Vec<Effect> {
         let Some(field) = self.on_field() else {
             self.message = Some("& fills a field: go to one with l or f".into());
@@ -629,37 +779,73 @@ impl Editor {
             }
             _ => None,
         };
-        let mut fills = vec![];
-        for s in &self.selections {
-            let region = s.region();
-            let end = |at| number(self.read_field(region.first_track, at, field));
-            let (Some(from), Some(to)) = (end(region.first_step), end(region.last_step)) else {
-                self.message = Some(
-                    match field {
-                        StepField::Conductor(_) => "& needs a tempo at each end of the selection",
-                        _ => "& needs a value at each end of the selection",
-                    }
-                    .into(),
-                );
-                return vec![];
-            };
-            fills.push((region, from, to));
+        let (columns, _) = self.field_columns(field);
+        let fills: Vec<_> = (columns.into_iter())
+            .filter(|(_, steps, _)| steps.len() > 1)
+            .filter_map(|(t, steps, field)| {
+                let (first, last) = (steps.start, steps.end - 1);
+                let end = |at| number(self.read_field(t, at, field));
+                Some((t, field, first, last, end(first)?, end(last)?))
+            })
+            .collect();
+        if fills.is_empty() {
+            self.message = Some(
+                match field {
+                    StepField::Conductor(_) => "& needs a tempo at each end of the selection",
+                    _ => "& needs a value at each end of the selection",
+                }
+                .into(),
+            );
+            return vec![];
         }
         self.checkpoint();
-        for &(region, from, to) in &fills {
-            let span = (region.last_step - region.first_step).max(1) as f32;
+        for &(t, field, first, last, from, to) in &fills {
+            let span = (last - first).max(1) as f32;
             // The ends stay as they are, a slide or not.
-            for at in region.first_step + 1..region.last_step {
-                let along = (at - region.first_step) as f32 / span;
+            for at in first + 1..last {
+                let along = (at - first) as f32 / span;
                 let n = (from + (to - from) * along).round();
                 let value = match field {
                     StepField::Conductor(_) => Value::Conductor(SongGesture::Tempo(n as u16)),
                     _ => Value::Number(n as u8, false),
                 };
-                self.write_field(region.first_track, at, field, Some(value));
+                self.write_field(t, at, field, Some(value));
             }
         }
-        Self::field_changed(field, fills.iter().map(|(r, ..)| r.first_track))
+        Self::field_changed(field, fills.iter().map(|&(t, ..)| t))
+    }
+
+    /// Rearranges `field`'s values on each track the selections reach with `f`, leaving the
+    /// rest of each step where it is. Velocities go round the notes alone, as only a note has
+    /// one: reversed, the last note's velocity goes on the first note, wherever it is.
+    pub(crate) fn rearrange_field(
+        &mut self,
+        field: StepField,
+        f: impl Fn(&mut [Option<Value>]),
+    ) -> Vec<Effect> {
+        let (columns, missing) = self.field_columns(field);
+        self.checkpoint();
+        for (t, steps, field) in &columns {
+            let at: Vec<usize> = match field {
+                StepField::Velocity => (steps.clone())
+                    .filter(|&at| self.read_field(*t, at, *field).is_some())
+                    .collect(),
+                _ => steps.clone().collect(),
+            };
+            let mut values: Vec<Option<Value>> = at
+                .iter()
+                .map(|&at| self.read_field(*t, at, *field))
+                .collect();
+            f(&mut values);
+            for (&at, value) in at.iter().zip(values) {
+                self.write_field(*t, at, *field, value);
+            }
+        }
+        if !missing.is_empty() {
+            let passed = self.passed_over(field, &missing);
+            self.message = Some(passed.trim_start_matches("; ").into());
+        }
+        Self::field_changed(field, columns.into_iter().map(|(t, ..)| t))
     }
 
     /// Whether insert mode's keys go to a field, rather than playing notes.
@@ -959,5 +1145,114 @@ mod tests {
         // Across tracks, edits take whole steps.
         keys(&mut e, "fnggvtld");
         assert!(e.grid.tracks[0].steps[0].note.is_none());
+    }
+
+    fn velocities(e: &Editor, t: usize) -> Vec<u8> {
+        (e.grid.tracks[t].steps.iter())
+            .map(|s| s.note.map_or(0, |n| velocity_number(n.velocity)))
+            .collect()
+    }
+
+    #[test]
+    fn deleting_velocities_says_they_go_back_and_collapses() {
+        let mut e = editor();
+        let default = velocity_number(e.velocity);
+        keys(&mut e, "fvv3jd");
+        assert_eq!(
+            e.message,
+            Some(format!(
+                "the velocities here are already {default:02}, the one notes go in at"
+            ))
+        );
+        e.grid.tracks[0].steps[1].note.as_mut().unwrap().velocity = 20;
+        keys(&mut e, "v3jd");
+        assert_eq!(
+            e.message,
+            Some(format!("1 velocities back to {default:02}"))
+        );
+        assert_eq!(velocities(&e, 0)[1], default);
+        let r = e.selection();
+        assert_eq!(
+            (r.first_step, r.last_step),
+            (0, 0),
+            "collapsed, as on notes"
+        );
+    }
+
+    #[test]
+    fn the_column_decides_however_many_tracks_are_selected() {
+        let mut e = editor();
+        e.grid.tracks[1].steps[2].note.as_mut().unwrap().velocity = 20;
+        // On the velocity, rows across both tracks: d resets velocities and leaves the notes.
+        keys(&mut e, "fvxxxd");
+        assert!(
+            e.grid
+                .tracks
+                .iter()
+                .all(|t| t.steps.iter().all(|s| s.note.is_some()))
+        );
+        assert_eq!(velocities(&e, 1)[2], velocity_number(e.velocity));
+        // Typing digits goes into the velocity at the cursor, as notes go in at each cursor,
+        // rather than playing notes.
+        keys(&mut e, "x");
+        assert!(
+            e.is_open(0) && e.is_open(1),
+            "both show their fields while they're edited"
+        );
+        // i goes to the selection's start, on the first track.
+        keys(&mut e, "i45\x1b");
+        assert_eq!(velocities(&e, 0)[0], 45);
+        assert_eq!(velocities(&e, 1)[0], velocity_number(e.velocity));
+        // Back on the note column, d takes whole steps.
+        keys(&mut e, "ggfnxd");
+        assert!(e.grid.tracks.iter().all(|t| t.steps[0].note.is_none()));
+    }
+
+    #[test]
+    fn a_lock_column_goes_to_tracks_locking_the_same_setting() {
+        let mut e = editor();
+        keys(&mut e, "fc");
+        assert_eq!(e.field(), StepField::Lock(0));
+        keys(&mut e, "%i50\x1b");
+        assert_eq!(column(&e, 0)[0], Some(Value::Number(50, false)));
+        // x takes the cursor to the other track, which has no cutoff column: the column stays
+        // the one d works on, and the notes stay.
+        keys(&mut e, "ggxd");
+        assert_eq!(column(&e, 0)[0], None);
+        assert_eq!(
+            e.message.as_deref(),
+            Some("took away 1 cutoff locks; LEAD has no cutoff column")
+        );
+        assert!(e.grid.tracks.iter().all(|t| t.steps[0].note.is_some()));
+        // Nor does growing the selection onto it in select mode.
+        keys(&mut e, "%i60\x1bggvtld");
+        assert_eq!(column(&e, 0)[0], None);
+        assert!(e.grid.tracks.iter().all(|t| t.steps[0].note.is_some()));
+    }
+
+    #[test]
+    fn rearranging_in_a_field_moves_only_its_values() {
+        let mut e = editor();
+        for (step, v) in [(0, 10), (1, 20), (2, 30), (3, 40)] {
+            e.grid.tracks[0].steps[step].note.as_mut().unwrap().velocity = number_velocity(v);
+        }
+        // A rest at 2: the velocities go round the notes alone.
+        e.grid.tracks[0].steps[2].note = None;
+        keys(&mut e, "fvv3j~");
+        assert_eq!(&velocities(&e, 0)[..4], [40, 20, 0, 10]);
+        keys(&mut e, "\x1bggv3jA");
+        e.handle(Key::Alt(')'));
+        assert_eq!(&velocities(&e, 0)[..4], [10, 40, 0, 20]);
+        assert_eq!(
+            e.grid.tracks[0].steps[0].note.unwrap().pitch,
+            60,
+            "the notes stay"
+        );
+        keys(&mut e, "+");
+        assert!(
+            e.message
+                .as_deref()
+                .is_some_and(|m| m.starts_with("lengths are the note's"))
+        );
     }
 }

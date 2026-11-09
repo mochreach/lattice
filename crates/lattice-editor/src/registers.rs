@@ -20,8 +20,8 @@ pub(crate) const DEFAULT: char = '"';
 pub(crate) struct Register {
     /// Each selection's steps, as `y` copies them.
     pub(crate) steps: Vec<Clip>,
-    /// Each selection's values of a field.
-    pub(crate) fields: Vec<Vec<Option<Value>>>,
+    /// Each selection's values of a field, a column for each track it reached.
+    pub(crate) fields: Vec<Vec<Vec<Option<Value>>>>,
     pub(crate) tracks: Vec<Track>,
     /// The song's entries.
     pub(crate) entries: Vec<Copied>,
@@ -42,7 +42,7 @@ impl Register {
         if steps > 0 {
             parts.push(plural(steps, "step"));
         }
-        let values: usize = self.fields.iter().map(Vec::len).sum();
+        let values: usize = self.fields.iter().flatten().map(Vec::len).sum();
         if values > 0 {
             parts.push(plural(values, "value"));
         }
@@ -208,20 +208,21 @@ mod tests {
     }
 
     #[test]
-    fn a_field_pastes_whichever_was_copied_last() {
+    fn a_field_pastes_only_its_values_whatever_was_copied() {
         let mut e = editor();
-        notes(&mut e, "zc");
-        // Steps copied, then pasted with the cursor on the velocity.
-        keys(&mut e, "ggyljjp");
-        assert_eq!(pitches(&e, 0)[2], Some(60));
-        // Then a velocity copied: p in the field pastes it, not the steps.
-        keys(&mut e, "ggy");
+        notes(&mut e, "zcv");
+        e.grid.tracks[0].steps[0].note.as_mut().unwrap().velocity = 40;
+        // A whole step copied from the note column, pasted in the velocity column: only its
+        // velocity goes in, and the note there stays.
+        keys(&mut e, "ggyljp");
+        assert_eq!(pitches(&e, 0)[1], Some(64), "no step pasted");
+        assert_eq!(e.grid.tracks[0].steps[1].note.unwrap().velocity, 40);
+        // A velocity copied pastes the same way.
+        keys(&mut e, "y");
         assert_eq!(e.message.as_deref(), Some("copied 1 values"));
-        keys(&mut e, "jjjjp");
-        assert_eq!(pitches(&e, 0)[4], None, "no step pasted");
-        // Back on the note to copy the step, then into the velocity to paste it.
-        keys(&mut e, "gghyljjjjp");
-        assert_eq!(pitches(&e, 0)[4], Some(60), "steps again once copied again");
+        keys(&mut e, "jp");
+        assert_eq!(pitches(&e, 0)[2], Some(65));
+        assert_eq!(e.grid.tracks[0].steps[2].note.unwrap().velocity, 40);
     }
 
     #[test]

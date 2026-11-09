@@ -1188,14 +1188,20 @@ end. The status line lists the cursor's locks in place of the key hints.
 The cursor has a field as well as a step (`StepField`: the note, the velocity, a gesture field, a
 lock column by its place, or the conductor's), kept on the editor rather than in each selection: `h` `l` step through the open
 track's fields and then on to the next track, and any other motion that changes track puts it
-back on the notes, as do `th` `tl`. Edits go to the field only while every selection is on the
-cursor's track (`Editor::on_field`); across tracks they take whole steps, as before. A field's
+back on the notes, as do `th` `tl`, unless it's growing a selection. The column the cursor's in
+decides what an edit acts on: the whole step on the notes, and in a field that field alone, on
+every track the selections reach (`Editor::on_field`). The field remembers the track it was picked
+on (`Editor::field_home`), as a lock column's index is into that track's columns; on the others
+it's found by its setting (`Editor::field_on`), and tracks without it are passed over and named.
+Rearranging in a field (`~` `*` `A-(` `A-)`) moves only its values, a velocity among the notes
+alone. A field's
 values are numbers from 00 to 99 (`fields::Value`), read and written through the setting's curve
 or the note's velocity, so typing, nudging, copying and `&`'s fill work the same way on every
 field. Copying a field fills the register's values, rather than its steps, so `p` can put a
 cutoff column's values into a resonance column. The register notes which went in last
-(`Register::values_last`), and `p` in a field pastes the steps when they were, so a step copied on the
-notes still pastes with the cursor left on its velocity. In insert mode digits type into the field
+(`Register::values_last`); `p` in a field pastes only the field's values either way, reading them
+out of the steps when steps were copied last, so a step copied on the notes and pasted on a
+velocity gives just its velocity. In insert mode digits type into the field
 instead of playing the piano, two to a step. The engine publishes each track's locks in force every
 block (`Status::locks`, one atomic per lock: a present bit, the effect, the setting and the
 value's bits), and the mixer page shows those values while they hold, so its knobs move with the

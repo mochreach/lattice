@@ -1,7 +1,8 @@
 //! Rearranging the selected steps, on each track they reach, as Helix rearranges text: `~` turns
 //! them back to front, `*` repeats the first through the rest, and `A-(` and `A-)` rotate them.
 //! On a chop track, turning the steps round turns each piece round too, with the `<` gesture, so
-//! the slice of sample they cover plays backwards.
+//! the slice of sample they cover plays backwards. In a field, they rearrange only its values:
+//! see [`Editor::rearrange_field`].
 
 use lattice_core::instrument::{InstKind, Instrument, chop};
 use lattice_core::{Gesture, Step};
@@ -17,27 +18,13 @@ impl Editor {
 
     /// Repeats the first `unit` selected steps through the rest of the selection.
     pub(crate) fn repeat_steps(&mut self, unit: usize) -> Vec<Effect> {
-        self.rearrange(|steps, _| {
-            let unit = unit.clamp(1, steps.len().max(1));
-            let Some((first, rest)) = steps.split_at_mut_checked(unit) else {
-                return;
-            };
-            for (to, from) in rest.iter_mut().zip(first.iter().cycle()) {
-                *to = *from;
-            }
-        })
+        self.rearrange(|steps, _| repeat(steps, unit))
     }
 
     /// Moves the selected steps `by` steps down, or up if it's negative, the ones off the end
     /// coming round to the start.
     pub(crate) fn rotate_steps(&mut self, by: isize) -> Vec<Effect> {
-        self.rearrange(|steps, _| {
-            if steps.is_empty() {
-                return;
-            }
-            let by = by.rem_euclid(steps.len() as isize) as usize;
-            steps.rotate_right(by);
-        })
+        self.rearrange(|steps, _| rotate(steps, by))
     }
 
     fn rearrange(&mut self, f: impl Fn(&mut [Step], &Instrument)) -> Vec<Effect> {
@@ -58,6 +45,25 @@ impl Editor {
         }
         changed(tracks)
     }
+}
+
+/// Repeats the first `unit` items through the rest: steps, or a field's values.
+pub(crate) fn repeat<T: Copy>(items: &mut [T], unit: usize) {
+    let unit = unit.clamp(1, items.len().max(1));
+    let Some((first, rest)) = items.split_at_mut_checked(unit) else {
+        return;
+    };
+    for (to, from) in rest.iter_mut().zip(first.iter().cycle()) {
+        *to = *from;
+    }
+}
+
+/// Moves the items `by` places on, or back if it's negative, those off the end coming round.
+pub(crate) fn rotate<T>(items: &mut [T], by: isize) {
+    if items.is_empty() {
+        return;
+    }
+    items.rotate_right(by.rem_euclid(items.len() as isize) as usize);
 }
 
 pub(crate) fn reverse(steps: &mut [Step], instrument: &Instrument) {

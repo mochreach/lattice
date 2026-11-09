@@ -908,27 +908,40 @@ without changing what's written: [chapter 4](04-rules.md).)
 
 ### Editing a field
 
-With the cursor in a field (velocity, a gesture or a lock column) and every selection on that
-one track, the editing keys act on the field alone, leaving the notes as they are:
+The column the cursor's in decides what an edit acts on. On the notes, it's the whole step: note,
+velocity, gestures and locks go together. In a field (velocity, a gesture or a lock column), the
+editing keys act on that field alone, and the notes stay as they are:
 
-| Keys        | In a field                                                                  |
-|-------------|-----------------------------------------------------------------------------|
-| `C-a` `C-x` | each value up / down by one (of 99); a gesture's amount by one              |
-| `>` `<`     | each value up / down by ten                                                 |
-| `d` `A-d`   | clear the values (with `d`, copying them); a velocity goes back to `:vel`'s |
-| `c`         | clear the values (copying them) and start inserting                         |
-| `y`         | copy the values, step by step (`copied 8 values`)                           |
-| `p` `P`     | paste the copied values down from each selection's start, or the steps      |
-|             | if steps were copied since                                                  |
-| `&`         | fill each selection evenly between the values at its ends                   |
-| `r`         | says to type the value in insert mode instead                               |
+| Keys          | In a field                                                                |
+|---------------|---------------------------------------------------------------------------|
+| `C-a` `C-x`   | each value up / down by one (of 99); a gesture's amount by one            |
+| `>` `<`       | each value up / down by ten                                               |
+| `d` `A-d`     | clear the values (with `d`, copying them); a velocity goes back to `:vel` |
+| `c`           | clear the values (copying them) and start inserting                       |
+| `y`           | copy the values, step by step (`copied 8 values`)                         |
+| `p` `P`       | paste the field's values down from each selection's start                 |
+| `~` `*`       | reverse / repeat the field's values, leaving the notes where they are     |
+| `A-(` `A-)`   | rotate the field's values up / down                                       |
+| `&`           | fill each selection evenly between the values at its ends                 |
+| `r`           | says to type the value in insert mode instead                             |
+| `+` `-`       | say a length is the note's: `fn` goes to the note column                  |
 
-If the selections reach other tracks, edits go back to acting on whole steps.
+It's the same however many tracks the selections reach. Every one of them opens out to show its
+fields while you're in one, and the edit goes to the same field on each: the velocity on every
+track, or a lock column on every track that locks the same setting, whatever order its columns
+are in. The status line says what was done and names the tracks passed over:
+`took away 4 cutoff locks; KICK has no cutoff column`. The field is the one you picked: `x`, or
+growing the selection in select mode, can leave the cursor on a track without that column, and
+edits still go to it.
 
-`p` in a field pastes whatever went into the register last, steps or values. So after copying a
-step on the notes, `p` pastes it whole wherever in the track's fields the cursor is; only once
-you've copied a field's values does `p` in a field paste those instead. Without that, copying a
-step, moving down with the cursor still on the velocity and pressing `p` would do nothing.
+Whatever was copied, `p` in a field pastes only that field's values. Copy a whole step on the
+notes, move to the velocity column and `p`, and only its velocity goes in: the note already there
+stays. `P` does the same as `p`, as a field has nothing to make room for.
+
+In a field, `~` `*` and the rotations move its values among the steps that can hold them.
+Velocities go round the notes alone, skipping the rests, so reversing a crescendo's velocities
+makes a decrescendo on the same rhythm. `d` collapses the selection to its start, as it does on
+the notes.
 
 `&` **fills** a field evenly: it takes the values at the first and last steps of each selection
 and sets every step between to a value on the straight line from one to the other. It needs a

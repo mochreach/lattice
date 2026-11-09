@@ -94,8 +94,9 @@ only its hits and has no fields; `fg` on it says to unfold it.
 | `&`         | `fill`                  | in a field, fill each selection evenly between its ends  |
 | `d` `y` `p` | `delete` `yank` `paste` | on the field alone, as on notes                          |
 
-Edits go to the field only while every selection is on the cursor's track. Across several
-tracks, they take whole steps, as on notes.
+The column the cursor's in decides what an edit acts on, across as many tracks as the selections
+reach: a gesture column's edits go to the gestures on every track, and a lock column's to every
+track locking the same setting ([chapter 2](02-patterns.md) has the whole list).
 
 ## Gestures
 

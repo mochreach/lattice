@@ -321,7 +321,7 @@ impl Editor {
     /// `mm`: each cursor to the other end of the note it's in, or in a lock column, of where
     /// the lock holds: from its first step to its last, and from anywhere else back to its first.
     pub(crate) fn match_end(&mut self) {
-        let lock_field = matches!(self.field(), StepField::Lock(_));
+        let lock_field = matches!(self.on_field(), Some(StepField::Lock(_)));
         let span = |e: &Self, c: Cursor| -> Option<Span> {
             let steps = &e.grid.tracks.get(c.track)?.steps;
             let spans = match lock_field {

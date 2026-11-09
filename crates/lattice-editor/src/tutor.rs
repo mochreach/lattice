@@ -767,7 +767,9 @@ const LESSONS: &[Lesson] = &[
                it: `n` the note, `v` the velocity, `g` `G` the gestures. In a field, insert mode's digits type values, \
                two to a step, `~` first slides and `-` puts the setting back; {note_up} \
                {note_down} nudge them, {delete} {yank} {paste} work on them, and {fill} fills \
-               a selection evenly between the values at its ends.\n\n\
+               a selection evenly between the values at its ends. The column the cursor's in \
+               decides what an edit acts on: on the notes, whole steps; in a field, that field \
+               alone, on every track the selection reaches.\n\n\
                Lock the LEAD track's cutoff on step 00.",
         teaches: &[
             Action::LockSetting,
