@@ -1,20 +1,14 @@
 Lattice is in beta: ready for others to try, though made for me, and shared in case it suits
 you too. Expect rough edges, and songs saved now may not open in later versions.
 
-## What's new in 0.2.0
+## What's new in 0.2.1
 
-- **Two new instruments**: Tuss, an electric piano named after Aphex Twin's alias The Tuss,
-  with presets of its own and Flam, an example song after "Flim"; and Bessel, an FM synth.
-- **Helix's match menu** on the pattern page: `mi` and `ma` select the note, phrase, beat,
-  bar, group or chord the cursor is in, `mm` goes between a note's ends, and `ms`, `mr` and
-  `md` lock a setting over a selection, change it and take it away. Mute moves to `tm`.
-- **Clearer selections.** Edits act on the column the cursor is in, and that column is shown
-  lighter across the whole selection, the note column included.
-- **Gestures are easier to type**: a box lists what you can type while you type one.
-- **Arpeggios retune** the sounding note instead of restarting it, so fast ones stay clean.
-- **Presets live in folders**, and a silent Switched track costs almost nothing.
-- A thank-you after the opening, with where to find more; `splash = false` in the config
-  leaves both out.
+- **`lattice update`** installs the newest release in place of the one you have. Once a day, as
+  it starts, Lattice asks GitHub whether there's a newer release and the status line says if
+  there is; `update-check = false` in the config stops it asking.
+- **Held notes sustain on Windows.** Its terminals report keys being let go, which Lattice
+  hadn't noticed, so notes played on the keyboard were blips and recorded ones a step long.
+  Windows is now tried, in Windows Terminal; it has no numpad pads, and the loop pedal is `!`.
 
 ## Installing
 
