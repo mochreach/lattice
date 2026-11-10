@@ -207,6 +207,29 @@ mod tests {
     }
 
     #[test]
+    fn the_tchaikovsky_example_opens_with_the_whole_finale_on_mosaic() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/tchaikovsky/tchaikovsky.lattice");
+        let (song, _) = open(&path).unwrap();
+        assert_eq!(song.grid.tracks.len(), 16);
+        let patterns = &song.arrangement.patterns;
+        let names: Vec<_> = (song.arrangement.entries.iter())
+            .map(|e| patterns[e.pattern].name.as_str())
+            .collect();
+        assert_eq!(names.len(), 28);
+        assert_eq!(names.first(), Some(&"fanfare"));
+        assert_eq!(names.last(), Some(&"finale"));
+        // All 638 bars of 2/4.
+        let bars: u32 = (song.arrangement.entries.iter())
+            .map(|e| patterns[e.pattern].bars.unwrap())
+            .sum();
+        assert_eq!(bars, 638);
+        let solo = &song.grid.tracks[0];
+        assert_eq!(solo.instrument.kind, InstKind::Mosaic);
+        assert_eq!(solo.lock_columns().len(), 4);
+    }
+
+    #[test]
     fn sound_files_beside_the_song_are_saved_relative_to_it() {
         let folder = std::env::temp_dir().join(format!("lattice-file-{}", std::process::id()));
         std::fs::create_dir_all(&folder).unwrap();

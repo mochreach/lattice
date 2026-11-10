@@ -792,7 +792,7 @@ lattice ctl state | grep modified        # "modified": true
 
 ## The examples
 
-Four songs in the `examples` folder show what Lattice can do. Open them from the folder Lattice
+Five songs in the `examples` folder show what Lattice can do. Open them from the folder Lattice
 is in (`lattice examples/amen/amen.lattice`), then `C-space` to play the song. Each folder's
 `README.md` goes through it bar by bar. Copy one before changing it, so the original stays as it
 was.
@@ -825,6 +825,18 @@ arpeggiator, a run split between two tracks, chance), a canon and rolls that pla
 fill, the conductor slowing into each half's close, and repeats orchestrated differently by
 mutes in the arrangement. Its notes come from the Mutopia Project's edition, and it's shared
 under the Creative Commons Attribution-ShareAlike 4.0 licence.
+
+### tchaikovsky
+
+The whole last movement of Tchaikovsky's Violin Concerto (1878), 638 bars and about ten minutes,
+in 28 patterns of up to 32 bars, on all sixteen tracks. Every part is the score's, but each is
+played by something an orchestra hasn't got: the violin is Mosaic, its body sliding from wood to
+glass to iron to a voice as the music changes mood, over cellos bowed on iron, a string machine,
+struck-glass flutes and Krell for the bassoons. It shows a song as long as Lattice allows, locks
+on each pattern's first step setting its mood and slides on its last carrying it into the next,
+Mosaic's slurs and its bow lifted by `X`, grace notes put off the grid by `D`, the conductor
+following the tempo through every change, and groups with their own buses. Its notes come from
+the Mutopia Project's edition, in the public domain.
 
 ### flam
 

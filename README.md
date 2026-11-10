@@ -244,6 +244,8 @@ Right Option is then the loop pedal, as right Alt is elsewhere.
   Krell, the alien harpsichord, with a modular screaming along over a drum machine.
 - [`examples/flam`](examples/flam): Flam, an original piece for Tuss, the electric piano, after
   Aphex Twin's *Flim*: a soft tune in just intonation over far too busy drums.
+- [`examples/tchaikovsky`](examples/tchaikovsky): the whole finale of Tchaikovsky's Violin
+  Concerto, the violin a bowed string on wood, glass and iron, with an orchestra no orchestra has.
 
 Open one with `lattice examples/scarlatti/scarlatti.lattice`, then `C-space` to play the song.
 
