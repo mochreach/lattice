@@ -32,6 +32,8 @@ pub fn engine(kind: InstKind) -> &'static str {
         // carrier and its sidebands, as strong as Bessel's functions say, the carrier gone at an
         // index of 2.4.
         InstKind::Bessel => include_str!("art/bessel.txt"),
+        // A bow drawn across a string over a body of tiles, which light up as it sounds.
+        InstKind::Mosaic => include_str!("art/mosaic.txt"),
         // A MIDI socket, its five pins, and a note on going out down the wire, bit by bit.
         InstKind::Midi => include_str!("art/midi.txt"),
     }

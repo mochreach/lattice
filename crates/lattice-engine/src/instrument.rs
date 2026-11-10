@@ -9,6 +9,7 @@ use crate::chop::Chop;
 use crate::krell::Krell;
 use crate::midi_out::MidiOut;
 use crate::monochord::Monochord;
+use crate::mosaic::Mosaic;
 use crate::processor::Processor;
 use crate::rhythmicon;
 use crate::sampler::{Sample, Sampler};
@@ -32,6 +33,7 @@ pub fn build(
         InstKind::Krell => Box::new(Krell::with_values(sample_rate, &instrument.values)),
         InstKind::Tuss => Box::new(Tuss::with_values(sample_rate, &instrument.values)),
         InstKind::Bessel => Box::new(Bessel::with_values(sample_rate, &instrument.values)),
+        InstKind::Mosaic => Box::new(Mosaic::with_values(sample_rate, &instrument.values)),
         // Sending nothing: the frontend builds one that sends, with somewhere for it to go.
         InstKind::Midi => Box::new(MidiOut::silent(sample_rate, &instrument.values)),
         // Every other instrument is a drum; were one not, it'd play as a synth.

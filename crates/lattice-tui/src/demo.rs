@@ -171,7 +171,8 @@ const PAD: usize = 10;
 const PLUCK: usize = 11;
 const KEYS: usize = 12;
 const BELL: usize = 13;
-const TRACKS: usize = 14;
+const BOW: usize = 14;
+const TRACKS: usize = 15;
 
 const SAW: f32 = 0.0;
 
@@ -420,8 +421,26 @@ fn tracks() -> Vec<Track> {
     bell.mix.pan = -0.3;
     bell.mix.send = -8.0;
 
+    // A violin's string on a glass bowl, from Mosaic's presets, slurring a line over the break
+    // and the peak.
+    let mut bow = match lattice_core::preset("mosaic/glass-violin") {
+        Some(preset) => Track {
+            effects: preset.effects,
+            macros: preset.macros,
+            face: Some(preset.face),
+            ..track("bow", preset.instrument)
+        },
+        None => {
+            misread();
+            track("bow", Instrument::new(Mosaic))
+        }
+    };
+    bow.mix.level = -12.0;
+    bow.mix.pan = 0.15;
+    bow.mix.send = -12.0;
+
     vec![
-        kick, clap, snare, hat, open, perc, ride, bass, acid, stab, pad, pluck, keys, bell,
+        kick, clap, snare, hat, open, perc, ride, bass, acid, stab, pad, pluck, keys, bell, bow,
     ]
 }
 
@@ -571,6 +590,11 @@ fn keys() -> Vec<Step> {
 fn bell() -> Vec<Step> {
     notes("C6_12 . . . . . . . . . . . . . . . | . . . . . . . . Ab5_4 . . . G5_4 . . .")
 }
+/// Slurred, each note held until the next, so it's one bow: the fifth, a turn round it, and
+/// down to the root, which the changes keep in key.
+fn bow() -> Vec<Step> {
+    notes("C5_6 . . . . . Db5_2 . C5_8 . . . . . . . | Bb4_4 . . . Ab4_4 . . . G4_8 . . . . . . .")
+}
 /// Seven steps, turned a step back every other pass, and turning round on its G, so it goes
 /// back and forth; its F slides there from the note before.
 fn pluck() -> (Vec<Step>, Vec<Rule>) {
@@ -655,6 +679,7 @@ fn sections() -> Vec<(&'static str, u32, Vec<Lane>)> {
                 pluck(),
                 (KEYS, keys(), changes()),
                 (BELL, bell(), changes()),
+                (BOW, bow(), changes()),
             ]),
         ),
         (
@@ -687,6 +712,7 @@ fn sections() -> Vec<(&'static str, u32, Vec<Lane>)> {
                 pluck(),
                 (KEYS, keys(), changes()),
                 (BELL, bell(), changes()),
+                (BOW, bow(), changes()),
             ]),
         ),
         (

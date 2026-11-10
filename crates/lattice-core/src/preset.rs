@@ -182,12 +182,20 @@ pub const PRESETS: &[&str] = &[
     "bessel/rimshot",
     "bessel/tinsel",
     "bessel/more-cowbell",
+    "mosaic/fiddle",
+    "mosaic/glass-violin",
+    "mosaic/iron-cello",
+    "mosaic/choir-string",
+    "mosaic/nave",
+    "mosaic/kit",
 ];
 
 /// A preset Lattice comes with, by name, folder and all: `tuss/flim`.
 pub fn preset(name: &str) -> Option<Preset> {
     use crate::fx::{comp, delay, drive, ensemble, filter, phaser, pitch, reverb};
-    use crate::instrument::{bessel, clap, hat, kick, krell, monochord, snare, synth, tom, tuss};
+    use crate::instrument::{
+        bessel, clap, hat, kick, krell, monochord, mosaic, snare, synth, tom, tuss,
+    };
 
     let inst = |kind, values: &[(u32, f32)]| {
         let mut instrument = Instrument::new(kind);
@@ -224,6 +232,22 @@ pub fn preset(name: &str) -> Option<Preset> {
     let tine = || crate::art::engine_face(InstKind::Tuss).art;
     // The Bessel presets': its wave and the sidebands bending it makes.
     let sidebands = || crate::art::engine_face(InstKind::Bessel).art;
+    // The Mosaic presets': its bow, string and tiles.
+    let tiles = || crate::art::engine_face(InstKind::Mosaic).art;
+    let bowed = |title: &str, controls: &[u32]| Face {
+        art: tiles(),
+        ..face(title, controls)
+    };
+    let room = |size: f32, decay: f32, mix: f32| {
+        fx(
+            FxKind::Reverb,
+            &[
+                (reverb::SIZE, size),
+                (reverb::DECAY, decay),
+                (reverb::MIX, mix),
+            ],
+        )
+    };
     // An operator's settings, `n` 1 to 4: its ratio, level, and envelope.
     let op = |n: u32,
               ratio: f32,
@@ -1862,6 +1886,166 @@ pub fn preset(name: &str) -> Option<Preset> {
                     &[(None, bessel::DECAY1, 0.2), (None, bessel::DECAY3, 0.2)],
                 ),
             ],
+        },
+        // A violin, as near as Mosaic comes: a wooden body, a player's vibrato and bite, and a
+        // hall. Where the others start from.
+        "mosaic/fiddle" => Preset {
+            face: bowed("Fiddle", &[mosaic::BOW, mosaic::VIBRATO, mosaic::BITE]),
+            instrument: inst(
+                InstKind::Mosaic,
+                &[
+                    (mosaic::MATERIAL, 0.0),
+                    (mosaic::BOW, 0.5),
+                    (mosaic::BITE, 0.6),
+                    (mosaic::VIBRATO, 0.35),
+                    (mosaic::HALO, 0.1),
+                ],
+            ),
+            effects: vec![room(0.6, 0.5, 0.22)].into(),
+            macros: vec![
+                mac(
+                    "sing",
+                    0.0,
+                    &[(None, mosaic::VIBRATO, 0.4), (None, mosaic::BOW, 0.25)],
+                ),
+                mac(
+                    "tasto",
+                    0.0,
+                    &[(None, mosaic::BOW, -0.4), (None, mosaic::BITE, -0.4)],
+                ),
+            ],
+        },
+        // A violin's string on a glass bowl, its modes beating in pairs, the sympathetic strings
+        // ringing behind.
+        "mosaic/glass-violin" => Preset {
+            face: bowed(
+                "Glass Violin",
+                &[mosaic::RING, mosaic::HALO, mosaic::VIBRATO],
+            ),
+            instrument: inst(
+                InstKind::Mosaic,
+                &[
+                    (mosaic::MATERIAL, 1.0),
+                    (mosaic::BOW, 0.4),
+                    (mosaic::BITE, 0.4),
+                    (mosaic::VIBRATO, 0.25),
+                    (mosaic::HALO, 0.4),
+                    (mosaic::RING, 0.45),
+                ],
+            ),
+            effects: vec![room(0.75, 0.65, 0.3)].into(),
+            macros: vec![
+                mac(
+                    "temper",
+                    0.0,
+                    &[(None, mosaic::MATERIAL, 0.333), (None, mosaic::RING, 0.2)],
+                ),
+                mac("halo", 0.0, &[(None, mosaic::HALO, 0.5)]),
+            ],
+        },
+        // A cello's size of metal plate, bowed hard: a gong that sings a tune.
+        "mosaic/iron-cello" => Preset {
+            face: bowed("Iron Cello", &[mosaic::SIZE, mosaic::BOW, mosaic::RING]),
+            instrument: inst(
+                InstKind::Mosaic,
+                &[
+                    (mosaic::MATERIAL, 2.0),
+                    (mosaic::SIZE, 2.5),
+                    (mosaic::BOW, 0.7),
+                    (mosaic::BITE, 0.7),
+                    (mosaic::VIBRATO, 0.2),
+                    (mosaic::HALO, 0.2),
+                    (mosaic::RING, 0.4),
+                ],
+            ),
+            effects: vec![room(0.7, 0.55, 0.25)].into(),
+            macros: vec![
+                mac(
+                    "timber",
+                    0.0,
+                    &[(None, mosaic::MATERIAL, -0.667), (None, mosaic::BOW, -0.2)],
+                ),
+                mac("toll", 0.0, &[(None, mosaic::RING, 0.5)]),
+            ],
+        },
+        // The string through a singer's mouth, open on "ah": a bowed voice.
+        "mosaic/choir-string" => Preset {
+            face: bowed(
+                "Choir String",
+                &[mosaic::MATERIAL, mosaic::VIBRATO, mosaic::GLIDE],
+            ),
+            instrument: inst(
+                InstKind::Mosaic,
+                &[
+                    (mosaic::MATERIAL, 3.0),
+                    (mosaic::BOW, 0.45),
+                    (mosaic::BITE, 0.3),
+                    (mosaic::VIBRATO, 0.45),
+                    (mosaic::HALO, 0.3),
+                    (mosaic::GLIDE, 0.05),
+                ],
+            ),
+            effects: vec![
+                fx(
+                    FxKind::Ensemble,
+                    &[(ensemble::DEPTH, 0.3), (ensemble::MIX, 0.3)],
+                ),
+                room(0.7, 0.6, 0.25),
+            ]
+            .into(),
+            macros: vec![
+                mac("wood", 0.0, &[(None, mosaic::MATERIAL, -1.0)]),
+                mac("crowd", 0.0, &[(Some(0), ensemble::MIX, 0.5)]),
+            ],
+        },
+        // A body the size of a building, halfway from wood to glass, ringing on under every
+        // note, the sympathetic strings loud: slow notes become a place.
+        "mosaic/nave" => Preset {
+            face: bowed("Nave", &[mosaic::MATERIAL, mosaic::SIZE, mosaic::HALO]),
+            instrument: inst(
+                InstKind::Mosaic,
+                &[
+                    (mosaic::MATERIAL, 0.6),
+                    (mosaic::SIZE, 6.0),
+                    (mosaic::BOW, 0.4),
+                    (mosaic::BITE, 0.2),
+                    (mosaic::VIBRATO, 0.3),
+                    (mosaic::HALO, 0.6),
+                    (mosaic::RING, 0.7),
+                ],
+            ),
+            effects: vec![room(0.9, 0.75, 0.35)].into(),
+            macros: vec![
+                mac(
+                    "vast",
+                    0.0,
+                    &[(None, mosaic::SIZE, 0.3), (None, mosaic::RING, 0.25)],
+                ),
+                mac("voices", 0.0, &[(None, mosaic::MATERIAL, 0.8)]),
+            ],
+        },
+        // A dancing master's pocket fiddle: a tiny body, quick and bright, for fast passage
+        // work.
+        "mosaic/kit" => Preset {
+            face: bowed("Kit", &[mosaic::BITE, mosaic::SIZE]),
+            instrument: inst(
+                InstKind::Mosaic,
+                &[
+                    (mosaic::MATERIAL, 0.0),
+                    (mosaic::SIZE, 0.4),
+                    (mosaic::BOW, 0.6),
+                    (mosaic::BITE, 0.9),
+                    (mosaic::VIBRATO, 0.15),
+                    (mosaic::HALO, 0.05),
+                    (mosaic::RING, 0.2),
+                ],
+            ),
+            effects: vec![room(0.4, 0.4, 0.15)].into(),
+            macros: vec![mac(
+                "spiccato",
+                0.0,
+                &[(None, mosaic::BITE, 0.1), (None, mosaic::RING, -0.2)],
+            )],
         },
         _ => return None,
     };

@@ -430,6 +430,76 @@ four operators, at around 400 times real time, about as costly as Switched: per 
 oscillators and four envelopes, with no filters, but nothing is ever skipped. Run as scalars, a
 voice at a time, it was a third as fast.
 
+### Mosaic, the bowed engine
+
+The seventh engine, named after IRCAM's MOSAIC (Adrien and Morrison), now Modalys, which built
+instruments from modal descriptions of their parts, joined by bows, hammers and reeds, so
+impossible ones were as easy as real ones. Mosaic is a bowed string that plays as a violinist
+plays, on a body of any material at any size. One instrument, `:inst mosaic`, eight voices.
+
+- **The string** is Monochord's waveguide (`waveguide::Course`), bowed by STK's friction
+  curve, with a fixed loss each trip round (0.97) rather than a decay time, so every note is as
+  easy to bow and low notes ring longer. The bow's speed lerps 0.04–0.35 with `bow`, and the
+  curve's slope is `hold / speed`, `hold` lerping 0.35–0.15. Tying the slope to the speed keeps
+  the bow inside Schelleng's window: with both lerped independently, as Monochord's are, a
+  fast bow with a steep slope fell, depending on its start, into weaker motions a third as
+  loud, so notes came out uneven. The output's tilted as Monochord's (a one-pole at 1.5 times
+  the note, made up 2×).
+- **The bow's envelope** chases the velocity while the note's held, at a time constant from
+  `bite`, 0.25 s to 3 ms (log), and lifts in 40 ms. A new bow starts `3 × bite` faster, dying
+  away by 1/e in 30 ms, as a Helmholtz motion builds over tens of periods at a steady speed; a
+  pluck of noise, `0.25 × bite × velocity`, starts the string moving; and a scratch, noise
+  band-passed round 3 kHz, `0.3 × bite × velocity`, dies in 12 ms. Light bowing adds
+  `0.04 × (1 - bow)²` of white noise to the bridge, which the body colours.
+- **Slurs**: a note-off sets a voice's `released`, which the next render clears; segments
+  don't render between events at the same offset, so a note-on at the instant of a note-off
+  finds it. The new note takes the released voice nearest in pitch and keeps its bow: a
+  different pitch glides there over `glide` (or the gesture's), retuning every 16 samples; the
+  same pitch is a change of bow, the speed dipping to 15% over a few milliseconds and back.
+  Retunes, from arpeggios, are slurs. Otherwise a voice is chosen as Monochord's are.
+- **Vibrato**: `100 × v^1.5` cents at `5.2 + 3.5 v²` Hz, its speed wandering ±10% by a random
+  walk, from 0.12 s into the note and coming in over 0.4 s; a slur starts it again. It's
+  applied by `Course::stretch`, every 16 samples, which keeps the neck's side and moves only
+  the bridge's.
+- **The body**: 24 two-pole resonators, `y = b x + a1 y1 + a2 y2`, run as three `f32x8`, fed by
+  the sum of the strings. Each material is a table of 24 (Hz, level, Q); `material` interpolates
+  between neighbouring tables mode by mode, Hz and Q in log, level in line, and a loudness for
+  each. `size` divides every Hz and multiplies ring times by `√size`; `ring` multiplies them by
+  `0.25 × 100^ring`. `r = e^(-6.91 / (t60 × rate))`, `b = level × 2 sin θ (1 - r) ×
+  max(1, √(Q / 20)) × makeup`, a peak of the level at the mode's pitch, louder for narrow modes
+  so glass's sparse ones are heard. `makeup` is `scale^0.8` for rings shortened, `scale^0.25`
+  for ones lengthened: a longer ring passes a narrower band, but making that up in full let a
+  harmonic sitting on a mode build up over its ring to many times the rest. Modes past 0.45 of
+  the rate are silent. Each has a fixed pan; a quarter of the dry string is added.
+- **Wood** is a violin's: A0 275 Hz, CBR, B1- 460 and B1+ 530, the dense middle and the bridge
+  hill at 2–3 kHz, Q 18–34. **Glass**: a bowl's modes at 1, 2.4, 4.4, 6.9 … times 430 Hz, each a
+  doublet 0.3% apart, and the stem's between, Q 600–900. **Metal**: a plate's stretched,
+  inharmonic series from 100 Hz, Q 220–700. **Voice**: a chest and the five formants of "ah",
+  each four or five modes across its bandwidth, Q 4–24.
+- **The halo**: five combs, at the key's note above C-4 plus -12, 0, 7, 12 and 19 semitones,
+  each a `Line` read with Lagrange interpolation and a two-tap low-pass in the loop, the
+  feedback for a 4 s ring, driven by the body's sum and panned.
+- **Silence**: voices stop when quiet and unbowed; the body and halo then ring on until the
+  output's below 1e-4 for a control period, when their states are cleared and rendering stops.
+  A choke fades every voice by 1/e in 3 ms.
+
+| Control | Range | |
+| --- | --- | --- |
+| material | 0–3 | wood, glass, metal, voice, interpolated |
+| size | 0.25–8 | log |
+| bow | 0–1 | speed and pressure |
+| bite | 0–1 | attack, accent and scratch |
+| vibrato | 0–1 | width and speed |
+| halo | 0–1 | the sympathetic strings |
+| key | `C` to `B` | theirs |
+| glide | 0–0.5 s | slurs |
+| ring | 0–1 | the body's ring times, ×0.25 to ×25 |
+| gain | 0–1 | |
+
+The voices benchmark holds eight bowed notes at around 110 times real time, about as costly as
+Monochord bowing as many: the strings are most of it, the body a few percent and the halo a
+fifth.
+
 ### Sampler
 
 Plays a WAV file: a region of it (`start`, `end`), pitched from C-4, or cut into up to 16
@@ -723,6 +793,7 @@ comes from. Candidates:
 | Krell | the vanished civilisation of *Forbidden Planet*, scored by Louis and Bebe Barron | alien harpsichord (built: `:inst krell`) |
 | Tuss | The Tuss, Richard D. James's 2007 alias as a made-up Cornish brother and sister | electric piano and tunings (built: `:inst tuss`) |
 | Bessel | Friedrich Bessel, whose functions give FM's sidebands | four-operator FM (built: `:inst bessel`) |
+| Mosaic | IRCAM's MOSAIC, now Modalys, modal synthesis of impossible instruments | a bowed string on bodies of any material (built: `:inst mosaic`) |
 | Seven | *Seven Waves* (Suzanne Ciani) | west-coast: wavefolding, low-pass gates, plucks |
 | Oblique | Oblique Strategies (Brian Eno) | generative pads that evolve on their own |
 | Snowflake | *Snowflakes Are Dancing* (Isao Tomita) | orchestral imitation, whistles and choirs |

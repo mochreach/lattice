@@ -179,6 +179,7 @@ pub fn build(kind: InstKind, sample_rate: f32, values: &[f32]) -> Option<Box<dyn
         | InstKind::Krell
         | InstKind::Tuss
         | InstKind::Bessel
+        | InstKind::Mosaic
         | InstKind::Sampler
         | InstKind::Chop
         | InstKind::Midi => return None,

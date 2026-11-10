@@ -247,7 +247,7 @@ pub const COMMANDS: &[Spec] = &[
         name: "inst",
         alias: None,
         params: &[text("INSTRUMENT", "instrument")],
-        describe: "choose the instrument: synth, switched, monochord, krell, tuss, bessel, sampler, chop, kick, snare, hat, clap, tom, or midi for gear outside Lattice",
+        describe: "choose the instrument: synth, switched, monochord, mosaic, krell, tuss, bessel, sampler, chop, kick, snare, hat, clap, tom, or midi for gear outside Lattice",
     },
     Spec {
         name: "sample",

@@ -1,4 +1,4 @@
-//! The pieces of a waveguide string, which Monochord and Krell share: a delay line, a string
+//! The pieces of a waveguide string, which Monochord, Krell and Mosaic share: a delay line, a string
 //! of two of them that meet where a bow would sit, and a pluck to put on it.
 
 use crate::rhythmicon::Noise;
@@ -80,6 +80,11 @@ impl Line {
     pub(crate) fn blend(&mut self, delay: usize, keep: f32, x: f32) {
         let at = self.at(delay);
         self.samples[at] = self.samples[at] * keep + x;
+    }
+
+    /// Silences the line.
+    pub(crate) fn clear(&mut self) {
+        self.samples.fill(0.0);
     }
 
     #[inline]

@@ -29,6 +29,11 @@
 //! The FM synthesiser is Bessel, after Friedrich Bessel, whose functions give the strength of
 //! each partial frequency modulation makes: four operators, sine oscillators that bend each
 //! other's phase, in one of eight algorithms, as in Yamaha's four-operator synthesisers.
+//!
+//! The bowed engine is Mosaic, after IRCAM's modal synthesis program, first called MOSAIC and
+//! now Modalys, made for instruments that can't exist: a bowed string, as a violin's, whose body
+//! can be any material at any size, from a violin's wood through glass and metal to a singing
+//! voice, with sympathetic strings ringing behind it.
 
 use serde::{Deserialize, Serialize};
 
@@ -64,16 +69,18 @@ pub enum InstKind {
     Krell,
     Tuss,
     Bessel,
+    Mosaic,
     /// Not an instrument of Lattice's own: notes and settings go out over MIDI.
     Midi,
 }
 
 impl InstKind {
-    pub const ALL: [InstKind; 14] = [
+    pub const ALL: [InstKind; 15] = [
         InstKind::Synth,
         InstKind::Switched,
         InstKind::Bessel,
         InstKind::Monochord,
+        InstKind::Mosaic,
         InstKind::Krell,
         InstKind::Tuss,
         InstKind::Sampler,
@@ -105,6 +112,7 @@ impl InstKind {
             InstKind::Krell => &krell::PARAMS,
             InstKind::Tuss => &tuss::PARAMS,
             InstKind::Bessel => &bessel::PARAMS,
+            InstKind::Mosaic => &mosaic::PARAMS,
             InstKind::Midi => &midi::PARAMS,
         }
     }
@@ -126,6 +134,7 @@ impl Kind for InstKind {
             InstKind::Krell => "krell",
             InstKind::Tuss => "tuss",
             InstKind::Bessel => "bessel",
+            InstKind::Mosaic => "mosaic",
             InstKind::Midi => "midi",
         }
     }
@@ -531,6 +540,59 @@ pub mod tuss {
             "",
             Curve::Choice(crate::tuning::KEYS),
         ),
+        param(GAIN, "gain", (0.0, 1.0, 0.5), "", Curve::Linear),
+    ];
+}
+
+/// Mosaic, the bowed engine: a bow on a string, as a violin's, and the string on a body of
+/// resonances that can be any material at any size.
+pub mod mosaic {
+    use super::*;
+
+    /// What the body's made of, sliding between them: 0 wood, a violin's own resonances; 1 glass,
+    /// sparse, pure and high; 2 metal, stretched out of tune and ringing on; 3 a voice, a singer's
+    /// vowel, so the string sings.
+    pub const MATERIAL: u32 = 0;
+    /// How big the body is, from a toy (0.25) to a cathedral (8): bigger bodies are lower and
+    /// ring longer.
+    pub const SIZE: u32 = 1;
+    /// How hard the bow presses: from skating airily over the string, ghostly and breathy, to
+    /// pressed in till it crunches and growls.
+    pub const BOW: u32 = 2;
+    /// How a note starts: from a slow swell to an instant, articulate bite with a scratch of rosin.
+    pub const BITE: u32 = 3;
+    /// A player's vibrato, coming in a moment after the note starts so fast notes stay clean;
+    /// turned up, wider and faster than any hand.
+    pub const VIBRATO: u32 = 4;
+    /// How loudly the sympathetic strings ring behind it, tuned to the key's root and fifth.
+    pub const HALO: u32 = 5;
+    /// The key the sympathetic strings are tuned to.
+    pub const KEY: u32 = 6;
+    /// How long a slurred note takes to slide to its pitch: a finger's change, or a portamento.
+    pub const GLIDE: u32 = 7;
+    /// How long the body rings on, from dry to a glass hall that keeps sounding.
+    pub const RING: u32 = 8;
+    pub const GAIN: u32 = 9;
+
+    /// The materials, in order: `material` slides between neighbours.
+    pub const MATERIALS: &[&str] = &["wood", "glass", "metal", "voice"];
+
+    pub(super) const PARAMS: [ParamInfo; 10] = [
+        param(MATERIAL, "material", (0.0, 3.0, 0.0), "", Curve::Linear),
+        param(SIZE, "size", (0.25, 8.0, 1.0), "", Curve::Log),
+        param(BOW, "bow", (0.0, 1.0, 0.5), "", Curve::Linear),
+        param(BITE, "bite", (0.0, 1.0, 0.6), "", Curve::Linear),
+        param(VIBRATO, "vibrato", (0.0, 1.0, 0.3), "", Curve::Linear),
+        param(HALO, "halo", (0.0, 1.0, 0.2), "", Curve::Linear),
+        param(
+            KEY,
+            "key",
+            (0.0, 11.0, 2.0),
+            "",
+            Curve::Choice(crate::tuning::KEYS),
+        ),
+        param(GLIDE, "glide", (0.0, 0.5, 0.015), "s", Curve::Linear),
+        param(RING, "ring", (0.0, 1.0, 0.3), "", Curve::Linear),
         param(GAIN, "gain", (0.0, 1.0, 0.5), "", Curve::Linear),
     ];
 }

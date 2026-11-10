@@ -2,10 +2,10 @@
 
 Every track plays one instrument. It turns the track's notes into sound: a kick drum, a stack
 of saws through a screaming filter, a plucked string, an alien harpsichord, an electric piano,
-the bells and basses of FM, a sound file. This chapter covers choosing an instrument, the
-instrument page where you shape it, each of Lattice's fourteen instruments and every one of their
-settings, the sampler and chop for
-playing sound files, and presets and faces, which make an instrument into one of its own.
+the bells and basses of FM, a violin made of glass, a sound file. This chapter covers choosing
+an instrument, the instrument page where you shape it, each of Lattice's fifteen instruments and
+every one of their settings, the sampler and chop for playing sound files, and presets and
+faces, which make an instrument into one of its own.
 
 The effects that come after the instrument, the mixer, and macros in full are in
 [chapter 8](08-mixer-and-effects.md). Gestures that change how a single note plays (`<`, `O`,
@@ -14,8 +14,8 @@ chapter 8.
 
 ## The instruments at a glance
 
-Lattice has fourteen instruments. All are built in: the engine is written by hand, in Rust, for
-Lattice alone. Thirteen are below; a fourteenth, `midi`, makes no sound of its own: it plays
+Lattice has fifteen instruments. All are built in: the engine is written by hand, in Rust, for
+Lattice alone. Fourteen are below; a fifteenth, `midi`, makes no sound of its own: it plays
 gear outside Lattice (see [MIDI tracks](#midi-tracks-playing-other-gear-midi)).
 
 | Name        | Engine     | What it is                                                   | Voices |
@@ -23,6 +23,7 @@ gear outside Lattice (see [MIDI tracks](#midi-tracks-playing-other-gear-midi)).
 | `synth`     |            | a plain test synth: one oscillator, a filter, an envelope    | 8      |
 | `switched`  | Switched   | a modular: a stack of saws through a screaming ladder filter | 8      |
 | `monochord` | Monochord  | a plucked or bowed string, modelled as a waveguide           | 8      |
+| `mosaic`    | Mosaic     | a bowed string on a body of wood, glass, metal or a voice    | 8      |
 | `krell`     | Krell      | an alien harpsichord: choirs of quill-plucked strings        | 8      |
 | `tuss`      | Tuss       | an electric piano: struck tines, barking pickups, tunings    | 8      |
 | `bessel`    | Bessel     | FM: four operators, for bells, basses, brass and drums       | 8      |
@@ -58,9 +59,9 @@ selections reach; on the mixer, instrument and fx pages, the track under the cur
 :inst kick           and now a bass drum
 ```
 
-The names are `synth`, `switched`, `monochord`, `krell`, `tuss`, `bessel`, `sampler`, `chop`,
-`kick`, `snare`, `hat`, `clap` and `tom`, and `midi` for gear outside Lattice. Type `:inst ` and the
-command line lists them; a name it doesn't know is refused with the list:
+The names are `synth`, `switched`, `monochord`, `mosaic`, `krell`, `tuss`, `bessel`, `sampler`,
+`chop`, `kick`, `snare`, `hat`, `clap` and `tom`, and `midi` for gear outside Lattice. Type
+`:inst ` and the command line lists them; a name it doesn't know is refused with the list:
 `no instrument called "string"; there's synth, switched, …`.
 
 What changing it does:
@@ -100,6 +101,8 @@ than a wall of generic controls:
   out under in 2007.
 - **Bessel**, the FM synthesiser, after Friedrich Bessel, the astronomer whose functions say how
   loud each partial of an FM sound is.
+- **Mosaic**, the bowed string, after IRCAM's program for modal synthesis, MOSAIC, now Modalys,
+  made in Paris around 1990 for building instruments that can't exist.
 
 Each engine's section below tells the story behind its name. The design notes put it this way:
 Lattice is a personal instrument first, and its engines should be "interesting and quirky,
@@ -305,6 +308,7 @@ engine is named after:
 | `krell`     | the Great Machine of the Krell, from Forbidden Planet, and its halls         |
 | `tuss`      | a tine and its tone bar, struck by the hammer, swinging before the pickup    |
 | `bessel`    | a sine bent by FM, over its sidebands, Bessel's functions, as it bends more  |
+| `mosaic`    | a bow on a string over a body of tiles, which light up as it sounds          |
 | `sampler`   | a reel-to-reel, as at the Radiophonic Workshop, its reels turning            |
 | `chop`      | a break's waveform sliced up, a slice and its pad lit in turn                |
 | the drums   | the Rhythmicon's lamp through its spinning disc of holes onto its photocells |
@@ -375,12 +379,12 @@ starting from a wave and filtering it. Lattice uses two kinds:
   small loss stand in for the string's stiffness and friction, so it rings, then dulls, then
   dies, as a real one does. The idea began with the **Karplus-Strong** algorithm (Kevin Karplus
   and Alex Strong, 1983), which fills a delay line with noise and averages it as it goes round,
-  and was developed into digital waveguides by Julius O. Smith at Stanford. Monochord and Krell
-  are waveguides.
+  and was developed into digital waveguides by Julius O. Smith at Stanford. Monochord, Krell
+  and Mosaic's strings are waveguides.
 - **Modal synthesis** models a resonant body (a drumhead, a bell, a plate of glass) as a set
   of **modes**, each a frequency at which it rings and a time it rings for. Hit it, and each mode
-  rings at its own pitch and dies at its own rate. The drums' shells, Krell's body and Tuss's
-  tines are modal.
+  rings at its own pitch and dies at its own rate. The drums' shells, Krell's body, Tuss's
+  tines and Mosaic's bodies are modal.
 
 **FM synthesis** makes rich sounds from plain sine waves, by one bending another's pitch so fast
 that the bending becomes new partials. Bessel is FM, and its section explains it in full.
@@ -888,6 +892,122 @@ and `sawmill`, the four in a stack, feeding back into a growl. Then `fanfare`, a
 swelling brighter as it's blown. And its drums: `boom`, a kick; `rimshot`, a snare; `tinsel`, a
 hat; and `more-cowbell`, the drum machine's, at 540 and 800 Hz.
 
+### Mosaic, the bowed string (`mosaic`)
+
+Around 1990, at IRCAM, the institute for music and acoustics Pierre Boulez founded under the
+Pompidou Centre in Paris, Jean-Marie Adrien and Joseph Morrison built a program called MOSAIC.
+It made sound by describing things that vibrate, strings and plates and tubes and membranes, as
+their modes, and joining them up with what sets them going: a bow, a hammer, a reed, a finger.
+Because it only needed the modes, it could join anything to anything. A violin's string could
+be bowed on a steel plate the size of a room, or a drum played with a bow. It was renamed
+Modalys, and composers at IRCAM still use it to build instruments that can't exist.
+
+That's what this engine is for, and why it has the name. I wanted a bowed string that plays
+like a violinist plays it, attack, slur, vibrato, so it can carry a real melody, but whose body
+can be anything: a violin's own wood, a glass bowl, a plate of iron, a singer's open mouth, or
+something halfway between, as small as a toy or as big as a church. It began with Tchaikovsky's
+violin concerto: arranging it, I didn't want an orchestra imitated, I wanted the sounds an
+orchestra couldn't make.
+
+**The string.** Each of the eight voices is a waveguide string bowed by friction, as
+Monochord's is (see [Monochord](#monochord-the-string-monochord)): the bow drags the string
+until it slips back, again and again, the motion Hermann von Helmholtz first watched through a
+microscope on a violin string in the 1860s. It only works in a window. Press too lightly for
+the bow's speed and it skates, airy and whistling; too hard and it crunches. The acoustician
+John Schelleng drew that window in 1973, and violinists live in it. A model can fall out of it
+in a way a player never would, settling into a weaker, rougher motion depending on how the note
+began, so Mosaic ties the bow's grip to its speed and keeps every note inside the window. Low
+strings ring longer than high ones once the bow lifts, as on a violin.
+
+**Playing it as a player does.** Mosaic listens to how the notes join:
+
+- **A slur.** A note that starts at the very moment the last one ends, on the same track, is
+  slurred: the bow stays on the string and only the finger moves, so a legato line is one long
+  stroke, with no new attack on each note. The pitch slides there in `glide`, from a finger's
+  change at the default to a singer's portamento turned up. To write a slur, give each note the
+  length that reaches the next.
+- **A new bow.** A note after a gap, even a sixteenth's, starts a new stroke, with `bite`'s
+  attack. So shorter notes than the gaps between them play detached, as a violinist plays
+  separate bows.
+- **The same note again**, joined, changes the bow's direction: it slows for a moment and
+  speeds up again, with a little rosin, as the bow turns, so repeated notes are heard as
+  repeated without stopping.
+- **Vibrato** starts a moment into each note, an eighth of a second, and comes in over the
+  next half second, as a player's does: long notes sing, and fast passages, whose notes are
+  over before it starts, stay clean. Its speed wanders a little, as a hand's does.
+
+Arpeggios (`O`, chapter 5) are slurred, the bow staying on through them. A `G` gesture glides a
+new bow in from the last note played, as a shift of the hand.
+
+**The body.** Every string sounds through one body, shared, as a violin's four strings share
+theirs. It's 24 modes, each a resonance with a pitch, a level, a ring time and a place in the
+stereo field, so a chord spreads out as the different strings excite different modes. There are
+four sets of them, and `material` slides between them, each mode moving to the same mode of the
+next, so a body can be halfway between two, and turning it while a note plays morphs the body
+under the note:
+
+- `0`, **wood**: a violin's resonances, as measured on real ones. The lowest, about 275 Hz, is
+  the air inside, breathing through the f-holes; the strong pair just above, about 460 and
+  530 Hz, are the top and back first bending together; then a dense crowd of modes through the
+  middle, and a hill of them at 2 to 3 kHz, the bridge's own rocking, which gives a violin the
+  bright edge that carries over an orchestra.
+- `1`, **glass**: the modes of a glass bowl, few and pure and ringing for seconds. Each is a
+  pair a few cents apart, as a wine glass's are when it isn't perfectly round, so they beat
+  slowly against each other. A note that lands on one of them makes the body sing it back.
+- `2`, **metal**: a plate's partials, out of tune with each other and crowding closer as they
+  rise, as a gong's or a bell's do. A melody played on it has a halo of clang that isn't in any
+  key.
+- `3`, **voice**: the formants of a sung "ah", the resonances of a singer's throat and mouth,
+  and a little chest below them. The string sings through them, a vowel with a bow's attack.
+
+`size` scales the body: half the size is an octave higher, twice the size an octave lower,
+and a bigger body rings longer, by the square root of its size. `ring` lengthens or shortens every
+mode's ring, from dry and woody to a glass that keeps sounding after the bow has gone. A
+quarter of the string is heard as it is, before the body, so the note is always clear.
+
+**The halo.** Behind the body are five sympathetic strings, never bowed, tuned to the root and
+fifth of `key`: the key's note above middle C, the octave below it, the fifth above it, the
+octave above, and the twelfth. When the body plays one of their notes, or a harmonic of one,
+they ring in sympathy, on and on, panned across the field. It's the viola d'amore's trick, and
+the Hardanger fiddle's and the sitar's: notes in the key glow, notes outside it don't.
+
+| Setting    | Range           | Default | What it does                                         |
+|------------|-----------------|---------|------------------------------------------------------|
+| `material` | 0 to 3          | 0       | the body: wood, glass, metal, voice, and between     |
+| `size`     | 0.25 to 8       | 1       | how big the body is: bigger is lower and rings on    |
+| `bow`      | 0 to 1          | 0.5     | from skating lightly and airily to pressing hard     |
+| `bite`     | 0 to 1          | 0.6     | the attack, from a slow swell to an instant bite     |
+| `vibrato`  | 0 to 1          | 0.3     | how wide and fast, coming in a moment into the note  |
+| `halo`     | 0 to 1          | 0.2     | how loudly the sympathetic strings ring              |
+| `key`      | `C` to `B`      | `D`     | what they're tuned to                                |
+| `glide`    | 0 to 0.5 s      | 0.015 s | how long a slurred note takes to reach its pitch     |
+| `ring`     | 0 to 1          | 0.3     | how long the body rings                              |
+| `gain`     | 0 to 1          | 0.5     | the level                                            |
+
+More about the controls:
+
+- **`bow`** raises the bow's speed, and so its loudness, with its pressure. Light, it breathes:
+  a hiss of bow hair goes into the body with the note. Heavy, it's loud and gritty.
+- **`bite`** is how fast the bow takes hold, from a quarter of a second's swell to three
+  thousandths, and at the hard end the bow starts faster than it carries on, as a player's
+  does for an accent, with a scratch of rosin, so the note speaks at once.
+- **`vibrato`** at 0.3 is a violinist's, about 16 cents either way, five times a second. At 1
+  it's a hundred cents, a semitone, nearly nine times a second: no one's hand, a siren.
+- **`key`** defaults to D, the key of Tchaikovsky's concerto, where this engine started.
+
+All of them change the notes already sounding: the body and halo at once, the bow, bite and
+vibrato on the strings, and `glide` from the next slur. Choking the track fades every string
+in a few milliseconds; the body and halo ring out after the strings have stopped, and then
+Mosaic does nothing at all until the next note.
+
+**The presets** are in `mosaic/`. `fiddle` is the nearest Mosaic comes to a violin, in a hall,
+and where the others start; its `sing` macro widens the vibrato and leans on the bow, `tasto`
+lightens both, as bowing over the fingerboard does. `glass-violin` is the same string on a
+glass bowl, the halo up; `iron-cello` a metal plate a cello's size, bowed hard; `choir-string`
+the string through a singer's "ah"; `nave` a body the size of a building, halfway from wood to
+glass, every note leaving a place behind it; and `kit`, after the pocket fiddle dancing masters
+carried, tiny and quick and bright, for fast passages.
+
 ## Rhythmicon, the drum engine
 
 In 1930 the composer Henry Cowell asked Leon Theremin, inventor of the instrument that bears his
@@ -1295,6 +1415,12 @@ instrument page. Each is in the folder of its instrument, so `flim` below is `tu
 | `cello-ghost`    | `monochord` | a bowed string with a ghost an octave up  | `breath` `haunt`    |
 | `tidewater`      | `monochord` | a twangy steel string off a slapback echo | `twang` `slap`      |
 | `monsoon`        | `monochord` | a sitar in an echo                        | `rain`              |
+| `fiddle`         | `mosaic`    | a violin, in a hall                       | `sing` `tasto`      |
+| `glass-violin`   | `mosaic`    | a violin's string on a glass bowl         | `temper` `halo`     |
+| `iron-cello`     | `mosaic`    | a gong the size of a cello, bowed         | `timber` `toll`     |
+| `choir-string`   | `mosaic`    | a string that sings "ah"                  | `wood` `crowd`      |
+| `nave`           | `mosaic`    | a body the size of a building             | `vast` `voices`     |
+| `kit`            | `mosaic`    | a pocket fiddle, quick and bright         | `spiccato`          |
 | `foundry`        | `kick`      | a hard, hot kick                          | `weight` `heat`     |
 | `velvet-boom`    | `kick`      | an 808's long boom                        | `length` `growl`    |
 | `tin-roof`       | `snare`     | a 909 crack                               | `ring` `room`       |
