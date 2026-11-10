@@ -478,7 +478,10 @@ plays, on a body of any material at any size. One instrument, `:inst mosaic`, ei
   each four or five modes across its bandwidth, Q 4–24.
 - **The halo**: five combs, at the key's note above C-4 plus -12, 0, 7, 12 and 19 semitones,
   each a `Line` read with Lagrange interpolation and a two-tap low-pass in the loop, the
-  feedback for a 4 s ring, driven by the body's sum and panned.
+  feedback for a 4 s ring, driven by the body's sum and panned. Each is driven by what its loop
+  loses, `1 - feedback`, so held at its own pitch it settles at the body's level (twice that,
+  out, at full `halo`) whatever its pitch. Driven by a fixed amount, as it first was, a string's
+  peak grew with the trips round its loop in a ring: a held A5 rang over 20 dB above the violin.
 - **Silence**: voices stop when quiet and unbowed; the body and halo then ring on until the
   output's below 1e-4 for a control period, when their states are cleared and rendering stops.
   A choke fades every voice by 1/e in 3 ms.

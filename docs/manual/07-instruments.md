@@ -969,7 +969,9 @@ quarter of the string is heard as it is, before the body, so the note is always 
 fifth of `key`: the key's note above middle C, the octave below it, the fifth above it, the
 octave above, and the twelfth. When the body plays one of their notes, or a harmonic of one,
 they ring in sympathy, on and on, panned across the field. It's the viola d'amore's trick, and
-the Hardanger fiddle's and the sitar's: notes in the key glow, notes outside it don't.
+the Hardanger fiddle's and the sitar's: notes in the key glow, notes outside it don't. They take
+a moment to wake, as real ones do, so a long note blooms where a quick run hardly stirs them, and
+however long it's held, they never ring louder than twice the violin.
 
 | Setting    | Range           | Default | What it does                                         |
 |------------|-----------------|---------|------------------------------------------------------|

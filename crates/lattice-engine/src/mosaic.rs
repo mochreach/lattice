@@ -231,9 +231,11 @@ const HALO_STRINGS: [(f32, f32); 5] = [
 const HALO_RING: f32 = 4.0;
 /// The sympathetic strings' damping, as the string's, and the delay it adds, in samples.
 const HALO_DAMPING: f32 = 0.3;
-/// How hard the body drives the sympathetic strings, and how loud they are.
-const HALO_DRIVE: f32 = 0.05;
-const HALO_LEVEL: f32 = 0.6;
+/// How loud the sympathetic strings are. Each is driven by the body in proportion to what its
+/// loop loses, so held at its own pitch it rings twice as loud as the body at most, whatever its
+/// pitch: driven by a fixed amount, a high string's many more trips round its loop a second made
+/// it ring far louder than a low one, and than the violin itself.
+const HALO_LEVEL: f32 = 2.0;
 
 #[derive(Debug, Clone)]
 struct Voice {
@@ -296,6 +298,7 @@ struct Sympathetic {
     line: Line,
     delay: f32,
     feedback: f32,
+    drive: f32,
     last: f32,
     left: f32,
     right: f32,
@@ -382,6 +385,7 @@ impl Mosaic {
                 line: Line::new(halo_len),
                 delay: 100.0,
                 feedback: 0.0,
+                drive: 0.0,
                 last: 0.0,
                 left,
                 right,
@@ -524,6 +528,7 @@ impl Mosaic {
             // The loop's low-pass delays it a little, which the line makes up.
             string.delay = (period - HALO_DAMPING).max(2.0);
             string.feedback = (-SIXTY_DB * period / (HALO_RING * rate)).exp();
+            string.drive = 1.0 - string.feedback;
         }
     }
 
@@ -822,7 +827,7 @@ impl Mosaic {
                     string.last = back;
                     string
                         .line
-                        .write(HALO_DRIVE * body + string.feedback * damped);
+                        .write(string.drive * body + string.feedback * damped);
                     out_l += HALO_LEVEL * halo * string.left * back;
                     out_r += HALO_LEVEL * halo * string.right * back;
                 }
@@ -1072,5 +1077,20 @@ mod tests {
         };
         play(&mut m, &[choke], 0.1);
         assert!(m.voices.iter().all(|v| !v.sounding));
+    }
+    #[test]
+    fn the_halo_rings_with_its_own_notes_and_never_drowns_them() {
+        let held = |pitch: u8, halo: f32| {
+            let mut m = mosaic(&[(HALO, halo), (VIBRATO, 0.0)]);
+            rms(&play(&mut m, &[on(pitch)], 2.0)[48_000..])
+        };
+        // In D, the strings are D3, D4, A4, D5 and A5. Held on any of them, the halo blooms, by
+        // as much high as low; off them, on an E, it stays quiet.
+        for pitch in [50, 62, 69, 74, 81] {
+            let db = 20.0 * (held(pitch, 1.0) / held(pitch, 0.0)).log10();
+            assert!((4.0..12.0).contains(&db), "{pitch}: {db} dB");
+        }
+        let db = 20.0 * (held(64, 1.0) / held(64, 0.0)).log10();
+        assert!(db.abs() < 1.0, "E: {db} dB");
     }
 }
