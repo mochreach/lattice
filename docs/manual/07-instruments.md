@@ -936,7 +936,7 @@ strings ring longer than high ones once the bow lifts, as on a violin.
   next half second, as a player's does: long notes sing, and fast passages, whose notes are
   over before it starts, stay clean. Its speed wanders a little, as a hand's does.
 
-Arpeggios (`O`, chapter 5) are slurred, the bow staying on through them. A `G` gesture glides a
+Arpeggios (`A`, chapter 5) are slurred, the bow staying on through them. A `G` gesture glides a
 new bow in from the last note played, as a shift of the hand.
 
 **The body.** Every string sounds through one body, shared, as a violin's four strings share

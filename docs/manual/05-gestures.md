@@ -233,8 +233,9 @@ no offset, unless a lock moved `start`). A tracker's `9xx`.
 **Glide, `G1` to `G23`.** Slides the note's pitch in from the previous note's, over so many
 24ths of a step: a portamento. On the synth and Switched, each voice's pitch moves in even
 steps; on Monochord the string is plucked at the last pitch and retuned as it goes, as a finger
-slides up a fretboard. The Scarlatti's lead glides into its octave leaps (`G6`), and the demo's
-acid line slides down to its E♭ (`G8`). Krell, being a harpsichord, doesn't glide.
+slides up a fretboard; on Mosaic the bow stays on the string while the finger shifts. The
+Scarlatti's lead glides into its octave leaps (`G6`), and the demo's acid line slides down to its
+E♭ (`G8`). Krell, being a harpsichord, doesn't glide.
 
 **Program change, `P0` to `P127`.** On a MIDI track (see
 [MIDI tracks](07-instruments.md#midi-tracks-playing-other-gear-midi)), sends a program change

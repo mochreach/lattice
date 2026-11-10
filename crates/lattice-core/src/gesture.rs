@@ -137,7 +137,7 @@ impl Gesture {
             Gesture::Glide(_) => {
                 matches!(
                     kind,
-                    InstKind::Synth | InstKind::Switched | InstKind::Monochord
+                    InstKind::Synth | InstKind::Switched | InstKind::Monochord | InstKind::Mosaic
                 )
             }
             Gesture::Program(_) => kind == InstKind::Midi,
@@ -404,6 +404,7 @@ mod tests {
         assert!(!Gesture::Reverse.works_on(InstKind::Synth));
         assert!(Gesture::Reverse.works_on(InstKind::Chop));
         assert!(Gesture::Glide(3).works_on(InstKind::Monochord));
+        assert!(Gesture::Glide(3).works_on(InstKind::Mosaic));
         assert!(!Gesture::Glide(3).works_on(InstKind::Kick));
         assert!("?100".parse::<Gesture>().is_err());
         assert!("5:4".parse::<Gesture>().unwrap_err().contains("1 to 4"));
