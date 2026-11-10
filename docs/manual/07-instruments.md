@@ -932,6 +932,10 @@ strings ring longer than high ones once the bow lifts, as on a violin.
 - **The same note again**, joined, changes the bow's direction: it slows for a moment and
   speeds up again, with a little rosin, as the bow turns, so repeated notes are heard as
   repeated without stopping.
+- **Velocity** is how loud the bow plays, and how much the attack scratches: 64 is about 9 dB
+  under 100, and a slurred note eases to its own level, so a crescendo written in velocities
+  swells as a player's would. The bow's speed and grip don't change with it, which keeps every
+  note in the same clean motion, soft or loud.
 - **Vibrato** starts a moment into each note, an eighth of a second, and comes in over the
   next half second, as a player's does: long notes sing, and fast passages, whose notes are
   over before it starts, stay clean. Its speed wanders a little, as a hand's does.

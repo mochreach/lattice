@@ -445,12 +445,17 @@ plays, on a body of any material at any size. One instrument, `:inst mosaic`, ei
   fast bow with a steep slope fell, depending on its start, into weaker motions a third as
   loud, so notes came out uneven. The output's tilted as Monochord's (a one-pole at 1.5 times
   the note, made up 2×).
-- **The bow's envelope** chases the velocity while the note's held, at a time constant from
+- **The bow's envelope** chases full speed while the note's held, at a time constant from
   `bite`, 0.25 s to 3 ms (log), and lifts in 40 ms. A new bow starts `3 × bite` faster, dying
   away by 1/e in 30 ms, as a Helmholtz motion builds over tens of periods at a steady speed; a
-  pluck of noise, `0.25 × bite × velocity`, starts the string moving; and a scratch, noise
-  band-passed round 3 kHz, `0.3 × bite × velocity`, dies in 12 ms. Light bowing adds
-  `0.04 × (1 - bow)²` of white noise to the bridge, which the body colours.
+  pluck of noise, `0.25 × bite`, starts the string moving; and a scratch, noise band-passed
+  round 3 kHz, `0.3 × bite × velocity`, dies in 12 ms. Light bowing adds `0.04 × (1 - bow)²`
+  of white noise to the bridge, which the body colours.
+- **Velocity** only scales what each string sends to the bridge, by `(velocity / 100)^1.5`,
+  eased over 20 ms on a slur. At first it set the bow's speed and the pluck, but the friction
+  model's motion depends on both: below some speed, or from a softer start, a string fell into a
+  weaker motion, at velocities that differed by pitch, and a crescendo dropped by 15 dB. With
+  every note bowed alike, the steps are even (`harder_notes_are_louder_by_even_steps…`).
 - **Slurs**: a note-off sets a voice's `released`, which the next render clears; segments
   don't render between events at the same offset, so a note-on at the instant of a note-off
   finds it. The new note takes the released voice nearest in pitch and keeps its bow: a

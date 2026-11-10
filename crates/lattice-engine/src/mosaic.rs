@@ -49,6 +49,14 @@ const BITE_TIME: (f32, f32) = (0.25, 0.003);
 const BOW_SPEED: (f32, f32) = (0.04, 0.35);
 const BOW_HOLD: (f32, f32) = (0.35, 0.15);
 
+/// How loud a note speaks for its velocity: to this power of it, from the velocity songs use
+/// most, 100, so 64 is about 9 dB down and 20 about 24. Every note is bowed at the bow's full
+/// speed, as the velocity once set it: slower, the string fell out of its Helmholtz motion
+/// into weaker ones at speeds that depended on the pitch, and a crescendo lurched. A slurred
+/// note's change of level takes `SWELL_TIME`, in seconds to 1/e, as a bow arm's does.
+const DYNAMICS: f32 = 1.5;
+const SWELL_TIME: f32 = 0.02;
+
 /// How much the bow's speed wavers, as a hand's does.
 const BOW_WAVER: f32 = 0.05;
 /// How much of the bow's speed is left, at the most, when it changes direction on a repeated
@@ -86,7 +94,7 @@ const VIBRATO_RISE: f32 = 0.4;
 /// The dry string, mixed with the body.
 const DRY: f32 = 0.25;
 /// The output's level, so a few strings together leave headroom.
-const LEVEL: f32 = 0.7;
+const LEVEL: f32 = 0.6;
 
 /// Ring times, in seconds to fall 60 dB, are `Q * RING_Q / Hz`.
 const RING_Q: f32 = SIXTY_DB / std::f32::consts::PI;
@@ -250,14 +258,16 @@ struct Voice {
     held: bool,
     /// Let go at this instant, so a note starting now is slurred onto it.
     released: bool,
-    velocity: f32,
-    /// How fast the bow's moving, as a fraction of the note's full speed, chasing the velocity
-    /// while the note's held and 0 after.
+    /// How fast the bow's moving, as a fraction of its full speed, chasing 1 while the note's
+    /// held and 0 after.
     bow: f32,
     /// How fast it bites, as a one-pole's coefficient.
     bite_coef: f32,
     /// The extra speed the bow starts a note with, as a multiple of its own, dying away.
     accent: f32,
+    /// How loud the string speaks for its velocity, chasing `dynamic`.
+    loud: f32,
+    dynamic: f32,
     /// Changing direction: how far into the change the bow is, from 0 to 1, chasing `turning`,
     /// which jumps to 1 and dies away.
     turn: f32,
@@ -327,6 +337,7 @@ pub struct Mosaic {
     kick: Box<[f32]>,
     lift_coef: f32,
     accent_coef: f32,
+    swell_coef: f32,
     turn_coef: f32,
     turning_coef: f32,
     scratch_coef: f32,
@@ -359,10 +370,11 @@ impl Mosaic {
             sounding: false,
             held: false,
             released: false,
-            velocity: 0.0,
             bow: 0.0,
             bite_coef: 0.0,
             accent: 0.0,
+            loud: 0.0,
+            dynamic: 0.0,
             turn: 0.0,
             turning: 0.0,
             scratch: 0.0,
@@ -421,6 +433,7 @@ impl Mosaic {
             kick: vec![0.0; 2 * len].into_boxed_slice(),
             lift_coef: decay_coef(LIFT_TIME, sample_rate),
             accent_coef: decay_coef(ACCENT_TIME, sample_rate),
+            swell_coef: 1.0 - decay_coef(SWELL_TIME, sample_rate),
             turn_coef: 1.0 - decay_coef(TURN_TIME, sample_rate),
             turning_coef: decay_coef(TURN_HOLD, sample_rate),
             scratch_coef: decay_coef(SCRATCH_TIME, sample_rate),
@@ -583,7 +596,7 @@ impl Mosaic {
             }
             _ => (to, 0),
         };
-        voice.velocity = velocity;
+        Self::set_velocity(voice, velocity);
         voice.sounding = true;
         voice.held = true;
         voice.released = false;
@@ -597,6 +610,7 @@ impl Mosaic {
         if !ringing {
             voice.bow = 0.0;
             voice.tilt = 0.0;
+            voice.loud = voice.dynamic;
         }
         let seconds = BITE_TIME.0 * (BITE_TIME.1 / BITE_TIME.0).powf(self.bite);
         voice.bite_coef = 1.0 - decay_coef(seconds, self.sample_rate);
@@ -604,8 +618,13 @@ impl Mosaic {
         voice.accent = ACCENT * self.bite;
         Self::tune(voice, self.sample_rate);
         if !ringing {
-            self.kick(i, KICK_LEVEL * self.bite * velocity);
+            self.kick(i, KICK_LEVEL * self.bite);
         }
+    }
+
+    /// How loud the string speaks for a note at `velocity`, from 0 to 1.
+    fn set_velocity(voice: &mut Voice, velocity: f32) {
+        voice.dynamic = (velocity * 127.0 / 100.0).powf(DYNAMICS);
     }
 
     /// Keeps the bow on voice `i` and moves the finger to `pitch`. The same pitch again changes
@@ -621,7 +640,7 @@ impl Mosaic {
         };
         voice.held = true;
         voice.released = false;
-        voice.velocity = velocity;
+        Self::set_velocity(voice, velocity);
         voice.started = self.notes;
         if voice.pitch == pitch {
             voice.turning = 1.0;
@@ -773,7 +792,7 @@ impl Mosaic {
                     continue;
                 }
                 let (target, coef) = if voice.held {
-                    (voice.velocity, voice.bite_coef)
+                    (1.0, voice.bite_coef)
                 } else {
                     (0.0, 1.0 - self.lift_coef)
                 };
@@ -800,7 +819,8 @@ impl Mosaic {
                     voice.scratch *= self.scratch_coef;
                 }
                 out += air * voice.bow * self.noise.next();
-                let out = out * voice.fade;
+                voice.loud += self.swell_coef * (voice.dynamic - voice.loud);
+                let out = out * voice.fade * voice.loud;
                 if voice.choked {
                     voice.fade *= self.fade_coef;
                 }
@@ -1092,5 +1112,25 @@ mod tests {
         }
         let db = 20.0 * (held(64, 1.0) / held(64, 0.0)).log10();
         assert!(db.abs() < 1.0, "E: {db} dB");
+    }
+    #[test]
+    fn harder_notes_are_louder_by_even_steps_at_every_pitch() {
+        // The bow's motion mustn't change with the velocity: once it did, and a crescendo
+        // dropped 15 dB where the string fell into a weaker motion.
+        for pitch in [57, 69, 81] {
+            let level = |velocity| {
+                let mut m = mosaic(&[(HALO, 0.0), (VIBRATO, 0.0)]);
+                let note = Event {
+                    offset: 0,
+                    kind: EventKind::NoteOn { pitch, velocity },
+                };
+                20.0 * rms(&play(&mut m, &[note], 1.0)[24_000..]).log10()
+            };
+            let levels: Vec<f32> = [20, 40, 64, 90, 127].into_iter().map(level).collect();
+            for pair in levels.windows(2) {
+                let rise = pair[1] - pair[0];
+                assert!((3.0..12.0).contains(&rise), "{pitch}: {levels:?}");
+            }
+        }
     }
 }
