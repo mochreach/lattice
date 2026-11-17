@@ -273,70 +273,77 @@ mod tests {
     }
 
     #[test]
-    fn each_key_on_the_left_is_a_chord_in_the_scale() {
+    fn each_column_on_the_left_is_a_chord_of_the_scale() {
         let chords = chords(named("major"), 0);
         let row =
             |keys: &str| -> Vec<Vec<i16>> { keys.chars().map(|c| chord_of(&chords, c)).collect() };
-        // Am Dm G C F, rolling down in fifths to C under the index finger, each with its bass.
+        // C Dm Em F G Am, one to six, each with its bass; B° is left out.
         assert_eq!(
-            row("asdfg"),
+            row("asdfgh"),
             [
-                vec![9, 0, 4, 9],
-                vec![2, 5, 9, 2],
-                vec![7, 11, 2, 7],
                 vec![0, 4, 7, 0],
-                vec![5, 9, 0, 5]
-            ]
-        );
-        // Their sevenths: "Fly Me to the Moon"'s Am7 Dm7 G7 Cmaj7 Fmaj7.
-        assert_eq!(chord_of(&chords, 'r'), [0, 4, 7, 11, 0], "Cmaj7");
-        assert_eq!(chord_of(&chords, 'e'), [7, 11, 2, 5, 7], "G7");
-        // Em and B°, then borrowed from C minor: B♭, A♭, Fm.
-        assert_eq!(
-            row("zxcvb"),
-            [
+                vec![2, 5, 9, 2],
                 vec![4, 7, 11, 4],
-                vec![11, 2, 5, 11],
-                vec![10, 2, 5, 10],
-                vec![8, 0, 3, 8],
-                vec![5, 8, 0, 5]
+                vec![5, 9, 0, 5],
+                vec![7, 11, 2, 7],
+                vec![9, 0, 4, 9]
             ]
         );
-        // Over each chord, the dominant seventh leading into it: G7 over C, E7 over Am.
-        assert_eq!(chord_of(&chords, '4'), [7, 11, 2, 5, 7]);
-        assert_eq!(chord_of(&chords, '1'), [4, 8, 11, 2, 4]);
+        // Above, the other quality: Cm, then D, E and A major from outside the key.
+        assert_eq!(
+            row("qwerty"),
+            [
+                vec![0, 3, 7, 0],
+                vec![2, 6, 9, 2],
+                vec![4, 8, 11, 4],
+                vec![5, 8, 0, 5],
+                vec![7, 10, 2, 7],
+                vec![9, 1, 4, 9]
+            ]
+        );
+        // Above that, the scale's sevenths: Cmaj7 and G7, which holds B°.
+        assert_eq!(chord_of(&chords, '1'), [0, 4, 7, 11, 0], "Cmaj7");
+        assert_eq!(chord_of(&chords, '5'), [7, 11, 2, 5, 7], "G7");
+        // Below, the third in the bass: C/E, G/B.
+        assert_eq!(chord_of(&chords, 'z'), [0, 4, 7, 4]);
+        assert_eq!(chord_of(&chords, 'b'), [7, 11, 2, 11]);
         // Close together in the octave from the root, with the bass an octave under.
-        assert_eq!(chords[&'d'], [7, 11, 2, -5]);
+        assert_eq!(chords[&'g'], [7, 11, 2, -5]);
         // The root goes first, as the one note a lone cursor takes.
-        assert_eq!(NoteLayout::Duet.keys(named("major"), 0)[&'d'], 7);
+        assert_eq!(NoteLayout::Duet.keys(named("major"), 0)[&'g'], 7);
+    }
+
+    #[test]
+    fn a_minor_key_leaves_out_its_second() {
+        // In A: Am C Dm Em F G, with E major above Em.
+        let chords = chords(named("minor"), 9);
+        let roots: Vec<_> = "asdfgh".chars().map(|c| chord_of(&chords, c)[0]).collect();
+        assert_eq!(roots, [9, 0, 2, 4, 5, 7]);
+        assert_eq!(chord_of(&chords, 'r'), [4, 8, 11, 4], "E major");
     }
 
     #[test]
     fn harmonic_minor_brings_its_augmented_and_diminished_chords() {
+        // In A: Am B° C+ Dm E F, the G#° left out for E7, which holds it.
         let chords = chords(named("harmonic-minor"), 9);
-        // In A: F, B°, E major (the raised seventh's), Am, Dm.
-        let home: Vec<_> = "asdfg".chars().map(|c| chord_of(&chords, c)).collect();
-        assert_eq!(home[2], [4, 8, 11, 4], "E major");
-        assert_eq!(home[1], [11, 2, 5, 11], "B diminished");
-        // C augmented and G# diminished, the scale's third and seventh, below.
-        assert_eq!(chord_of(&chords, 'z'), [0, 4, 8, 0]);
-        assert_eq!(chord_of(&chords, 'x'), [8, 11, 2, 8]);
-        // A minor key borrows the bright chords of A major: E, D, A.
-        assert_eq!(chord_of(&chords, 'b'), [9, 1, 4, 9]);
-        // E7 with G#, the diminished seventh's leading note.
-        assert_eq!(chord_of(&chords, 'e'), [4, 8, 11, 2, 4]);
+        assert_eq!(chord_of(&chords, 's'), [11, 2, 5, 11], "B diminished");
+        assert_eq!(chord_of(&chords, 'd'), [0, 4, 8, 0], "C augmented");
+        assert_eq!(chord_of(&chords, 'g'), [4, 8, 11, 4], "E major");
+        assert_eq!(chord_of(&chords, '5'), [4, 8, 11, 2, 4], "E7");
+        // Above B°, B major, leading to E.
+        assert_eq!(chord_of(&chords, 'w'), [11, 3, 6, 11]);
     }
 
     #[test]
-    fn scales_without_thirds_on_every_note_still_make_chords() {
-        // C pentatonic has no F: D and G get suspended fourths.
+    fn scales_without_six_notes_still_make_six_chords() {
+        // C pentatonic has no F, so F's chord is added; D gets a suspended fourth.
         let pentatonic = chords(named("pentatonic"), 0);
         assert_eq!(chord_of(&pentatonic, 's'), [2, 7, 9, 2], "Dsus4");
-        assert_eq!(chord_of(&pentatonic, 'f'), [0, 4, 7, 0], "C");
+        assert_eq!(chord_of(&pentatonic, 'f'), [5, 9, 0, 5], "F");
         // Every key of every scale has a chord of three notes at least, and a bass.
         for scale in SCALES {
             let keys = chords(&scale, 0);
-            assert_eq!(keys.len(), 20, "{}", scale.name);
+            assert_eq!(keys.len(), 24, "{}", scale.name);
             assert!(keys.values().all(|c| c.len() >= 4), "{}", scale.name);
         }
     }
@@ -344,9 +351,8 @@ mod tests {
     #[test]
     fn the_right_hand_plays_the_scale_an_octave_up_from_j() {
         let keys = NoteLayout::Duet.keys(named("minor"), 9);
-        let row: Vec<_> = "hjkl;'".chars().map(|c| keys[&c]).collect();
-        // G# isn't in A minor: the note below is G.
-        assert_eq!(row, [19, 21, 23, 24, 26, 28]);
+        let row: Vec<_> = "jkl;'".chars().map(|c| keys[&c]).collect();
+        assert_eq!(row, [21, 23, 24, 26, 28]);
         // A row up is a fourth, three steps; down, three steps under.
         assert_eq!([keys[&'u'], keys[&'m']], [26, 16]);
     }
@@ -358,7 +364,7 @@ mod tests {
         e.run_command("layout duet");
         // One cursor, on pad3: the whole chord's heard, and its root goes in.
         keys(&mut e, "tltli");
-        let chord = keys(&mut e, "f");
+        let chord = keys(&mut e, "a");
         assert_eq!(heard(&chord), [(2, 60), (2, 64), (2, 67), (2, 48)]);
         assert_eq!(e.grid.tracks[2].steps[0].note.map(|n| n.pitch), Some(60));
         assert_eq!(e.cursor().step, 1, "moved on once, for the chord");
@@ -373,7 +379,7 @@ mod tests {
         e.primary = 0;
         let primary = e.cursor().track;
         keys(&mut e, "i");
-        let chord = keys(&mut e, "d");
+        let chord = keys(&mut e, "g");
         let at = |e: &Editor, t: usize| e.grid.tracks[t].steps[0].note.map(|n| n.pitch);
         let mut placed: Vec<_> = (0..3).filter_map(|t| at(&e, t)).collect();
         placed.sort_unstable();
@@ -388,7 +394,7 @@ mod tests {
         keys(&mut e, "gii");
         let before = e.grid.tracks.clone();
         assert_eq!(
-            heard(&keys(&mut e, "f")),
+            heard(&keys(&mut e, "a")),
             [(0, 60), (0, 64), (0, 67), (0, 48)]
         );
         assert_eq!(heard(&keys(&mut e, "j")), [(0, 72)]);
@@ -415,17 +421,17 @@ mod tests {
         // Wherever the cursor is, a chord's notes go a pad each, the bass left out for want
         // of a fourth, and the tune to the lead.
         keys(&mut e, "thi");
-        assert_eq!(heard(&keys(&mut e, "f")), [(0, 60), (1, 64), (2, 67)]);
+        assert_eq!(heard(&keys(&mut e, "a")), [(0, 60), (1, 64), (2, 67)]);
         assert_eq!(heard(&keys(&mut e, "j")), [(3, 72)]);
         assert!(
             (e.grid.tracks.iter()).all(|t| t.steps.iter().all(|s| s.note.is_none())),
             "only heard, stopped"
         );
         // The next chord, the old one still held, takes the pads it held longest.
-        assert_eq!(heard(&keys(&mut e, "d")), [(0, 67), (1, 71), (2, 62)]);
+        assert_eq!(heard(&keys(&mut e, "g")), [(0, 67), (1, 71), (2, 62)]);
 
         // Recording, a chord goes in on one step across the pads.
-        for k in "fdj".chars() {
+        for k in "agj".chars() {
             e.release(Key::Char(k));
         }
         e.record = true;
@@ -435,7 +441,7 @@ mod tests {
             count_in: 0,
         }));
         assert_eq!(e.mode, Mode::Insert);
-        keys(&mut e, "gk");
+        keys(&mut e, "fk");
         let at = |t: usize| e.grid.tracks[t].steps[4].note.map(|n| n.pitch);
         assert_eq!(
             [at(0), at(1), at(2), at(3)],

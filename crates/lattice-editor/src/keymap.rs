@@ -734,8 +734,9 @@ impl Hand {
     }
 }
 
-/// The columns under the left hand, as touch typists play them: up to T, G and B.
-const LEFT_COLUMNS: usize = 5;
+/// The columns under the left hand in the duet layout: up to Y, H and N, the left index
+/// finger's reach and one over, for six chords.
+const LEFT_COLUMNS: usize = 6;
 /// The home keys' places in [`ROWS`]: the left index finger's F and the right's J.
 const LEFT_HOME: (usize, usize) = (1, 3);
 const RIGHT_HOME: (usize, usize) = (1, 6);
@@ -761,25 +762,27 @@ fn places(home: (usize, usize)) -> impl Iterator<Item = (char, i16, i16)> {
     })
 }
 
-/// The home row's chords, in fifths, as in "Autumn Leaves" or "Fly Me to the Moon": the sixth,
-/// second, fifth and root, rolling down to the index finger, and the fourth beyond it. In
-/// semitones above the root, before fitting them to the scale.
-const HOME_ROOTS: [i16; 5] = [9, 2, 7, 0, 5];
+/// The chords the left hand's columns are built on when the scale hasn't six notes, most
+/// wanted first, in semitones above the root: in a major key IV V vi ii iii vii, in a minor one
+/// iv v VI VII III ii.
+const MAJOR_EXTRAS: [i16; 6] = [5, 7, 9, 2, 4, 11];
+const MINOR_EXTRAS: [i16; 6] = [5, 7, 8, 10, 3, 2];
 
 /// The chords under the left hand in the duet layout, by key: each a root, third, fifth and
-/// perhaps seventh, close together in the octave from the scale's root, then the root again an
-/// octave down as a bass. Semitones above the keyboard octave's C.
+/// perhaps seventh, close together in the octave from the scale's root, then a bass an octave
+/// down. Semitones above the keyboard octave's C.
 ///
-/// - The home row, `a` to `g`, is the scale's own triads on [`HOME_ROOTS`]: in C, Am Dm G C F.
-/// - The row above is the same with their sevenths, as the scale has them.
-/// - The row below has the scale's other two, its third and seventh (Em and B° in C), then
-///   three borrowed from the parallel key: in a major key, minor's flat seventh, flat sixth and
-///   minor fourth (B♭ A♭ Fm in C); in a minor one, major's fifth, fourth and root (E D A in A).
-/// - The number row is the dominant seventh of the chord below, leading into it (E7 over Am).
+/// Each column is a chord of the scale, in order from `a`, one to six: in C, C Dm Em F G Am.
+/// A seven-note scale's diminished chord is left out (B° in C major, B° in A minor), as it's
+/// the one least played, and the top three notes of the fifth's seventh. The rows are variants
+/// of the home row's chord:
+///
+/// - the number row, with the scale's seventh (Cmaj7, G7);
+/// - the top row, the other quality: minor for a major chord, major for the rest, so the major
+///   chords from outside the key (D, E and A in C, E in A minor);
+/// - the bottom row, with its third in the bass (C/E, G/B), for a bass line that walks.
 pub fn chords(scale: &Scale, root: u8) -> HashMap<char, Vec<i16>> {
     let has = |n: i16| scale.steps.contains(&(n.rem_euclid(12) as u8));
-    // The scale's note at `n`, or just under or over it, as minor's sixth is under major's.
-    let fit = |n: i16| [n, n - 1, n + 1].into_iter().find(|&m| has(m)).unwrap_or(n);
     // The first of `options` above `from` that's in the scale.
     let pick = |from: i16, options: &[i16]| options.iter().map(|o| from + o).find(|&n| has(n));
     // The scale's note `n` steps above `r`, if `r` is one of its notes.
@@ -796,44 +799,67 @@ pub fn chords(scale: &Scale, root: u8) -> HashMap<char, Vec<i16>> {
         (above(r, n).filter(|&m| range.contains(&(m - r)))).or_else(|| pick(r, options))
     };
     // The scale's own chord on `r`: its third, or a fourth or second if it has none, and fifth.
-    let triad = |r: i16| -> Vec<i16> {
+    let triad = |r: i16| -> [i16; 3] {
         let third = stack(r, 2, 3..=4, &[4, 3, 5, 2]).unwrap_or(r + 4);
         let fifth = stack(r, 4, 6..=8, &[7, 6, 8]).unwrap_or(r + 7);
-        vec![r, third, fifth]
+        [r, third, fifth]
     };
-    let seventh = |r: i16| -> Vec<i16> {
-        let mut chord = triad(r);
-        chord.extend(stack(r, 6, 9..=11, &[10, 11]));
-        chord
-    };
-    let major = |r: i16| vec![r, r + 4, r + 7];
-    let minor = |r: i16| vec![r, r + 3, r + 7];
-    let dominant = |r: i16| vec![r + 7, r + 11, r + 14, r + 17];
+    let diminished = |r: i16| triad(r) == [r, r + 3, r + 6];
     let major_key = has(4) || !has(3);
-    let borrowed: [Vec<i16>; 3] = if major_key {
-        [major(10), major(8), minor(5)]
+    let (key, extras) = if major_key {
+        ([0, 2, 4, 5, 7, 9, 11], MAJOR_EXTRAS)
     } else {
-        [major(7), major(5), major(0)]
+        ([0, 2, 3, 5, 7, 8, 10], MINOR_EXTRAS)
     };
-    let home = HOME_ROOTS.map(fit);
-    let rows: [Vec<Vec<i16>>; 4] = [
-        [triad(fit(4)), triad(fit(11))]
-            .into_iter()
-            .chain(borrowed)
-            .collect(),
-        home.iter().map(|&r| triad(r)).collect(),
-        home.iter().map(|&r| seventh(r)).collect(),
-        home.iter().map(|&r| dominant(r)).collect(),
-    ];
+    // Six columns: a long scale loses its diminished chords from the top down, then the notes
+    // furthest from the major or minor key, from the top down; a short one gains the key's
+    // most wanted.
+    let mut roots = steps.clone();
+    while roots.len() > 6 {
+        let last = |keep: &dyn Fn(i16) -> bool| roots.iter().rev().copied().find(|&r| !keep(r));
+        let gone = last(&|r| r == 0 || !diminished(r))
+            .or_else(|| last(&|r| key.contains(&r)))
+            .or_else(|| roots.last().copied());
+        roots.retain(|&r| Some(r) != gone);
+    }
+    for extra in extras {
+        if roots.len() < 6 && !roots.contains(&extra) {
+            roots.push(extra);
+        }
+    }
+    roots.sort_unstable();
     let root = i16::from(root);
-    let voice = |chord: &Vec<i16>| -> Vec<i16> {
+    // Folded into the octave from the root, then `bass` an octave down.
+    let voice = |chord: &[i16], bass: i16| -> Vec<i16> {
         let mut notes: Vec<i16> = chord.iter().map(|n| root + n.rem_euclid(12)).collect();
-        notes.extend(chord.first().map(|n| root + n.rem_euclid(12) - 12));
+        notes.push(root + bass.rem_euclid(12) - 12);
         notes
     };
+    let variants = |r: i16| -> [Vec<i16>; 4] {
+        let chord = triad(r);
+        let [_, third, _] = chord;
+        let mut seventh = chord.to_vec();
+        seventh.extend(stack(r, 6, 9..=11, &[10, 11]));
+        let other = if chord == [r, r + 4, r + 7] {
+            [r, r + 3, r + 7]
+        } else {
+            [r, r + 4, r + 7]
+        };
+        [
+            voice(&chord, third),
+            voice(&chord, r),
+            voice(&other, r),
+            voice(&seventh, r),
+        ]
+    };
+    let columns: Vec<[Vec<i16>; 4]> = roots.into_iter().map(variants).collect();
     ROWS.iter()
-        .zip(&rows)
-        .flat_map(|(keys, row)| keys.chars().zip(row.iter().map(voice)))
+        .enumerate()
+        .flat_map(|(row, keys)| {
+            keys.chars()
+                .zip(&columns)
+                .filter_map(move |(c, column)| Some((c, column.get(row)?.clone())))
+        })
         .collect()
 }
 

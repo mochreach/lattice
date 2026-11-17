@@ -1512,7 +1512,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                     editor.scale_name()
                 ),
                 NoteLayout::Duet => format!(
-                    "duet in {}: a chord a key on the left, home on F; the scale on the right",
+                    "duet in {}: chords one to six from a, the scale from j",
                     editor.scale_name()
                 ),
                 _ => format!("notes laid out as {name}"),

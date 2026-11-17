@@ -625,43 +625,44 @@ the octave.
 
 The Tonnetz still asks for three fingers a chord. I wanted something for a weak left hand: one
 key, one chord, so that the left can keep the harmony going while the right plays a tune over
-it. A typing keyboard is two hands wide, and the bumps on `f` and `j` say where each index
-finger lives. `:layout duet` gives each hand a job there, as a pianist's have. In C major, with
-the keyboard octave at 4:
+it. A typing keyboard is two hands wide, and `:layout duet` gives each hand a job there, as a
+pianist's have. In C major, with the keyboard octave at 4:
 
 ```
- 1:E7    2:A7    3:D7    4:G7    5:C7      6:A-5  7:B-5  8:C-6  9:D-6  0:E-6  -:F-6  =:G-6
-  q:Am7   w:Dm7   e:G7    r:Cmaj7 t:Fmaj7   y:E-5  u:F-5  i:G-5  o:A-5  p:B-5  [:C-6  ]:D-6
-   a:Am    s:Dm    d:G     f:C     g:F       h:B-4  j:C-5  k:D-5  l:E-5  ;:F-5  ':G-5
-    z:Em    x:B°    c:B♭    v:A♭    b:Fm      n:F-4  m:G-4  ,:A-4  .:B-4  /:C-5
+ 1:Cmaj7 2:Dm7   3:Em7   4:Fmaj7 5:G7    6:Am7     7:B-5 8:C-6 9:D-6 0:E-6 -:F-6 =:G-6
+  q:Cm    w:D     e:E     r:Fm    t:Gm    y:A       u:F-5 i:G-5 o:A-5 p:B-5 [:C-6 ]:D-6
+   a:C     s:Dm    d:Em    f:F     g:G     h:Am      j:C-5 k:D-5 l:E-5 ;:F-5 ':G-5
+    z:C/E   x:Dm/F  c:Em/G  v:F/A   b:G/B   n:Am/C    m:G-4 ,:A-4 .:B-4 /:C-5
 ```
 
-The **left hand**, up to `t` `g` `b`, plays a whole chord a key, built from `:scale`:
+The **left hand**, up to `y` `h` `n`, plays a whole chord a key, built from `:scale`. Each
+column is one chord of the scale, counted one to six from `a`, the way musicians call chords by
+number (the Nashville number system): C Dm Em F G Am in C, so I–V–vi–IV is `a` `g` `h` `f`
+wherever the key is. The rows are versions of that chord, as the buttons of an accordion's bass
+are:
 
-- **The home row**, `a` `s` `d` `f` `g`, holds the chords on the sixth, second, fifth and first
-  notes of the scale, and the fourth: Am Dm G C F in C. Read from the little finger in, they
-  fall in fifths to the key's own chord under the index finger, the most common progression
-  there is, the one under "Autumn Leaves" and half of jazz. `g` beside it is the IV.
-- **The top row** is the same chords with their sevenths: Am7 Dm7 G7 Cmaj7 Fmaj7, the opening of
-  "Fly Me to the Moon" played left to right.
-- **The bottom row** starts with the scale's two chords left over, the iii and vii (Em, B°), then
-  three borrowed from the key next door for colour. In a major key they're from the minor, B♭ A♭
-  Fm, the bittersweet turn at the end of so many Beatles songs; in a minor key they're from the
-  major, E D A in A minor, the bright V that the minor scale's own notes don't give.
-- **The number row** holds, over each home-row chord, the dominant seventh that leads into it:
-  G7 over C, E7 over Am. Reach up, then down, and the chord resolves.
+- **The home row** is the scale's own chord.
+- **The top row** is the other quality: minor for a major chord, major for the rest. That's
+  where the major chords from outside the key live, the D and E and A that pop songs borrow in C,
+  and in a minor key the E major that makes A minor sound resolved.
+- **The number row** adds the scale's seventh: Cmaj7, Dm7, G7.
+- **The bottom row** puts the chord's third in the bass, C/E or G/B, so the bass can walk from
+  chord to chord by step, as a pianist's left hand does, instead of jumping between roots.
 
-The chords take their notes from the scale, stacking every other note, so they change with it.
-In A harmonic minor, `d` is E major, with the raised seventh, G#, and the bottom row starts
-with C augmented and G# diminished, the chords that scale exists for; in pentatonic and blues
-scales, which haven't a third on every note, a chord takes the nearest notes that sound, a
-suspended fourth, say. Each chord is voiced close, its notes in the octave
-from the scale's root, with its root again an octave down as a bass.
+A scale has seven chords and there are six columns, so one is left out: the diminished one, B°
+in C major and in A minor. It's the chord least played, and its notes are the top three of the
+fifth's seventh, so `5`, G7 in C, plays it with a root under it. The chords take their notes
+from the scale, stacking every other note, so they change with it. In A harmonic minor the
+columns are Am B° C+ Dm E F, the augmented and diminished chords that scale exists for, and B
+major above B°, leading to E. A scale of five notes, as the pentatonics are, gets the key's most
+wanted chord added (F in C pentatonic), and one with no third on a note takes the nearest that
+sounds, a suspended fourth, say. Each chord is voiced close, its notes in the octave from the
+scale's root, with a bass an octave down.
 
-The **right hand**, from `y` `h` `n` across, is the scale layout an octave up, with its root on
-`j`: `j` `k` `l` `;` are the first four notes of the scale, `h` under the index finger's stretch
-the note below, and each row up about a fourth, as in `:layout scale`. Whatever `:scale` is,
-there's no note outside it to hit, so you can solo without looking.
+The **right hand**, from `u` `j` `m` across, is the scale layout an octave up, with its root on
+`j`: `j` `k` `l` `;` are the first four notes of the scale, and each row up about a fourth, as
+in `:layout scale`. Whatever `:scale` is, there's no note outside it to hit, so you can solo
+without looking.
 
 A track holds one note on a step, so a chord needs a track a note. On its own, each hand plays
 the cursor's track, as any layout does: a chord key puts its root in and you hear the rest. (If
