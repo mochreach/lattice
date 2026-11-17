@@ -320,7 +320,8 @@ const LESSONS: &[Lesson] = &[
                `:hand left` gives the left hand the selected tracks to play wherever the \
                cursor is, a chord's notes dealt out one to a track (with one track, the rest \
                are heard on it), and `:hand right` the \
-               right; `:hand off` puts both back on the cursor's track.\n\nGive the left \
+               right; `:hand off` puts both back on the cursor's track. Tracks can be \
+               named instead, from anywhere: `:hand left 2,3,4`, `:hand right LEAD`.\n\nGive the left \
                hand the BASS track and the right hand the LEAD.",
         teaches: &[],
         commands: &["layout", "hand"],

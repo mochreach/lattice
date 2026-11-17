@@ -11,10 +11,12 @@ use crate::keymap::{Hand, hand};
 use crate::{Cursor, Editor, Effect, Key, NoteLayout, TrackId, changed};
 
 impl Editor {
-    /// `:hand left|right|off`: the selection's tracks become the hand's, or with `off`, both
-    /// hands go back to playing the cursor's track. Either hand lays the keys out as a duet.
-    pub(crate) fn set_hand(&mut self, which: &str) -> Result<(), String> {
-        let hand = match which.trim() {
+    /// `:hand left|right|off [TRACKS]`: the selection's tracks become the hand's, or those
+    /// named, numbers or names between commas, or with `off`, both hands go back to playing
+    /// the cursor's track. Either hand lays the keys out as a duet.
+    pub(crate) fn set_hand(&mut self, text: &str) -> Result<(), String> {
+        let (which, named) = text.trim().split_once(' ').unwrap_or((text.trim(), ""));
+        let hand = match which {
             "left" => Hand::Left,
             "right" => Hand::Right,
             "off" | "" => {
@@ -25,7 +27,12 @@ impl Editor {
             }
             typed => return Err(format!("left, right or off, not {typed}")),
         };
-        let tracks = self.selected_tracks();
+        let tracks = match named.trim() {
+            "" => self.selected_tracks(),
+            named => (named.split(','))
+                .map(|word| self.track_called(word.trim()))
+                .collect::<Result<_, _>>()?,
+        };
         let ids: Vec<TrackId> = (tracks.iter())
             .filter_map(|&t| self.ids.get(t).copied())
             .collect();
@@ -575,6 +582,25 @@ mod tests {
         e.run_command("hand off");
         e.set_transport(None);
         assert_eq!(heard(&keys(&mut e, "k")), [(2, 72)]);
+    }
+
+    #[test]
+    fn a_hand_takes_tracks_by_number_or_name_from_anywhere() {
+        let mut e = editor();
+        e.run_command("hand left 1, PAD2,3");
+        assert_eq!(
+            e.message.as_deref(),
+            Some("left hand plays pad1, pad2, pad3")
+        );
+        e.run_command("hand right lead");
+        assert_eq!(e.message.as_deref(), Some("right hand plays lead"));
+        assert_eq!(e.cursor().track, 0, "the cursor stays");
+        e.run_command("hand right 5");
+        assert_eq!(e.message.as_deref(), Some("there are tracks 1 to 4"));
+        e.run_command("hand left pad1, bass");
+        assert_eq!(e.message.as_deref(), Some("no track called bass"));
+        let [left, right] = &e.hands;
+        assert_eq!((left.len(), right.len()), (3, 1), "kept as they were");
     }
 
     #[test]

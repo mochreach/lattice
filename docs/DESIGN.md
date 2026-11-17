@@ -810,7 +810,8 @@ track stays a real track, with its own rules, length and strip; the group adds:
   to switch into. The right hand is the scale layout an octave up, K its root. A track holds one
   note a step, so a chord is dealt out: unbound, over the insert cursors' tracks, primary first, the
   rest only heard; on the instrument page heard whole, its root recorded. `:hand left` / `right`
-  binds a hand to the selection's tracks, as `TrackId`s, so moving or deleting tracks can't leave it
+  binds a hand to the selection's tracks (or `TRACKS`, numbers or names between commas, from
+  anywhere), as `TrackId`s, so moving or deleting tracks can't leave it
   pointing at the wrong one (`duet.rs`). A bound hand plays there wherever the cursor is, heard or
   recorded but never typed at the cursor; each note goes to the first track its other keys aren't
   holding (`Editor::voices`, freed on key-up), else the one held longest, and notes beyond the

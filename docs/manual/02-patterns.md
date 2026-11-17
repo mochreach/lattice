@@ -703,6 +703,18 @@ polyphonic synth plays whole chords too; recording, only the root goes in there.
 lead track, `:hand right`, and play chords with one hand while the other screams over the top.
 A mono lead on the right and a poly pad on the left is two tracks, one hand each.
 
+Name the tracks after the hand and you needn't go to them: **`:hand right 1`**, or
+**`:hand left pad1, pad2, pad3`**, numbers from 1 or names, between commas. I wanted it for
+rewiring mid-solo, where moving the cursor away and back loses the place. A triad's three notes
+go a track each over three; a fourth track takes the bass, and a seventh chord's fifth note is
+heard on the root's.
+
+```
+:hand right lead            the tune to the lead
+:hand left 2,3,4            the chords to tracks 2, 3 and 4
+:hand left 5                now to track 5, a poly synth, whole chords on it
+```
+
 `:hand off` puts both hands back on the cursor's track; `:hand left` and `:hand right` switch
 to the duet layout if you weren't in it. Which tracks the hands play isn't saved, as the layout
 isn't; a track deleted leaves its hand.

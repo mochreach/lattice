@@ -488,8 +488,8 @@ pub const COMMANDS: &[Spec] = &[
     Spec {
         name: "hand",
         alias: None,
-        params: &[text("left|right|off", "hand")],
-        describe: "in the duet layout, give the left or right hand the selected tracks to play wherever the cursor is, a chord's notes dealt across them; off, both play the cursor's",
+        params: &[text("left|right|off [TRACKS]", "hand")],
+        describe: "in the duet layout, give the left or right hand the selected tracks, or TRACKS (numbers or names between commas), to play wherever the cursor is, a chord's notes dealt across them; off, both play the cursor's",
     },
     Spec {
         name: "vel",

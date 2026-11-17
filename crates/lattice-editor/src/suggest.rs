@@ -143,7 +143,7 @@ impl Editor {
                 ])
                 .collect(),
             ("lock" | "unlock" | "surround" | "set", 0) => suggest_settings(track),
-            ("set", 2) => (self.grid.tracks.iter().enumerate())
+            ("set", 2) | ("hand", 1) => (self.grid.tracks.iter().enumerate())
                 .map(|(i, t)| (t.name.clone(), format!("track {}", i + 1)))
                 .collect(),
             ("lock" | "surround" | "set", 1) => match before.first() {
