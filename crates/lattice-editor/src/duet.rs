@@ -56,7 +56,7 @@ impl Editor {
 
     /// The tracks the hand that plays `key` has of its own, in the duet layout: none if it
     /// plays the cursor's.
-    fn hand_tracks(&self, key: Key) -> Vec<usize> {
+    pub(crate) fn hand_tracks(&self, key: Key) -> Vec<usize> {
         if self.keymap.layout != NoteLayout::Duet {
             return vec![];
         }
@@ -77,7 +77,10 @@ impl Editor {
     /// layout, voiced by Shift or Alt, or its one note.
     pub(crate) fn key_pitches(&self, key: Key) -> Vec<u8> {
         if let Some(chord) = self.keymap.chord(key) {
-            return chord.iter().filter_map(|&n| self.octave_pitch(n)).collect();
+            let octave = self.key_octave(key);
+            return (chord.iter())
+                .filter_map(|&n| crate::octave_pitch(octave, n))
+                .collect();
         }
         self.piano_pitch(key).into_iter().collect()
     }
@@ -416,7 +419,7 @@ mod tests {
             [(2, 83)],
             "B, an octave and a seventh up"
         );
-        assert_eq!(e.octave, 4);
+        assert_eq!(e.octave(), 4);
         assert_eq!(heard(&e.handle(Key::Alt('l'))), [(2, 74)]);
 
         // A hand's track is freed when k comes up, though it went down as K.
@@ -629,5 +632,51 @@ mod tests {
         }));
         assert_eq!(heard(&keys(&mut e, "a")).len(), 4);
         assert_eq!(e.grid.tracks[0].steps[4].note.map(|n| n.pitch), Some(60));
+    }
+
+    #[test]
+    fn each_track_keeps_its_own_octave() {
+        let mut e = editor();
+        keys(&mut e, "}");
+        assert_eq!(e.octave(), 5);
+        keys(&mut e, "tl");
+        assert_eq!(e.octave(), 4, "pad2 has its own");
+        keys(&mut e, "{{");
+        assert_eq!((e.octave_of(0), e.octave_of(1)), (5, 2));
+        e.run_command("oct 1 pad1, lead");
+        assert_eq!(e.message.as_deref(), Some("pad1, lead at octave 1"));
+        assert_eq!((e.octave_of(0), e.octave_of(3)), (1, 1));
+        e.run_command("oct 3 left");
+        assert_eq!(
+            e.message.as_deref(),
+            Some("the left hand has no tracks: :hand left gives it some")
+        );
+    }
+
+    #[test]
+    fn each_hand_plays_at_its_own_track_s_octave() {
+        let mut e = editor();
+        e.releases = true;
+        e.run_command("hand left 1");
+        e.run_command("hand right lead");
+        keys(&mut e, "i");
+        e.run_command("oct 3 left");
+        assert_eq!(e.octave_label(), "3 4");
+        // The chord an octave down, the tune where it was.
+        assert_eq!(
+            heard(&keys(&mut e, "a")),
+            [(0, 48), (0, 52), (0, 55), (0, 36)]
+        );
+        assert_eq!(heard(&keys(&mut e, "k")), [(3, 72)]);
+        // The braces, in normal mode as they're notes in the duet, move the keyboard as
+        // one, each hand from its own.
+        for k in "ak".chars() {
+            e.release(Key::Char(k));
+        }
+        e.handle(Key::Esc);
+        keys(&mut e, "}");
+        assert_eq!(e.octave_label(), "4 5");
+        assert_eq!(e.message.as_deref(), Some("octave 4 5"));
+        assert_eq!(heard(&keys(&mut e, "ik")), [(3, 84)]);
     }
 }

@@ -1780,7 +1780,7 @@ Songs are saved as RON in `.lattice` files, written by `lattice_core::to_ron` an
 the patterns and the order they play in. It also keeps whether the metronome clicks, written as
 `click: false` only when it doesn't, so a finished piece can open without one. `Playing` keeps
 how the keyboard's set up to play over the song live (`playing.rs`): the layout and scale by
-name, the octave, the hands' tracks by index (from their `TrackId`s as saved, back to new ids as
+name, each track's octave (`Editor::octaves`, by `TrackId`, those not at 4) and the hands' tracks by index (from their `TrackId`s as saved, back to new ids as
 opened) and the F keys' recorded keys as `Key::sequence` text, left out while it's as Lattice
 starts. It's compared with the saved song's for the `[+]`, and a layout, scale or key the
 editor doesn't know is left as it starts, with the message saying so, rather than refusing the

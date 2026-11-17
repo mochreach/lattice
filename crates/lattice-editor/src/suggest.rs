@@ -96,7 +96,7 @@ impl Editor {
                 })
                 .collect()
         };
-        let words = |words: &[&str]| {
+        let words = |words: &[&str]| -> Vec<(String, String)> {
             words
                 .iter()
                 .map(|w| (w.to_string(), String::new()))
@@ -149,6 +149,13 @@ impl Editor {
                 ])
                 .collect(),
             ("lock" | "unlock" | "surround" | "set", 0) => suggest_settings(track),
+            ("oct", 1) => words(&["left", "right"])
+                .into_iter()
+                .chain(
+                    (self.grid.tracks.iter().enumerate())
+                        .map(|(i, t)| (t.name.clone(), format!("track {}", i + 1))),
+                )
+                .collect(),
             ("set", 2) | ("hand", 1) => (self.grid.tracks.iter().enumerate())
                 .map(|(i, t)| (t.name.clone(), format!("track {}", i + 1)))
                 .collect(),

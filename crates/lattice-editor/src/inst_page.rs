@@ -424,7 +424,7 @@ mod tests {
         let before = e.grid.tracks.clone();
         keys(&mut e, "i");
         assert_eq!(e.mode, Mode::Insert);
-        let pitch = (u16::from(e.octave) + 1) * 12;
+        let pitch = (u16::from(e.octave()) + 1) * 12;
         let played = keys(&mut e, "z");
         assert_eq!(
             played,

@@ -365,8 +365,11 @@ pub const COMMANDS: &[Spec] = &[
     Spec {
         name: "oct",
         alias: None,
-        params: &[int("OCTAVE", "octave", 0, 9)],
-        describe: "keyboard octave",
+        params: &[
+            int("OCTAVE", "octave", 0, 9),
+            optional_text("[left|right|TRACKS]", "tracks"),
+        ],
+        describe: "the keyboard octave, 0 to 9, of the tracks the keyboard plays (both hands' in the duet), or of one hand's, or of TRACKS (numbers or names between commas)",
     },
     Spec {
         name: "click",
@@ -1403,7 +1406,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(vec![])
         }
         "oct" => {
-            editor.octave = command.int(0)?;
+            editor.set_octave(command.int(0)?, command.text(1)?)?;
             Ok(vec![])
         }
         "follow" => {

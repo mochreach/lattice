@@ -243,7 +243,8 @@ const LESSONS: &[Lesson] = &[
                clears a step instead. With every letter a note, the arrow keys move without entering one, \
                so `down` skips a step and leaves it as it was; `space` still plays and stops. \
                {keyboard_octave_up} and {keyboard_octave_down} change the keyboard's \
-               octave, in any mode and on any page, and {escape} goes back to normal mode.\n\nGo to the top of the LEAD track, put four notes in it, then go \
+               octave, in any mode and on any page; each track keeps its own, so a bass \
+               stays low while a lead plays high (`:oct 2 BASS` sets one from anywhere), and {escape} goes back to normal mode.\n\nGo to the top of the LEAD track, put four notes in it, then go \
                back to normal mode.",
         teaches: &[
             Action::Insert,

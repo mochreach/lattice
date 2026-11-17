@@ -256,7 +256,7 @@ impl Editor {
     /// The scale's `degree`th note (from 0), up from its root in the keyboard octave.
     fn scale_pitch(&self, degree: usize) -> Option<u8> {
         let steps = self.scale().steps;
-        let octave = u16::from(self.octave) + 1 + degree.checked_div(steps.len())? as u16;
+        let octave = u16::from(self.octave()) + 1 + degree.checked_div(steps.len())? as u16;
         let step = *steps.get(degree.checked_rem(steps.len())?)?;
         let pitch = octave * 12 + u16::from(self.root) + u16::from(step);
         u8::try_from(pitch).ok().filter(|&p| p <= 127)
@@ -566,6 +566,6 @@ mod tests {
         assert_eq!(pitches, [69, 71, 72]);
         // { and } still change octave.
         assert!(e.handle(Key::Char('{')).is_empty());
-        assert_eq!(e.octave, 3);
+        assert_eq!(e.octave(), 3);
     }
 }

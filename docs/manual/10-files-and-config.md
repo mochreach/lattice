@@ -20,7 +20,7 @@ the song sound as it does:
   in, with each entry's repeats and mutes;
 - the send and master buses, and their effects;
 - how the computer keyboard's set up to play over it: the note layout, the scale, the keyboard
-  octave, the tracks the duet's hands play, and the keys recorded into F keys.
+  octave of each track, the tracks the duet's hands play, and the keys recorded into F keys.
 
 What isn't in it belongs to you rather than the song: the cursor and selections, the page, the
 velocity and auto-step, follow, the registers, the undo history, and the audio devices.
@@ -114,9 +114,10 @@ Reading it from the top:
 - `entries` is the song's order. `repeats` and `mutes` are left out at once and none; `mutes`
   is a number with a bit for each track muted in that entry.
 - `playing`, left out while the keyboard is as Lattice starts it, is how it's set up to play
-  live: the `layout`, the `scale` and its `root` in semitones above C, the `octave`, the tracks
-  the hands play (`left` and `right`, counting tracks from 0), and `keys`, each F key's recorded
-  keys as the tutor writes them, `{1: ":set voices mono 1<ret>"}`, with `<lt>` for a `<`.
+  live: the `layout`, the `scale` and its `root` in semitones above C, the `octaves` of the
+  tracks not at 4 (`{0: 2}`), the tracks the hands play (`left` and `right`), and `keys`, each F
+  key's recorded keys as the tutor writes them, `{1: ":set voices mono 1<ret>"}`, with `<lt>`
+  for a `<`. Tracks are counted from 0 here.
 
 Instruments, effects and mixes add more fields as they're changed from their defaults: see the
 examples' files for whole songs.

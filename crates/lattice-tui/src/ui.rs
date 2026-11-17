@@ -493,7 +493,7 @@ fn header(editor: &Editor, status: &Status, theme: &Theme, width: u16) -> Line<'
                 })),
             ],
         ),
-        (5, vec![label("   oct "), value(editor.octave.to_string())]),
+        (5, vec![label("   oct "), value(editor.octave_label())]),
         (
             6,
             vec![

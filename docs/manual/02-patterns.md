@@ -723,7 +723,7 @@ the layout is; a track moved takes its hand with it, and a track deleted leaves 
 in insert mode says which layout you're in (`z–] notes`, `wicki notes`, `A minor notes`,
 `duet in C major`).
 
-The layout is saved with the song, and so are the scale, the octave, the hands' tracks and the
+The layout is saved with the song, and so are the scale, the octaves, the hands' tracks and the
 keys recorded into F keys: opening the song sets the keyboard up as you left it. I play live over
 sequenced songs, and setting all that up again each time, with the right tracks on the right
 hands, was a chore that was easy to get wrong in front of people. It's part of the song, so
@@ -732,9 +732,28 @@ changing it adds a `[+]`. `:new` keeps the keyboard as it is, but for the hands.
 ### The keyboard octave: `{` `}` and `:oct`
 
 The **keyboard octave**, `oct` in the header, is the octave the piano's `z` plays: 4 to start,
-so `z` is middle C. `{` and `}` move it down and up one, from 0 to 9, in any mode and on any
-page (they work while choosing `r`'s note, too); `:oct N` sets it outright. The message says
-`octave 3`. Like the layout, it's saved with the song.
+so `z` is middle C. Each track has its own, so a bass stays down where basses live while you
+play a lead up high, and moving between them doesn't drag the keyboard along. `{` and `}` move
+the octave of the track you're playing down and up one, from 0 to 9, in any mode and on any page
+(they work while choosing `r`'s note, too); `:oct N` sets it outright. The message says
+`octave 3`.
+
+In the duet, with tracks given to the hands, each hand plays at its own track's octave (the
+first of its tracks, for a chord spread over several), and the header shows both, left then
+right: `oct 3 5`. `{` and `}` then move the whole keyboard, each hand from where it is, so the
+gap between them stays. To move one hand, name it: `:oct 3 left` puts the chords down an octave
+and leaves the tune where it is. Tracks can be named too, numbers or names between commas, from
+anywhere:
+
+```
+:oct 2 bass             the bass track down at octave 2
+:oct 3 left             the left hand's tracks, wherever the cursor is
+:oct 5 1,lead           track 1 and the lead
+```
+
+I'd had one octave for the whole keyboard, as most trackers do, and kept having to move it
+every time I went from the bass to the lead. A synth's split keyboard gives each zone its own
+transpose for the same reason. Like the layout, the octaves are saved with the song.
 
 ### Auto-step: `:step`
 

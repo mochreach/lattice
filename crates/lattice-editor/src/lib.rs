@@ -88,6 +88,12 @@ pub fn home() -> Option<PathBuf> {
 
 use std::path::{Path, PathBuf};
 
+/// The pitch `semitone`s above `octave`'s C, if there's a MIDI note there.
+fn octave_pitch(octave: u8, semitone: i16) -> Option<u8> {
+    let pitch = (i16::from(octave) + 1) * 12 + semitone;
+    u8::try_from(pitch).ok().filter(|&p| p <= 127)
+}
+
 use lattice_core::{
     Arrangement, Buses, FxChain, Grid, Lock, MAX_STEPS, MAX_TRACKS, Note, Playing, Preset, Song,
     Step, Track,
@@ -513,8 +519,9 @@ pub struct Editor {
     live_lock: Option<(TrackId, Lock)>,
     /// The lesson, while the tutor's running.
     tutor: Option<tutor::Tutor>,
-    /// Octave of the lower piano row in insert mode.
-    pub octave: u8,
+    /// Each track's keyboard octave, the lower piano row's in insert mode, where it isn't
+    /// [`playing::DEFAULT_OCTAVE`].
+    octaves: std::collections::BTreeMap<TrackId, u8>,
     /// Steps to move after entering a note.
     pub auto_step: usize,
     /// How hard notes are played and entered.
@@ -692,7 +699,7 @@ impl Editor {
             typing: Default::default(),
             live_lock: None,
             tutor: None,
-            octave: 4,
+            octaves: Default::default(),
             auto_step: 1,
             velocity: DEFAULT_VELOCITY,
             touch: None,
@@ -874,10 +881,12 @@ impl Editor {
             arrangement: Default::default(),
             buses: Default::default(),
             click: self.click,
-            // The keyboard stays as it is, but for the hands, whose tracks have gone.
+            // The keyboard stays as it is, but for the hands, whose tracks have gone, and the
+            // octaves, the new track's being the keyboard's now.
             playing: Playing {
                 left: vec![],
                 right: vec![],
+                octaves: [(0, self.octave())].into_iter().collect(),
                 ..self.playing()
             },
         };
@@ -1395,30 +1404,25 @@ impl Editor {
         }
     }
 
-    /// The pitch a piano key plays at the keyboard octave.
+    /// The pitch a piano key plays at its track's keyboard octave.
     fn piano_pitch(&self, key: Key) -> Option<u8> {
+        let octave = self.key_octave(key);
         // A chord key with Shift or Alt plays its chord's root, voiced; the right hand's
         // keys play their own notes, as Shift or Alt are for the left.
         if let Some(chord) = self.keymap.chord(key) {
-            return self.octave_pitch(*chord.first()?);
+            return octave_pitch(octave, *chord.first()?);
         }
         // Right Shift raises the right hand's a semitone, for the notes between the scale's.
         if let Some((c, _)) = self.keymap.duet_key(key) {
             let sharp = self.right_shift && hand(c) == Some(Hand::Right);
-            return self.octave_pitch(*self.keymap.piano.get(&c)? + i16::from(sharp));
+            return octave_pitch(octave, *self.keymap.piano.get(&c)? + i16::from(sharp));
         }
         let c = match key {
             Key::Char(c) => c,
             Key::Note(pitch) => return Some(pitch).filter(|&p| p <= 127),
             _ => return None,
         };
-        self.octave_pitch(*self.keymap.piano.get(&c)?)
-    }
-
-    /// The pitch `semitone`s above the keyboard octave's C, if there's a MIDI note there.
-    fn octave_pitch(&self, semitone: i16) -> Option<u8> {
-        let pitch = (i16::from(self.octave) + 1) * 12 + semitone;
-        u8::try_from(pitch).ok().filter(|&p| p <= 127)
+        octave_pitch(octave, *self.keymap.piano.get(&c)?)
     }
 
     fn insert_key(&mut self, key: Key) -> Vec<Effect> {
@@ -1702,13 +1706,11 @@ impl Editor {
         // The same on every page.
         match action {
             Action::KeyboardOctaveUp => {
-                self.octave = (self.octave + 1).min(9);
-                self.message = Some(format!("octave {}", self.octave));
+                self.shift_octave(1);
                 return vec![];
             }
             Action::KeyboardOctaveDown => {
-                self.octave = self.octave.saturating_sub(1);
-                self.message = Some(format!("octave {}", self.octave));
+                self.shift_octave(-1);
                 return vec![];
             }
             Action::PlaySong => return self.play_song(true),
@@ -3103,21 +3105,21 @@ mod tests {
         assert_eq!(e.cursor().step, 0);
         keys(&mut e, "2]b");
         assert_eq!(e.cursor().step, 8);
-        assert_eq!(e.octave, 4, "brackets don't change the octave");
+        assert_eq!(e.octave(), 4, "brackets don't change the octave");
     }
 
     #[test]
     fn braces_change_the_octave_on_every_page_and_mode() {
         let mut e = editor();
         keys(&mut e, "}");
-        assert_eq!(e.octave, 5);
+        assert_eq!(e.octave(), 5);
         keys(&mut e, "i}");
-        assert_eq!(e.octave, 6, "in insert mode too");
+        assert_eq!(e.octave(), 6, "in insert mode too");
         e.handle(Key::Esc);
         keys(&mut e, "gi{");
-        assert_eq!(e.octave, 5, "on the instrument page");
+        assert_eq!(e.octave(), 5, "on the instrument page");
         keys(&mut e, "i{{");
-        assert_eq!(e.octave, 3, "and playing it");
+        assert_eq!(e.octave(), 3, "and playing it");
     }
 
     #[test]

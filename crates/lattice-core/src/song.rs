@@ -596,8 +596,9 @@ pub struct Playing {
     /// The scale, as `:scale` names it, and its root in semitones above C.
     pub scale: String,
     pub root: u8,
-    /// The keyboard octave.
-    pub octave: u8,
+    /// Each track's keyboard octave, by index into the grid's, where it isn't 4.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub octaves: BTreeMap<usize, u8>,
     /// The tracks the duet's hands play, as indices into the grid's; none plays the cursor's.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub left: Vec<usize>,
@@ -615,7 +616,7 @@ impl Default for Playing {
             layout: "piano".into(),
             scale: "major".into(),
             root: 0,
-            octave: 4,
+            octaves: BTreeMap::new(),
             left: vec![],
             right: vec![],
             keys: BTreeMap::new(),
@@ -630,14 +631,15 @@ impl Playing {
 
     /// Catches what the types allow but the editor doesn't, for a grid of `tracks`.
     pub fn check(&self, tracks: usize) -> Result<(), String> {
-        if self.root > 11 || self.octave > MAX_OCTAVE {
+        if self.root > 11 || self.octaves.values().any(|&o| o > MAX_OCTAVE) {
             return Err(format!(
                 "playing: roots go from 0 to 11 and octaves from 0 to {MAX_OCTAVE}"
             ));
         }
-        if let Some(t) = (self.left.iter().chain(&self.right)).find(|&&t| t >= tracks) {
+        let indices = (self.left.iter().chain(&self.right)).chain(self.octaves.keys());
+        if let Some(t) = indices.copied().find(|&t| t >= tracks) {
             return Err(format!(
-                "playing: a hand plays track {t}, but tracks go from 0 to {}",
+                "playing: there's no track {t}; tracks go from 0 to {}",
                 tracks.saturating_sub(1)
             ));
         }

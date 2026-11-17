@@ -1,14 +1,145 @@
-//! How the keyboard's set up to play live, kept with the song: the layout, the scale, the
-//! octave, the tracks the duet's hands play and the keys recorded into F keys. A song played
-//! over live needs them back as they were, so opening it puts them back.
+//! How the keyboard's set up to play live, kept with the song: the layout, the scale, each
+//! track's octave, the tracks the duet's hands play and the keys recorded into F keys. A song
+//! played over live needs them back as they were, so opening it puts them back.
 
-use lattice_core::Playing;
+use lattice_core::{MAX_OCTAVE, Playing};
 
-use crate::keymap::{Key, NoteLayout};
+use crate::keymap::{Hand, Key, NoteLayout};
 use crate::pads::SCALES;
-use crate::{Editor, TrackId};
+use crate::{Editor, Page, TrackId};
+
+/// The keyboard octave a track plays at until it's given its own: `z` is middle C.
+pub(crate) const DEFAULT_OCTAVE: u8 = 4;
 
 impl Editor {
+    /// Track `t`'s keyboard octave.
+    pub fn octave_of(&self, t: usize) -> u8 {
+        (self.ids.get(t))
+            .and_then(|id| self.octaves.get(id))
+            .copied()
+            .unwrap_or(DEFAULT_OCTAVE)
+    }
+
+    /// The keyboard octave of the track the keyboard plays outside the duet's hands.
+    pub fn octave(&self) -> u8 {
+        self.octave_of(self.keyboard_track())
+    }
+
+    /// The octave as the status line shows it: with the duet's hands on tracks of their own,
+    /// each hand's, `3 5`, left then right.
+    pub fn octave_label(&self) -> String {
+        if !self.hands_set() {
+            return self.octave().to_string();
+        }
+        let hand = |hand: Hand| {
+            (self.hand_tracks_of(hand).first())
+                .map_or_else(|| self.octave(), |&t| self.octave_of(t))
+        };
+        format!("{} {}", hand(Hand::Left), hand(Hand::Right))
+    }
+
+    /// The track the keyboard plays outside the duet's hands: the instrument page's, or the
+    /// cursor's.
+    pub(crate) fn keyboard_track(&self) -> usize {
+        match self.page {
+            Page::Instrument => self.inst_cursor().track,
+            _ => self.cursor().track,
+        }
+    }
+
+    /// The octave `key` plays at: its hand's first track's in the duet, or the keyboard's
+    /// track's.
+    pub(crate) fn key_octave(&self, key: Key) -> u8 {
+        match self.hand_tracks(key).first() {
+            Some(&t) => self.octave_of(t),
+            None => self.octave(),
+        }
+    }
+
+    /// Whether either hand of the duet has tracks of its own.
+    fn hands_set(&self) -> bool {
+        self.keymap.layout == NoteLayout::Duet && self.hands.iter().any(|h| !h.is_empty())
+    }
+
+    /// The tracks `hand` plays, by index, those still there.
+    fn hand_tracks_of(&self, hand: Hand) -> Vec<usize> {
+        (self.hands.get(hand as usize).into_iter().flatten())
+            .filter_map(|id| self.ids.iter().position(|i| i == id))
+            .collect()
+    }
+
+    /// The tracks the keyboard plays: both hands' in the duet, if they have their own, so the
+    /// keyboard moves as one, or the keyboard's track.
+    fn keyboard_tracks(&self) -> Vec<usize> {
+        if !self.hands_set() {
+            return vec![self.keyboard_track()];
+        }
+        let mut tracks = self.hand_tracks_of(Hand::Left);
+        tracks.extend(self.hand_tracks_of(Hand::Right));
+        // A hand with none of its own plays the keyboard's track.
+        if self.hands.iter().any(|h| h.is_empty()) {
+            tracks.push(self.keyboard_track());
+        }
+        tracks.sort_unstable();
+        tracks.dedup();
+        tracks
+    }
+
+    /// Sets `tracks`' octaves to what `to` makes of each.
+    fn change_octaves(&mut self, tracks: &[usize], to: impl Fn(u8) -> u8) {
+        for &t in tracks {
+            let octave = to(self.octave_of(t)).min(MAX_OCTAVE);
+            let Some(&id) = self.ids.get(t) else {
+                continue;
+            };
+            if octave == DEFAULT_OCTAVE {
+                self.octaves.remove(&id);
+            } else {
+                self.octaves.insert(id, octave);
+            }
+        }
+    }
+
+    /// `{` and `}`: the keyboard's tracks an octave down or up, each from its own.
+    pub(crate) fn shift_octave(&mut self, by: i8) {
+        let tracks = self.keyboard_tracks();
+        self.change_octaves(&tracks, |o| o.saturating_add_signed(by));
+        self.message = Some(format!("octave {}", self.octave_label()));
+    }
+
+    /// `:oct OCTAVE [left|right|TRACKS]`: the keyboard's tracks' octave, or one hand's, or
+    /// the tracks named, numbers or names between commas.
+    pub(crate) fn set_octave(&mut self, octave: u8, which: &str) -> Result<(), String> {
+        if octave > MAX_OCTAVE {
+            return Err(format!("octaves go from 0 to {MAX_OCTAVE}, not {octave}"));
+        }
+        let tracks = match which.trim() {
+            "" => self.keyboard_tracks(),
+            hand @ ("left" | "right") => {
+                let tracks = self.hand_tracks_of(match hand {
+                    "left" => Hand::Left,
+                    _ => Hand::Right,
+                });
+                if tracks.is_empty() {
+                    return Err(format!(
+                        "the {hand} hand has no tracks: :hand {hand} gives it some"
+                    ));
+                }
+                tracks
+            }
+            named => (named.split(','))
+                .map(|word| self.track_called(word.trim()))
+                .collect::<Result<_, _>>()?,
+        };
+        self.change_octaves(&tracks, |_| octave);
+        let names: Vec<_> = (tracks.iter())
+            .filter_map(|&t| self.grid.tracks.get(t))
+            .map(|t| t.name.as_str())
+            .collect();
+        self.message = Some(format!("{} at octave {octave}", names.join(", ")));
+        Ok(())
+    }
+
     /// The keyboard's setup, to save with the song.
     pub(crate) fn playing(&self) -> Playing {
         let tracks = |ids: &[TrackId]| {
@@ -21,7 +152,9 @@ impl Editor {
             layout: self.keymap.layout.name().into(),
             scale: self.scale().name.into(),
             root: self.root,
-            octave: self.octave,
+            octaves: (self.ids.iter().enumerate())
+                .filter_map(|(t, id)| Some((t, *self.octaves.get(id)?)))
+                .collect(),
             left: tracks(left),
             right: tracks(right),
             keys: (self.fkeys.iter())
@@ -42,7 +175,10 @@ impl Editor {
             }
         };
         self.root = playing.root;
-        self.octave = playing.octave;
+        self.octaves = (playing.octaves.iter())
+            .filter(|&(_, &octave)| octave != DEFAULT_OCTAVE)
+            .filter_map(|(&t, &octave)| Some((*self.ids.get(t)?, octave)))
+            .collect();
         let layout = match NoteLayout::ALL
             .into_iter()
             .find(|l| l.name() == playing.layout)
@@ -127,7 +263,7 @@ mod tests {
                 layout: "duet".into(),
                 scale: "dorian".into(),
                 root: 2,
-                octave: 3,
+                octaves: [(0, 3)].into(),
                 left: vec![1, 2],
                 right: vec![0],
                 keys: [(1, ":set voices mono 1<ret>".into()), (2, "<lt>x".into())].into(),
