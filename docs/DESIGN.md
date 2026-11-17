@@ -814,7 +814,7 @@ track stays a real track, with its own rules, length and strip; the group adds:
   pointing at the wrong one (`duet.rs`). A bound hand plays there wherever the cursor is, heard or
   recorded but never typed at the cursor; each note goes to the first track its other keys aren't
   holding (`Editor::voices`, freed on key-up), else the one held longest, and notes beyond the
-  tracks are dropped.
+  tracks are only heard, on the root's track, so a hand of one poly track plays whole chords.
 - **Note repeat (done).** Holding the numpad's `0` makes the pads played meanwhile repeat, every
   1, 2 or 4 steps (`.`), as on an MPC. The editor emits `Effect::Repeat`, held like a note key's
   preview, and the engine's `Command::Repeat` is a preview with an `every`: it plays it again on

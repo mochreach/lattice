@@ -76,21 +76,24 @@ impl Editor {
     }
 
     /// Plays what `key` plays with a hand that has tracks of its own, if it does: each note on
-    /// a track none of the hand's other keys is holding, or, all held, the one held longest; a
-    /// note with no track left isn't played. It's recorded when recording, and otherwise only
-    /// heard, wherever the cursor is.
+    /// a track none of the hand's other keys is holding, or, all held, the one held longest.
+    /// It's recorded when recording, and otherwise only heard, wherever the cursor is. Notes
+    /// beyond the tracks are only heard, on the track the chord's root went to, so a hand of
+    /// one polyphonic track still plays whole chords.
     pub(crate) fn play_with_hand(&mut self, key: Key) -> Option<Vec<Effect>> {
         let tracks = self.hand_tracks(key);
-        if tracks.is_empty() {
-            return None;
-        }
+        let first = *tracks.first()?;
         // Pressed again without its release, it lets go of what it held.
         self.voices.retain(|&(k, _)| k != key);
         let mut effects = vec![];
+        let mut root = None;
         for pitch in self.key_pitches(key) {
             let Some(track) = self.take_voice(key, &tracks) else {
-                break;
+                let track = root.unwrap_or(first);
+                effects.push(Effect::Preview { track, pitch });
+                continue;
             };
+            root.get_or_insert(track);
             effects.extend(
                 (self.record_note(key, &[track], pitch, 0))
                     .unwrap_or_else(|| vec![Effect::Preview { track, pitch }]),
@@ -385,8 +388,8 @@ mod tests {
         keys(&mut e, "i");
         assert_eq!(
             heard(&keys(&mut e, "D")),
-            [(0, 76), (1, 67), (2, 71)],
-            "G B E"
+            [(0, 76), (1, 67), (2, 71), (0, 52)],
+            "G B E, over an E heard"
         );
         e.release(Key::Char('d'));
         assert!(e.voices.is_empty());
@@ -531,17 +534,23 @@ mod tests {
         e.run_command("hand right");
         assert_eq!(e.message.as_deref(), Some("right hand plays lead"));
 
-        // Wherever the cursor is, a chord's notes go a pad each, the bass left out for want
-        // of a fourth, and the tune to the lead.
+        // Wherever the cursor is, a chord's notes go a pad each, the bass, for want of a
+        // fourth, heard on the root's, and the tune to the lead.
         keys(&mut e, "thi");
-        assert_eq!(heard(&keys(&mut e, "a")), [(0, 60), (1, 64), (2, 67)]);
+        assert_eq!(
+            heard(&keys(&mut e, "a")),
+            [(0, 60), (1, 64), (2, 67), (0, 48)]
+        );
         assert_eq!(heard(&keys(&mut e, "k")), [(3, 72)]);
         assert!(
             (e.grid.tracks.iter()).all(|t| t.steps.iter().all(|s| s.note.is_none())),
             "only heard, stopped"
         );
         // The next chord, the old one still held, takes the pads it held longest.
-        assert_eq!(heard(&keys(&mut e, "g")), [(0, 67), (1, 71), (2, 62)]);
+        assert_eq!(
+            heard(&keys(&mut e, "g")),
+            [(0, 67), (1, 71), (2, 62), (0, 55)]
+        );
 
         // Recording, a chord goes in on one step across the pads.
         for k in "agk".chars() {
@@ -566,5 +575,33 @@ mod tests {
         e.run_command("hand off");
         e.set_transport(None);
         assert_eq!(heard(&keys(&mut e, "k")), [(2, 72)]);
+    }
+
+    #[test]
+    fn a_hand_of_one_track_plays_whole_chords_on_it() {
+        let mut e = editor();
+        e.releases = true;
+        // A poly pad for the left hand, a mono lead for the right.
+        e.run_command("hand left");
+        keys(&mut e, "tl");
+        e.run_command("hand right");
+        assert_eq!(
+            heard(&keys(&mut e, "ia")),
+            [(0, 60), (0, 64), (0, 67), (0, 48)]
+        );
+        assert_eq!(heard(&keys(&mut e, "k")), [(1, 72)]);
+
+        // Recording, the root goes in, and the rest are only heard.
+        for k in "ak".chars() {
+            e.release(Key::Char(k));
+        }
+        e.record = true;
+        e.set_transport(Some(Transport {
+            positions: vec![Some((4, 0)); 4],
+            into_step: 0.1,
+            count_in: 0,
+        }));
+        assert_eq!(heard(&keys(&mut e, "a")).len(), 4);
+        assert_eq!(e.grid.tracks[0].steps[4].note.map(|n| n.pitch), Some(60));
     }
 }

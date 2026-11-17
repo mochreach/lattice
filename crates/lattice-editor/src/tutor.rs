@@ -318,7 +318,8 @@ const LESSONS: &[Lesson] = &[
                its `voices` set to `legato` and a little `glide`, slides from note to note \
                as a Minimoog's lead does. \
                `:hand left` gives the left hand the selected tracks to play wherever the \
-               cursor is, a chord's notes dealt out one to a track, and `:hand right` the \
+               cursor is, a chord's notes dealt out one to a track (with one track, the rest \
+               are heard on it), and `:hand right` the \
                right; `:hand off` puts both back on the cursor's track.\n\nGive the left \
                hand the BASS track and the right hand the LEAD.",
         teaches: &[],

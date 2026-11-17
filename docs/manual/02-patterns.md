@@ -698,10 +698,14 @@ instrument page, you hear the whole chord and the root is recorded.
 right: they then play there wherever the cursor is, heard as you play and recorded when
 recording is armed. Give the left hand three or four tracks of the same pad, say (`mig` selects
 a group's): each note goes to a track no other key is holding, so a chord's notes spread over
-them. Then select a lead track, `:hand right`, and play chords with one hand while the other
-screams over the top. `:hand off` puts both hands back on the cursor's track; `:hand left` and
-`:hand right` switch to the duet layout if you weren't in it. Which tracks the hands play isn't
-saved, as the layout isn't; a track deleted leaves its hand.
+them. Notes beyond the hand's tracks are heard on the track the root went to, so one track of a
+polyphonic synth plays whole chords too; recording, only the root goes in there. Then select a
+lead track, `:hand right`, and play chords with one hand while the other screams over the top.
+A mono lead on the right and a poly pad on the left is two tracks, one hand each.
+
+`:hand off` puts both hands back on the cursor's track; `:hand left` and `:hand right` switch
+to the duet layout if you weren't in it. Which tracks the hands play isn't saved, as the layout
+isn't; a track deleted leaves its hand.
 
 `:layout piano` goes back. In every layout, `{` and `}` change the octave, and the status line
 in insert mode says which layout you're in (`z–] notes`, `wicki notes`, `A minor notes`,
