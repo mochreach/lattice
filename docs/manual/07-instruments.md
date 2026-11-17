@@ -1422,12 +1422,13 @@ of instrument, when they're kept. It's one step of undo.
 
 You needn't remember the folders. Type `:preset ` and the command line lists them, each with how
 many presets it holds; `tab` fills one in, and then the list is what's inside it, each with its
-title and instrument (a `/` typed after it goes in too, rather than doubling). Or type a name without a folder and the list finds it in whichever folder
-it's in: `:preset fli` suggests `tuss/flim`. A name on its own loads, too, as long as only one
-folder has it, so `:preset night-bus` still puts on `synth/night-bus`; if two have it, the
-status line names both and asks which. I wanted the list short enough to read at a glance: with
-thirty presets and more saved, a flat list ran off the bottom of the screen, while the folders
-fit, and an engine's folder is where you'd look for its sounds anyway.
+title and instrument (a `/` typed after it goes in too, rather than doubling). Or type a name
+without a folder and the list finds it in whichever folder it's in: `:preset fli` suggests
+`tuss/flim`. A name on its own loads, too, as long as only one folder has it, so `:preset night-bus`
+still puts on `synth/night-bus`; if two have it, the status line names both and asks which. I wanted
+the list short enough to read at a glance: with thirty presets and more saved, a flat list ran off
+the bottom of the screen, while the folders fit, and an engine's folder is where you'd look for its
+sounds anyway.
 
 A name Lattice doesn't know is refused with what's at the top:
 `no preset called nope; there's synth/, monochord/, …`. Lattice's folders come first, then
