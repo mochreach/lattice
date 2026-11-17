@@ -1167,7 +1167,13 @@ fn header_lines(
                 .iter()
                 .map(|c| {
                     let pass = c.pass.map(|p| format!(" · pass {p}")).unwrap_or_default();
-                    cell(c, format!("{}{pass}", c.track.steps.len()), theme.dim)
+                    let len = c.track.steps.len();
+                    // A chord track says so, in its colour, as it looks like any other while
+                    // it's empty.
+                    match c.track.chords && c.width != FOLDED {
+                        true => cell(c, format!("{len} chords{pass}"), Style::new().fg(c.colour)),
+                        false => cell(c, format!("{len}{pass}"), theme.dim),
+                    }
                 })
                 .collect(),
         ),

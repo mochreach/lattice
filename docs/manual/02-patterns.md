@@ -824,7 +824,8 @@ shared by every pattern, as the track's instrument is, and saved with the song a
 
 On a chord track:
 
-- The column is wide even while it's empty, ready for names.
+- The header says `chords` under its name, after its length, in its colour, and the column is
+  wide even while it's empty, ready for names.
 - **The piano keys play the scale's chords.** In insert mode, a key enters the chord `:scale`
   builds on its note, stacking the scale's thirds, so in C major `z` is C, `x` Dm, `c` Em and `b`
   G, and the keys you know for a tune are the chords of its key. A note outside the scale gets a
