@@ -103,7 +103,8 @@ Reading it from the top:
 - `grid` is the tracks as they are in the pattern being edited, `current`. `steps_per_beat` is
   the meter's steps in a beat; `beats_per_bar` and `grouping` are left out at 4 and none.
 - Each step's `note` has a `pitch` as a MIDI number, 60 being middle C (`C-4`) and 67 the G
-  above; `velocity` (1 to 127) and `length` (in steps) are left out at 100 and 1.
+  above; `velocity` (1 to 127) and `length` (in steps) are left out at 100 and 1. A chord
+  adds `chord: [3, 7, 10]`, its other notes as semitones from the `pitch`, up to seven of them.
 - `rules` are the track's, in order. `when: Every(n: 2, offset: 1)` is the
   `every 2 1` of `:rev every 2 1`; a rule that always applies leaves `when` out.
 - The `instrument` is the synth at its defaults, so its settings aren't written; other tracks

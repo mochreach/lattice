@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::arrangement::{Arrangement, DEFAULT_BEATS_PER_BAR, Meter};
 use crate::chain::{FxChain, FxLane};
+use crate::chord::Chord;
 use crate::conductor::GESTURES;
 use crate::fx::{Buses, Fx};
 use crate::gesture::Gesture;
@@ -38,6 +39,9 @@ pub struct Note {
     /// Length in steps.
     #[serde(default = "one", skip_serializing_if = "is_one")]
     pub length: u16,
+    /// The notes played with it, if it's a chord: it's then the chord's root as played.
+    #[serde(default, skip_serializing_if = "Chord::is_empty")]
+    pub chord: Chord,
 }
 
 fn default_velocity() -> u8 {
@@ -83,6 +87,7 @@ impl Step {
                 pitch,
                 velocity: DEFAULT_VELOCITY,
                 length: 1,
+                chord: Default::default(),
             }),
             ..Self::default()
         }

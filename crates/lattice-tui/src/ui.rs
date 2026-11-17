@@ -551,6 +551,10 @@ const FOLDED: usize = 2;
 
 /// Width of a chop track's column: its piece, and a waveform.
 const CHOP: usize = 15;
+/// Width of a track's notes once it holds a chord, room for its name: `Bbm7b5/E`.
+const CHORDS: usize = 15;
+/// The most of a chord's name a [`CHORDS`] cell shows.
+const CHORD_NAME: usize = 9;
 
 /// Width of an open track's field: its velocity, or a lock column's value, and a gap.
 const FIELD: usize = 4;
@@ -643,12 +647,19 @@ fn note_width(editor: &Editor, index: usize) -> usize {
         .group_of(index)
         .and_then(|g| editor.grid.groups.get(g))
         .is_some_and(|g| g.folded);
-    let chop = (editor.grid.tracks.get(index)).is_some_and(|t| t.instrument.kind == InstKind::Chop);
+    let track = editor.grid.tracks.get(index);
+    let chop = track.is_some_and(|t| t.instrument.kind == InstKind::Chop);
     match () {
         _ if folded => FOLDED,
         _ if chop => CHOP,
+        _ if track.is_some_and(has_chords) => CHORDS,
         _ => CELL,
     }
+}
+
+/// Whether any of `track`'s notes is a chord.
+fn has_chords(track: &Track) -> bool {
+    (track.steps.iter()).any(|s| s.note.is_some_and(|n| !n.chord.is_empty()))
 }
 
 /// How many of these columns fit in `room`, each with its gap; at least one.
@@ -1489,7 +1500,15 @@ fn grid_row(
                     if !c.audible {
                         style = style.add_modifier(Modifier::DIM);
                     }
-                    (format!(" {} {length:>4}  ", note_name(note.pitch)), style)
+                    let text = match c.note_width {
+                        CHORDS => {
+                            let name = lattice_core::chord::label(&note)
+                                .unwrap_or_else(|| note_name(note.pitch));
+                            format!(" {} {length:>3} ", shortened(&name, CHORD_NAME))
+                        }
+                        _ => format!(" {} {length:>4}  ", note_name(note.pitch)),
+                    };
+                    (text, style)
                 }
                 None if tail => (
                     " │".into(),
@@ -1861,6 +1880,17 @@ pub(crate) fn fit(text: &str, width: usize) -> String {
 }
 
 /// Tracker-style note names: `C-4`, `F#2`.
+/// `text` in `width` columns: padded, or cut short with an ellipsis.
+fn shortened(text: &str, width: usize) -> String {
+    match text.chars().count() {
+        n if n <= width => format!("{text:<width$}"),
+        _ => {
+            let cut: String = text.chars().take(width.saturating_sub(1)).collect();
+            format!("{cut}…")
+        }
+    }
+}
+
 fn note_name(pitch: u8) -> String {
     const NAMES: [&str; 12] = [
         "C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-",

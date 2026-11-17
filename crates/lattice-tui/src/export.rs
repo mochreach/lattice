@@ -300,6 +300,7 @@ mod tests {
             pitch: 60,
             velocity: 100,
             length: 1,
+            chord: Default::default(),
         });
         let part = Part {
             lanes: vec![Lane {
@@ -352,6 +353,7 @@ mod tests {
                     pitch,
                     velocity: 100,
                     length: 2,
+                    chord: Default::default(),
                 });
             }
             export.parts[0].lanes[0].steps = track.steps.clone();

@@ -47,6 +47,7 @@ fn hits(s: &str) -> Vec<Step> {
                 pitch: DRUM_ROOT,
                 velocity,
                 length: 1,
+                chord: Default::default(),
             })
         })
         .collect()
@@ -82,6 +83,7 @@ fn notes(s: &str) -> Vec<Step> {
                 pitch,
                 velocity,
                 length,
+                chord: Default::default(),
             })
         })
         .collect()

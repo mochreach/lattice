@@ -24,6 +24,7 @@
 )]
 
 mod chains;
+mod chords;
 mod command;
 mod devices;
 mod duet;
@@ -1468,6 +1469,7 @@ impl Editor {
                         pitch,
                         velocity: self.touch.unwrap_or(self.velocity),
                         length: 1,
+                        chord: Default::default(),
                     });
                 }
             }
@@ -2569,6 +2571,7 @@ impl Editor {
                 pitch,
                 velocity,
                 length: 1,
+                chord: Default::default(),
             })
         });
         effects.push(Effect::Preview {
@@ -2583,14 +2586,11 @@ impl Editor {
         let mut effects = self.edit(|s| {
             if let Some(note) = &mut s.note {
                 note.pitch = (i32::from(note.pitch) + by).clamp(0, 127) as u8;
-                last = Some(note.pitch);
+                last = Some(*note);
             }
         });
-        if let Some(pitch) = last {
-            effects.push(Effect::Preview {
-                track: self.cursor().track,
-                pitch,
-            });
+        if let Some(note) = last {
+            effects.extend(chords::previews(self.cursor().track, note));
         }
         effects
     }

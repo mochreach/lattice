@@ -224,6 +224,7 @@ impl Editor {
                         pitch,
                         velocity,
                         length: 1,
+                        chord: Default::default(),
                     });
                 }
                 effects.push(Effect::TrackChanged(track));

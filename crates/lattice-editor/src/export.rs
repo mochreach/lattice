@@ -330,6 +330,7 @@ mod tests {
             pitch: 64,
             velocity: 100,
             length: 1,
+            chord: Default::default(),
         });
         let mut e = editor(tracks);
         // Tracks 1 and 2, steps 4 to 7.

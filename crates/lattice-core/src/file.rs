@@ -264,6 +264,7 @@ mod tests {
             pitch: 43,
             velocity: 80,
             length: 2,
+            chord: Default::default(),
         });
         let mut delay = Fx::new(FxKind::Delay);
         delay.values[fx::delay::FEEDBACK as usize] = 0.7;

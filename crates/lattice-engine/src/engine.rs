@@ -45,7 +45,7 @@ const MAX_EVENTS: usize = 128;
 /// Notes a track can hold at once before the oldest is cut.
 const MAX_HELD: usize = 16;
 /// Events a track's gestures can have waiting for later in its step; more are dropped.
-const MAX_DUE: usize = 64;
+const MAX_DUE: usize = 256;
 /// An arpeggio's notes in each step.
 const ARPEGGIO: u64 = 6;
 const COMMAND_QUEUE: usize = 256;
@@ -2438,49 +2438,52 @@ impl Engine {
             }
         }
         let mut hit = false;
+        // How many notes this step starts: a chord's all, its root last, so an instrument
+        // that plays one note at a time plays the root.
+        let mut started = 0;
         if let Some(mut note) = step.note {
             if step.gestures().any(|g| g == Gesture::Accent) {
                 note.velocity = 127;
             }
-            // Retriggering a held pitch, or out of room: end the old note first.
-            let existing = t.held.iter().position(|h| h.pitch == note.pitch);
-            let full = (t.held.len() == MAX_HELD).then_some(0);
-            if let Some(i) = existing.or(full)
-                && let Some(old) = t.held.get(i)
-            {
-                push(&mut t.events, note_off(offset, old.pitch));
-                t.held.remove(i);
-            }
-            match delay {
-                Some(_) => queue(
-                    &mut t.due,
-                    starts,
-                    Later::Start {
-                        pitch: note.pitch,
-                        velocity: note.velocity,
-                    },
-                ),
-                None => start(&mut t.events, offset, note.pitch, note.velocity, shape),
+            let others = note.chord.pitches(note.pitch).skip(1);
+            for pitch in others.chain(std::iter::once(note.pitch)) {
+                // Retriggering a held pitch, or out of room: end the old note first.
+                let existing = t.held.iter().position(|h| h.pitch == pitch);
+                let full = (t.held.len() == MAX_HELD).then_some(0);
+                if let Some(i) = existing.or(full)
+                    && let Some(old) = t.held.get(i)
+                {
+                    push(&mut t.events, note_off(offset, old.pitch));
+                    t.held.remove(i);
+                }
+                let velocity = note.velocity;
+                match delay {
+                    Some(_) => queue(&mut t.due, starts, Later::Start { pitch, velocity }),
+                    None => start(&mut t.events, offset, pitch, velocity, shape),
+                }
+                started += 1;
+                t.held.push(Held {
+                    pitch,
+                    velocity,
+                    steps_left: note.length.max(1),
+                    arpeggio: None,
+                    shape,
+                });
             }
             self.status.started_note(index, note.pitch, note.velocity);
             hit = true;
-            t.held.push(Held {
-                pitch: note.pitch,
-                velocity: note.velocity,
-                steps_left: note.length.max(1),
-                arpeggio: None,
-                shape,
-            });
         }
-        // The note gestures act on the step's note, or else the latest still sounding, from
-        // the step's start; on the step's own note, from its first hit.
+        // The note gestures act on the step's note, all of a chord's for a retrigger or fade,
+        // or else the latest still sounding, from the step's start; on the step's own note,
+        // from its first hit.
         let first = u64::from(hit);
         let (held, due) = (&mut t.held, &mut t.due);
-        if let Some(h) = held.last_mut() {
-            for gesture in step.gestures() {
-                match gesture {
-                    Gesture::Retrigger(n) | Gesture::Fade(n) => {
-                        let n = u64::from(n);
+        let earlier = held.len().saturating_sub(started.max(1));
+        for gesture in step.gestures() {
+            match gesture {
+                Gesture::Retrigger(n) | Gesture::Fade(n) => {
+                    let n = u64::from(n);
+                    for h in held.iter().skip(earlier) {
                         for k in first..n {
                             let velocity = match gesture {
                                 Gesture::Fade(_) => (u64::from(h.velocity) * (n - k) / n).max(1),
@@ -2491,14 +2494,16 @@ impl Engine {
                             queue(due, at, Later::Change { from, to, velocity });
                         }
                     }
-                    Gesture::Arpeggio(a, b) => {
+                }
+                Gesture::Arpeggio(a, b) => {
+                    if let Some(h) = held.last_mut() {
                         let arpeggio = (h.pitch, a, b);
                         h.arpeggio = Some(arpeggio);
                         arpeggiate(due, h.pitch, arpeggio, first, (starts, ends), h.velocity);
                     }
-                    Gesture::Cut(n) => queue(due, ticks(n), Later::Cut),
-                    _ => {}
                 }
+                Gesture::Cut(n) if !held.is_empty() => queue(due, ticks(n), Later::Cut),
+                _ => {}
             }
         }
 
@@ -3689,6 +3694,34 @@ mod tests {
         assert_eq!(
             *notes.lock().unwrap(),
             [(0, true, 60, 100), (9_000, false, 60, 0)]
+        );
+    }
+
+    #[test]
+    fn a_chord_plays_all_its_notes_its_root_last_and_retriggers_them_all() {
+        let (mut engine, notes) = gesturing(&[60, 62], &[(0, "R2")]);
+        let track = &mut engine.tracks[0].track;
+        track.steps[0].note.as_mut().unwrap().chord = lattice_core::Chord::new(&[4, 7]).unwrap();
+        render(&mut engine, 256, 7_000);
+        let on = |at, pitch| (at, true, pitch, 100);
+        let off = |at, pitch| (at, false, pitch, 0);
+        assert_eq!(
+            *notes.lock().unwrap(),
+            [
+                on(0, 64),
+                on(0, 67),
+                on(0, 60),
+                off(3_000, 64),
+                on(3_000, 64),
+                off(3_000, 67),
+                on(3_000, 67),
+                off(3_000, 60),
+                on(3_000, 60),
+                off(6_000, 64),
+                off(6_000, 67),
+                off(6_000, 60),
+                on(6_000, 62),
+            ]
         );
     }
 

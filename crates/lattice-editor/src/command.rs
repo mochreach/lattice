@@ -495,6 +495,12 @@ pub const COMMANDS: &[Spec] = &[
         describe: "in the duet layout, give the left or right hand the selected tracks, or TRACKS (numbers or names between commas), to play wherever the cursor is, a chord's notes dealt across them; off, both play the cursor's",
     },
     Spec {
+        name: "chord",
+        alias: None,
+        params: &[text("NAME", "chord")],
+        describe: "every selected step plays the chord NAME (Am7, F#dim, C/E), voiced at its track's octave: one step on one track holds the whole chord",
+    },
+    Spec {
         name: "vel",
         alias: None,
         params: &[int("VELOCITY", "velocity", 0, 99)],
@@ -1522,6 +1528,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             });
             Ok(vec![])
         }
+        "chord" => editor.set_chord(command.text(0)?),
         "hand" => {
             editor.set_hand(command.text(0)?)?;
             Ok(vec![])

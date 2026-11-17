@@ -131,6 +131,7 @@ impl Editor {
                 pitch,
                 velocity,
                 length: 1,
+                chord: Default::default(),
             });
             self.held.retain(|h| h.key != key || h.track != track);
             self.held.push(Held {
@@ -224,6 +225,7 @@ impl Editor {
                         pitch: h.pitch,
                         velocity,
                         length: 1,
+                        chord: Default::default(),
                     });
                     tracks.push(h.track);
                 }

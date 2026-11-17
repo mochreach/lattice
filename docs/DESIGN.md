@@ -867,6 +867,32 @@ comes from. Candidates:
 
 Physical-modelling engines (bars, strings, membranes, pipes) will want names in the same spirit.
 
+## Chords
+
+A chord is one step on one track, not a note on each of several grouped tracks: a progression
+reads as `Dm7 G7 Cmaj7` down a column, as it would on a lead sheet. Grouped tracks still have
+their place, a part each, but they made harmony hard to read back.
+
+- **Data.** Any `Note` can carry a `Chord`: up to `MAX_CHORD` (7) more notes as semitones from
+  its `pitch`, which is the chord's root as it was played. It's a fixed array and a length, so a
+  `Step` stays `Copy` and the engine plays one without allocating. Saved as a list,
+  `chord: [3, 7, 10]`, left out when empty. Offsets rather than a chord type keep the voicing
+  exactly: inversions, spread hands and doubled notes come back as they were played.
+- **Names are worked out, not stored** (`lattice_core::chord`): the notes' pitch classes are
+  matched against a table of chord shapes over each root, the bass first, the simplest first, an
+  exact match before one missing its fifth (allowed from four notes up). A bass that isn't the
+  root goes after a slash; notes that aren't a known chord are listed, `C,C#,F#`. `:chord NAME`
+  reads the same names, with the common aliases, and voices them close above the root at the
+  track's octave, a slash bass just below.
+- **Playing.** Every note starts on the step, the root last, so a mono instrument's last-note
+  priority leaves the root sounding. Retrigger and fade act on all the step's notes; the
+  arpeggio and cut, as before, on the last. Transposing moves the root, and the chord with it.
+- **The grid** gives a track holding a chord a wider column, the chord's name and length.
+
+Still to come: notes held or pressed together recorded as one chord, the duet's chord keys
+recording whole chords, a chord-track switch for entering by name, chord gestures (inversion,
+strum, arpeggiate), scale-degree rules (`deg+1`) and Roman numerals.
+
 ## Live recording (done)
 
 `R` or `:rec` arms recording, and arming starts insert mode. While the song plays, a piano key or

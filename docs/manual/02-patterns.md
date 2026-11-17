@@ -755,6 +755,57 @@ I'd had one octave for the whole keyboard, as most trackers do, and kept having 
 every time I went from the bass to the lead. A synth's split keyboard gives each zone its own
 transpose for the same reason. Like the layout, the octaves are saved with the song.
 
+### Chords on one step: `:chord`
+
+A note can be a **chord**: one step, on one track, that plays several notes at once.
+**`:chord Am7`** makes every selected step play an A minor seventh, voiced close above its root
+at the track's octave, A C E G from the A at octave 4. It keeps a note's velocity and length if the
+step had one, and the message names the chord it wrote.
+
+```
+:chord Am7              A C E G, close above the A
+:chord C/E              a C chord with its E in the bass, below the root
+:chord F#dim            F# A C
+:chord BbM7             Bb D F A: M7, maj7 and Δ all read as a major seventh
+```
+
+The names are the ones lead sheets use: a root, `C` to `B` with `#` or `b`, then the chord's
+kind, nothing for major, `m`, `dim`, `+`, `sus2`, `sus4`, `5`, `6`, `m6`, `7`, `maj7`, `m7`,
+`m7b5`, `dim7`, `mmaj7`, `+7`, `7sus4`, `add9`, `madd9`, `9`, `maj9` and `m9`, and after a slash
+the bass. The usual other spellings read too: `min` and `-` for minor, `aug` for `+`, `°` and
+`ø`, `sus` for `sus4`.
+
+A track holding a chord draws a wider column, with each chord by name and its length after it:
+
+```
+      BASS        CHORDS
+ 00   A-1    4    Am7         4
+ 01   │           │
+ 02   │           │
+ 03   │           │
+ 04   F-1    4    Fmaj7/A     4
+```
+
+The name isn't stored: Lattice works it out from the notes, as you'd read them off a score. The
+lowest note is the bass; if it isn't the root, it goes after a slash, `G/B`. The same four notes
+can be two chords, A C E G being Am7 over an A and C6 over a C, and the bass decides. A seventh
+with its fifth left out, as hands often play it, is still a seventh. Notes that aren't a chord
+Lattice knows are listed, lowest first: `C,C#,F#`.
+
+Saved, a chord is its root's `pitch` and the other notes as semitones from it,
+`chord: [3, 7, 10]`, so the voicing comes back exactly as it was played, inversions and spread
+hands and all.
+
+Played, every note of a chord starts together on its step, at the step's velocity, and stops when
+its length is up. An instrument that plays one note at a time, a mono synth, plays the root,
+which starts last. A chord is a note in everything else too: `C-a` and `C-x` transpose the
+whole chord, `r` and a key replace it with a plain note, and the gestures act on it, `R3` hitting
+every note three times and `r4` fading them all; `A37`, the arpeggio, goes round from the root.
+
+I'd been writing chords as a note on each of three or four tracks grouped together. It sounds
+right, but a progression is hard to read back like that: you're adding up intervals across
+columns to see that it's a ii–V–I. One step that says `Dm7` is how a musician writes it.
+
 ### Auto-step: `:step`
 
 `:step N` sets how many steps the cursor moves on after each note, 0 to 64; it starts at 1 and is

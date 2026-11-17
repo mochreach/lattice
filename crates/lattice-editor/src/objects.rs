@@ -362,6 +362,7 @@ mod tests {
             pitch: 60,
             velocity: 100,
             length,
+            chord: Default::default(),
         });
     }
 

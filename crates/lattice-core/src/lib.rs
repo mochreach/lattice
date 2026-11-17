@@ -18,6 +18,7 @@
 pub mod arrangement;
 pub mod art;
 pub mod chain;
+pub mod chord;
 pub mod conductor;
 pub mod device;
 pub mod file;
@@ -40,6 +41,7 @@ pub use chain::{
     CHAINS, FxChain, FxLane, FxRow, MAX_LANES, MAX_SENDS, RowAt, SavedChain, built_in_chain,
     is_feedback, max_send,
 };
+pub use chord::{Chord, MAX_CHORD};
 pub use conductor::{Conductor, ConductorStep, GESTURES, MAX_BPM, MIN_BPM, SongGesture};
 pub use device::{Curve, Device, Kind, ParamInfo};
 pub use file::{FileError, from_ron, to_ron};

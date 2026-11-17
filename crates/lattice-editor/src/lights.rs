@@ -337,6 +337,7 @@ mod tests {
             pitch: 62,
             velocity: 100,
             length: 1,
+            chord: Default::default(),
         });
         let at = |step| Playhead {
             step: step as u64,

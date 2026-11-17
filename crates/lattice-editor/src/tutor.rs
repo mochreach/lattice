@@ -344,6 +344,26 @@ const LESSONS: &[Lesson] = &[
         solution: "ghtltl:hand left<ret>tl:hand right<ret>",
     },
     Lesson {
+        title: "Chords on a step",
+        text: "A note can be a chord: one step on one track that plays all its notes, its name \
+               shown on the grid. `:chord Am7` makes each selected step play that chord, \
+               voiced close above its root at the track's octave; `C/E` puts the E in the \
+               bass, and `F#dim`, `BbM7`, `Gsus` and the other ways lead sheets write them \
+               read too. A chord moves with {note_up} and {note_down} as a note does, and an instrument \
+               that plays one note at a time plays its root.\n\nPut an Am7 on the first step \
+               of the LEAD track.",
+        teaches: &[],
+        commands: &["chord"],
+        setup: nothing,
+        watch: never,
+        done: |e, _| {
+            (track(e, "LEAD").and_then(|t| note(t, 0)).flatten())
+                .and_then(|n| lattice_core::chord::label(&n))
+                .is_some_and(|name| name == "Am7")
+        },
+        solution: "ghggtltltl:chord Am7<ret>",
+    },
+    Lesson {
         title: "Selecting and deleting",
         text: "There's always a selection: with nothing selected, it's just the cursor. \
                {select_mode} starts select mode, where moving stretches the selection, and \
