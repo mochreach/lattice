@@ -584,6 +584,7 @@ fn run(
                     welcome = !(kind == KeyEventKind::Press && welcome::closes(key));
                     break;
                 }
+                editor.right_shift = tap.right_shift;
                 let now = Instant::now();
                 editor.set_transport(playhead.transport(handle.status(), editor, now));
                 let effects = match kind {

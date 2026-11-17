@@ -65,6 +65,7 @@ pub use fx_page::{FxCursor, FxLine};
 pub use help::{Help, HelpLine};
 pub use inst_page::{InstCursor, InstLine};
 pub use keymap::{Action, Binding, Key, Keymap, Menu, NoteLayout};
+use keymap::{Hand, hand};
 pub use macros::target_name;
 pub use manual::{Manual, ManualLine, width as manual_width, wrap as manual_wrap};
 pub use midi::{Control, Target};
@@ -546,6 +547,9 @@ pub struct Editor {
     voices: Vec<(Key, TrackId)>,
     /// Whether the frontend reports key releases, so previews are held until their key comes up.
     pub releases: bool,
+    /// Whether Right Shift is held, which in the duet raises the right hand's notes a
+    /// semitone. Only terminals that report modifier keys tell it from the left.
+    pub right_shift: bool,
     /// A fill's playing: while the fill key's held, or until it's pressed again.
     pub fill: bool,
     /// Previewed notes, by the key that's holding each, and whether each is repeating.
@@ -701,6 +705,7 @@ impl Editor {
             hands: Default::default(),
             voices: Vec::new(),
             releases: false,
+            right_shift: false,
             fill: false,
             sounding: Vec::new(),
             repeat: false,
@@ -1375,8 +1380,10 @@ impl Editor {
         if let Some(chord) = self.keymap.chord(key) {
             return self.octave_pitch(*chord.first()?);
         }
+        // Right Shift raises the right hand's a semitone, for the notes between the scale's.
         if let Some((c, _)) = self.keymap.duet_key(key) {
-            return self.octave_pitch(*self.keymap.piano.get(&c)?);
+            let sharp = self.right_shift && hand(c) == Some(Hand::Right);
+            return self.octave_pitch(*self.keymap.piano.get(&c)? + i16::from(sharp));
         }
         let c = match key {
             Key::Char(c) => c,

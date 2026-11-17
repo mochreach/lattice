@@ -189,6 +189,10 @@ impl Editor {
             "shift, A-chord",
             "in the duet layout, a left-hand chord an inversion up, or down",
         ));
+        lines.push(item(
+            "right shift",
+            "in the duet layout, the right hand's notes a semitone up",
+        ));
         lines.extend(by_action(self.keymap.insert.iter().map(|(k, a)| (*k, *a))));
         lines.push(item("C-0…C-9", STEP_KEYS));
 

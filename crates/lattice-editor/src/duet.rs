@@ -419,6 +419,26 @@ mod tests {
     }
 
     #[test]
+    fn right_shift_raises_the_right_hand_a_semitone() {
+        let mut e = editor();
+        e.releases = true;
+        e.run_command("layout duet");
+        keys(&mut e, "tltli");
+        e.right_shift = true;
+        // C#, D#, and E's semitone is F, the next note anyway.
+        let notes: Vec<_> = "KL:"
+            .chars()
+            .map(|c| heard(&keys(&mut e, &c.to_string())))
+            .collect();
+        assert_eq!(notes, [[(2, 73)], [(2, 75)], [(2, 77)]]);
+        // The left hand's chords are voiced up, as with either Shift.
+        assert_eq!(heard(&keys(&mut e, "A"))[0], (2, 72));
+        // Let go of, and the scale's back.
+        e.right_shift = false;
+        assert_eq!(heard(&keys(&mut e, "k")), [(2, 72)]);
+    }
+
+    #[test]
     fn the_right_hand_plays_the_scale_an_octave_up_from_k() {
         let keys = NoteLayout::Duet.keys(named("minor"), 9);
         // To the fifth on the UK keyboard's `#`.

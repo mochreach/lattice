@@ -14,6 +14,8 @@ pub struct Tap {
     releases: bool,
     /// The key last pressed, until a key's let go.
     last: Option<KeyCode>,
+    /// Whether Right Shift is down, as the terminal tells it from the left one.
+    pub right_shift: bool,
 }
 
 impl Tap {
@@ -30,6 +32,9 @@ impl Tap {
             event.code,
             KeyCode::Modifier(ModifierKeyCode::RightAlt | ModifierKeyCode::IsoLevel3Shift)
         );
+        if event.code == KeyCode::Modifier(ModifierKeyCode::RightShift) {
+            self.right_shift = event.kind != KeyEventKind::Release;
+        }
         match event.kind {
             KeyEventKind::Press if right_alt => self.down = true,
             KeyEventKind::Release if right_alt && std::mem::take(&mut self.down) => {
@@ -129,6 +134,22 @@ mod tests {
         tap.key(event(right_alt, KeyEventKind::Press));
         tap.key(event(KeyCode::Char('q'), KeyEventKind::Release));
         assert!(tap.key(event(right_alt, KeyEventKind::Release)).is_some());
+    }
+
+    #[test]
+    fn right_shift_is_told_from_the_left() {
+        let event = |code, kind| KeyEvent::new_with_kind(code, KeyModifiers::NONE, kind);
+        let mut tap = Tap::default();
+        let left = KeyCode::Modifier(ModifierKeyCode::LeftShift);
+        let right = KeyCode::Modifier(ModifierKeyCode::RightShift);
+        tap.key(event(left, KeyEventKind::Press));
+        assert!(!tap.right_shift);
+        tap.key(event(right, KeyEventKind::Press));
+        assert!(tap.right_shift);
+        tap.key(event(right, KeyEventKind::Repeat));
+        assert!(tap.right_shift);
+        tap.key(event(right, KeyEventKind::Release));
+        assert!(!tap.right_shift);
     }
 
     #[test]

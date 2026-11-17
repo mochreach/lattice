@@ -786,7 +786,10 @@ track stays a real track, with its own rules, length and strip; the group adds:
   own. Every duet key with Shift or Alt comes back to itself (`Keymap::duet_key`, symbols by US
   and UK layouts), so the right hand plays on while the left holds one; letting any go releases
   all of them, as Shift may come up first. In the duet they win over insert bindings, so `R`,
-  `!`, `{` and `}` play. The right hand is the
+  `!`, `{` and `}` play. Right Shift, told from the left by its own key event (`Tap`, as Right
+  Alt is), raises the right hand's notes a semitone (`Editor::right_shift`): the notes between
+  the scale's, the blue third, the minor key's sixth and seventh, rather than a mode to switch
+  into. The right hand is the
   scale layout an octave up, K its root. A track holds one
   note a step, so a chord is dealt out: unbound, over the insert cursors' tracks, primary
   first, the rest only heard; on the instrument page heard

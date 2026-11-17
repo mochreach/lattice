@@ -679,6 +679,15 @@ each row up about a fourth, as in `:layout scale`, from the fourth below the roo
 eleventh above. Whatever `:scale` is, there's no note outside it to hit, so you can solo
 without looking.
 
+When you do want one, hold **Right Shift**: the right hand's notes go up a semitone, to the
+notes between the scale's, like a piano's black keys. In C, `l` gives E♭, the minor third
+blues and rock lean on; `o` A♭ and `p` B♭, the minor sixth and flat seventh, the notes C minor
+lends; `i` F♯, the blues scale's flat fifth and the leading note to G. Each is on the key below
+where it sits, so it resolves by sliding up to the next key, the way a blues player bends into
+a note. Where the scale has no gap, as from E to F, it plays the next note. Right Shift needs a
+terminal that tells it from the left, as the ones that report key releases do (kitty, WezTerm,
+foot); in one that doesn't, both Shifts are the left's.
+
 A track holds one note on a step, so a chord needs a track a note. On its own, each hand plays
 the cursor's track, as any layout does: a chord key puts its root in and you hear the rest. (If
 there are cursors on several tracks, it deals its notes out over them, root first.) On the
