@@ -275,7 +275,9 @@ impl Editor {
         if !set {
             return Err(format!("{} has no {name}", track.name));
         }
-        Ok(vec![Effect::TrackChanged(t)])
+        // The engine has its instruments' and effects' settings from the mixer's sync, not
+        // with the track.
+        Ok(vec![Effect::MixerChanged])
     }
 
     /// The track `word` means: its number, from 1, or its name, in any case.
@@ -1017,7 +1019,11 @@ mod tests {
             ..Track::default()
         });
         let undo = e.undo.len();
-        run(&mut e, "set cutoff 800Hz").unwrap();
+        // Sent to the engine as the mixer's own changes are, or it never hears them.
+        assert_eq!(
+            run(&mut e, "set cutoff 800Hz").unwrap(),
+            [Effect::MixerChanged]
+        );
         assert_eq!(e.grid.tracks[0].instrument.get(synth::CUTOFF), 800.0);
         assert_eq!(e.undo.len(), undo + 1);
         assert_eq!(e.message.as_deref(), Some("acid cutoff 800Hz"));
