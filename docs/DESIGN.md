@@ -807,15 +807,15 @@ track stays a real track, with its own rules, length and strip; the group adds:
   Shift's 2 on one and its `'` on the other. Right Shift, told from the left by its own key event
   (`Tap`, as Right Alt is), raises the right hand's notes a semitone (`Editor::right_shift`): the
   notes between the scale's, the blue third, the minor key's sixth and seventh, rather than a mode
-  to switch into. The right hand is the scale layout an octave up, K its root. A track holds one
-  note a step, so a chord is dealt out: unbound, over the insert cursors' tracks, primary first, the
-  rest only heard; on the instrument page heard whole, its root recorded. `:hand left` / `right`
+  to switch into. The right hand is the scale layout an octave up, K its root. A chord key
+  enters its whole chord on one step (see Chords): unbound, dealt over the insert cursors' tracks,
+  primary first, what's left over joining the root's chord; on the instrument page recorded whole. `:hand left` / `right`
   binds a hand to the selection's tracks (or `TRACKS`, numbers or names between commas, from
   anywhere), as `TrackId`s, so moving or deleting tracks can't leave it
   pointing at the wrong one (`duet.rs`). A bound hand plays there wherever the cursor is, heard or
   recorded but never typed at the cursor; each note goes to the first track its other keys aren't
   holding (`Editor::voices`, freed on key-up), else the one held longest, and notes beyond the
-  tracks are only heard, on the root's track, so a hand of one poly track plays whole chords.
+  tracks join the root's chord on its track, so a hand of one poly track plays whole chords.
 - **Note repeat (done).** Holding the numpad's `0` makes the pads played meanwhile repeat, every
   1, 2 or 4 steps (`.`), as on an MPC. The editor emits `Effect::Repeat`, held like a note key's
   preview, and the engine's `Command::Repeat` is a preview with an `every`: it plays it again on
@@ -888,9 +888,14 @@ their place, a part each, but they made harmony hard to read back.
   priority leaves the root sounding. Retrigger and fade act on all the step's notes; the
   arpeggio and cut, as before, on the last. Transposing moves the root, and the chord with it.
 - **The grid** gives a track holding a chord a wider column, the chord's name and length.
+- **Entering.** The duet's chord keys enter whole chords. Notes held together join the first's
+  chord: in step entry, `Editor::chording` keeps the step a still-held note went in on, and
+  notes played before all its keys are up join it there, in the same undo, without moving on;
+  recording, a note landing on the step a still-held key recorded on joins its chord. Both need
+  key releases (MIDI always, the terminal when it reports them); there's no timing window, as
+  the editor has no clock and a window would split a slow hand's chord or merge a fast run.
 
-Still to come: notes held or pressed together recorded as one chord, the duet's chord keys
-recording whole chords, a chord-track switch for entering by name, chord gestures (inversion,
+Still to come: a chord-track switch for entering by name, chord gestures (inversion,
 strum, arpeggiate), scale-degree rules (`deg+1`) and Roman numerals.
 
 ## Live recording (done)

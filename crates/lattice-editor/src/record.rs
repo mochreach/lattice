@@ -5,7 +5,7 @@
 //! armed, play starts with a count-in (`:count`), and a note played just before the song starts
 //! goes on its first step.
 
-use lattice_core::Note;
+use lattice_core::{Chord, Note};
 
 use crate::keymap::{Action, Binding};
 use crate::{Editor, Effect, Key, Mode, Page, changed};
@@ -88,13 +88,15 @@ impl Editor {
         }
     }
 
-    /// Enters `pitch`, played on `key`, at the playhead of each of `tracks`, rounded to the
-    /// nearest step. `None` if not recording, so the note goes in at the cursor as usual.
+    /// Enters `pitch`, played on `key`, with `chord`, at the playhead of each of `tracks`,
+    /// rounded to the nearest step. A note played while another key that went in on the same
+    /// step is still held joins its chord. `None` if not recording, so the note goes in at the
+    /// cursor as usual.
     pub(crate) fn record_note(
         &mut self,
         key: Key,
         tracks: &[usize],
-        pitch: u8,
+        (pitch, chord): (u8, Chord),
         every: usize,
     ) -> Option<Vec<Effect>> {
         if !self.recording() {
@@ -110,11 +112,9 @@ impl Editor {
                 notes.push((track, (at % len as u64) as usize, at / len as u64, from));
             }
         }
+        let heard = |track| crate::chords::previews(track, pitch, chord);
         let Some(&(first, _, pass, from)) = notes.first() else {
-            let heard = tracks
-                .first()
-                .map(|&track| Effect::Preview { track, pitch });
-            return Some(heard.into_iter().collect());
+            return Some(tracks.first().into_iter().flat_map(|&t| heard(t)).collect());
         };
         // Each pass through the primary track is one take, undone together.
         if self.take != Some(pass) {
@@ -122,23 +122,41 @@ impl Editor {
             self.take = Some(pass);
         }
         let velocity = self.touch.unwrap_or(self.velocity);
+        // Whether a key's coming up is heard: a MIDI note's always is.
+        let all = self.releases;
+        let releases = |k: Key| all || matches!(k, Key::Note(_));
         for &(track, step, _, from) in &notes {
             let Some(s) = (self.grid.tracks.get_mut(track)).and_then(|t| t.steps.get_mut(step))
             else {
                 continue;
             };
-            s.note = Some(Note {
-                pitch,
-                velocity,
-                length: 1,
-                chord: Default::default(),
-            });
+            // Held together with a note already in on this step, it joins that note's chord.
+            let together = (self.held.iter())
+                .filter(|h| h.key != key && releases(h.key) && releases(key) && h.every == 0)
+                .find(|h| h.track == track && h.step == step)
+                .and_then(|h| s.note.as_mut().filter(|n| n.pitch == h.pitch));
+            let root = match together {
+                Some(note) => {
+                    let root = note.pitch;
+                    note.chord = (chord.pitches(pitch)).fold(note.chord, |c, p| c.with(root, p));
+                    root
+                }
+                None => {
+                    s.note = Some(Note {
+                        pitch,
+                        velocity,
+                        length: 1,
+                        chord,
+                    });
+                    pitch
+                }
+            };
             self.held.retain(|h| h.key != key || h.track != track);
             self.held.push(Held {
                 key,
                 track,
                 step,
-                pitch,
+                pitch: root,
                 from,
                 every,
             });
@@ -147,10 +165,7 @@ impl Editor {
         // Rounded back onto a step that's already played, it's sounded now; rounded on to the
         // next, the sequencer plays it there, in time.
         if from.round() <= from {
-            effects.push(Effect::Preview {
-                track: first,
-                pitch,
-            });
+            effects.extend(heard(first));
         }
         Some(effects)
     }
@@ -192,6 +207,7 @@ impl Editor {
         };
         let mut effects = vec![];
         for key in keys {
+            self.release_chord(key);
             self.release_voice(key);
             effects.extend(self.release_previews(key, repeats));
             effects.extend(self.release_recorded(key));
@@ -331,6 +347,29 @@ mod tests {
     }
 
     #[test]
+    fn notes_held_together_record_as_one_chord() {
+        let mut e = editor();
+        e.releases = true;
+        e.handle(Key::Char('R'));
+        at(&mut e, 2, 0, 0.1);
+        e.handle(Key::Char('z'));
+        e.handle(Key::Char('c'));
+        at(&mut e, 2, 0, 0.2);
+        e.handle(Key::Char('b'));
+        let note = e.grid.tracks[0].steps[2].note.unwrap();
+        assert_eq!(lattice_core::chord::label(&note).as_deref(), Some("C"));
+        // Up together, the chord's held as long as they were.
+        at(&mut e, 4, 0, 0.0);
+        for c in ['z', 'c', 'b'] {
+            e.release(Key::Char(c));
+        }
+        assert_eq!(e.grid.tracks[0].steps[2].note.unwrap().length, 2);
+        // Played after they're up, it's a note of its own.
+        e.handle(Key::Char('x'));
+        assert_eq!(pitches(&e, 0), [(2, 60, 2), (4, 62, 1)]);
+    }
+
+    #[test]
     fn held_keys_set_the_length_and_each_pass_is_one_undo() {
         let mut e = editor();
         e.releases = true;
@@ -358,6 +397,7 @@ mod tests {
         // The next pass is a new take; undo takes it out and leaves the first.
         at(&mut e, 1, 1, 0.0);
         e.handle(Key::Char('c'));
+        e.release(Key::Char('c'));
         e.handle(Key::Char('v'));
         assert_eq!(pitches(&e, 0), [(1, 65, 1), (2, 60, 3), (4, 62, 1)]);
         e.handle(Key::Esc);

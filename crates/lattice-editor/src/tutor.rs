@@ -350,7 +350,9 @@ const LESSONS: &[Lesson] = &[
                voiced close above its root at the track's octave; `C/E` puts the E in the \
                bass, and `F#dim`, `BbM7`, `Gsus` and the other ways lead sheets write them \
                read too. A chord moves with {note_up} and {note_down} as a note does, and an instrument \
-               that plays one note at a time plays its root.\n\nPut an Am7 on the first step \
+               that plays one note at a time plays its root. Played, the duet's chord keys \
+               go in as whole chords, and notes held down together go in as one, on a MIDI \
+               keyboard or in a terminal that says when keys come up.\n\nPut an Am7 on the first step \
                of the LEAD track.",
         teaches: &[],
         commands: &["chord"],

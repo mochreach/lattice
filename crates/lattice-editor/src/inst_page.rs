@@ -16,6 +16,8 @@
 //! page keeps on the track and setting under its own, so `:set`, `:map`, locking and recorded
 //! locks work as there. `enter` on the chain, or `gf` anywhere, opens the track's fx page.
 
+use lattice_core::Chord;
+
 use crate::keymap::{Action, Binding};
 use crate::mixer::{Page, Row, Strip};
 use crate::{Editor, Effect, Key, Mode, PromptKind};
@@ -173,16 +175,17 @@ impl Editor {
             if let Some(effects) = self.play_with_hand(key) {
                 return effects;
             }
-            // A chord's notes all sound, but its root alone is recorded: a track holds one
-            // note on a step.
+            // A chord's recorded whole, on one step.
             let mut pitches = self.key_pitches(key).into_iter();
             let Some(root) = pitches.next() else {
                 return vec![];
             };
-            let mut effects = (self.record_note(key, &[track], root, 0))
-                .unwrap_or_else(|| vec![Effect::Preview { track, pitch: root }]);
-            effects.extend(pitches.map(|pitch| Effect::Preview { track, pitch }));
-            return effects;
+            let chord = Chord::of(root, pitches);
+            return (self.record_note(key, &[track], (root, chord), 0)).unwrap_or_else(|| {
+                (chord.pitches(root))
+                    .map(|pitch| Effect::Preview { track, pitch })
+                    .collect()
+            });
         }
         let action = self.keymap.insert.get(&key).copied().or_else(|| {
             match (key, self.keymap.normal.get(&key)) {

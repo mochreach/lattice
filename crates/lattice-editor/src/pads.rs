@@ -194,7 +194,9 @@ impl Editor {
             },
         };
         let every = if self.repeat { self.repeat_every } else { 0 };
-        if let Some(mut effects) = self.record_note(key, &[track], pitch, every) {
+        if let Some(mut effects) =
+            self.record_note(key, &[track], (pitch, Default::default()), every)
+        {
             if every > 0 {
                 // Heard now if it rounded back, as a plain note would be; then on the grid.
                 let now = effects.iter().any(|e| matches!(e, Effect::Preview { .. }));

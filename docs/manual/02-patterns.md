@@ -689,19 +689,19 @@ a note. Where the scale has no gap, as from E to F, it plays the next note. Righ
 terminal that tells it from the left, as the ones that report key releases do (kitty, WezTerm,
 foot); in one that doesn't, both Shifts are the left's.
 
-A track holds one note on a step, so a chord needs a track a note. On its own, each hand plays
-the cursor's track, as any layout does: a chord key puts its root in and you hear the rest. (If
-there are cursors on several tracks, it deals its notes out over them, root first.) On the
-instrument page, you hear the whole chord and the root is recorded.
+On its own, each hand plays the cursor's track, as any layout does: a chord key puts the whole
+chord in on one step, named on the grid (see [chords](#chords-on-one-step-chord) below). If
+there are cursors on several tracks, it deals its notes out over them, root first, and what's
+left over joins the root's chord. On the instrument page, recording, the whole chord goes in.
 
 **`:hand left`** gives the left hand the selected tracks instead, and **`:hand right`** the
 right: they then play there wherever the cursor is, heard as you play and recorded when
 recording is armed. Give the left hand three or four tracks of the same pad, say (`mig` selects
 a group's): each note goes to a track no other key is holding, so a chord's notes spread over
-them. Notes beyond the hand's tracks are heard on the track the root went to, so one track of a
-polyphonic synth plays whole chords too; recording, only the root goes in there. Then select a
-lead track, `:hand right`, and play chords with one hand while the other screams over the top.
-A mono lead on the right and a poly pad on the left is two tracks, one hand each.
+them. Notes beyond the hand's tracks join the root's chord on the track it went to, so one
+track of a polyphonic synth plays and records whole chords. Then select a lead track,
+`:hand right`, and play chords with one hand while the other screams over the top. A mono lead
+on the right and a poly pad on the left is two tracks, one hand each.
 
 Name the tracks after the hand and you needn't go to them: **`:hand right 1`**, or
 **`:hand left pad1, pad2, pad3`**, numbers from 1 or names, between commas. I wanted it for
@@ -768,6 +768,14 @@ step had one, and the message names the chord it wrote.
 :chord F#dim            F# A C
 :chord BbM7             Bb D F A: M7, maj7 and Δ all read as a major seventh
 ```
+
+**Playing a chord in** works too. In the duet, a chord key enters its whole chord on one step.
+On any layout, notes held down together go in as one: play a note in insert mode and, before
+you let it go, the next notes you play join its chord on the same step, and the cursor moves on
+once. Recording, notes played together on the same step make one chord, held as long as they
+were. That needs to know when a key comes up: a MIDI keyboard always says, and of the typing
+keyboard, a terminal that reports key releases (kitty, WezTerm, foot) does. In one that
+doesn't, each note goes on its own step, as before, and `:chord` or the duet are the way in.
 
 The names are the ones lead sheets use: a root, `C` to `B` with `#` or `b`, then the chord's
 kind, nothing for major, `m`, `dim`, `+`, `sus2`, `sus4`, `5`, `6`, `m6`, `7`, `maj7`, `m7`,

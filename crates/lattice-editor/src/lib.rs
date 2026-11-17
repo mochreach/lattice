@@ -558,6 +558,8 @@ pub struct Editor {
     voices: Vec<(Key, TrackId)>,
     /// Whether the frontend reports key releases, so previews are held until their key comes up.
     pub releases: bool,
+    /// The note last entered while its key's still down, so notes played with it join its chord.
+    chording: Option<chords::Chording>,
     /// Whether Right Shift is held, which in the duet raises the right hand's notes a
     /// semitone. Only terminals that report modifier keys tell it from the left.
     pub right_shift: bool,
@@ -718,6 +720,7 @@ impl Editor {
             hands: Default::default(),
             voices: Vec::new(),
             releases: false,
+            chording: None,
             right_shift: false,
             fill: false,
             sounding: Vec::new(),
@@ -1457,7 +1460,10 @@ impl Editor {
             // The primary's track first, as it sets the take.
             tracks.sort_unstable_by_key(|&t| t != track);
             tracks.dedup();
-            if let Some(effects) = self.record_note(key, &tracks, pitch, 0) {
+            if let Some(effects) = self.record_note(key, &tracks, (pitch, Default::default()), 0) {
+                return effects;
+            }
+            if let Some(effects) = self.join_chord(key, pitch) {
                 return effects;
             }
             self.checkpoint();
@@ -1473,6 +1479,7 @@ impl Editor {
                     });
                 }
             }
+            self.start_chord(key, pitch, &cursors);
             self.advance();
             let mut effects = changed(cursors.iter().map(|c| c.track));
             effects.push(Effect::Preview { track, pitch });
@@ -2590,7 +2597,11 @@ impl Editor {
             }
         });
         if let Some(note) = last {
-            effects.extend(chords::previews(self.cursor().track, note));
+            effects.extend(chords::previews(
+                self.cursor().track,
+                note.pitch,
+                note.chord,
+            ));
         }
         effects
     }
@@ -4337,6 +4348,40 @@ mod tests {
     }
 
     #[test]
+    fn notes_held_together_go_in_as_one_chord() {
+        let mut e = editor();
+        keys(&mut e, "i");
+        // A MIDI keyboard's notes always come up, so a chord held on one is one step.
+        e.play_note(57, 90);
+        e.play_note(64, 90);
+        e.play_note(60, 90);
+        let note = e.grid.tracks[0].steps[0].note.unwrap();
+        assert_eq!(lattice_core::chord::label(&note).as_deref(), Some("Am"));
+        assert_eq!(e.cursor().step, 1);
+        for pitch in [57, 64, 60] {
+            e.stop_note(pitch);
+        }
+        e.play_note(62, 90);
+        assert_eq!(pitches(&e, 0)[1], Some(62));
+        assert_eq!(e.cursor().step, 2);
+        // Undo takes the chord out whole.
+        e.stop_note(62);
+        e.handle(Key::Esc);
+        keys(&mut e, "uu");
+        assert!(e.grid.tracks[0].steps[0].note.is_none());
+
+        // The typing keyboard's held together only where the terminal says when they're up.
+        keys(&mut e, "ggi");
+        keys(&mut e, "zc");
+        assert_eq!(pitches(&e, 0)[..2], [Some(60), Some(64)]);
+        e.releases = true;
+        e.handle(Key::Esc);
+        keys(&mut e, "ggizc");
+        let note = e.grid.tracks[0].steps[0].note.unwrap();
+        assert_eq!(note.chord.offsets(), [4]);
+    }
+
+    #[test]
     fn a_midi_keyboard_enters_notes_as_played_and_holds_them() {
         let mut e = editor();
         let hold = |pitch, velocity| Effect::Hold {
@@ -4362,8 +4407,10 @@ mod tests {
         let note = e.grid.tracks[0].steps[0].note.unwrap();
         assert_eq!((note.pitch, note.velocity), (40, 110));
         assert_eq!(e.cursor().step, 1);
+        e.stop_note(40);
         // The piano keys go on at the player's velocity.
         e.play_note(41, 5);
+        e.stop_note(41);
         keys(&mut e, "z");
         assert_eq!(
             e.grid.tracks[0].steps[2].note.unwrap().velocity,

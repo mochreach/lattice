@@ -33,6 +33,27 @@ impl Chord {
         Some(chord)
     }
 
+    /// The chord of `others` played over `root`: the first [`MAX_CHORD`] that are in MIDI's
+    /// range of it and aren't the root again; any more are left out.
+    pub fn of(root: u8, others: impl IntoIterator<Item = u8>) -> Chord {
+        others
+            .into_iter()
+            .fold(Chord::default(), |chord, pitch| chord.with(root, pitch))
+    }
+
+    /// The chord with `pitch` added over `root`, as it is if it already plays it or is full.
+    pub fn with(mut self, root: u8, pitch: u8) -> Chord {
+        let offset = i8::try_from(i16::from(pitch) - i16::from(root)).ok();
+        let Some(offset) = offset.filter(|&o| o != 0 && !self.offsets().contains(&o)) else {
+            return self;
+        };
+        if let Some(slot) = self.notes.get_mut(usize::from(self.len)) {
+            *slot = offset;
+            self.len += 1;
+        }
+        self
+    }
+
     /// The notes besides the root, as semitones from it.
     pub fn offsets(&self) -> &[i8] {
         // `len` is never more than MAX_CHORD, as only `new` sets it.
@@ -298,6 +319,9 @@ mod tests {
         assert_eq!(chord.pitches(60).collect::<Vec<_>>(), [60, 64, 67, 48]);
         assert_eq!(chord.pitches(125).collect::<Vec<_>>(), [125, 113]);
         assert!(Chord::new(&[1; MAX_CHORD + 1]).is_none());
+        // Built from notes played: the root and repeats left out, and no more than fit.
+        assert_eq!(Chord::of(60, [64, 60, 67, 64, 48]).offsets(), [4, 7, -12]);
+        assert_eq!(Chord::of(60, 61..80).offsets().len(), MAX_CHORD);
         let text = ron::to_string(&chord).unwrap();
         assert_eq!(text, "[4,7,-12]");
         assert_eq!(ron::from_str::<Chord>(&text).unwrap(), chord);

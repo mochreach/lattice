@@ -5,7 +5,7 @@
 //! holds one note on a step, so a chord's notes are dealt out across the hand's tracks, or,
 //! without them, across the cursors'.
 
-use lattice_core::Note;
+use lattice_core::{Chord, Note};
 
 use crate::keymap::{Hand, hand};
 use crate::{Cursor, Editor, Effect, Key, NoteLayout, TrackId, changed};
@@ -88,26 +88,36 @@ impl Editor {
     /// Plays what `key` plays with a hand that has tracks of its own, if it does: each note on
     /// a track none of the hand's other keys is holding, or, all held, the one held longest.
     /// It's recorded when recording, and otherwise only heard, wherever the cursor is. Notes
-    /// beyond the tracks are only heard, on the track the chord's root went to, so a hand of
-    /// one polyphonic track still plays whole chords.
+    /// beyond the tracks join the root's chord, on the track it went to, so a hand of one
+    /// polyphonic track plays and records whole chords.
     pub(crate) fn play_with_hand(&mut self, key: Key) -> Option<Vec<Effect>> {
         let tracks = self.hand_tracks(key);
         let first = *tracks.first()?;
         // Pressed again without its release, it lets go of what it held.
         self.voices.retain(|&(k, _)| k != key);
-        let mut effects = vec![];
-        let mut root = None;
+        let (mut dealt, mut rest) = (vec![], vec![]);
         for pitch in self.key_pitches(key) {
-            let Some(track) = self.take_voice(key, &tracks) else {
-                let track = root.unwrap_or(first);
-                effects.push(Effect::Preview { track, pitch });
-                continue;
-            };
-            root.get_or_insert(track);
+            match self.take_voice(key, &tracks) {
+                Some(track) => dealt.push((track, pitch)),
+                None => rest.push(pitch),
+            }
+        }
+        let Some(&(_, root)) = dealt.first() else {
+            let heard = rest.into_iter().map(|pitch| Effect::Preview {
+                track: first,
+                pitch,
+            });
+            return Some(heard.collect());
+        };
+        let mut chord = Chord::of(root, rest);
+        let mut effects = vec![];
+        for (track, pitch) in dealt {
             effects.extend(
-                (self.record_note(key, &[track], pitch, 0))
-                    .unwrap_or_else(|| vec![Effect::Preview { track, pitch }]),
+                (self.record_note(key, &[track], (pitch, chord), 0))
+                    .unwrap_or_else(|| crate::chords::previews(track, pitch, chord).collect()),
             );
+            // Only the root's.
+            chord = Chord::default();
         }
         Some(effects)
     }
@@ -132,27 +142,39 @@ impl Editor {
 
     /// A chord key in insert mode, with no hand of its own: its notes dealt out to the cursors'
     /// tracks, one each, the root to the primary's, and entered on their steps, or at the
-    /// playhead when recording. Notes beyond the cursors are only heard, on the primary's track;
-    /// with one cursor, that's all but the root.
+    /// playhead when recording. Notes beyond the cursors join the root's chord on the
+    /// primary's step; with one cursor, the whole chord's there.
     pub(crate) fn insert_chord(&mut self, key: Key, chord: &[u8]) -> Vec<Effect> {
         let primary = self.cursor().track;
         let mut cursors: Vec<Cursor> = self.selections.iter().map(|s| s.cursor).collect();
         cursors.sort_by_key(|c| (c.track != primary, c.track));
         cursors.dedup_by_key(|c| c.track);
         let dealt: Vec<(Cursor, u8)> = cursors.into_iter().zip(chord.iter().copied()).collect();
+        // Each cursor's note and its chord: the notes left over go with the root.
+        let notes: Vec<(Cursor, u8, Chord)> = (dealt.iter().enumerate())
+            .map(|(i, &(c, pitch))| {
+                let rest = chord.iter().skip(dealt.len()).copied();
+                let chord = match i {
+                    0 => Chord::of(pitch, rest),
+                    _ => Chord::default(),
+                };
+                (c, pitch, chord)
+            })
+            .collect();
         let mut effects = vec![];
+        self.chording = None;
         if self.recording() {
-            for &(c, pitch) in &dealt {
+            for &(c, pitch, chord) in &notes {
                 // Recording, a note always goes in somewhere, so there's always an answer.
                 effects.extend(
-                    self.record_note(key, &[c.track], pitch, 0)
+                    self.record_note(key, &[c.track], (pitch, chord), 0)
                         .unwrap_or_default(),
                 );
             }
         } else {
             self.checkpoint();
             let velocity = self.touch.unwrap_or(self.velocity);
-            for &(c, pitch) in &dealt {
+            for &(c, pitch, chord) in &notes {
                 if let Some(step) =
                     (self.grid.tracks.get_mut(c.track)).and_then(|t| t.steps.get_mut(c.step))
                 {
@@ -160,23 +182,17 @@ impl Editor {
                         pitch,
                         velocity,
                         length: 1,
-                        chord: Default::default(),
+                        chord,
                     });
                 }
             }
             self.advance();
-            effects.extend(changed(dealt.iter().map(|(c, _)| c.track)));
-            effects.extend((dealt.iter()).map(|&(c, pitch)| Effect::Preview {
-                track: c.track,
-                pitch,
-            }));
+            effects.extend(changed(notes.iter().map(|(c, _, _)| c.track)));
+            effects.extend(
+                (notes.iter())
+                    .flat_map(|&(c, pitch, chord)| crate::chords::previews(c.track, pitch, chord)),
+            );
         }
-        effects.extend(
-            (chord.iter().skip(dealt.len())).map(|&pitch| Effect::Preview {
-                track: primary,
-                pitch,
-            }),
-        );
         effects
     }
 
@@ -399,8 +415,8 @@ mod tests {
         keys(&mut e, "i");
         assert_eq!(
             heard(&keys(&mut e, "D")),
-            [(0, 76), (1, 67), (2, 71), (0, 52)],
-            "G B E, over an E heard"
+            [(0, 76), (0, 52), (1, 67), (2, 71)],
+            "G B E, over an E heard with the root"
         );
         e.release(Key::Char('d'));
         assert!(e.voices.is_empty());
@@ -546,11 +562,11 @@ mod tests {
         assert_eq!(e.message.as_deref(), Some("right hand plays lead"));
 
         // Wherever the cursor is, a chord's notes go a pad each, the bass, for want of a
-        // fourth, heard on the root's, and the tune to the lead.
+        // fourth, with the root, and the tune to the lead.
         keys(&mut e, "thi");
         assert_eq!(
             heard(&keys(&mut e, "a")),
-            [(0, 60), (1, 64), (2, 67), (0, 48)]
+            [(0, 60), (0, 48), (1, 64), (2, 67)]
         );
         assert_eq!(heard(&keys(&mut e, "k")), [(3, 72)]);
         assert!(
@@ -560,7 +576,7 @@ mod tests {
         // The next chord, the old one still held, takes the pads it held longest.
         assert_eq!(
             heard(&keys(&mut e, "g")),
-            [(0, 67), (1, 71), (2, 62), (0, 55)]
+            [(0, 67), (0, 55), (1, 71), (2, 62)]
         );
 
         // Recording, a chord goes in on one step across the pads.
@@ -621,7 +637,7 @@ mod tests {
         );
         assert_eq!(heard(&keys(&mut e, "k")), [(1, 72)]);
 
-        // Recording, the root goes in, and the rest are only heard.
+        // Recording, the whole chord goes in on the root's step.
         for k in "ak".chars() {
             e.release(Key::Char(k));
         }
@@ -632,7 +648,23 @@ mod tests {
             count_in: 0,
         }));
         assert_eq!(heard(&keys(&mut e, "a")).len(), 4);
-        assert_eq!(e.grid.tracks[0].steps[4].note.map(|n| n.pitch), Some(60));
+        let note = e.grid.tracks[0].steps[4].note.unwrap();
+        assert_eq!(lattice_core::chord::label(&note).as_deref(), Some("C"));
+        assert_eq!(note.chord.pitches(note.pitch).count(), 4);
+    }
+
+    #[test]
+    fn a_chord_key_puts_its_whole_chord_on_the_cursor_s_step() {
+        let mut e = editor();
+        e.run_command("layout duet");
+        keys(&mut e, "i");
+        let effects = keys(&mut e, "hb");
+        let names: Vec<_> = (0..2)
+            .map(|s| lattice_core::chord::label(&e.grid.tracks[0].steps[s].note.unwrap()))
+            .collect();
+        assert_eq!(names, [Some("Am".into()), Some("G/B".into())]);
+        assert_eq!(heard(&effects).len(), 8, "each with its bass");
+        assert_eq!(e.cursor().step, 2);
     }
 
     #[test]

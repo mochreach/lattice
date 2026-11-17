@@ -2,7 +2,18 @@
 
 use lattice_core::{Chord, Note, chord};
 
-use crate::{Editor, Effect, changed, octave_pitch};
+use crate::{Cursor, Editor, Effect, Key, TrackId, changed, octave_pitch};
+
+/// A note entered whose key is still down: notes played before it comes up join its chord,
+/// rather than going on down the track.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Chording {
+    /// The keys held down, the first the root's.
+    keys: Vec<Key>,
+    /// The steps it went in on, and its pitch.
+    steps: Vec<(TrackId, usize)>,
+    root: u8,
+}
 
 /// The chord called `name` at `octave`: its root there, its notes close above, and a bass
 /// after a slash just below the root. The root's the note's pitch, the rest its chord.
@@ -19,12 +30,75 @@ pub(crate) fn voiced(name: &str, octave: u8) -> Result<(u8, Chord), String> {
     Ok((pitch, chord))
 }
 
-/// What sounds `note` on `track` as it's entered: each of a chord's notes.
-pub(crate) fn previews(track: usize, note: Note) -> impl Iterator<Item = Effect> {
-    (note.chord.pitches(note.pitch)).map(move |pitch| Effect::Preview { track, pitch })
+/// What sounds `pitch` and its `chord` on `track` as they're entered: each of the notes.
+pub(crate) fn previews(track: usize, pitch: u8, chord: Chord) -> impl Iterator<Item = Effect> {
+    chord
+        .pitches(pitch)
+        .map(move |pitch| Effect::Preview { track, pitch })
 }
 
 impl Editor {
+    /// Whether `key` coming up will be heard, so it can be held: a MIDI note's always is.
+    fn reports_release(&self, key: Key) -> bool {
+        self.releases || matches!(key, Key::Note(_))
+    }
+
+    /// `pitch`, entered on `key` at `cursors`, starts a chord while its key's held, if the
+    /// key's coming up will be heard.
+    pub(crate) fn start_chord(&mut self, key: Key, pitch: u8, cursors: &[Cursor]) {
+        self.chording = self.reports_release(key).then(|| Chording {
+            keys: vec![key],
+            steps: (cursors.iter())
+                .filter_map(|c| Some((*self.ids.get(c.track)?, c.step)))
+                .collect(),
+            root: pitch,
+        });
+    }
+
+    /// `pitch`, played on `key` while the last note entered is still held, joins its chord,
+    /// in the same undo; `None` if nothing's held.
+    pub(crate) fn join_chord(&mut self, key: Key, pitch: u8) -> Option<Vec<Effect>> {
+        if !self.reports_release(key) {
+            return None;
+        }
+        let chording = self.chording.as_mut()?;
+        chording.keys.push(key);
+        let root = chording.root;
+        let mut tracks = vec![];
+        for &(id, step) in &chording.steps {
+            let Some(t) = self.ids.iter().position(|&i| i == id) else {
+                continue;
+            };
+            // Changed since some other way, it's left as it is.
+            let note = (self.grid.tracks.get_mut(t))
+                .and_then(|track| track.steps.get_mut(step))
+                .and_then(|s| s.note.as_mut())
+                .filter(|n| n.pitch == root);
+            if let Some(note) = note {
+                note.chord = note.chord.with(root, pitch);
+                tracks.push(t);
+            }
+        }
+        let Some(&track) = tracks.first() else {
+            // Its steps have all changed since: it goes in as a note of its own.
+            self.chording = None;
+            return None;
+        };
+        let mut effects = changed(tracks);
+        effects.push(Effect::Preview { track, pitch });
+        Some(effects)
+    }
+
+    /// `key`'s come up: once all a chord's keys have, the next note goes on down the track.
+    pub(crate) fn release_chord(&mut self, key: Key) {
+        if let Some(chording) = &mut self.chording {
+            chording.keys.retain(|&k| k != key);
+            if chording.keys.is_empty() {
+                self.chording = None;
+            }
+        }
+    }
+
     /// `:chord NAME`: every selected step plays the chord, voiced at its track's octave,
     /// keeping a note's velocity and length if it had one.
     pub(crate) fn set_chord(&mut self, name: &str) -> Result<Vec<Effect>, String> {
@@ -55,7 +129,7 @@ impl Editor {
         }
         let mut effects = changed(columns.iter().map(|(t, _)| *t));
         if let Some(note) = last {
-            effects.extend(previews(self.cursor().track, note));
+            effects.extend(previews(self.cursor().track, note.pitch, note.chord));
             self.message = chord::label(&note);
         }
         Ok(effects)
