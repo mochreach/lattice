@@ -168,7 +168,7 @@ impl Editor {
     pub(crate) fn play_key(&mut self, key: Key) -> Vec<Effect> {
         let track = self.inst_cursor().track;
         if self.piano_pitch(key).is_some()
-            && (!self.keymap.insert.contains_key(&key) || self.keymap.chord_key(key).is_some())
+            && (!self.keymap.insert.contains_key(&key) || self.keymap.duet_key(key).is_some())
         {
             if let Some(effects) = self.play_with_hand(key) {
                 return effects;

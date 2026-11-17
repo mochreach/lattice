@@ -783,9 +783,10 @@ track stays a real track, with its own rules, length and strip; the group adds:
   fifth (pentatonics get sus4s). Each is voiced in the octave from the root, plus a bass an
   octave down; Shift raises its lowest note an octave and Alt drops its highest
   (`keymap::Voicing`), relative inversions, as the close voicing already puts each chord in its
-  own. Shifted keys come back to their chord key (`Keymap::chord_key`, the number row's symbols
-  by US and UK layouts), and letting any go releases all of them, as Shift may come up first;
-  in the duet they win over insert bindings, so `R` and `!` play chords. The right hand is the
+  own. Every duet key with Shift or Alt comes back to itself (`Keymap::duet_key`, symbols by US
+  and UK layouts), so the right hand plays on while the left holds one; letting any go releases
+  all of them, as Shift may come up first. In the duet they win over insert bindings, so `R`,
+  `!`, `{` and `}` play. The right hand is the
   scale layout an octave up, K its root. A track holds one
   note a step, so a chord is dealt out: unbound, over the insert cursors' tracks, primary
   first, the rest only heard; on the instrument page heard

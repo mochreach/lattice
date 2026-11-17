@@ -660,9 +660,10 @@ higher. Alt voices it an inversion **down**, its highest note dropped an octave:
 and closer to the bass. The bass stays where it was either way. I'd thought of first and second
 inversions on fixed keys, but the chords are already in different inversions as laid out (F in C
 is C F A, the second), so "one up" and "one down" from wherever each chord is is what the hand
-can feel. With Shift, the number row is its symbols, `!` to `&`, and in the duet `R` and `!` are
-chords, not record and the loop pedal: arm recording with `R` in normal mode, and the loop
-pedal is still right Alt.
+can feel. The right hand plays on through Shift or Alt, its notes as they are, so the left can
+hold one down through a phrase. In the duet, a note key is a note whatever's held: `R` and `!`
+are chords, not record and the loop pedal, and `{` and `}` are notes, not the octave. Arm
+recording and change the octave in normal mode; the loop pedal is still right Alt.
 
 The chords take their notes from the scale, stacking every other note, so they change with it.
 In A harmonic minor the columns are Am B° C+ Dm E F G#°, the augmented and diminished chords

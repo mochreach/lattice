@@ -769,8 +769,10 @@ fn places(home: (usize, usize)) -> impl Iterator<Item = (char, i16, i16)> {
 const MAJOR_EXTRAS: [i16; 6] = [5, 7, 9, 2, 4, 11];
 const MINOR_EXTRAS: [i16; 6] = [5, 7, 8, 10, 3, 2];
 
-/// The number row's keys with Shift, on US and UK keyboards, as far as the left hand reaches.
-const SHIFTED_DIGITS: [(char, char); 9] = [
+/// Keys with Shift, on US and UK keyboards, and the keys they are: the number row, and the
+/// symbols the duet's right hand reaches. `"` and `@` are Shift's 2 on one of the two and its
+/// `'` on the other, so they're taken as the 2, the left hand's.
+const SHIFTED: [(char, char); 20] = [
     ('!', '1'),
     ('@', '2'),
     ('"', '2'),
@@ -780,6 +782,17 @@ const SHIFTED_DIGITS: [(char, char); 9] = [
     ('%', '5'),
     ('^', '6'),
     ('&', '7'),
+    ('*', '8'),
+    ('(', '9'),
+    (')', '0'),
+    ('_', '-'),
+    ('+', '='),
+    ('{', '['),
+    ('}', ']'),
+    (':', ';'),
+    ('<', ','),
+    ('>', '.'),
+    ('?', '/'),
 ];
 
 /// How a chord key's chord is voiced: as laid out, or with Shift an inversion up, its lowest
@@ -1158,17 +1171,18 @@ impl Default for Keymap {
 }
 
 impl Keymap {
-    /// The chord key `key` is in the duet layout, and how it's voiced: `a`, Shift's `A` and
-    /// Alt's `A-a` are all `a`.
-    pub fn chord_key(&self, key: Key) -> Option<(char, Voicing)> {
+    /// The note key `key` is in the duet layout, and how a chord there's voiced: `a`, Shift's
+    /// `A` and Alt's `A-a` are all `a`, as `k`, `K` and `A-k` are all `k`, so that the right
+    /// hand plays on while the left holds Shift or Alt.
+    pub fn duet_key(&self, key: Key) -> Option<(char, Voicing)> {
+        if self.layout != NoteLayout::Duet {
+            return None;
+        }
         let (c, voicing) = match key {
-            Key::Char(c) if self.chords.contains_key(&c) => (c, Voicing::Close),
+            Key::Char(c) if self.piano.contains_key(&c) => (c, Voicing::Close),
             Key::Char(c) => {
-                let digit = SHIFTED_DIGITS
-                    .iter()
-                    .find(|&&(s, _)| s == c)
-                    .map(|&(_, d)| d);
-                let base = digit.unwrap_or(c.to_ascii_lowercase());
+                let symbol = SHIFTED.iter().find(|&&(s, _)| s == c).map(|&(_, k)| k);
+                let base = symbol.unwrap_or(c.to_ascii_lowercase());
                 if base == c {
                     return None;
                 }
@@ -1177,13 +1191,13 @@ impl Keymap {
             Key::Alt(c) => (c, Voicing::Down),
             _ => return None,
         };
-        self.chords.contains_key(&c).then_some((c, voicing))
+        self.piano.contains_key(&c).then_some((c, voicing))
     }
 
     /// The notes `key` plays as a chord key in the duet layout, voiced as its modifier says:
     /// the root first, the bass last.
     pub fn chord(&self, key: Key) -> Option<Vec<i16>> {
-        let (c, voicing) = self.chord_key(key)?;
+        let (c, voicing) = self.duet_key(key)?;
         let mut notes = self.chords.get(&c)?.clone();
         let upper = notes.len().saturating_sub(1);
         let moved = match voicing {
@@ -1203,11 +1217,11 @@ impl Keymap {
         Some(notes)
     }
 
-    /// Every key that plays chord key `c`, however it's voiced, so that letting any of them go
+    /// Every key that plays duet key `c`, however it's voiced, so that letting any of them go
     /// lets go of what the others started: Shift or Alt may come up first.
-    pub fn chord_keys(&self, c: char) -> Vec<Key> {
-        let shifted = (SHIFTED_DIGITS.iter())
-            .filter(|&&(_, d)| d == c)
+    pub fn duet_keys(&self, c: char) -> Vec<Key> {
+        let shifted = (SHIFTED.iter())
+            .filter(|&&(_, k)| k == c)
             .map(|&(s, _)| Key::Char(s))
             .chain(
                 c.is_ascii_lowercase()

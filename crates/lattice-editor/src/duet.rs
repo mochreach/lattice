@@ -53,7 +53,7 @@ impl Editor {
         if self.keymap.layout != NoteLayout::Duet {
             return vec![];
         }
-        let c = match (self.keymap.chord_key(key), key) {
+        let c = match (self.keymap.duet_key(key), key) {
             (Some((c, _)), _) | (None, Key::Char(c)) => c,
             _ => return vec![],
         };
@@ -389,6 +389,32 @@ mod tests {
             "G B E"
         );
         e.release(Key::Char('d'));
+        assert!(e.voices.is_empty());
+    }
+
+    #[test]
+    fn the_right_hand_plays_on_while_the_left_holds_shift_or_alt() {
+        let mut e = editor();
+        e.releases = true;
+        e.run_command("layout duet");
+        keys(&mut e, "tltli");
+        // With Shift held for the chord, K is k and { is [: notes, not the octave.
+        keys(&mut e, "A");
+        assert_eq!(heard(&keys(&mut e, "K")), [(2, 72)]);
+        assert_eq!(
+            heard(&keys(&mut e, "{")),
+            [(2, 83)],
+            "B, an octave and a seventh up"
+        );
+        assert_eq!(e.octave, 4);
+        assert_eq!(heard(&e.handle(Key::Alt('l'))), [(2, 74)]);
+
+        // A hand's track is freed when k comes up, though it went down as K.
+        e.handle(Key::Esc);
+        e.run_command("hand right");
+        keys(&mut e, "i");
+        assert_eq!(heard(&keys(&mut e, "K")), [(2, 72)]);
+        e.release(Key::Char('k'));
         assert!(e.voices.is_empty());
     }
 

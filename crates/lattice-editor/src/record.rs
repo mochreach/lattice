@@ -183,10 +183,10 @@ impl Editor {
         if repeats {
             self.repeat = false;
         }
-        // A chord key comes up as itself whether Shift or Alt went first, so it lets go of
-        // all its voicings.
-        let keys = match self.keymap.chord_key(key) {
-            Some((c, _)) => self.keymap.chord_keys(c),
+        // A duet key comes up as itself whether Shift or Alt went first, so it lets go of
+        // what it played with either.
+        let keys = match self.keymap.duet_key(key) {
+            Some((c, _)) => self.keymap.duet_keys(c),
             None => vec![key],
         };
         let mut effects = vec![];

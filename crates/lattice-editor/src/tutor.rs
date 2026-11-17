@@ -312,7 +312,7 @@ const LESSONS: &[Lesson] = &[
                `u` `j` `m`, plays a whole chord. The home row is the scale's chords, one to \
                seven from `a`; above each is its other quality (minor for major), above that \
                its seventh, and below it with its third in the bass. Shift voices a chord an \
-               inversion up, Alt one down. Under the right, from `k`, is the scale an octave \
+               inversion up, Alt one down, and the right hand plays on through either. Under the right, from `k`, is the scale an octave \
                up, for a tune over them. \
                `:hand left` gives the left hand the selected tracks to play wherever the \
                cursor is, a chord's notes dealt out one to a track, and `:hand right` the \

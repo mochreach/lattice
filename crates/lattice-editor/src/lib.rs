@@ -1370,9 +1370,13 @@ impl Editor {
 
     /// The pitch a piano key plays at the keyboard octave.
     fn piano_pitch(&self, key: Key) -> Option<u8> {
-        // A chord key with Shift or Alt plays its chord's root, voiced.
+        // A chord key with Shift or Alt plays its chord's root, voiced; the right hand's
+        // keys play their own notes, as Shift or Alt are for the left.
         if let Some(chord) = self.keymap.chord(key) {
             return self.octave_pitch(*chord.first()?);
+        }
+        if let Some((c, _)) = self.keymap.duet_key(key) {
+            return self.octave_pitch(*self.keymap.piano.get(&c)?);
         }
         let c = match key {
             Key::Char(c) => c,
@@ -1398,9 +1402,10 @@ impl Editor {
             return effects;
         }
         // A key bound in insert mode is the player's choice over the note it would play; but
-        // in the duet, Shift and Alt on the left hand voice its chords, `R` and `!` too.
+        // in the duet, a note key plays with Shift or Alt, which voice the left hand's chords:
+        // `R`, `!`, `{` and `}` too.
         if let Some(&action) = self.keymap.insert.get(&key)
-            && self.keymap.chord_key(key).is_none()
+            && self.keymap.duet_key(key).is_none()
         {
             return self.act(action, 1);
         }
