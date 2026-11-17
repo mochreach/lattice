@@ -75,6 +75,12 @@ impl Key {
             "home" => Key::Home,
             "end" => Key::End,
             "ralt" => Key::RightAlt,
+            _ if let Some(pitch) = (name.strip_prefix("note "))
+                .and_then(|p| p.parse::<u8>().ok())
+                .filter(|&p| p < 128) =>
+            {
+                Key::Note(pitch)
+            }
             _ if let Some(n) = (name.strip_prefix('F'))
                 .and_then(|n| n.parse::<u8>().ok())
                 .filter(|n| (1..=12).contains(n)) =>
@@ -115,6 +121,17 @@ impl Key {
             rest = after;
         }
         Ok(out)
+    }
+
+    /// Keys as [`Key::sequence`] reads them.
+    pub fn write_sequence(keys: &[Key]) -> String {
+        (keys.iter())
+            .map(|key| match key {
+                Key::Char('<') => "<lt>".into(),
+                Key::Char(c) => c.to_string(),
+                key => format!("<{key}>"),
+            })
+            .collect()
     }
 }
 

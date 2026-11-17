@@ -99,6 +99,7 @@ fn new_song() -> Song {
         arrangement: Default::default(),
         buses: demo::buses(),
         click: true,
+        playing: Default::default(),
     }
 }
 

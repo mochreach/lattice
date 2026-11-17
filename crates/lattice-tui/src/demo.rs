@@ -881,6 +881,7 @@ pub fn song() -> Song {
         },
         buses: buses(),
         click: true,
+        playing: Default::default(),
     }
 }
 

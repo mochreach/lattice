@@ -48,6 +48,7 @@ mod mixer;
 mod pads;
 mod pattern;
 mod patterns;
+mod playing;
 mod presets;
 mod rearrange;
 mod record;
@@ -88,7 +89,8 @@ pub fn home() -> Option<PathBuf> {
 use std::path::{Path, PathBuf};
 
 use lattice_core::{
-    Arrangement, Buses, FxChain, Grid, Lock, MAX_STEPS, MAX_TRACKS, Note, Preset, Song, Step, Track,
+    Arrangement, Buses, FxChain, Grid, Lock, MAX_STEPS, MAX_TRACKS, Note, Playing, Preset, Song,
+    Step, Track,
 };
 
 use crate::pattern::Pattern;
@@ -433,6 +435,7 @@ struct Saved {
     arrangement: Arrangement,
     buses: Buses,
     bpm: f64,
+    playing: Playing,
 }
 
 #[derive(Debug, Clone)]
@@ -645,6 +648,8 @@ impl Editor {
                 arrangement: arrangement.clone(),
                 buses: Buses::default(),
                 bpm,
+                // As the editor starts.
+                playing: Playing::default(),
             },
             grid,
             arrangement,
@@ -757,7 +762,8 @@ impl Editor {
         !self.tutoring()
             && (!self.same_patterns()
                 || self.buses != self.saved.buses
-                || self.bpm != self.saved.bpm)
+                || self.bpm != self.saved.bpm
+                || self.playing() != self.saved.playing)
     }
 
     /// Whether the tracks and patterns are as saved, whichever pattern is being edited.
@@ -791,6 +797,7 @@ impl Editor {
             arrangement: self.arrangement.clone(),
             buses: self.buses.clone(),
             click: self.click,
+            playing: self.playing(),
         }
     }
 
@@ -808,6 +815,7 @@ impl Editor {
             arrangement: self.arrangement.clone(),
             buses: self.buses.clone(),
             bpm: self.bpm,
+            playing: self.playing(),
         };
     }
 
@@ -816,7 +824,10 @@ impl Editor {
     /// send the new song to the engine.
     pub fn load(&mut self, song: Song, path: PathBuf) -> Vec<Effect> {
         let effects = self.replace_song(song, Some(path.clone()));
-        self.message = Some(format!("opened {}", path.display()));
+        self.message = Some(match self.message.take() {
+            Some(problems) => format!("opened {}, but {problems}", path.display()),
+            None => format!("opened {}", path.display()),
+        });
         self.tutor = None;
         self.armed = None;
         effects
@@ -863,6 +874,12 @@ impl Editor {
             arrangement: Default::default(),
             buses: Default::default(),
             click: self.click,
+            // The keyboard stays as it is, but for the hands, whose tracks have gone.
+            playing: Playing {
+                left: vec![],
+                right: vec![],
+                ..self.playing()
+            },
         };
         let effects = self.replace_song(song, path.clone());
         self.page = Page::Pattern;
@@ -883,6 +900,7 @@ impl Editor {
             arrangement: self.arrangement.clone(),
             buses: self.buses.clone(),
             bpm: self.bpm,
+            playing: self.playing(),
         };
     }
 
@@ -908,6 +926,7 @@ impl Editor {
             arrangement: arrangement.clone(),
             buses: song.buses.clone(),
             bpm: song.bpm,
+            playing: song.playing.clone(),
         };
         self.grid = grid;
         self.arrangement = arrangement;
@@ -935,6 +954,9 @@ impl Editor {
         self.undo.clear();
         self.redo.clear();
         self.reconcile();
+        self.message = self.set_playing(&song.playing);
+        // As opened, though what couldn't be is left as it starts.
+        self.saved.playing = self.playing();
         // Every id is new, so the engine rebuilds every track with its contents.
         vec![
             Effect::TracksChanged,

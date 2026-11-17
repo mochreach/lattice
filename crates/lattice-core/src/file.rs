@@ -71,6 +71,7 @@ fn check(song: &Song) -> Result<(), String> {
     song.buses.send.check("send")?;
     song.buses.master.check("master")?;
     check_grid(&song.grid)?;
+    song.playing.check(song.grid.tracks.len())?;
     song.arrangement.check(song.grid.tracks.len())
 }
 
@@ -358,6 +359,7 @@ mod tests {
                 master: Bus::default(),
             },
             click: true,
+            playing: Default::default(),
         }
     }
 
@@ -366,6 +368,24 @@ mod tests {
         let song = song();
         let text = to_ron(&song).unwrap();
         assert_eq!(from_ron(&text).unwrap(), song, "{text}");
+    }
+
+    #[test]
+    fn keeps_how_the_keyboard_s_set_up_and_checks_its_hands() {
+        let mut song = song();
+        song.playing = crate::Playing {
+            layout: "duet".into(),
+            right: vec![0],
+            left: vec![1],
+            keys: [(1, ":set voices mono 1<ret>".into())].into(),
+            ..Default::default()
+        };
+        let text = to_ron(&song).unwrap();
+        assert_eq!(from_ron(&text).unwrap(), song, "{text}");
+        assert!(!to_ron(&self::tests::song()).unwrap().contains("playing"));
+        song.playing.left = vec![2];
+        let text = to_ron(&song).unwrap();
+        assert!(matches!(from_ron(&text), Err(FileError::Invalid(_))));
     }
 
     #[test]

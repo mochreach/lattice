@@ -577,6 +577,77 @@ pub struct Song {
     /// Whether the metronome clicks while the song plays.
     #[serde(default = "click_on", skip_serializing_if = "is_on")]
     pub click: bool,
+    /// How the keyboard's set up to play over it.
+    #[serde(default, skip_serializing_if = "Playing::is_default")]
+    pub playing: Playing,
+}
+
+/// The highest keyboard octave.
+pub const MAX_OCTAVE: u8 = 9;
+
+/// How the computer keyboard is set up to play live over the song: kept with it, so that a
+/// performance over a sequenced song comes back as it was left. The layout and scale are named
+/// as the editor names them, which it checks as it opens them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Playing {
+    /// The note layout, as `:layout` names it.
+    pub layout: String,
+    /// The scale, as `:scale` names it, and its root in semitones above C.
+    pub scale: String,
+    pub root: u8,
+    /// The keyboard octave.
+    pub octave: u8,
+    /// The tracks the duet's hands play, as indices into the grid's; none plays the cursor's.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub left: Vec<usize>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub right: Vec<usize>,
+    /// Keys recorded into F keys, by the F key's number, written as the tutor writes keys:
+    /// `:set voices mono 1<ret>`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub keys: BTreeMap<u8, String>,
+}
+
+impl Default for Playing {
+    fn default() -> Self {
+        Self {
+            layout: "piano".into(),
+            scale: "major".into(),
+            root: 0,
+            octave: 4,
+            left: vec![],
+            right: vec![],
+            keys: BTreeMap::new(),
+        }
+    }
+}
+
+impl Playing {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Catches what the types allow but the editor doesn't, for a grid of `tracks`.
+    pub fn check(&self, tracks: usize) -> Result<(), String> {
+        if self.root > 11 || self.octave > MAX_OCTAVE {
+            return Err(format!(
+                "playing: roots go from 0 to 11 and octaves from 0 to {MAX_OCTAVE}"
+            ));
+        }
+        if let Some(t) = (self.left.iter().chain(&self.right)).find(|&&t| t >= tracks) {
+            return Err(format!(
+                "playing: a hand plays track {t}, but tracks go from 0 to {}",
+                tracks.saturating_sub(1)
+            ));
+        }
+        if let Some(n) = self.keys.keys().find(|n| !(1..=12).contains(*n)) {
+            return Err(format!(
+                "playing: there's no F{n}; F keys go from F1 to F12"
+            ));
+        }
+        Ok(())
+    }
 }
 
 fn click_on() -> bool {

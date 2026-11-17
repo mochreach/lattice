@@ -716,19 +716,25 @@ heard on the root's.
 ```
 
 `:hand off` puts both hands back on the cursor's track; `:hand left` and `:hand right` switch
-to the duet layout if you weren't in it. Which tracks the hands play isn't saved, as the layout
-isn't; a track deleted leaves its hand.
+to the duet layout if you weren't in it. Which tracks the hands play is saved with the song, as
+the layout is; a track moved takes its hand with it, and a track deleted leaves its hand.
 
 `:layout piano` goes back. In every layout, `{` and `}` change the octave, and the status line
 in insert mode says which layout you're in (`z–] notes`, `wicki notes`, `A minor notes`,
-`duet in C major`). The layout lasts until Lattice quits; it isn't saved with the song.
+`duet in C major`).
+
+The layout is saved with the song, and so are the scale, the octave, the hands' tracks and the
+keys recorded into F keys: opening the song sets the keyboard up as you left it. I play live over
+sequenced songs, and setting all that up again each time, with the right tracks on the right
+hands, was a chore that was easy to get wrong in front of people. It's part of the song, so
+changing it adds a `[+]`. `:new` keeps the keyboard as it is, but for the hands.
 
 ### The keyboard octave: `{` `}` and `:oct`
 
 The **keyboard octave**, `oct` in the header, is the octave the piano's `z` plays: 4 to start,
 so `z` is middle C. `{` and `}` move it down and up one, from 0 to 9, in any mode and on any
 page (they work while choosing `r`'s note, too); `:oct N` sets it outright. The message says
-`octave 3`. Like the layout, it's not saved.
+`octave 3`. Like the layout, it's saved with the song.
 
 ### Auto-step: `:step`
 
@@ -951,9 +957,11 @@ QF4                      start recording into F4
 Q                        stop: recorded 17 keys into F4: F4 presses them
 ```
 
-A recorded F key comes before anything the config binds it to, until Lattice quits, when
-recordings go; recording nothing into it (`QF4Q`) hands it back to the binding. For one that
-lasts, bind the F key in the config file instead, which works for any command or action (see
+A recorded F key comes before anything the config binds it to. Unlike a register's keys, it's
+saved with the song, and comes back when the song is opened, so the keys a song's performance
+needs go with it: `QF1:set voices mono 1` then `ret` and `Q` puts the lead into mono on F1, in
+that song. Recording nothing into it (`QF4Q`) hands it back to the binding. For one every song
+has, bind the F key in the config file instead, which works for any command or action (see
 [keys](10-files-and-config.md)):
 
 ```toml

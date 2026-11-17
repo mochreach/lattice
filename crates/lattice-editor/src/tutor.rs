@@ -321,7 +321,9 @@ const LESSONS: &[Lesson] = &[
                cursor is, a chord's notes dealt out one to a track (with one track, the rest \
                are heard on it), and `:hand right` the \
                right; `:hand off` puts both back on the cursor's track. Tracks can be \
-               named instead, from anywhere: `:hand left 2,3,4`, `:hand right LEAD`.\n\nGive the left \
+               named instead, from anywhere: `:hand left 2,3,4`, `:hand right LEAD`. The \
+               layout, scale, octave, hands and F keys' recorded keys are saved with the \
+               song, so it opens ready to play over.\n\nGive the left \
                hand the BASS track and the right hand the LEAD.",
         teaches: &[],
         commands: &["layout", "hand"],
@@ -1327,6 +1329,7 @@ fn song() -> Song {
         arrangement: Arrangement::default(),
         buses: Buses::default(),
         click: true,
+        playing: Default::default(),
     }
 }
 

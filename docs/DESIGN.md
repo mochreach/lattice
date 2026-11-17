@@ -778,7 +778,7 @@ track stays a real track, with its own rules, length and strip; the group adds:
   notes, 2 of five or six, 3 of eight). Setting `:scale` lays the keys out again. `SCALES` has
   22: the modes, the harmonic and melodic minors and harmonic major (each with an augmented
   triad and a diminished seventh), the augmented-second scales, pentatonics and the Japanese
-  ones, and the symmetrical whole-tone, octatonic and augmented. It isn't saved with a song, so
+  ones, and the symmetrical whole-tone, octatonic and augmented. A song saves it by name, so
   its order is free to change.
 - **Tonnetz (done).** `:layout tonnetz` puts each key `4 * up - 7 * right` semitones from F,
   folded into the octave above the scale's root, so neighbours are fifths and thirds, every
@@ -1639,7 +1639,8 @@ end. Keys can also go into an F key (`QF4`; `replay::Slot` is a register or an F
 key replays itself, with any count, before the keymap's binding for it, so one key does what's
 done often; with nothing recorded, the config's binding (`F4 = ":midi-learn this"`) has it. In
 insert mode, where letters are notes, it presses them in normal mode, where they were recorded,
-and goes back to inserting after (`Editor::replay_while_playing`).
+and goes back to inserting after (`Editor::replay_while_playing`). F keys are saved with the
+song, registers aren't (see below).
 
 ### The command line's suggestions and history
 
@@ -1777,7 +1778,13 @@ Songs are saved as RON in `.lattice` files, written by `lattice_core::to_ron` an
 `from_ron`, which also rejects songs the editor and engine can't handle (no tracks, lengths outside
 1–256, and so on). A file holds the `Song`: its tempo, its grid of tracks, and its arrangement:
 the patterns and the order they play in. It also keeps whether the metronome clicks, written as
-`click: false` only when it doesn't, so a finished piece can open without one. The tracks carry the steps of the pattern being edited,
+`click: false` only when it doesn't, so a finished piece can open without one. `Playing` keeps
+how the keyboard's set up to play over the song live (`playing.rs`): the layout and scale by
+name, the octave, the hands' tracks by index (from their `TrackId`s as saved, back to new ids as
+opened) and the F keys' recorded keys as `Key::sequence` text, left out while it's as Lattice
+starts. It's compared with the saved song's for the `[+]`, and a layout, scale or key the
+editor doesn't know is left as it starts, with the message saying so, rather than refusing the
+song. The tracks carry the steps of the pattern being edited,
 and each other pattern has a lane per track, written on one line each. Tracks are written
 sparsely, as a length and a map from step index to the steps that aren't empty, and fields at
 their defaults (velocity 100, length 1, a rule that always applies) are left out, so a file reads
