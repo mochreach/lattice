@@ -1467,6 +1467,7 @@ instrument page. Each is in the folder of its instrument, so `flim` below is `tu
 | `crowd-pleaser`  | `clap`      | a clap from a crowd                       | `crowd` `hall`      |
 | `thunderhead`    | `tom`       | a low, rolling tom in a storm             | `roll` `storm`      |
 | `hollow-log`     | `tom`       | a knock on wood                           | `knock` `hollow`    |
+| `three-fates`    | `switched`  | a singing Moog lead, sliding legato       | `wail` `arena`      |
 | `great-machine`  | `krell`     | five drifting choirs over a glass body    | `alien` `halls`     |
 | `tregaskin`      | `tuss`      | a warm electric piano on a worn tape      | `worn` `growl`      |
 | `flim`           | `tuss`      | a soft, glassy piano, close up            | `glass` `hush`      |

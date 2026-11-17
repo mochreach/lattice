@@ -162,6 +162,7 @@ pub const PRESETS: &[&str] = &[
     "clap/crowd-pleaser",
     "tom/thunderhead",
     "tom/hollow-log",
+    "switched/three-fates",
     "krell/great-machine",
     "tuss/tregaskin",
     "tuss/flim",
@@ -194,7 +195,7 @@ pub const PRESETS: &[&str] = &[
 pub fn preset(name: &str) -> Option<Preset> {
     use crate::fx::{comp, delay, drive, ensemble, filter, phaser, pitch, reverb};
     use crate::instrument::{
-        bessel, clap, hat, kick, krell, monochord, mosaic, snare, synth, tom, tuss,
+        bessel, clap, hat, kick, krell, monochord, mosaic, snare, switched, synth, tom, tuss,
     };
 
     let inst = |kind, values: &[(u32, f32)]| {
@@ -981,6 +982,63 @@ pub fn preset(name: &str) -> Option<Preset> {
         },
         // Krell, the harpsichord of Forbidden Planet's lost race: all five choirs drifting apart
         // over a glass body, echoing down the Great Machine's halls. Its face is the machine.
+        // A Moog lead for solos: two saws turning square, sliding legato from note to note
+        // through a singing ladder, as in the instrumental of ELP's "Trilogy".
+        "switched/three-fates" => Preset {
+            face: Face {
+                art: crate::art::engine_face(InstKind::Switched).art,
+                ..face(
+                    "Three Fates",
+                    &[switched::GLIDE, switched::LADDER, switched::WAVE],
+                )
+            },
+            instrument: inst(
+                InstKind::Switched,
+                &[
+                    (switched::STACK, 1.0),
+                    (switched::SPREAD, 0.12),
+                    (switched::WIDTH, 0.25),
+                    (switched::GRIT, 0.08),
+                    (switched::LADDER, 650.0),
+                    (switched::SCREAM, 0.55),
+                    (switched::CONTOUR, 0.6),
+                    (switched::SNAP, 0.42),
+                    (switched::GAIN, 0.6),
+                    (switched::WAVE, 0.3),
+                    (switched::GLIDE, 0.09),
+                    (switched::VOICES, 2.0),
+                ],
+            ),
+            effects: vec![
+                fx(
+                    FxKind::Delay,
+                    &[
+                        (delay::TIME, 0.32),
+                        (delay::FEEDBACK, 0.25),
+                        (delay::TONE, 3_500.0),
+                        (delay::MIX, 0.15),
+                    ],
+                ),
+                room(0.7, 0.5, 0.18),
+            ]
+            .into(),
+            macros: vec![
+                mac(
+                    "wail",
+                    0.0,
+                    &[
+                        (None, switched::SCREAM, 0.35),
+                        (None, switched::CONTOUR, 0.3),
+                        (None, switched::GRIT, 0.25),
+                    ],
+                ),
+                mac(
+                    "arena",
+                    0.0,
+                    &[(Some(0), delay::MIX, 0.25), (Some(1), reverb::MIX, 0.3)],
+                ),
+            ],
+        },
         "krell/great-machine" => Preset {
             face: Face {
                 art: crate::art::engine_face(InstKind::Krell).art,
