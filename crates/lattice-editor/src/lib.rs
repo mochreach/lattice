@@ -96,8 +96,8 @@ fn octave_pitch(octave: u8, semitone: i16) -> Option<u8> {
 }
 
 use lattice_core::{
-    Arrangement, Buses, FxChain, Grid, Lock, MAX_STEPS, MAX_TRACKS, Note, Playing, Preset, Song,
-    Step, Track,
+    Arrangement, Buses, Chord, FxChain, Grid, Lock, MAX_STEPS, MAX_TRACKS, Note, Playing, Preset,
+    Song, Step, Track,
 };
 
 use crate::pattern::Pattern;
@@ -1460,10 +1460,21 @@ impl Editor {
             // The primary's track first, as it sets the take.
             tracks.sort_unstable_by_key(|&t| t != track);
             tracks.dedup();
-            if let Some(effects) = self.record_note(key, &tracks, (pitch, Default::default()), 0) {
+            // On a chord track, a typed key's the scale's chord; a MIDI keyboard's notes are
+            // as played, held together for a chord. The duet has chord keys of its own, and
+            // its right hand plays a tune.
+            let chord = match key {
+                Key::Note(_) => Chord::default(),
+                _ if self.keymap.layout == NoteLayout::Duet => Chord::default(),
+                _ if self.is_chord_track(track) => self.scale_chord(pitch),
+                _ => Chord::default(),
+            };
+            if let Some(effects) = self.record_note(key, &tracks, (pitch, chord), 0) {
                 return effects;
             }
-            if let Some(effects) = self.join_chord(key, pitch) {
+            if chord.is_empty()
+                && let Some(effects) = self.join_chord(key, pitch)
+            {
                 return effects;
             }
             self.checkpoint();
@@ -1475,14 +1486,16 @@ impl Editor {
                         pitch,
                         velocity: self.touch.unwrap_or(self.velocity),
                         length: 1,
-                        chord: Default::default(),
+                        chord,
                     });
                 }
             }
-            self.start_chord(key, pitch, &cursors);
+            if chord.is_empty() {
+                self.start_chord(key, pitch, &cursors);
+            }
             self.advance();
             let mut effects = changed(cursors.iter().map(|c| c.track));
-            effects.push(Effect::Preview { track, pitch });
+            effects.extend(chords::previews(track, pitch, chord));
             return effects;
         }
         vec![]
@@ -2061,6 +2074,9 @@ impl Editor {
             Action::ToggleGroup => return self.toggle_group(),
             Action::ToggleFold => return self.toggle_fold(),
             Action::ToggleOpen => self.toggle_open(),
+            Action::ToggleChords => self.toggle_chords(),
+            Action::InvertUp => return self.invert(n as i32),
+            Action::InvertDown => return self.invert(-(n as i32)),
             Action::GotoMixer => {
                 // From the pattern, onto the cursor's track.
                 if self.page == Page::Pattern {
@@ -2085,8 +2101,9 @@ impl Editor {
                 self.page = Page::Song;
                 self.mode = Mode::Normal;
             }
+            Action::Open => self.name_chord(),
             // Song page only.
-            Action::OpenBelow | Action::OpenAbove | Action::Open => {}
+            Action::OpenBelow | Action::OpenAbove => {}
             Action::TogglePlay => return vec![Effect::TogglePlay],
             Action::PlayFill => return self.play_fill(),
             Action::ToggleRecord => self.toggle_record(),
@@ -2842,6 +2859,7 @@ mod tests {
             knobs: vec![],
             rules: vec![],
             looper: None,
+            chords: false,
         };
         let grid = Grid {
             name: "test".into(),

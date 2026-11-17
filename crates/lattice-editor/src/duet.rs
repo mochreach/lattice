@@ -187,7 +187,9 @@ impl Editor {
                 }
             }
             self.advance();
-            effects.extend(changed(notes.iter().map(|(c, _, _)| c.track)));
+            let tracks: Vec<usize> = notes.iter().map(|(c, _, _)| c.track).collect();
+            self.mark_chord_tracks(&tracks);
+            effects.extend(changed(tracks));
             effects.extend(
                 (notes.iter())
                     .flat_map(|&(c, pitch, chord)| crate::chords::previews(c.track, pitch, chord)),
@@ -227,6 +229,7 @@ mod tests {
             knobs: vec![],
             rules: vec![],
             looper: None,
+            chords: false,
         };
         let grid = Grid {
             name: "test".into(),
@@ -505,7 +508,7 @@ mod tests {
         let mut e = editor();
         e.releases = true;
         e.run_command("layout duet");
-        // One cursor, on pad3: the whole chord's heard, and its root goes in.
+        // One cursor, on pad3: the whole chord goes in on its step.
         keys(&mut e, "tltli");
         let chord = keys(&mut e, "a");
         assert_eq!(heard(&chord), [(2, 60), (2, 64), (2, 67), (2, 48)]);

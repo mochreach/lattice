@@ -651,6 +651,8 @@ Insert mode shares the arrows, `pageup` `pagedown` `home` `end`, `esc`, the play
 | `<`               | `note_octave_down`      | down an octave                             |
 | `+` `=`           | `longer`                | longer notes                               |
 | `-`               | `shorter`               | shorter notes                              |
+| `V`               | `invert_up`             | voice the chords an inversion up           |
+| `A-V`             | `invert_down`           | voice the chords an inversion down         |
 | `~`               | `reverse_steps`         | reverse the selected steps                 |
 | `*`               | `repeat_steps`          | repeat the first step (or count) through   |
 | `A-)`             | `rotate_steps_forward`  | rotate the selected steps down one         |
@@ -676,6 +678,7 @@ Insert mode shares the arrows, `pageup` `pagedown` `home` `end`, `esc`, the play
 | `tg` | `toggle_group`        | group the tracks, or ungroup them     |
 | `tz` | `toggle_fold`         | fold or unfold the groups             |
 | `te` | `toggle_open`         | keep the tracks open, or close them   |
+| `tc` | `toggle_chords`       | chord tracks, or tracks of notes      |
 
 ### The song page
 

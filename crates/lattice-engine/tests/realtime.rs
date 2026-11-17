@@ -101,6 +101,7 @@ fn rendering_never_allocates() {
             },
         ],
         looper: None,
+        chords: false,
     };
     let grid = Grid {
         name: "test".into(),

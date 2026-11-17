@@ -391,6 +391,7 @@ mod tests {
             knobs: vec![],
             rules: vec![],
             looper: None,
+            chords: false,
         };
         let grid = Grid {
             name: "test".into(),

@@ -652,7 +652,7 @@ fn note_width(editor: &Editor, index: usize) -> usize {
     match () {
         _ if folded => FOLDED,
         _ if chop => CHOP,
-        _ if track.is_some_and(has_chords) => CHORDS,
+        _ if track.is_some_and(|t| t.chords || has_chords(t)) => CHORDS,
         _ => CELL,
     }
 }

@@ -304,6 +304,9 @@ pub struct Track {
     /// How the looper records it, if it's a loop track: one the looper's recorded into or been
     /// set up for. `None` for a track of notes.
     pub looper: Option<Looping>,
+    /// A chord track: its notes are chords, drawn by name in a wide column even while it's
+    /// empty, and the piano keys enter the scale's chords on it. Shared by every pattern.
+    pub chords: bool,
 }
 
 /// How the looper records a loop track, shown in its header.
@@ -450,6 +453,8 @@ struct SparseTrack {
     columns: Vec<LockColumn>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     looper: Option<Looping>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    chords: bool,
 }
 
 fn is_zero_u8(n: &u8) -> bool {
@@ -480,6 +485,7 @@ impl From<Track> for SparseTrack {
             face: track.face,
             columns: track.columns,
             looper: track.looper,
+            chords: track.chords,
         }
     }
 }
@@ -520,6 +526,7 @@ impl TryFrom<SparseTrack> for Track {
             face: sparse.face,
             columns: sparse.columns,
             looper: sparse.looper,
+            chords: sparse.chords,
         })
     }
 }

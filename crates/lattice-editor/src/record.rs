@@ -136,10 +136,11 @@ impl Editor {
                 .find(|h| h.track == track && h.step == step)
                 .and_then(|h| s.note.as_mut().filter(|n| n.pitch == h.pitch));
             let root = match together {
+                // The note played, not a chord track's chord on it: held with a chord, it's a
+                // note added to that chord.
                 Some(note) => {
-                    let root = note.pitch;
-                    note.chord = (chord.pitches(pitch)).fold(note.chord, |c, p| c.with(root, p));
-                    root
+                    note.chord = note.chord.with(note.pitch, pitch);
+                    note.pitch
                 }
                 None => {
                     s.note = Some(Note {
@@ -161,7 +162,11 @@ impl Editor {
                 every,
             });
         }
-        let mut effects = changed(notes.iter().map(|n| n.0));
+        let written: Vec<usize> = notes.iter().map(|n| n.0).collect();
+        if !chord.is_empty() {
+            self.mark_chord_tracks(&written);
+        }
+        let mut effects = changed(written);
         // Rounded back onto a step that's already played, it's sounded now; rounded on to the
         // next, the sequencer plays it there, in time.
         if from.round() <= from {
@@ -281,6 +286,7 @@ mod tests {
             knobs: vec![],
             rules: vec![],
             looper: None,
+            chords: false,
         };
         let grid = Grid {
             name: "test".into(),

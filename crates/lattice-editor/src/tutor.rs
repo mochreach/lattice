@@ -349,21 +349,29 @@ const LESSONS: &[Lesson] = &[
                shown on the grid. `:chord Am7` makes each selected step play that chord, \
                voiced close above its root at the track's octave; `C/E` puts the E in the \
                bass, and `F#dim`, `BbM7`, `Gsus` and the other ways lead sheets write them \
-               read too. A chord moves with {note_up} and {note_down} as a note does, and an instrument \
-               that plays one note at a time plays its root. Played, the duet's chord keys \
-               go in as whole chords, and notes held down together go in as one, on a MIDI \
-               keyboard or in a terminal that says when keys come up.\n\nPut an Am7 on the first step \
-               of the LEAD track.",
-        teaches: &[],
+               read too. A chord moves with {note_up} and {note_down} as a note does, and an \
+               instrument that plays one note at a time plays its root. Played, the duet's \
+               chord keys go in as whole chords, and notes held down together go in as one, \
+               on a MIDI keyboard or in a terminal that says when keys come up.\n\n\
+               {toggle_chords} makes a chord track: its piano keys play the scale's chords, \
+               `z` C and `x` Dm in C major, and `ret` writes the cursor's by name. \
+               {invert_up} voices a chord an inversion up, its lowest note an octave higher, \
+               and {invert_down} one down.\n\nMake LEAD a chord track, put an Am on its \
+               first step, and voice it an inversion up.",
+        teaches: &[Action::ToggleChords, Action::InvertUp, Action::InvertDown],
         commands: &["chord"],
         setup: nothing,
         watch: never,
         done: |e, _| {
-            (track(e, "LEAD").and_then(|t| note(t, 0)).flatten())
-                .and_then(|n| lattice_core::chord::label(&n))
-                .is_some_and(|name| name == "Am7")
+            let Some(lead) = track(e, "LEAD") else {
+                return false;
+            };
+            lead.chords
+                && (note(lead, 0).flatten())
+                    .and_then(|n| lattice_core::chord::label(&n))
+                    .is_some_and(|name| name == "Am/C")
         },
-        solution: "ghggtltltl:chord Am7<ret>",
+        solution: "ghggtltltltc:chord Am<ret>V",
     },
     Lesson {
         title: "Selecting and deleting",

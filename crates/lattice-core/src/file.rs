@@ -239,6 +239,7 @@ mod tests {
                 },
             ],
             looper: None,
+            chords: false,
         };
         bass.mix = Mix {
             level: -3.5,
@@ -285,6 +286,7 @@ mod tests {
             knobs: vec![],
             rules: vec![],
             looper: None,
+            chords: false,
         };
         Song {
             name: "test".into(),

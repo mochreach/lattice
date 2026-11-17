@@ -814,6 +814,38 @@ I'd been writing chords as a note on each of three or four tracks grouped togeth
 right, but a progression is hard to read back like that: you're adding up intervals across
 columns to see that it's a ii–V–I. One step that says `Dm7` is how a musician writes it.
 
+#### Chord tracks: `tc`, `V` and `ret`
+
+Any track can hold chords, but a **chord track** is made for them. **`tc`** (`toggle_chords`)
+makes the tracks the selections reach chord tracks, and again, tracks of notes; their notes stay
+as they are either way. A chord written or recorded whole onto an empty track, by `:chord`, a
+duet chord key or a chord played on the instrument page, makes it a chord track by itself. It's
+shared by every pattern, as the track's instrument is, and saved with the song as `chords: true`.
+
+On a chord track:
+
+- The column is wide even while it's empty, ready for names.
+- **The piano keys play the scale's chords.** In insert mode, a key enters the chord `:scale`
+  builds on its note, stacking the scale's thirds, so in C major `z` is C, `x` Dm, `c` Em and `b`
+  G, and the keys you know for a tune are the chords of its key. A note outside the scale gets a
+  major chord, the kind most often borrowed. A MIDI keyboard's notes still go in as you play
+  them, so hold the chord you want; and the duet, which has chord keys of its own, keeps its
+  right hand for the tune.
+- **`ret`** opens the command line with `:chord` and the cursor's chord, to change it by name:
+  `ret`, backspace, `7`, `ret` turns a G into a G7.
+
+**`V`** (`invert_up`) voices each selected chord an **inversion** up: its lowest note goes up an
+octave, so C E G becomes E G C, `C/E`, and again G C E, `C/G`. **`A-V`** (`invert_down`) brings
+its highest note down an octave instead. A count does it that many times, `2V`. It works on a
+chord anywhere, on a chord track or not; a note on its own is left alone. Inversions are how a
+pianist keeps a progression's notes close together, moving each as little as it can from one
+chord to the next instead of jumping the whole hand: C to F is smoother as C E G to C F A, F's
+second inversion, than as C E G to F A C.
+
+I'd thought a chord track might be a different kind of track. But a chord is only a note with
+company, and keeping it one track with a switch means everything that works on notes, from
+copying to rules to gestures, works on chords without another set of keys to learn.
+
 ### Auto-step: `:step`
 
 `:step N` sets how many steps the cursor moves on after each note, 0 to 64; it starts at 1 and is

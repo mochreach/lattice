@@ -312,6 +312,12 @@ pub enum Action {
     ToggleFold,
     /// Keep the tracks the selections reach open, showing their fields; again, close them.
     ToggleOpen,
+    /// Make the tracks the selections reach chord tracks, or tracks of notes again.
+    ToggleChords,
+    /// Voice the selected chords an inversion up, their lowest note raised an octave, or down,
+    /// their highest lowered.
+    InvertUp,
+    InvertDown,
     TogglePlay,
     /// Play the song from its start.
     PlaySong,
@@ -433,6 +439,9 @@ impl Action {
         Action::ToggleGroup,
         Action::ToggleFold,
         Action::ToggleOpen,
+        Action::ToggleChords,
+        Action::InvertUp,
+        Action::InvertDown,
         Action::TogglePlay,
         Action::PlaySong,
         Action::PlayFromHere,
@@ -592,6 +601,9 @@ impl Action {
             Action::ToggleGroup => "group / ungroup tracks",
             Action::ToggleFold => "fold / unfold group",
             Action::ToggleOpen => "keep tracks open / close them",
+            Action::ToggleChords => "chord track / track of notes",
+            Action::InvertUp => "voice the chords an inversion up",
+            Action::InvertDown => "voice the chords an inversion down",
             Action::TogglePlay => "play / stop",
             Action::PlaySong => "play the song from the start",
             Action::PlayFromHere => "play the song from this pattern",
@@ -1133,6 +1145,7 @@ impl Default for Keymap {
                 (Char('g'), ToggleGroup),
                 (Char('z'), ToggleFold),
                 (Char('e'), ToggleOpen),
+                (Char('c'), ToggleChords),
             ],
         );
 
@@ -1171,6 +1184,8 @@ impl Default for Keymap {
                 (Char('v'), SelectMode),
                 (Char('C'), CopyDown),
                 (Alt('C'), CopyUp),
+                (Char('V'), InvertUp),
+                (Alt('V'), InvertDown),
                 (Alt('s'), SplitRows),
                 (Alt('-'), MergeAll),
                 (Char(','), KeepPrimary),

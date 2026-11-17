@@ -243,15 +243,13 @@ fn kind(action: Action) -> Kind {
         ReverseSteps | RepeatSteps | RotateStepsForward | RotateStepsBackward | Delete | Clear
         | ClearAdvance | Yank | Paste | PasteInsert | Replace | SelectRegister | RecordKeys
         | ReplayKeys | Undo | Redo | NoteUp | NoteDown | NoteOctaveUp | NoteOctaveDown | Longer
-        | Shorter | LockSetting | Fill | SurroundAdd | SurroundReplace | SurroundDelete => {
-            Kind::Edit
-        }
+        | Shorter | LockSetting | Fill | SurroundAdd | SurroundReplace | SurroundDelete
+        | InvertUp | InvertDown => Kind::Edit,
         Insert | Append | OpenBelow | OpenAbove | Open | Change | CommandLine | Escape
         | KeyboardOctaveUp | KeyboardOctaveDown | Quit => Kind::Mode,
         ToggleMute | TogglePatternMute | ToggleSolo | AddTrack | RemoveTrack | YankTracks
-        | PasteTracksAfter | PasteTracksBefore | MoveTrackLeft | MoveTrackRight | ToggleGroup => {
-            Kind::Track
-        }
+        | PasteTracksAfter | PasteTracksBefore | MoveTrackLeft | MoveTrackRight | ToggleGroup
+        | ToggleChords => Kind::Track,
         TogglePlay | PlaySong | PlayFromHere | Hush | PlayFill | ToggleRecord | LoopPedal
         | LoopSelection => Kind::Play,
     }

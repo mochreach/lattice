@@ -895,8 +895,17 @@ their place, a part each, but they made harmony hard to read back.
   key releases (MIDI always, the terminal when it reports them); there's no timing window, as
   the editor has no clock and a window would split a slow hand's chord or merge a fast run.
 
-Still to come: a chord-track switch for entering by name, chord gestures (inversion,
-strum, arpeggiate), scale-degree rules (`deg+1`) and Roman numerals.
+- **Chord tracks.** `Track::chords`, shared by every pattern and toggled by `tc`, is a switch
+  over the same data, not a kind of track: the column stays wide while empty, typed piano keys
+  enter `:scale`'s chord on their note (stacked thirds; a major chord off the scale), and `ret`
+  opens `:chord` with the cursor's name. MIDI notes and the duet stay as played. A whole chord
+  written or recorded onto a track whose every note is a chord marks it; notes held together
+  don't, as they may be two notes of a tune. `V` / `A-V` invert any chord, moving its lowest
+  note up an octave or highest down (further if that note's doubled there), the root staying
+  the note's pitch.
+
+Still to come: chord gestures (inversion, strum, arpeggiate), scale-degree rules (`deg+1`) and
+Roman numerals.
 
 ## Live recording (done)
 

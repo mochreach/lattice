@@ -228,6 +228,7 @@ mod tests {
             knobs: vec![],
             rules,
             looper: None,
+            chords: false,
         }
     }
 

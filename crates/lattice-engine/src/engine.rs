@@ -2902,6 +2902,7 @@ mod tests {
                 when: Condition::Always,
             }],
             looper: None,
+            chords: false,
         }
     }
 
