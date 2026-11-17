@@ -400,16 +400,37 @@ fn rendering_never_allocates() {
                         index: 0,
                         instrument: switched.take().unwrap(),
                     });
-                    handle.send(Command::SetParam {
-                        target: Target::Instrument(0),
-                        id: switched::GRIT,
-                        value: 0.8,
-                    });
+                    for (id, value) in [
+                        (switched::GRIT, 0.8),
+                        (switched::WAVE, 0.8),
+                        (switched::GLIDE, 0.2),
+                        (switched::VOICES, 2.0),
+                    ] {
+                        handle.send(Command::SetParam {
+                            target: Target::Instrument(0),
+                            id,
+                            value,
+                        });
+                    }
                     handle.send(Command::Preview {
                         track: 0,
                         pitch: 48,
                         velocity: 100,
                         held: true,
+                    });
+                }
+                804 => {
+                    handle.send(Command::Preview {
+                        track: 0,
+                        pitch: 55,
+                        velocity: 100,
+                        held: true,
+                    });
+                }
+                805 => {
+                    handle.send(Command::Release {
+                        track: 0,
+                        pitch: 55,
                     });
                 }
                 806 => {

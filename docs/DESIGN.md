@@ -245,6 +245,20 @@ envelopes, glides, the ladder's coefficients and the sync worked out every 16 sa
   0.12 s) through a held organ note (instant, full sustain) at the middle, to a slow swell (a
   1.5 s attack) at the top. The filter's envelope decays faster than the amplifier's and holds
   lower, so a pluck closes as it fades and an organ note keeps some of its edge.
+- **Wave** turns each saw into a pulse, the saw less a second saw a pulse width behind it, as
+  analogue synths make one. The second saw comes round as the first passes the width, and at a
+  restart jumps from where it had got to, to a width short of the top; its jumps get a polyBLEP
+  of their own, held back the same way. Up to 0.5 the saw blends into a square; past it the
+  square narrows to a tenth. At 0 the second saw isn't worked out at all.
+- **Voices** can be `poly`, `mono` or `legato`. One note at a time, the first voice plays and
+  the notes held down are kept in a fixed stack of sixteen, latest last, so letting the latest
+  go drops back to the one before: last-note priority, as most solo synths since have it. Mono
+  starts the envelopes again for every note; legato slides to a note played over a held one
+  without starting them again. A pattern lets one note go at the very sample the next comes,
+  so a note-off and a note-on at the same instant tie, as if the notes had overlapped, which
+  makes a pattern's lines legato too. **Glide** is a time for every slide, near or far, as on
+  the Minimoog, used wherever a note has no `G` of its own: every note in poly and mono, only
+  notes over a held one in legato.
 
 | Control | Range | |
 | --- | --- | --- |
@@ -257,6 +271,9 @@ envelopes, glides, the ladder's coefficients and the sync worked out every 16 sa
 | contour | 0–1 | how far the envelope opens the ladder, up to seven octaves |
 | snap | 0–1 | pluck, organ, swell |
 | gain | 0–1 | |
+| wave | 0–1 | saw, square, narrow pulse |
+| glide | 0–1 s | every note's slide from the last pitch |
+| voices | `poly` `mono` `legato` | chords, or one note at a time |
 
 A `G` gesture glides its notes, as on the synth. It costs about five times the test synth: the
 voices benchmark plays eight voices of a swarm at around 400 times real time.

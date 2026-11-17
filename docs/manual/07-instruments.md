@@ -459,17 +459,40 @@ survives it.
 One envelope, shaped by `snap`, drives both the level and the ladder. It's one knob in place of
 two ADSRs: a pluck at the bottom, an organ's held note at the middle, a slow swell at the top.
 
-| Setting   | Range             | Default | What it does                                          |
-|-----------|-------------------|---------|-------------------------------------------------------|
-| `stack`   | `one` to `fifths` | `swarm` | what's stacked: see below                             |
-| `spread`  | 0 to 1            | 0.3     | detune between the saws, up to 50 cents either side   |
-| `width`   | 0 to 1            | 0.6     | how far the stack spreads left and right              |
-| `grit`    | 0 to 1            | 0       | hard sync: saws up to four times their master's speed |
-| `ladder`  | 20 Hz to 16 kHz   | 900 Hz  | the ladder's cutoff at middle C, before the envelope  |
-| `scream`  | 0 to 1            | 0.3     | resonance and drive, until it rings on its own        |
-| `contour` | 0 to 1            | 0.45    | how far the envelope opens the ladder, to 7 octaves   |
-| `snap`    | 0 to 1            | 0.35    | the envelope: pluck, organ, swell                     |
-| `gain`    | 0 to 1            | 0.25    | the output level                                      |
+**Pulse waves.** `wave` turns each saw into a pulse: a wave that sits high for part of its cycle
+and low for the rest. Half and half is a square, which has only the odd harmonics, so it sounds
+hollow and woody, a clarinet to the saw's brass; narrower, the even harmonics come back and it
+thins to the nasal, reedy pulse of the Prophet-5's and the Juno's leads. It's made, as analogue
+synths make it, from the saw itself: the saw less a copy of it a pulse width behind.
+
+**Solos.** Moog's synthesisers played one note at a time, and that turned out to be a gift: a
+lead line that slides from note to note, with the envelope carrying on through a run rather
+than starting again for every note, is the sound of Keith Emerson's solo at the end of "Lucky
+Man" (1970), on his modular, of Jan Hammer's and Rick Wakeman's Minimoog leads, and of most of
+the synth solos since. `voices` makes Switched one of these: `mono` plays one note at a time,
+always the latest held, and letting it go drops back to the one still held before it, so
+holding one key and tapping another trills between them; each note starts the envelope afresh.
+`legato` does the same, except that a note played while another's held slides to its pitch
+without starting the envelope again, so only the first note of a phrase has its attack; in a
+pattern, notes that run straight on from one another join up the same way. `glide` sets how
+long every note takes to slide from the last one's pitch: in `poly` and `mono` every note
+glides, in `legato` only the ones played over a held note, so you choose the slides with your
+fingers.
+
+| Setting   | Range              | Default | What it does                                          |
+|-----------|--------------------|---------|-------------------------------------------------------|
+| `stack`   | `one` to `fifths`  | `swarm` | what's stacked: see below                             |
+| `spread`  | 0 to 1             | 0.3     | detune between the saws, up to 50 cents either side   |
+| `width`   | 0 to 1             | 0.6     | how far the stack spreads left and right              |
+| `grit`    | 0 to 1             | 0       | hard sync: saws up to four times their master's speed |
+| `ladder`  | 20 Hz to 16 kHz    | 900 Hz  | the ladder's cutoff at middle C, before the envelope  |
+| `scream`  | 0 to 1             | 0.3     | resonance and drive, until it rings on its own        |
+| `contour` | 0 to 1             | 0.45    | how far the envelope opens the ladder, to 7 octaves   |
+| `snap`    | 0 to 1             | 0.35    | the envelope: pluck, organ, swell                     |
+| `gain`    | 0 to 1             | 0.25    | the output level                                      |
+| `wave`    | 0 to 1             | 0       | saw at 0, square at 0.5, a narrow pulse at 1          |
+| `glide`   | 0 to 1 s           | 0       | how long each note slides from the last one's pitch   |
+| `voices`  | `poly` to `legato` | `poly`  | chords, or one note at a time: `mono` or `legato`     |
 
 The **stacks**, in order (for `:set`, 0 to 4):
 
@@ -491,6 +514,14 @@ More about each control:
 - **`scream`** below about 0.5 is a classic resonant sweep; past 0.8 the filter sings a note of
   its own at the cutoff, which you can play by sweeping `ladder`.
 - **`contour`** opens the ladder further for harder notes.
+- **`wave`** from 0 to 0.5 blends the saw into the square; from 0.5 to 1 the square narrows to a
+  pulse a tenth of the cycle wide. It shapes every saw in the stack, so a `swarm` of squares is
+  a hollow choir, and `grit` tears pulses as it tears saws.
+- **`glide`** is the time for any slide, near or far, as on the Minimoog: a short one (0.05 to
+  0.1 s) just smears the edge of each note, a long one (0.3 s and up) swoops. A `G` gesture on
+  a note sets that note's own glide, over the setting.
+- **`voices`** at `mono` or `legato` plays the whole stack on one voice, so a `swarm` lead is
+  as thick as a chord's notes. Changing it lets go of every note.
 - **`snap`** from 0 to 0.5 goes from an instant pluck that dies in about a tenth of a second,
   through ever longer decays and higher sustains, to an organ: instant, held at full level. From
   0.5 to 1 the attack slows to a swell of a second and a half, and the release lengthens. The

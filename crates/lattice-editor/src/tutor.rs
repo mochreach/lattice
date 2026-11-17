@@ -314,7 +314,9 @@ const LESSONS: &[Lesson] = &[
                its seventh, and below it with its third in the bass. Shift voices a chord an \
                inversion up, Alt one down, and the right hand plays on through either. Right Shift \
                raises the right hand a semitone, for the notes between the scale's. Under the right, from `k`, is the scale an octave \
-               up, for a tune over them. \
+               up, for a tune over them. For a solo, `:inst switched` on the right hand's track, with \
+               its `voices` set to `legato` and a little `glide`, slides from note to note \
+               as a Minimoog's lead does. \
                `:hand left` gives the left hand the selected tracks to play wherever the \
                cursor is, a chord's notes dealt out one to a track, and `:hand right` the \
                right; `:hand off` puts both back on the cursor's track.\n\nGive the left \

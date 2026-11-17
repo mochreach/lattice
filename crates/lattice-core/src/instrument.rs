@@ -260,10 +260,20 @@ pub mod switched {
     /// at the top.
     pub const SNAP: u32 = 7;
     pub const GAIN: u32 = 8;
+    /// Each saw's shape: a saw at the bottom, blending into a square half way, then narrowing
+    /// to a thin pulse at the top.
+    pub const WAVE: u32 = 9;
+    /// How long a note takes to slide from the last one's pitch to its own, in seconds.
+    pub const GLIDE: u32 = 10;
+    /// Poly plays chords; mono one note at a time, the latest held, each starting afresh;
+    /// legato one at a time, a note played over a held one sliding to it without starting
+    /// again.
+    pub const VOICES: u32 = 11;
 
     pub const STACKS: &[&str] = &["one", "pair", "swarm", "stops", "fifths"];
+    pub const VOICINGS: &[&str] = &["poly", "mono", "legato"];
 
-    pub(super) const PARAMS: [ParamInfo; 9] = [
+    pub(super) const PARAMS: [ParamInfo; 12] = [
         param(STACK, "stack", (0.0, 4.0, 2.0), "", Curve::Choice(STACKS)),
         param(SPREAD, "spread", (0.0, 1.0, 0.3), "", Curve::Linear),
         param(WIDTH, "width", (0.0, 1.0, 0.6), "", Curve::Linear),
@@ -273,6 +283,15 @@ pub mod switched {
         param(CONTOUR, "contour", (0.0, 1.0, 0.45), "", Curve::Linear),
         param(SNAP, "snap", (0.0, 1.0, 0.35), "", Curve::Linear),
         param(GAIN, "gain", (0.0, 1.0, 0.25), "", Curve::Linear),
+        param(WAVE, "wave", (0.0, 1.0, 0.0), "", Curve::Linear),
+        param(GLIDE, "glide", (0.0, 1.0, 0.0), "s", Curve::Linear),
+        param(
+            VOICES,
+            "voices",
+            (0.0, 2.0, 0.0),
+            "",
+            Curve::Choice(VOICINGS),
+        ),
     ];
 }
 

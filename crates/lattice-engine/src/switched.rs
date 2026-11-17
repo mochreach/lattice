@@ -9,12 +9,17 @@
 //! The saws are summed left and right by where `width` puts them, and each side goes through its
 //! own ladder: four one-pole stages with the last fed back, driven through a soft clipper, so the
 //! resonance growls before it screams and then sings on its own.
+//!
+//! Each saw can turn into a pulse: the saw less a second one, a pulse width behind it, whose
+//! jumps are smoothed the same way. And the voices can play one note at a time, as the solo
+//! synthesisers did: a stack of the notes held down, the latest sounding, sliding back to the
+//! one before when it's let go.
 
 use std::f32::consts::PI;
 
 use lattice_core::InstKind;
 use lattice_core::instrument::switched::{
-    CONTOUR, GAIN, GRIT, LADDER, SCREAM, SNAP, SPREAD, STACK, WIDTH,
+    CONTOUR, GAIN, GLIDE, GRIT, LADDER, SCREAM, SNAP, SPREAD, STACK, VOICES as VOICING, WAVE, WIDTH,
 };
 use wide::f32x8;
 
@@ -51,6 +56,12 @@ const TOP: f32 = 0.3;
 const EASE: f32 = 0.5;
 /// The drive into the ladder at no scream and the most it adds at full.
 const DRIVE: (f32, f32) = (1.2, 2.5);
+/// The pulse's level against the saw's, which it would otherwise be louder than.
+const PULSE_LEVEL: f32 = 0.6;
+/// The narrowest pulse, at the top of `wave`.
+const NARROWEST: f32 = 0.1;
+/// How many notes held down one voice remembers, to go back to.
+const HELD: usize = 16;
 
 /// One saw in a stack: semitones from the note, how far the spread detunes it (from -1 to 1),
 /// where `width` pans it (from -1, left, to 1) and its level.
@@ -140,6 +151,18 @@ impl Envelope {
     }
 }
 
+/// How the notes share the voices.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum Voicing {
+    /// Each note a voice of its own.
+    #[default]
+    Poly,
+    /// One voice, each note starting it afresh.
+    Mono,
+    /// One voice, a note played over another sliding to it without starting again.
+    Legato,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 enum Stage {
     #[default]
@@ -161,6 +184,10 @@ pub struct Switched {
     contour: f32,
     envelope: Envelope,
     gain: f32,
+    wave: f32,
+    /// How long a note slides from the last pitch, in seconds.
+    glide: f32,
+    voicing: Voicing,
 
     // Derived from the settings: each saw's pitch over the note, and its level left and right.
     ratio: [f32; SAWS],
@@ -172,6 +199,9 @@ pub struct Switched {
     filter_decay_coef: f32,
     feedback: f32,
     drive: f32,
+    /// How much of the pulse there is against the saw, and its width.
+    pulse_mix: f32,
+    pulse_width: f32,
 
     // Audio-rate state, one lane per voice.
     inc: f32x8,
@@ -190,6 +220,8 @@ pub struct Switched {
     slave: [f32x8; SAWS],
     /// Each saw's last sample, held back to take the first half of the next jump's polyBLEP.
     held: [f32x8; SAWS],
+    /// The same for the second saw, a pulse width behind, that makes the pulse.
+    held_pulse: [f32x8; SAWS],
     ladder_left: [f32x8; 4],
     ladder_right: [f32x8; 4],
 
@@ -201,6 +233,12 @@ pub struct Switched {
     glide_ratio: [f32; VOICES],
     glide_to: [f32; VOICES],
     last: Option<u8>,
+    /// The notes held down, oldest first, while one voice plays them.
+    down: [u8; HELD],
+    down_count: usize,
+    /// When the one voice was last let go, and the stage it was at: a note at the same instant
+    /// joins on to it.
+    tie: Option<(u64, Stage)>,
     shape: Shape,
     notes_started: u64,
     silent: bool,
@@ -222,6 +260,9 @@ impl Switched {
             contour: 0.0,
             envelope: Envelope::snap(0.0),
             gain: 0.0,
+            wave: 0.0,
+            glide: 0.0,
+            voicing: Voicing::Poly,
             ratio: [1.0; SAWS],
             left_level: [0.0; SAWS],
             right_level: [0.0; SAWS],
@@ -231,6 +272,8 @@ impl Switched {
             filter_decay_coef: 0.0,
             feedback: 0.0,
             drive: 1.0,
+            pulse_mix: 0.0,
+            pulse_width: 0.5,
             inc: zero,
             velocity: zero,
             env: zero,
@@ -244,6 +287,7 @@ impl Switched {
             master: [zero; SAWS],
             slave: [zero; SAWS],
             held: [zero; SAWS],
+            held_pulse: [zero; SAWS],
             ladder_left: [zero; 4],
             ladder_right: [zero; 4],
             stage: [Stage::Idle; VOICES],
@@ -253,6 +297,9 @@ impl Switched {
             glide_ratio: [1.0; VOICES],
             glide_to: [0.0; VOICES],
             last: None,
+            down: [0; HELD],
+            down_count: 0,
+            tie: None,
             shape: Shape::default(),
             notes_started: 0,
             silent: true,
@@ -285,6 +332,20 @@ impl Switched {
             CONTOUR => self.contour = value,
             SNAP => self.envelope = Envelope::snap(value),
             GAIN => self.gain = value,
+            WAVE => self.wave = value,
+            GLIDE => self.glide = value,
+            VOICING => {
+                let voicing = match value.round() as u8 {
+                    0 => Voicing::Poly,
+                    1 => Voicing::Mono,
+                    _ => Voicing::Legato,
+                };
+                if voicing != self.voicing {
+                    // The notes held were counted the old way.
+                    self.choke();
+                    self.voicing = voicing;
+                }
+            }
             _ => {}
         }
         self.derive();
@@ -315,9 +376,27 @@ impl Switched {
         self.filter_decay_coef = decay_coef(envelope.filter_decay, self.sample_rate);
         self.feedback = MAX_FEEDBACK * self.scream;
         self.drive = DRIVE.0 + DRIVE.1 * self.scream;
+        // A saw blending into a square by half way, which then narrows.
+        self.pulse_mix = (2.0 * self.wave).min(1.0);
+        self.pulse_width = 0.5 - (0.5 - NARROWEST) * (2.0 * self.wave - 1.0).max(0.0);
+    }
+
+    /// How long a note slides, in samples: as long as it says, else as long as `glide`.
+    fn glide_frames(&self, note: u32) -> u32 {
+        if note > 0 {
+            note
+        } else {
+            (self.glide * self.sample_rate) as u32
+        }
     }
 
     fn note_on(&mut self, pitch: u8, velocity: u8) {
+        let note_glide = std::mem::take(&mut self.shape).glide;
+        let glide = self.glide_frames(note_glide);
+        let velocity = f32::from(velocity) / 127.0;
+        if self.voicing != Voicing::Poly {
+            return self.mono_on(pitch, velocity, glide);
+        }
         // A free voice, else the oldest released one, else the oldest of all.
         let free = |(stage, &started): (&Stage, &u64)| match stage {
             Stage::Idle => (0, 0),
@@ -329,45 +408,25 @@ impl Switched {
         let Some((i, _)) = voices.min_by_key(|&(_, voice)| free(voice)) else {
             return;
         };
-        let (Some(stage), Some(voice_pitch), Some(started)) = (
-            self.stage.get_mut(i),
-            self.pitch.get_mut(i),
-            self.started.get_mut(i),
-        ) else {
-            return;
-        };
-        let (Some(left), Some(ratio), Some(to)) = (
-            self.glide_left.get_mut(i),
-            self.glide_ratio.get_mut(i),
-            self.glide_to.get_mut(i),
-        ) else {
-            return;
-        };
-        *to = midi_to_hz(pitch) / self.sample_rate;
-        // Gliding, it starts at the last pitch and steps evenly, in pitch, to its own.
-        let shape = std::mem::take(&mut self.shape);
-        let from = match self.last {
-            Some(last) if shape.glide > 0 => {
-                let periods = shape.glide.div_ceil(CONTROL_PERIOD as u32).max(1);
-                let from = midi_to_hz(last) / self.sample_rate;
-                *left = periods;
-                *ratio = (*to / from).powf(1.0 / periods as f32);
-                from
-            }
-            _ => {
-                *left = 0;
-                *to
-            }
-        };
-        self.last = Some(pitch);
-        let restarted = *stage == Stage::Idle;
+        // Gliding, it starts at the last pitch, wherever that was played.
+        let from = self.last.map(|last| midi_to_hz(last) / self.sample_rate);
+        self.trigger(i, pitch, velocity, from, glide);
+    }
 
+    /// Starts voice `i` on `pitch`, its envelopes from the beginning, sliding there from `from`
+    /// over `glide` samples.
+    fn trigger(&mut self, i: usize, pitch: u8, velocity: f32, from: Option<f32>, glide: u32) {
+        let Some(&stage) = self.stage.get(i) else {
+            return;
+        };
+        let restarted = stage == Stage::Idle;
+        self.slide(i, pitch, from, glide);
         self.notes_started += 1;
-        *stage = Stage::Attack;
-        *voice_pitch = pitch;
-        *started = self.notes_started;
-        set_lane(&mut self.inc, i, from);
-        set_lane(&mut self.velocity, i, f32::from(velocity) / 127.0);
+        if let (Some(stage), Some(started)) = (self.stage.get_mut(i), self.started.get_mut(i)) {
+            *stage = Stage::Attack;
+            *started = self.notes_started;
+        }
+        set_lane(&mut self.velocity, i, velocity);
         set_lane(&mut self.env_target, i, ATTACK_TARGET);
         set_lane(&mut self.env_coef, i, self.attack_coef);
         set_lane(&mut self.filter_target, i, ATTACK_TARGET);
@@ -375,16 +434,15 @@ impl Switched {
         if restarted {
             // A silent voice starts its saws spread through their cycles, as free-running
             // oscillators would be, so they don't all jump at once; one still sounding runs on.
-            let saws = self
-                .master
-                .iter_mut()
-                .zip(&mut self.slave)
-                .zip(&mut self.held);
-            for (k, ((master, slave), held)) in saws.enumerate() {
+            let saws = (self.master.iter_mut().zip(&mut self.slave))
+                .zip(self.held.iter_mut().zip(&mut self.held_pulse));
+            for (k, ((master, slave), (held, held_pulse))) in saws.enumerate() {
                 let phase = (k as f32 * 0.382).fract();
+                let behind = (phase - self.pulse_width).rem_euclid(1.0);
                 set_lane(master, i, phase);
                 set_lane(slave, i, phase);
                 set_lane(held, i, 2.0 * phase - 1.0);
+                set_lane(held_pulse, i, 2.0 * behind - 1.0);
             }
             for state in self.ladder_left.iter_mut().chain(&mut self.ladder_right) {
                 set_lane(state, i, 0.0);
@@ -393,14 +451,153 @@ impl Switched {
         self.silent = false;
     }
 
+    /// Takes voice `i` to `pitch`, stepping evenly in pitch from `from`, a phase increment, over
+    /// `glide` samples; straight there with no glide or nowhere to come from.
+    fn slide(&mut self, i: usize, pitch: u8, from: Option<f32>, glide: u32) {
+        let to = midi_to_hz(pitch) / self.sample_rate;
+        self.last = Some(pitch);
+        let (Some(voice_pitch), Some(left), Some(ratio), Some(glide_to)) = (
+            self.pitch.get_mut(i),
+            self.glide_left.get_mut(i),
+            self.glide_ratio.get_mut(i),
+            self.glide_to.get_mut(i),
+        ) else {
+            return;
+        };
+        (*voice_pitch, *glide_to) = (pitch, to);
+        match from {
+            Some(from) if glide > 0 && from > 0.0 => {
+                let periods = glide.div_ceil(CONTROL_PERIOD as u32).max(1);
+                *left = periods;
+                *ratio = (to / from).powf(1.0 / periods as f32);
+                set_lane(&mut self.inc, i, from);
+            }
+            _ => {
+                *left = 0;
+                set_lane(&mut self.inc, i, to);
+            }
+        }
+    }
+
+    /// A note played mono or legato, on the first voice: it's held down over any others, and
+    /// sounds at once.
+    fn mono_on(&mut self, pitch: u8, velocity: f32, glide: u32) {
+        self.hold(pitch);
+        let stage = self.stage.first().copied().unwrap_or_default();
+        let now = self.inc.to_array().first().copied();
+        // A note let go at the very instant this one comes, as a pattern's notes one after
+        // another are, joins on to it, as if they'd overlapped.
+        let tied = match self.tie.take() {
+            Some((at, before)) if at == self.clock => Some(before),
+            _ => None,
+        };
+        let sounding = matches!(stage, Stage::Attack | Stage::Decay);
+        if self.voicing == Voicing::Legato && (sounding || tied.is_some()) {
+            if let Some(before) = tied {
+                self.resume(0, before);
+            }
+            self.slide(0, pitch, now, glide);
+        } else {
+            // Mono glides from wherever the voice was; legato only from a note still held.
+            let from = (self.voicing == Voicing::Mono).then_some(now).flatten();
+            self.trigger(0, pitch, velocity, from, glide);
+        }
+    }
+
+    /// A note let go, mono or legato: the voice goes back to the latest still held, or with
+    /// none, it's released.
+    fn mono_off(&mut self, pitch: u8) {
+        self.let_go(pitch);
+        let stage = self.stage.first().copied().unwrap_or_default();
+        let playing = self.pitch.first() == Some(&pitch);
+        if !playing || !matches!(stage, Stage::Attack | Stage::Decay) {
+            return;
+        }
+        let latest = self.down_count.checked_sub(1);
+        let Some(&next) = latest.and_then(|n| self.down.get(n)) else {
+            self.tie = Some((self.clock, stage));
+            return self.release(|voice_pitch| voice_pitch == pitch);
+        };
+        let glide = self.glide_frames(0);
+        let now = self.inc.to_array().first().copied();
+        if self.voicing == Voicing::Legato {
+            self.slide(0, next, now, glide);
+        } else {
+            let velocity = self.velocity.to_array().first().copied().unwrap_or(1.0);
+            self.trigger(0, next, velocity, now, glide);
+        }
+    }
+
+    /// Takes voice `i`, just released, back to the stage it was at.
+    fn resume(&mut self, i: usize, before: Stage) {
+        let envelope = self.envelope;
+        let (stage, target, coef, filter_target, filter_coef) = match before {
+            Stage::Attack => (
+                Stage::Attack,
+                ATTACK_TARGET,
+                self.attack_coef,
+                ATTACK_TARGET,
+                self.attack_coef,
+            ),
+            _ => (
+                Stage::Decay,
+                envelope.sustain,
+                self.decay_coef,
+                envelope.filter_sustain,
+                self.filter_decay_coef,
+            ),
+        };
+        if let Some(voice) = self.stage.get_mut(i) {
+            *voice = stage;
+        }
+        set_lane(&mut self.env_target, i, target);
+        set_lane(&mut self.env_coef, i, coef);
+        set_lane(&mut self.filter_target, i, filter_target);
+        set_lane(&mut self.filter_coef, i, filter_coef);
+    }
+
+    /// Holds `pitch` down, over the others; with no room, the first held is forgotten.
+    fn hold(&mut self, pitch: u8) {
+        self.let_go(pitch);
+        if self.down_count >= HELD {
+            self.down.rotate_left(1);
+            self.down_count = HELD - 1;
+        }
+        if let Some(slot) = self.down.get_mut(self.down_count) {
+            *slot = pitch;
+            self.down_count += 1;
+        }
+    }
+
+    /// Forgets `pitch` was held down.
+    fn let_go(&mut self, pitch: u8) {
+        let Some(held) = self.down.get_mut(..self.down_count) else {
+            return;
+        };
+        if let Some(at) = held.iter().position(|&p| p == pitch) {
+            if let Some(after) = held.get_mut(at..) {
+                after.rotate_left(1);
+            }
+            self.down_count -= 1;
+        }
+    }
+
     fn note_off(&mut self, pitch: u8) {
-        self.release(|voice_pitch| voice_pitch == pitch);
+        match self.voicing {
+            Voicing::Poly => self.release(|voice_pitch| voice_pitch == pitch),
+            Voicing::Mono | Voicing::Legato => self.mono_off(pitch),
+        }
     }
 
     /// An arpeggio's next note: the latest voice sounding `from` goes on at `to`, its envelope
     /// and filter where they are, as a tracker's would, gliding there if the note glides; with
     /// none sounding, `to` starts afresh.
     fn retune(&mut self, from: u8, to: u8, velocity: u8) {
+        if let Some(held) = self.down.get_mut(..self.down_count) {
+            for pitch in held.iter_mut().filter(|pitch| **pitch == from) {
+                *pitch = to;
+            }
+        }
         let voices = (self.stage.iter().zip(&self.pitch).zip(&self.started)).enumerate();
         let sounding = voices
             .filter(|(_, ((stage, pitch), _))| {
@@ -410,32 +607,17 @@ impl Switched {
         let Some((i, _)) = sounding else {
             return self.note_on(to, velocity);
         };
-        let hz = midi_to_hz(to) / self.sample_rate;
-        let glide = std::mem::take(&mut self.shape).glide;
-        let now = self.inc.to_array().get(i).copied().unwrap_or(hz);
-        let (Some(pitch), Some(left), Some(ratio), Some(glide_to)) = (
-            self.pitch.get_mut(i),
-            self.glide_left.get_mut(i),
-            self.glide_ratio.get_mut(i),
-            self.glide_to.get_mut(i),
-        ) else {
-            return;
-        };
-        (*pitch, *glide_to) = (to, hz);
-        self.last = Some(to);
+        let note_glide = std::mem::take(&mut self.shape).glide;
+        let glide = self.glide_frames(note_glide);
         // Gliding, from wherever it's got to.
-        if glide > 0 && now > 0.0 {
-            let periods = glide.div_ceil(CONTROL_PERIOD as u32).max(1);
-            *left = periods;
-            *ratio = (hz / now).powf(1.0 / periods as f32);
-        } else {
-            *left = 0;
-            set_lane(&mut self.inc, i, hz);
-        }
+        let now = self.inc.to_array().get(i).copied();
+        self.slide(i, to, now, glide);
     }
 
     fn choke(&mut self) {
         self.release(|_| true);
+        self.down_count = 0;
+        self.tie = None;
     }
 
     /// Releases the voices sounding whose pitch passes `which`.
@@ -550,6 +732,10 @@ impl Switched {
         let drive = f32x8::splat(self.drive);
         let make_up = f32x8::splat(1.0 + MAKE_UP * self.feedback);
         let saws = self.stack.len();
+        let pulse = self.pulse_mix > 0.0;
+        let width = f32x8::splat(self.pulse_width);
+        let saw_mix = f32x8::splat(1.0 - self.pulse_mix);
+        let pulse_mix = f32x8::splat(PULSE_LEVEL * self.pulse_mix);
 
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             if self.clock.is_multiple_of(CONTROL_PERIOD) {
@@ -564,17 +750,19 @@ impl Switched {
 
             let inc = self.inc.max(f32x8::splat(1e-6));
             let (mut sum_left, mut sum_right) = (zero, zero);
-            let state = (self.master.iter_mut().zip(&mut self.slave)).zip(&mut self.held);
+            let state = (self.master.iter_mut().zip(&mut self.slave))
+                .zip(self.held.iter_mut().zip(&mut self.held_pulse));
             let levels = self
                 .ratio
                 .iter()
                 .zip(&self.left_level)
                 .zip(&self.right_level);
-            for (((master, slave), held), ((&ratio, &gain_left), &gain_right)) in
+            for (((master, slave), (held, held_pulse)), ((&ratio, &gain_left), &gain_right)) in
                 state.zip(levels).take(saws)
             {
                 let dm = inc * f32x8::splat(ratio);
                 let ds = dm * self.sync;
+                let before = *slave;
                 let m = *master + dm;
                 let s = *slave + ds;
                 // The master coming round restarts the saw, from wherever it had got to; else the
@@ -599,6 +787,27 @@ impl Switched {
                 let out = *held - step * since * since;
                 let after = one - since;
                 *held = two * s - one + step * after * after;
+                let out = if pulse {
+                    // The pulse is the saw less a second saw a pulse width behind it, which comes
+                    // round as the first passes the width, and jumps at a restart from wherever
+                    // it had got to, to a width short of the top.
+                    let behind = wrap(before - width);
+                    let ahead = behind + ds;
+                    let passed = ahead.simd_ge(one);
+                    let jump = restart.bitselect(
+                        two * (wrap(at_restart - width) - (one - width)),
+                        passed.bitselect(two, zero),
+                    );
+                    let since = restart
+                        .bitselect(since_restart, passed.bitselect((ahead - one) / ds, zero));
+                    let step = half * jump;
+                    let second = *held_pulse - step * since * since;
+                    let after = one - since;
+                    *held_pulse = two * wrap(s - width) - one + step * after * after;
+                    out * saw_mix + (out - second) * pulse_mix
+                } else {
+                    out
+                };
                 sum_left += out * f32x8::splat(gain_left);
                 sum_right += out * f32x8::splat(gain_right);
             }
@@ -650,6 +859,12 @@ fn soft_clip(x: f32x8) -> f32x8 {
     let x = x.max(f32x8::splat(-3.0)).min(f32x8::splat(3.0));
     let x2 = x * x;
     x * (f32x8::splat(27.0) + x2) / (f32x8::splat(27.0) + f32x8::splat(9.0) * x2)
+}
+
+/// Each lane's fractional part, from 0 up to 1.
+#[inline]
+fn wrap(x: f32x8) -> f32x8 {
+    x - x.floor()
 }
 
 /// Sets one of `v`'s lanes; there's nothing to set past the last.
@@ -830,5 +1045,124 @@ mod tests {
         let lane = m.pitch.iter().position(|&p| p == 69).unwrap();
         let hz = m.inc.to_array()[lane] * RATE;
         assert!((hz - 311.1).abs() < 3.0, "{hz}");
+    }
+
+    fn off(pitch: u8) -> Event {
+        Event {
+            offset: 0,
+            kind: EventKind::NoteOff { pitch },
+        }
+    }
+
+    /// The first voice's pitch, in Hz, where it's got to.
+    fn first_hz(m: &Switched) -> f32 {
+        m.inc.to_array()[0] * RATE
+    }
+
+    /// How strong `hz` is in `x`, through a Hann window.
+    fn strength(x: &[f32], hz: f32) -> f32 {
+        let n = x.len() as f32;
+        let (mut re, mut im) = (0.0, 0.0);
+        for (i, &x) in x.iter().enumerate() {
+            let t = i as f32;
+            let w = 0.5 - 0.5 * (2.0 * PI * t / n).cos();
+            let phase = 2.0 * PI * hz * t / RATE;
+            re += w * x * phase.cos();
+            im += w * x * phase.sin();
+        }
+        (re * re + im * im).sqrt() / n
+    }
+
+    #[test]
+    fn the_glide_setting_slides_every_note() {
+        let mut m = modular(&[(STACK, 0.0), (GLIDE, 0.1)]);
+        play(&mut m, &[on(57)], 0.1);
+        play(&mut m, &[on(69)], 0.05);
+        let lane = m.pitch.iter().position(|&p| p == 69).unwrap();
+        let hz = m.inc.to_array()[lane] * RATE;
+        assert!((hz - 311.1).abs() < 3.0, "{hz}");
+    }
+
+    #[test]
+    fn mono_plays_one_note_at_a_time_the_latest_held() {
+        let mut m = modular(&[(STACK, 0.0), (VOICING, 1.0)]);
+        play(&mut m, &[on(57), on(60), on(64)], 0.1);
+        let sounding = m.stage.iter().filter(|&&s| s != Stage::Idle).count();
+        assert_eq!(sounding, 1);
+        assert_eq!(m.pitch[0], 64);
+
+        // Letting the latest go goes back to the one before, starting it afresh.
+        let started = m.notes_started;
+        play(&mut m, &[off(64)], 0.001);
+        assert_eq!(m.pitch[0], 60);
+        assert_eq!(m.notes_started, started + 1);
+        // Letting go of one not sounding changes nothing.
+        play(&mut m, &[off(57)], 0.1);
+        assert_eq!((m.pitch[0], m.stage[0]), (60, Stage::Decay));
+        play(&mut m, &[off(60)], 0.001);
+        assert_eq!(m.stage[0], Stage::Release);
+    }
+
+    #[test]
+    fn legato_slides_over_a_held_note_without_starting_again() {
+        let pluck = [(STACK, 0.0), (SNAP, 0.0), (VOICING, 2.0), (GLIDE, 0.1)];
+        let mut m = modular(&pluck);
+        play(&mut m, &[on(57)], 0.5);
+        let faded = m.env.to_array()[0];
+        assert!(faded < 0.5, "{faded}");
+
+        // Played over the held note, it slides there with the envelope where it was.
+        play(&mut m, &[on(69)], 0.05);
+        assert!(m.env.to_array()[0] < faded);
+        assert!((first_hz(&m) - 311.1).abs() < 3.0, "{}", first_hz(&m));
+        // Let go, it slides back to the note still held.
+        play(&mut m, &[off(69)], 0.2);
+        assert!((first_hz(&m) - 220.0).abs() < 1.0, "{}", first_hz(&m));
+        assert_eq!(m.stage[0], Stage::Decay);
+
+        // Let go and played again later, it starts afresh, without sliding.
+        let started = m.notes_started;
+        play(&mut m, &[off(57)], 1.0);
+        play(&mut m, &[on(64)], 0.01);
+        assert_eq!(m.notes_started, started + 1);
+        assert!((first_hz(&m) - 329.6).abs() < 1.0, "{}", first_hz(&m));
+    }
+
+    #[test]
+    fn a_pattern_s_notes_one_after_another_join_up_in_legato() {
+        let held = |voices: f32| {
+            let mut m = modular(&[(STACK, 0.0), (SNAP, 0.0), (VOICING, voices)]);
+            play(&mut m, &[on(57)], 0.5);
+            // A pattern lets one note go as the next comes, at the same instant.
+            play(&mut m, &[off(57), on(60)], 0.01);
+            (m.notes_started, m.stage[0], m.pitch[0])
+        };
+        assert_eq!(held(2.0), (1, Stage::Decay, 60), "legato joins them");
+        assert_eq!(held(1.0), (2, Stage::Decay, 60), "mono starts afresh");
+    }
+
+    #[test]
+    fn wave_turns_the_saw_into_a_square_then_a_pulse() {
+        let base = [
+            (STACK, 0.0),
+            (LADDER, 16_000.0),
+            (CONTOUR, 0.0),
+            (SNAP, 0.5),
+        ];
+        let tone = |wave: f32| {
+            let mut m = modular(&[base.as_slice(), &[(WAVE, wave)]].concat());
+            let (l, r) = play(&mut m, &[on(57)], 1.0);
+            assert!(l.iter().chain(&r).all(|x| x.is_finite() && x.abs() < 2.0));
+            let l = &l[4_800..];
+            (strength(l, 220.0), strength(l, 440.0), pitch(l))
+        };
+        // A saw has every harmonic; a square only the odd ones; a narrow pulse every one again.
+        let (saw, saw_second, _) = tone(0.0);
+        assert!(saw_second > 0.3 * saw);
+        let (square, square_second, hz) = tone(0.5);
+        assert!(square_second < 0.05 * square, "{square_second} {square}");
+        assert!((hz - 220.0).abs() < 1.0, "{hz}");
+        let (pulse, pulse_second, _) = tone(1.0);
+        assert!(pulse_second > 0.5 * pulse);
     }
 }
