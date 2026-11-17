@@ -1519,7 +1519,11 @@ impl Editor {
                 }
             }
             Key::Char(c) => {
-                prompt.line.push(c);
+                // A folder just filled in already ends in its `/`: typing one goes into it.
+                let filled = prompt.selected.is_some() || prompt.typed == prompt.line;
+                if !(c == '/' && filled && prompt.line.ends_with('/')) {
+                    prompt.line.push(c);
+                }
                 prompt.selected = None;
                 prompt.history = None;
                 self.preview();
@@ -1584,8 +1588,11 @@ impl Editor {
             return;
         };
         prompt.line = format!("{start}{}", choice.text);
-        prompt.typed = typed;
-        prompt.selected = Some(next);
+        // The only folder there is goes straight in, so what's in it is suggested next.
+        (prompt.typed, prompt.selected) = match found.as_slice() {
+            [only] if only.text.ends_with('/') => (prompt.line.clone(), None),
+            _ => (typed, Some(next)),
+        };
     }
 
     /// Shows the next older command run (or newer, back to what was typed) that starts with
@@ -3237,6 +3244,37 @@ mod tests {
         // Saving, only the folders.
         typing(&mut e, ":preset-save mi");
         assert_eq!(texts(&e), ["mine/"]);
+        e.handle(Key::Esc);
+
+        // Tab fills in the only folder and goes into it; a `/` typed after it does too.
+        typing(&mut e, ":preset tus");
+        e.handle(Key::Tab);
+        assert_eq!(line(&e), "preset tuss/");
+        assert_eq!(texts(&e)[..2], ["tuss/tregaskin", "tuss/flim"]);
+        typing(&mut e, "/");
+        assert_eq!(line(&e), "preset tuss/");
+        e.handle(Key::Tab);
+        assert_eq!(line(&e), "preset tuss/tregaskin");
+        e.handle(Key::Esc);
+        typing(&mut e, ":preset ");
+        while !line(&e).ends_with("tuss/") {
+            e.handle(Key::Tab);
+        }
+        typing(&mut e, "/");
+        assert_eq!(line(&e), "preset tuss/");
+        assert_eq!(texts(&e)[..2], ["tuss/tregaskin", "tuss/flim"]);
+    }
+
+    #[test]
+    fn set_suggests_the_settings_of_the_track_the_page_shows() {
+        let mut e = editor();
+        e.run_command("inst switched");
+        // The instrument page on track 1, switched, with the pattern's cursor on track 2.
+        keys(&mut e, "tlgih");
+        assert_eq!((e.cursor().track, e.preset_track()), (1, Ok(0)));
+        typing(&mut e, ":set voi");
+        let texts: Vec<_> = e.completions().into_iter().map(|c| c.text).collect();
+        assert_eq!(texts, ["voices"]);
     }
 
     #[test]

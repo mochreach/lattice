@@ -102,7 +102,13 @@ impl Editor {
                 .map(|w| (w.to_string(), String::new()))
                 .collect()
         };
-        let Some(track) = self.grid.tracks.get(self.cursor().track) else {
+        // `:set` and the face act on the track the page shows, the mixer's or the
+        // instrument page's; the rest on the cursor's.
+        let t = match name {
+            "set" | "face-show" | "face-hide" => self.preset_track().ok(),
+            _ => Some(self.cursor().track),
+        };
+        let Some(track) = t.and_then(|t| self.grid.tracks.get(t)) else {
             return vec![];
         };
         match (name, before.len()) {
