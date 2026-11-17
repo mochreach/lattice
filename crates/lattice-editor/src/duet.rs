@@ -421,8 +421,9 @@ mod tests {
     #[test]
     fn the_right_hand_plays_the_scale_an_octave_up_from_k() {
         let keys = NoteLayout::Duet.keys(named("minor"), 9);
-        let row: Vec<_> = "kl;'".chars().map(|c| keys[&c]).collect();
-        assert_eq!(row, [21, 23, 24, 26]);
+        // To the fifth on the UK keyboard's `#`.
+        let row: Vec<_> = "kl;'#".chars().map(|c| keys[&c]).collect();
+        assert_eq!(row, [21, 23, 24, 26, 28]);
         // A row up is a fourth, three steps; down, three steps under.
         assert_eq!([keys[&'i'], keys[&',']], [26, 16]);
     }

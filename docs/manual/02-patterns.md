@@ -549,7 +549,9 @@ the same B.
 
 The piano layout makes a C major scale easy and every other key awkward, and each chord has a
 different shape in each key. `:layout NAME` lays the notes out another way, over all four rows
-of the keyboard, `z` (the keyboard octave's C) at the bottom left to `=` at the top right:
+of the keyboard, `z` (the keyboard octave's C) at the bottom left to `=` at the top right. On a
+UK keyboard the home row has a twelfth key, `#` after `'`, and it plays too (on a US one, `#`
+is Shift's `3`, and plays the same note):
 
 | Layout    | To the right     | A row up                 | Range        | Like                   |
 |-----------|------------------|--------------------------|--------------|------------------------|
@@ -571,7 +573,7 @@ In `wicki`, with the keyboard octave at 4:
 ```
  1:D#5  2:F-5  3:G-5  4:A-5  5:B-5  6:C#6  7:D#6  8:F-6  9:G-6  0:A-6  -:B-6  =:C#7
   q:A#4  w:C-5  e:D-5  r:E-5  t:F#5  y:G#5  u:A#5  i:C-6  o:D-6  p:E-6  [:F#6  ]:G#6
-   a:F-4  s:G-4  d:A-4  f:B-4  g:C#5  h:D#5  j:F-5  k:G-5  l:A-5  ;:B-5  ':C#6
+   a:F-4  s:G-4  d:A-4  f:B-4  g:C#5  h:D#5  j:F-5  k:G-5  l:A-5  ;:B-5  ':C#6  #:D#6
     z:C-4  x:D-4  c:E-4  v:F#4  b:G#4  n:A#4  m:C-5  ,:D-5  .:E-5  /:F#5
 ```
 
@@ -597,7 +599,7 @@ index finger:
 ```
  1:F-4  2:A#4  3:D#4  4:G#4  5:C#4  6:F#4  7:B-4  8:E-4  9:A-4  0:D-4  -:G-4  =:C-4
   q:C#4  w:F#4  e:B-4  r:E-4  t:A-4  y:D-4  u:G-4  i:C-4  o:F-4  p:A#4  [:D#4  ]:G#4
-   a:A-4  s:D-4  d:G-4  f:C-4  g:F-4  h:A#4  j:D#4  k:G#4  l:C#4  ;:F#4  ':B-4
+   a:A-4  s:D-4  d:G-4  f:C-4  g:F-4  h:A#4  j:D#4  k:G#4  l:C#4  ;:F#4  ':B-4  #:E-4
     z:F-4  x:A#4  c:D#4  v:G#4  b:C#4  n:F#4  m:B-4  ,:E-4  .:A-4  /:D-4
 ```
 
@@ -631,7 +633,7 @@ pianist's have. In C major, with the keyboard octave at 4:
 ```
  1:Cmaj7 2:Dm7   3:Em7   4:Fmaj7 5:G7    6:Am7   7:Bø7    8:B-5 9:C-6 0:D-6 -:E-6 =:F-6
   q:Cm    w:D     e:E     r:Fm    t:Gm    y:A     u:B      i:F-5 o:G-5 p:A-5 [:B-5 ]:C-6
-   a:C     s:Dm    d:Em    f:F     g:G     h:Am    j:B°     k:C-5 l:D-5 ;:E-5 ':F-5
+   a:C     s:Dm    d:Em    f:F     g:G     h:Am    j:B°     k:C-5 l:D-5 ;:E-5 ':F-5 #:G-5
     z:C/E   x:Dm/F  c:Em/G  v:F/A   b:G/B   n:Am/C  m:B°/D   ,:G-4 .:A-4 /:B-4
 ```
 
@@ -672,9 +674,10 @@ wanted chords added (F and B in C pentatonic), and one with no third on a note t
 nearest that sounds, a suspended fourth, say. Each chord has a bass an octave down.
 
 The **right hand**, from `i` `k` `,` across, is the scale layout an octave up, with its root on
-`k`: `k` `l` `;` `'` are the first four notes of the scale, and each row up about a fourth, as
-in `:layout scale`, from the fourth below the root to the eleventh above. Whatever `:scale` is,
-there's no note outside it to hit, so you can solo without looking.
+`k`: `k` `l` `;` `'` are the first four notes of the scale, and the UK's `#` the fifth, and
+each row up about a fourth, as in `:layout scale`, from the fourth below the root to the
+eleventh above. Whatever `:scale` is, there's no note outside it to hit, so you can solo
+without looking.
 
 A track holds one note on a step, so a chord needs a track a note. On its own, each hand plays
 the cursor's track, as any layout does: a chord key puts its root in and you hear the rest. (If

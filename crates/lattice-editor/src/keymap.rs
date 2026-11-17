@@ -689,8 +689,9 @@ const PIANO: [(char, i16); 38] = [
     (']', 31),
 ];
 
-/// The rows of the main keyboard, bottom up, each starting at its left.
-const ROWS: [&str; 4] = ["zxcvbnm,./", "asdfghjkl;'", "qwertyuiop[]", "1234567890-="];
+/// The rows of the main keyboard, bottom up, each starting at its left. The home row ends with
+/// the `#` key UK keyboards have after `'`; on US ones, `#` is Shift's 3.
+const ROWS: [&str; 4] = ["zxcvbnm,./", "asdfghjkl;'#", "qwertyuiop[]", "1234567890-="];
 
 /// Ways of laying notes out on the keyboard in insert mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -771,12 +772,12 @@ const MINOR_EXTRAS: [i16; 6] = [5, 7, 8, 10, 3, 2];
 
 /// Keys with Shift, on US and UK keyboards, and the keys they are: the number row, and the
 /// symbols the duet's right hand reaches. `"` and `@` are Shift's 2 on one of the two and its
-/// `'` on the other, so they're taken as the 2, the left hand's.
+/// `'` on the other, so they're taken as the 2, the left hand's. `#` is a key of its own, the
+/// UK's, so it isn't here: on a US keyboard, Shift's 3 plays the note at the home row's end.
 const SHIFTED: [(char, char); 20] = [
     ('!', '1'),
     ('@', '2'),
     ('"', '2'),
-    ('#', '3'),
     ('£', '3'),
     ('$', '4'),
     ('%', '5'),
@@ -793,6 +794,7 @@ const SHIFTED: [(char, char); 20] = [
     ('<', ','),
     ('>', '.'),
     ('?', '/'),
+    ('~', '#'),
 ];
 
 /// How a chord key's chord is voiced: as laid out, or with Shift an inversion up, its lowest
