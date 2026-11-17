@@ -770,13 +770,59 @@ fn places(home: (usize, usize)) -> impl Iterator<Item = (char, i16, i16)> {
 const MAJOR_EXTRAS: [i16; 6] = [5, 7, 9, 2, 4, 11];
 const MINOR_EXTRAS: [i16; 6] = [5, 7, 8, 10, 3, 2];
 
-/// Keys with Shift, on US and UK keyboards, and the keys they are: the number row, and the
-/// symbols the duet's right hand reaches. `"` and `@` are Shift's 2 on one of the two and its
-/// `'` on the other, so they're taken as the 2, the left hand's. `#` is a key of its own, the
-/// UK's, so it isn't here: on a US keyboard, Shift's 3 plays the note at the home row's end.
-const SHIFTED: [(char, char); 20] = [
+/// The two keyboards Lattice knows, which differ in what Shift makes of some keys: the UK's
+/// has a `#` key after `'`, with Shift's 2 a `"` and Shift's `'` an `@`; on the US's, `#` is
+/// Shift's 3, `@` its 2 and `"` its `'`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Keyboard {
+    #[default]
+    Us,
+    Uk,
+}
+
+impl Keyboard {
+    /// The characters Shift makes of the keys the duet reaches, and the keys they are.
+    fn shifted(self) -> &'static [(char, char)] {
+        match self {
+            Keyboard::Us => &SHIFTED_US,
+            Keyboard::Uk => &SHIFTED_UK,
+        }
+    }
+
+    /// The keyboard a locale's country likely has: the UK's for Britain and Ireland.
+    pub fn guess(locale: &str) -> Self {
+        if locale.starts_with("en_GB") || locale.starts_with("en_IE") {
+            Keyboard::Uk
+        } else {
+            Keyboard::Us
+        }
+    }
+}
+
+const SHIFTED_US: [(char, char); 19] = [
     ('!', '1'),
     ('@', '2'),
+    ('#', '3'),
+    ('$', '4'),
+    ('%', '5'),
+    ('^', '6'),
+    ('&', '7'),
+    ('*', '8'),
+    ('(', '9'),
+    (')', '0'),
+    ('_', '-'),
+    ('+', '='),
+    ('{', '['),
+    ('}', ']'),
+    (':', ';'),
+    ('"', '\''),
+    ('<', ','),
+    ('>', '.'),
+    ('?', '/'),
+];
+
+const SHIFTED_UK: [(char, char); 20] = [
+    ('!', '1'),
     ('"', '2'),
     ('£', '3'),
     ('$', '4'),
@@ -791,10 +837,11 @@ const SHIFTED: [(char, char); 20] = [
     ('{', '['),
     ('}', ']'),
     (':', ';'),
+    ('@', '\''),
+    ('~', '#'),
     ('<', ','),
     ('>', '.'),
     ('?', '/'),
-    ('~', '#'),
 ];
 
 /// How a chord key's chord is voiced: as laid out, or with Shift an inversion up, its lowest
@@ -980,6 +1027,8 @@ pub struct Keymap {
     pub piano: HashMap<char, i16>,
     /// The duet layout's left hand: key → its chord, as [`Keymap::piano`]'s semitones.
     pub chords: HashMap<char, Vec<i16>>,
+    /// Which keyboard's Shift the duet reads.
+    pub keyboard: Keyboard,
     pub layout: NoteLayout,
 }
 
@@ -1167,6 +1216,7 @@ impl Default for Keymap {
             insert,
             piano: NoteLayout::Piano.keys(&SCALES[0], 0),
             chords: HashMap::new(),
+            keyboard: Keyboard::Us,
             layout: NoteLayout::Piano,
         }
     }
@@ -1180,11 +1230,15 @@ impl Keymap {
         if self.layout != NoteLayout::Duet {
             return None;
         }
+        let shifted = self.keyboard.shifted();
+        let symbol = |c: char| shifted.iter().find(|&&(s, _)| s == c).map(|&(_, k)| k);
         let (c, voicing) = match key {
-            Key::Char(c) if self.piano.contains_key(&c) => (c, Voicing::Close),
+            // A US keyboard's `#` is Shift's 3, though a UK one's is a key of its own.
+            Key::Char(c) if self.piano.contains_key(&c) && symbol(c).is_none() => {
+                (c, Voicing::Close)
+            }
             Key::Char(c) => {
-                let symbol = SHIFTED.iter().find(|&&(s, _)| s == c).map(|&(_, k)| k);
-                let base = symbol.unwrap_or(c.to_ascii_lowercase());
+                let base = symbol(c).unwrap_or(c.to_ascii_lowercase());
                 if base == c {
                     return None;
                 }
@@ -1222,7 +1276,7 @@ impl Keymap {
     /// Every key that plays duet key `c`, however it's voiced, so that letting any of them go
     /// lets go of what the others started: Shift or Alt may come up first.
     pub fn duet_keys(&self, c: char) -> Vec<Key> {
-        let shifted = (SHIFTED.iter())
+        let shifted = (self.keyboard.shifted().iter())
             .filter(|&&(_, k)| k == c)
             .map(|&(s, _)| Key::Char(s))
             .chain(

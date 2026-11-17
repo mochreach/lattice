@@ -186,6 +186,7 @@ fn main() -> Result<()> {
     }
     let mut theme = Theme::detect();
     let mut settings = config::Settings::default();
+    editor.keymap.keyboard = config::keyboard_from_locale();
     if let Some(path) = named.clone().or_else(config::default_path)
         && let Some(problem) = config::load(
             &path,

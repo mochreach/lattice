@@ -419,6 +419,28 @@ mod tests {
     }
 
     #[test]
+    fn shift_reads_as_the_keyboard_has_it() {
+        let mut e = editor();
+        e.run_command("layout duet");
+        // On a UK keyboard, @ is Shift's ' and " its 2.
+        e.keymap.keyboard = crate::Keyboard::Uk;
+        assert_eq!(
+            e.keymap.duet_key(Key::Char('@')).map(|(c, _)| c),
+            Some('\'')
+        );
+        assert_eq!(e.keymap.duet_key(Key::Char('"')).map(|(c, _)| c), Some('2'));
+        assert_eq!(e.keymap.duet_key(Key::Char('#')).map(|(c, _)| c), Some('#'));
+        // On a US one, the other way round, and # is Shift's 3.
+        e.keymap.keyboard = crate::Keyboard::Us;
+        assert_eq!(e.keymap.duet_key(Key::Char('@')).map(|(c, _)| c), Some('2'));
+        assert_eq!(
+            e.keymap.duet_key(Key::Char('"')).map(|(c, _)| c),
+            Some('\'')
+        );
+        assert_eq!(e.keymap.duet_key(Key::Char('#')).map(|(c, _)| c), Some('3'));
+    }
+
+    #[test]
     fn right_shift_raises_the_right_hand_a_semitone() {
         let mut e = editor();
         e.releases = true;

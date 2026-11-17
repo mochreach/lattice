@@ -376,6 +376,7 @@ The file is [TOML](https://toml.io), as Helix's is, and laid out as Helix lays o
 ```toml
 splash = false               # no opening animation, nor the thanks after it
 update-check = false         # don't ask GitHub whether there's a newer Lattice
+keyboard = "uk"              # or "us": which keyboard Shift is read for
 
 [keys.normal]
 C-s = ":w"                   # a command
@@ -412,6 +413,14 @@ after it every time, as `--no-splash` does for one run. It goes at the top, befo
 `[section]`, since TOML would otherwise read it as part of that section. So does
 `update-check = false`, which stops Lattice asking GitHub, once a day, whether there's a newer
 release (see [Updating](01-introduction.md#updating)).
+
+`keyboard = "uk"` or `"us"` says which keyboard you have, as the two differ in what Shift
+makes of some keys, and a terminal sends only what the key typed. On a UK keyboard Shift's `'`
+is `@` and its `2` is `"`; on a US one it's the other way round, and `#`, which the UK has as
+a key of its own after `'`, is Shift's `3`. It matters in the [duet
+layout](02-patterns.md#two-hands-layout-duet-and-hand), where Shift on a note key voices a
+chord or plays the note as it is. Without it, Lattice goes by the locale: `en_GB` or `en_IE`
+in `LC_ALL`, `LC_CTYPE` or `LANG` is the UK's, and anything else the US's.
 
 ### Binding keys
 

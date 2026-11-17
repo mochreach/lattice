@@ -64,7 +64,7 @@ pub use export::{Export, Part, SAMPLES, file_name, scratch};
 pub use fx_page::{FxCursor, FxLine};
 pub use help::{Help, HelpLine};
 pub use inst_page::{InstCursor, InstLine};
-pub use keymap::{Action, Binding, Key, Keymap, Menu, NoteLayout};
+pub use keymap::{Action, Binding, Key, Keyboard, Keymap, Menu, NoteLayout};
 use keymap::{Hand, hand};
 pub use macros::target_name;
 pub use manual::{Manual, ManualLine, width as manual_width, wrap as manual_wrap};

@@ -767,37 +767,37 @@ track stays a real track, with its own rules, length and strip; the group adds:
   folded into the octave above the scale's root, so neighbours are fifths and thirds, every
   triangle of keys a triad in close voicing, and the clashes two keys away; the rows repeat
   every third, as three major thirds are an octave.
-- **Two hands (done).** `:layout duet` splits the four rows at the touch typist's hands, the
-  left reaching two columns over (`keymap::hand`: the first seven are the left's), for a
-  weak left hand: each left key plays a whole chord (`keymap::chords`, kept in
-  `Keymap::chords`). A first version laid the home row out in fifths (vi ii V I IV) with a row
-  of sevenths and one of borrowed chords; it played its one progression well and hid the rest.
-  Now each column is a chord of the scale in order, one to seven from A (Nashville numbers), and
-  the rows are its variants, as on a Stradella bass: home the scale's own, above it the other
-  quality (minor for major, else major: the secondary dominants), above that its seventh, below
-  it with its third in the bass. A six-column version left out the diminished chord, which
-  made the scale harder to count. A long scale drops its diminished chords from the top down,
-  then the notes furthest from the major or minor key, and a short one gains the key's most
-  wanted (`MAJOR_EXTRAS`). Chords stack every other scale degree, so harmonic minor keeps its
-  augmented and diminished chords, with a search by interval where the scale has no third or
-  fifth (pentatonics get sus4s). Each is voiced in the octave from the root, plus a bass an
-  octave down; Shift raises its lowest note an octave and Alt drops its highest
-  (`keymap::Voicing`), relative inversions, as the close voicing already puts each chord in its
-  own. Every duet key with Shift or Alt comes back to itself (`Keymap::duet_key`, symbols by US
-  and UK layouts), so the right hand plays on while the left holds one; letting any go releases
-  all of them, as Shift may come up first. In the duet they win over insert bindings, so `R`,
-  `!`, `{` and `}` play. Right Shift, told from the left by its own key event (`Tap`, as Right
-  Alt is), raises the right hand's notes a semitone (`Editor::right_shift`): the notes between
-  the scale's, the blue third, the minor key's sixth and seventh, rather than a mode to switch
-  into. The right hand is the
-  scale layout an octave up, K its root. A track holds one
-  note a step, so a chord is dealt out: unbound, over the insert cursors' tracks, primary
-  first, the rest only heard; on the instrument page heard
-  whole, its root recorded. `:hand left` / `right` binds a hand to the selection's tracks, as
-  `TrackId`s, so moving or deleting tracks can't leave it pointing at the wrong one (`duet.rs`).
-  A bound hand plays there wherever the cursor is, heard or recorded but never typed at the
-  cursor; each note goes to the first track its other keys aren't holding (`Editor::voices`,
-  freed on key-up), else the one held longest, and notes beyond the tracks are dropped.
+- **Two hands (done).** `:layout duet` splits the four rows at the touch typist's hands, the left
+  reaching two columns over (`keymap::hand`: the first seven are the left's), for a weak left hand:
+  each left key plays a whole chord (`keymap::chords`, kept in `Keymap::chords`). A first version
+  laid the home row out in fifths (vi ii V I IV) with a row of sevenths and one of borrowed chords;
+  it played its one progression well and hid the rest. Now each column is a chord of the scale in
+  order, one to seven from A (Nashville numbers), and the rows are its variants, as on a Stradella
+  bass: home the scale's own, above it the other quality (minor for major, else major: the secondary
+  dominants), above that its seventh, below it with its third in the bass. A six-column version left
+  out the diminished chord, which made the scale harder to count. A long scale drops its diminished
+  chords from the top down, then the notes furthest from the major or minor key, and a short one
+  gains the key's most wanted (`MAJOR_EXTRAS`). Chords stack every other scale degree, so harmonic
+  minor keeps its augmented and diminished chords, with a search by interval where the scale has no
+  third or fifth (pentatonics get sus4s). Each is voiced in the octave from the root, plus a bass an
+  octave down; Shift raises its lowest note an octave and Alt drops its highest (`keymap::Voicing`),
+  relative inversions, as the close voicing already puts each chord in its own. Every duet key with
+  Shift or Alt comes back to itself (`Keymap::duet_key`, symbols by US and UK layouts), so the right
+  hand plays on while the left holds one; letting any go releases all of them, as Shift may come up
+  first. In the duet they win over insert bindings, so `R`, `!`, `{` and `}` play. What Shift makes
+  of a key differs by keyboard, and the terminal sends only the character, so `Keyboard` (US or UK,
+  from the config's `keyboard` or else the locale) says which table to read it back by: `@` is
+  Shift's 2 on one and its `'` on the other. Right Shift, told from the left by its own key event
+  (`Tap`, as Right Alt is), raises the right hand's notes a semitone (`Editor::right_shift`): the
+  notes between the scale's, the blue third, the minor key's sixth and seventh, rather than a mode
+  to switch into. The right hand is the scale layout an octave up, K its root. A track holds one
+  note a step, so a chord is dealt out: unbound, over the insert cursors' tracks, primary first, the
+  rest only heard; on the instrument page heard whole, its root recorded. `:hand left` / `right`
+  binds a hand to the selection's tracks, as `TrackId`s, so moving or deleting tracks can't leave it
+  pointing at the wrong one (`duet.rs`). A bound hand plays there wherever the cursor is, heard or
+  recorded but never typed at the cursor; each note goes to the first track its other keys aren't
+  holding (`Editor::voices`, freed on key-up), else the one held longest, and notes beyond the
+  tracks are dropped.
 - **Note repeat (done).** Holding the numpad's `0` makes the pads played meanwhile repeat, every
   1, 2 or 4 steps (`.`), as on an MPC. The editor emits `Effect::Repeat`, held like a note key's
   preview, and the engine's `Command::Repeat` is a preview with an `every`: it plays it again on

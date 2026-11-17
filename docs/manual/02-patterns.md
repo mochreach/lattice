@@ -551,7 +551,8 @@ The piano layout makes a C major scale easy and every other key awkward, and eac
 different shape in each key. `:layout NAME` lays the notes out another way, over all four rows
 of the keyboard, `z` (the keyboard octave's C) at the bottom left to `=` at the top right. On a
 UK keyboard the home row has a twelfth key, `#` after `'`, and it plays too (on a US one, `#`
-is Shift's `3`, and plays the same note):
+is Shift's `3`; `keyboard` in the [config](10-files-and-config.md#the-config-file) says which
+you have):
 
 | Layout    | To the right     | A row up                 | Range        | Like                   |
 |-----------|------------------|--------------------------|--------------|------------------------|

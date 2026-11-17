@@ -4,6 +4,7 @@
 //! ```toml
 //! splash = false               # no opening, nor the thanks after it
 //! update-check = false         # don't ask GitHub for a newer Lattice
+//! keyboard = "uk"              # or "us": what Shift makes of keys, else guessed from the locale
 //!
 //! [keys.normal]
 //! C-s = ":w"
@@ -26,7 +27,7 @@
 
 use std::path::{Path, PathBuf};
 
-use lattice_editor::{Key, Keymap};
+use lattice_editor::{Key, Keyboard, Keymap};
 use ratatui::style::Color;
 use toml::{Table, Value};
 
@@ -40,6 +41,18 @@ pub fn default_path() -> Option<PathBuf> {
         _ => lattice_editor::home()?.join(".config"),
     };
     Some(base.join("lattice").join("config.toml"))
+}
+
+/// The keyboard the locale's country likely has, the first of `LC_ALL`, `LC_CTYPE` and `LANG`
+/// that's set saying which.
+pub fn keyboard_from_locale() -> Keyboard {
+    let locale = ["LC_ALL", "LC_CTYPE", "LANG"]
+        .into_iter()
+        .filter_map(|name| std::env::var(name).ok())
+        .find(|value| !value.is_empty())
+        // None set: the US keyboard, the commonest.
+        .unwrap_or_default();
+    Keyboard::guess(&locale)
 }
 
 /// What the config sets beyond keys and colours.
@@ -102,6 +115,12 @@ fn apply(
             ("splash", _) => problems.push("splash should be true or false".into()),
             ("update-check", Value::Boolean(on)) => settings.update_check = *on,
             ("update-check", _) => problems.push("update-check should be true or false".into()),
+            ("keyboard", Value::String(name)) => match name.as_str() {
+                "us" => keymap.keyboard = Keyboard::Us,
+                "uk" => keymap.keyboard = Keyboard::Uk,
+                _ => problems.push(format!("keyboard should be \"us\" or \"uk\", not {name:?}")),
+            },
+            ("keyboard", _) => problems.push("keyboard should be \"us\" or \"uk\"".into()),
             _ => problems.push(format!("unknown section [{name}]")),
         }
     }
@@ -229,6 +248,20 @@ mod tests {
         assert!(
             problems.is_empty() && !settings.update_check,
             "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn says_which_keyboard() {
+        assert_eq!(Keyboard::guess("en_GB.UTF-8"), Keyboard::Uk);
+        assert_eq!(Keyboard::guess("en_US.UTF-8"), Keyboard::Us);
+        let (keymap, _, problems) = applied("keyboard = \"uk\"");
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(keymap.keyboard, Keyboard::Uk);
+        let (_, _, problems) = applied("keyboard = \"de\"");
+        assert_eq!(
+            problems,
+            ["keyboard should be \"us\" or \"uk\", not \"de\""]
         );
     }
 
