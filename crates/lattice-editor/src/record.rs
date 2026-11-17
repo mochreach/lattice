@@ -183,9 +183,18 @@ impl Editor {
         if repeats {
             self.repeat = false;
         }
-        self.release_voice(key);
-        let mut effects = self.release_previews(key, repeats);
-        effects.extend(self.release_recorded(key));
+        // A chord key comes up as itself whether Shift or Alt went first, so it lets go of
+        // all its voicings.
+        let keys = match self.keymap.chord_key(key) {
+            Some((c, _)) => self.keymap.chord_keys(c),
+            None => vec![key],
+        };
+        let mut effects = vec![];
+        for key in keys {
+            self.release_voice(key);
+            effects.extend(self.release_previews(key, repeats));
+            effects.extend(self.release_recorded(key));
+        }
         effects
     }
 

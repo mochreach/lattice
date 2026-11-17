@@ -483,7 +483,7 @@ pub const COMMANDS: &[Spec] = &[
         name: "layout",
         alias: None,
         params: &[text("LAYOUT", "layout")],
-        describe: "how notes lie on the keyboard in insert mode: piano, wicki (Wicki-Hayden), fourths, scale (only the notes of :scale), tonnetz (any three keys together a chord), or duet (a chord a key on the left, the scale on the right)",
+        describe: "how notes lie on the keyboard in insert mode: piano, wicki (Wicki-Hayden), fourths, scale (only the notes of :scale), tonnetz (any three keys together a chord), or duet (a chord a key on the left, Shift or Alt for an inversion up or down; the scale on the right)",
     },
     Spec {
         name: "hand",
@@ -1512,7 +1512,7 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
                     editor.scale_name()
                 ),
                 NoteLayout::Duet => format!(
-                    "duet in {}: chords one to six from a, the scale from j",
+                    "duet in {}: chords one to seven from a, Shift and Alt to voice them; the scale from k",
                     editor.scale_name()
                 ),
                 _ => format!("notes laid out as {name}"),

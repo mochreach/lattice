@@ -734,12 +734,13 @@ impl Hand {
     }
 }
 
-/// The columns under the left hand in the duet layout: up to Y, H and N, the left index
-/// finger's reach and one over, for six chords.
-const LEFT_COLUMNS: usize = 6;
-/// The home keys' places in [`ROWS`]: the left index finger's F and the right's J.
+/// The columns under the left hand in the duet layout: up to U, J and M, the left index
+/// finger's reach and two over, for the scale's seven chords.
+const LEFT_COLUMNS: usize = 7;
+/// The home keys' places in [`ROWS`]: the left index finger's F, and K, where the duet's right
+/// hand starts.
 const LEFT_HOME: (usize, usize) = (1, 3);
-const RIGHT_HOME: (usize, usize) = (1, 6);
+const RIGHT_HOME: (usize, usize) = (1, 7);
 
 /// The hand that plays `c` in [`NoteLayout::Duet`], if it's a note key there.
 pub fn hand(c: char) -> Option<Hand> {
@@ -762,20 +763,40 @@ fn places(home: (usize, usize)) -> impl Iterator<Item = (char, i16, i16)> {
     })
 }
 
-/// The chords the left hand's columns are built on when the scale hasn't six notes, most
+/// The chords the left hand's columns are built on when the scale hasn't seven notes, most
 /// wanted first, in semitones above the root: in a major key IV V vi ii iii vii, in a minor one
 /// iv v VI VII III ii.
 const MAJOR_EXTRAS: [i16; 6] = [5, 7, 9, 2, 4, 11];
 const MINOR_EXTRAS: [i16; 6] = [5, 7, 8, 10, 3, 2];
 
+/// The number row's keys with Shift, on US and UK keyboards, as far as the left hand reaches.
+const SHIFTED_DIGITS: [(char, char); 9] = [
+    ('!', '1'),
+    ('@', '2'),
+    ('"', '2'),
+    ('#', '3'),
+    ('£', '3'),
+    ('$', '4'),
+    ('%', '5'),
+    ('^', '6'),
+    ('&', '7'),
+];
+
+/// How a chord key's chord is voiced: as laid out, or with Shift an inversion up, its lowest
+/// note raised an octave, or with Alt one down, its highest lowered. The bass stays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Voicing {
+    Close,
+    Up,
+    Down,
+}
+
 /// The chords under the left hand in the duet layout, by key: each a root, third, fifth and
 /// perhaps seventh, close together in the octave from the scale's root, then a bass an octave
 /// down. Semitones above the keyboard octave's C.
 ///
-/// Each column is a chord of the scale, in order from `a`, one to six: in C, C Dm Em F G Am.
-/// A seven-note scale's diminished chord is left out (B° in C major, B° in A minor), as it's
-/// the one least played, and the top three notes of the fifth's seventh. The rows are variants
-/// of the home row's chord:
+/// Each column is a chord of the scale, in order from `a`, one to seven: in C, C Dm Em F G Am
+/// B°. The rows are variants of the home row's chord:
 ///
 /// - the number row, with the scale's seventh (Cmaj7, G7);
 /// - the top row, the other quality: minor for a major chord, major for the rest, so the major
@@ -811,11 +832,11 @@ pub fn chords(scale: &Scale, root: u8) -> HashMap<char, Vec<i16>> {
     } else {
         ([0, 2, 3, 5, 7, 8, 10], MINOR_EXTRAS)
     };
-    // Six columns: a long scale loses its diminished chords from the top down, then the notes
+    // Seven columns: a long scale loses its diminished chords from the top down, then the notes
     // furthest from the major or minor key, from the top down; a short one gains the key's
     // most wanted.
     let mut roots = steps.clone();
-    while roots.len() > 6 {
+    while roots.len() > LEFT_COLUMNS {
         let last = |keep: &dyn Fn(i16) -> bool| roots.iter().rev().copied().find(|&r| !keep(r));
         let gone = last(&|r| r == 0 || !diminished(r))
             .or_else(|| last(&|r| key.contains(&r)))
@@ -823,7 +844,7 @@ pub fn chords(scale: &Scale, root: u8) -> HashMap<char, Vec<i16>> {
         roots.retain(|&r| Some(r) != gone);
     }
     for extra in extras {
-        if roots.len() < 6 && !roots.contains(&extra) {
+        if roots.len() < LEFT_COLUMNS && !roots.contains(&extra) {
             roots.push(extra);
         }
     }
@@ -1137,6 +1158,67 @@ impl Default for Keymap {
 }
 
 impl Keymap {
+    /// The chord key `key` is in the duet layout, and how it's voiced: `a`, Shift's `A` and
+    /// Alt's `A-a` are all `a`.
+    pub fn chord_key(&self, key: Key) -> Option<(char, Voicing)> {
+        let (c, voicing) = match key {
+            Key::Char(c) if self.chords.contains_key(&c) => (c, Voicing::Close),
+            Key::Char(c) => {
+                let digit = SHIFTED_DIGITS
+                    .iter()
+                    .find(|&&(s, _)| s == c)
+                    .map(|&(_, d)| d);
+                let base = digit.unwrap_or(c.to_ascii_lowercase());
+                if base == c {
+                    return None;
+                }
+                (base, Voicing::Up)
+            }
+            Key::Alt(c) => (c, Voicing::Down),
+            _ => return None,
+        };
+        self.chords.contains_key(&c).then_some((c, voicing))
+    }
+
+    /// The notes `key` plays as a chord key in the duet layout, voiced as its modifier says:
+    /// the root first, the bass last.
+    pub fn chord(&self, key: Key) -> Option<Vec<i16>> {
+        let (c, voicing) = self.chord_key(key)?;
+        let mut notes = self.chords.get(&c)?.clone();
+        let upper = notes.len().saturating_sub(1);
+        let moved = match voicing {
+            Voicing::Close => None,
+            Voicing::Up => (0..upper)
+                .min_by_key(|&i| notes.get(i).copied())
+                .map(|i| (i, 12)),
+            Voicing::Down => (0..upper)
+                .max_by_key(|&i| notes.get(i).copied())
+                .map(|i| (i, -12)),
+        };
+        if let Some((i, by)) = moved
+            && let Some(note) = notes.get_mut(i)
+        {
+            *note += by;
+        }
+        Some(notes)
+    }
+
+    /// Every key that plays chord key `c`, however it's voiced, so that letting any of them go
+    /// lets go of what the others started: Shift or Alt may come up first.
+    pub fn chord_keys(&self, c: char) -> Vec<Key> {
+        let shifted = (SHIFTED_DIGITS.iter())
+            .filter(|&&(_, d)| d == c)
+            .map(|&(s, _)| Key::Char(s))
+            .chain(
+                c.is_ascii_lowercase()
+                    .then(|| Key::Char(c.to_ascii_uppercase())),
+            );
+        [Key::Char(c), Key::Alt(c)]
+            .into_iter()
+            .chain(shifted)
+            .collect()
+    }
+
     /// Binds `key` in normal and select mode, or within the menu `prefix` opens (making it one
     /// if it isn't), to `target`: an action's name, a `:command`, or `none` to unbind it.
     pub fn bind_normal(

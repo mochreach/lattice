@@ -309,10 +309,11 @@ const LESSONS: &[Lesson] = &[
                are grids where a chord is the same shape in every key, `scale` plays only the \
                notes of the scale `:scale` sets, and in `tonnetz` any three keys that touch are \
                a chord. `:layout duet` is for accompanying yourself: every key under the left hand, up to \
-               `y` `h` `n`, plays a whole chord. The home row is the scale's chords, one to \
-               six from `a`; above each is its other quality (minor for major), above that \
-               its seventh, and below it with its third in the bass. Under the right, from \
-               `j`, is the scale an octave up, for a tune over them. \
+               `u` `j` `m`, plays a whole chord. The home row is the scale's chords, one to \
+               seven from `a`; above each is its other quality (minor for major), above that \
+               its seventh, and below it with its third in the bass. Shift voices a chord an \
+               inversion up, Alt one down. Under the right, from `k`, is the scale an octave \
+               up, for a tune over them. \
                `:hand left` gives the left hand the selected tracks to play wherever the \
                cursor is, a chord's notes dealt out one to a track, and `:hand right` the \
                right; `:hand off` puts both back on the cursor's track.\n\nGive the left \

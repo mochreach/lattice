@@ -185,6 +185,10 @@ impl Editor {
             "notes",
             "as laid out by :layout, in the keyboard octave",
         ));
+        lines.push(item(
+            "shift, A-chord",
+            "in the duet layout, a left-hand chord an inversion up, or down",
+        ));
         lines.extend(by_action(self.keymap.insert.iter().map(|(k, a)| (*k, *a))));
         lines.push(item("C-0…C-9", STEP_KEYS));
 

@@ -768,20 +768,25 @@ track stays a real track, with its own rules, length and strip; the group adds:
   triangle of keys a triad in close voicing, and the clashes two keys away; the rows repeat
   every third, as three major thirds are an octave.
 - **Two hands (done).** `:layout duet` splits the four rows at the touch typist's hands, the
-  left reaching one column over (`keymap::hand`: the first six columns are the left's), for a
+  left reaching two columns over (`keymap::hand`: the first seven are the left's), for a
   weak left hand: each left key plays a whole chord (`keymap::chords`, kept in
   `Keymap::chords`). A first version laid the home row out in fifths (vi ii V I IV) with a row
   of sevenths and one of borrowed chords; it played its one progression well and hid the rest.
-  Now each column is a chord of the scale in order, one to six from A (Nashville numbers), and
+  Now each column is a chord of the scale in order, one to seven from A (Nashville numbers), and
   the rows are its variants, as on a Stradella bass: home the scale's own, above it the other
   quality (minor for major, else major: the secondary dominants), above that its seventh, below
-  it with its third in the bass. Six columns hold seven chords by leaving out the diminished,
-  the least played and the top of V7; a long scale drops its diminished chords from the top
-  down, then the notes furthest from the major or minor key, and a short one gains the key's
-  most wanted (`MAJOR_EXTRAS`). Chords stack every other scale degree, so harmonic minor keeps
-  its augmented and diminished chords, with a search by interval where the scale has no third
-  or fifth (pentatonics get sus4s). Each is voiced in the octave from the root, plus a bass an
-  octave down. The right hand is the scale layout an octave up, J its root. A track holds one
+  it with its third in the bass. A six-column version left out the diminished chord, which
+  made the scale harder to count. A long scale drops its diminished chords from the top down,
+  then the notes furthest from the major or minor key, and a short one gains the key's most
+  wanted (`MAJOR_EXTRAS`). Chords stack every other scale degree, so harmonic minor keeps its
+  augmented and diminished chords, with a search by interval where the scale has no third or
+  fifth (pentatonics get sus4s). Each is voiced in the octave from the root, plus a bass an
+  octave down; Shift raises its lowest note an octave and Alt drops its highest
+  (`keymap::Voicing`), relative inversions, as the close voicing already puts each chord in its
+  own. Shifted keys come back to their chord key (`Keymap::chord_key`, the number row's symbols
+  by US and UK layouts), and letting any go releases all of them, as Shift may come up first;
+  in the duet they win over insert bindings, so `R` and `!` play chords. The right hand is the
+  scale layout an octave up, K its root. A track holds one
   note a step, so a chord is dealt out: unbound, over the insert cursors' tracks, primary
   first, the rest only heard; on the instrument page heard
   whole, its root recorded. `:hand left` / `right` binds a hand to the selection's tracks, as

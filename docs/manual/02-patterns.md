@@ -629,15 +629,15 @@ it. A typing keyboard is two hands wide, and `:layout duet` gives each hand a jo
 pianist's have. In C major, with the keyboard octave at 4:
 
 ```
- 1:Cmaj7 2:Dm7   3:Em7   4:Fmaj7 5:G7    6:Am7     7:B-5 8:C-6 9:D-6 0:E-6 -:F-6 =:G-6
-  q:Cm    w:D     e:E     r:Fm    t:Gm    y:A       u:F-5 i:G-5 o:A-5 p:B-5 [:C-6 ]:D-6
-   a:C     s:Dm    d:Em    f:F     g:G     h:Am      j:C-5 k:D-5 l:E-5 ;:F-5 ':G-5
-    z:C/E   x:Dm/F  c:Em/G  v:F/A   b:G/B   n:Am/C    m:G-4 ,:A-4 .:B-4 /:C-5
+ 1:Cmaj7 2:Dm7   3:Em7   4:Fmaj7 5:G7    6:Am7   7:Bø7    8:B-5 9:C-6 0:D-6 -:E-6 =:F-6
+  q:Cm    w:D     e:E     r:Fm    t:Gm    y:A     u:B      i:F-5 o:G-5 p:A-5 [:B-5 ]:C-6
+   a:C     s:Dm    d:Em    f:F     g:G     h:Am    j:B°     k:C-5 l:D-5 ;:E-5 ':F-5
+    z:C/E   x:Dm/F  c:Em/G  v:F/A   b:G/B   n:Am/C  m:B°/D   ,:G-4 .:A-4 /:B-4
 ```
 
-The **left hand**, up to `y` `h` `n`, plays a whole chord a key, built from `:scale`. Each
-column is one chord of the scale, counted one to six from `a`, the way musicians call chords by
-number (the Nashville number system): C Dm Em F G Am in C, so I–V–vi–IV is `a` `g` `h` `f`
+The **left hand**, up to `u` `j` `m`, plays a whole chord a key, built from `:scale`. Each
+column is one chord of the scale, counted one to seven from `a`, the way musicians call chords
+by number (the Nashville number system): C Dm Em F G Am B° in C, so I–V–vi–IV is `a` `g` `h` `f`
 wherever the key is. The rows are versions of that chord, as the buttons of an accordion's bass
 are:
 
@@ -649,20 +649,31 @@ are:
 - **The bottom row** puts the chord's third in the bass, C/E or G/B, so the bass can walk from
   chord to chord by step, as a pianist's left hand does, instead of jumping between roots.
 
-A scale has seven chords and there are six columns, so one is left out: the diminished one, B°
-in C major and in A minor. It's the chord least played, and its notes are the top three of the
-fifth's seventh, so `5`, G7 in C, plays it with a root under it. The chords take their notes
-from the scale, stacking every other note, so they change with it. In A harmonic minor the
-columns are Am B° C+ Dm E F, the augmented and diminished chords that scale exists for, and B
-major above B°, leading to E. A scale of five notes, as the pentatonics are, gets the key's most
-wanted chord added (F in C pentatonic), and one with no third on a note takes the nearest that
-sounds, a suspended fourth, say. Each chord is voiced close, its notes in the octave from the
-scale's root, with a bass an octave down.
+An earlier version had six columns and left B° out, as the chord least played; but a scale has
+seven, all seven in a row are easier to count, and two keys further is no stretch.
 
-The **right hand**, from `u` `j` `m` across, is the scale layout an octave up, with its root on
-`j`: `j` `k` `l` `;` are the first four notes of the scale, and each row up about a fourth, as
-in `:layout scale`. Whatever `:scale` is, there's no note outside it to hit, so you can solo
-without looking.
+**Shift and Alt** change how a chord is voiced. As laid out, its notes sit close together in the
+octave from the scale's root, so that moving from one chord to the next, the notes move as
+little as they can, as a pianist would play them. Shift voices a chord an **inversion up**, its
+lowest note raised an octave: C E G becomes E G C, brighter and
+higher. Alt voices it an inversion **down**, its highest note dropped an octave: G C E, darker
+and closer to the bass. The bass stays where it was either way. I'd thought of first and second
+inversions on fixed keys, but the chords are already in different inversions as laid out (F in C
+is C F A, the second), so "one up" and "one down" from wherever each chord is is what the hand
+can feel. With Shift, the number row is its symbols, `!` to `&`, and in the duet `R` and `!` are
+chords, not record and the loop pedal: arm recording with `R` in normal mode, and the loop
+pedal is still right Alt.
+
+The chords take their notes from the scale, stacking every other note, so they change with it.
+In A harmonic minor the columns are Am B° C+ Dm E F G#°, the augmented and diminished chords
+that scale exists for. A scale of fewer notes, as the pentatonics are, gets the key's most
+wanted chords added (F and B in C pentatonic), and one with no third on a note takes the
+nearest that sounds, a suspended fourth, say. Each chord has a bass an octave down.
+
+The **right hand**, from `i` `k` `,` across, is the scale layout an octave up, with its root on
+`k`: `k` `l` `;` `'` are the first four notes of the scale, and each row up about a fourth, as
+in `:layout scale`, from the fourth below the root to the eleventh above. Whatever `:scale` is,
+there's no note outside it to hit, so you can solo without looking.
 
 A track holds one note on a step, so a chord needs a track a note. On its own, each hand plays
 the cursor's track, as any layout does: a chord key puts its root in and you hear the rest. (If
