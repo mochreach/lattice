@@ -2759,12 +2759,30 @@ fn wander(pass: u32, step: usize, track: usize, len: usize) -> usize {
 /// A chance comes out the same for the same pass, step and track, as a `J?` does.
 fn holds(step: &Step, pass: u32, at: usize, track: usize, fill: bool) -> bool {
     step.gestures().all(|g| match g {
-        Gesture::Chance(n) => scatter(pass, at, track, 1) % 100 < u64::from(n),
+        Gesture::Chance(n) => chance(n, pass, at, track),
         Gesture::Every(k, n) => pass % u32::from(n.max(1)) + 1 == u32::from(k),
         Gesture::Fill => fill,
         Gesture::NoFill => !fill,
         _ => true,
     })
+}
+
+/// Whether a step at `n`% plays on pass `pass`. Spread evenly but scrambled: the passes go in
+/// runs of about 100/n, five for 20%, and the step plays once in each run, on a pass picked by
+/// the run, step and track. So it plays its share however few passes go by, rather than going
+/// quiet for twenty passes by bad luck, and still sounds random.
+fn chance(n: u8, pass: u32, step: usize, track: usize) -> bool {
+    let n = u64::from(n.min(100));
+    if n == 0 {
+        return false;
+    }
+    // Run k is the passes from k·100/n to (k + 1)·100/n, each end rounded up.
+    let p = u64::from(pass);
+    let k = p * n / 100;
+    let start = (k * 100).div_ceil(n);
+    let end = ((k + 1) * 100).div_ceil(n);
+    let picked = start + scatter(k as u32, step, track, 1) % (end - start).max(1);
+    picked == p
 }
 
 /// A number that looks random, from a pass, step and track, and `salt` for what it's for.
@@ -3506,11 +3524,28 @@ mod tests {
         let played = |track| {
             (0..1_000)
                 .filter(|&p| holds(&step, p, 3, track, false))
-                .count()
+                .collect::<Vec<u32>>()
         };
-        assert!((250..350).contains(&played(0)), "{}", played(0));
+        assert_eq!(played(0).len(), 300);
         assert_eq!(played(0), played(0));
         assert_ne!(played(0), played(1), "each track its own");
+        // However few passes go by, it plays its share: a fifth plays once in every five.
+        for (n, run) in [(20, 5), (10, 10), (80, 5), (50, 2), (99, 100)] {
+            step.gestures[0] = Some(Gesture::Chance(n));
+            for start in (0..200).step_by(run) {
+                let got = (start..start + run as u32)
+                    .filter(|&p| holds(&step, p, 3, 1, false))
+                    .count();
+                assert_eq!(got * 100, n as usize * run, "?{n} from pass {start}");
+            }
+        }
+        // Not on the same passes every run.
+        step.gestures[0] = Some(Gesture::Chance(20));
+        let at: Vec<u32> = (0..50)
+            .filter(|&p| holds(&step, p, 3, 0, false))
+            .map(|p| p % 5)
+            .collect();
+        assert!(at.iter().any(|&p| p != at[0]), "{at:?}");
         // Both conditions must hold.
         step.gestures[1] = Some(Gesture::Fill);
         assert_eq!(

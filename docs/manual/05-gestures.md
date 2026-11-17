@@ -264,7 +264,14 @@ the passes the step plays.
 **Chance, `?1` to `?99`.** The step plays on that share of passes. Which passes is decided by
 the pass, the step and the track together, scrambled, so it sounds random but is the same every
 time the song plays, and differs from track to track and step to step. A song never comes out
-differently on the night, and an export sounds as you heard it. In the Scarlatti, the echo rings
+differently on the night, and an export sounds as you heard it.
+
+The share is kept close, not left to luck. The passes go in runs, five for `?20`, ten for `?10`,
+and the step plays once in each run, on a pass the scrambling picks. At first I rolled a die
+for every pass, as most sequencers do, but the same rolls come round each time the song plays,
+and a `?20` chord of mine had a bad run: it didn't play until the seventeenth pass, half a
+minute in, every time I pressed play. Now a `?20` plays once in every five passes, somewhere,
+and never goes quiet for long. In the Scarlatti, the echo rings
 an octave over the right hand's hammered notes a quarter of the time (`?25`); in the demo, the
 ride drops its last hit on half the passes.
 

@@ -1490,7 +1490,10 @@ of this allocates.
 realised, as a fill can start on any step. A step whose conditions don't hold plays as an empty
 one: no note, no locks, no gestures, the playhead's among them, so `F` with `J12` jumps only
 during a fill. A chance is decided by hashing the pass, step and track (`scatter`, which `J?`
-shares), so it's the same each time the song plays and differs between tracks; `k:n` holds on
+shares), so it's the same each time the song plays and differs between tracks. It's spread,
+not rolled each pass (`chance`): run k is passes ⌈k·100/n⌉ to ⌈(k+1)·100/n⌉, and the step plays
+on one pass of each, picked by the hash, so the share holds over any few passes and a fixed
+roll can't leave a step silent for the first minute of every play; `k:n` holds on
 passes where `pass % n + 1 == k`. The fill is the engine's own flag, set by `Command::Fill` and
 dropped on stop. The editor sends it from `Action::PlayFill`, bound to backtick: on the key's
 press and release where the frontend reports releases (`Editor::releases`), and on alternate
