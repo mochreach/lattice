@@ -240,8 +240,8 @@ pub const COMMANDS: &[Spec] = &[
     Spec {
         name: "set",
         alias: None,
-        params: &[text("VALUE", "value")],
-        describe: "mixer: set the value under the cursor",
+        params: &[text("[SETTING] VALUE [TRACK]", "value")],
+        describe: "set the value under the cursor, or a setting by name on the cursor's track or a track by number or name",
     },
     Spec {
         name: "inst",
@@ -1614,7 +1614,17 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             Ok(effects)
         }
         "set" => {
-            let word = command.text(0)?;
+            let text = command.text(0)?.trim();
+            // `:set glide 0`, `:set glide 0 LEAD`: a setting by name, anywhere.
+            if let Some((name, rest)) = text.split_once(' ') {
+                let rest = rest.trim();
+                let (word, track) = match rest.split_once(' ') {
+                    Some((word, track)) => (word, Some(track.trim())),
+                    None => (rest, None),
+                };
+                return editor.set_named(name, word, track);
+            }
+            let word = text;
             // A setting takes its choices by name, and its unit, as a lock does.
             let value = match editor.param_under_cursor() {
                 Some(info) => crate::locks::value(&info, word)?,

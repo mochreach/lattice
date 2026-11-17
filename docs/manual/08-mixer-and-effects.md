@@ -243,6 +243,26 @@ on an effect there's nothing to type, and `:set` says to move onto a level or se
 `:set` works on the mixer, fx and instrument pages; on the fx page it also sets a send's level,
 a lane's out, a macro or a macro's depth.
 
+**A setting by name.** Given a setting's name before the value, `:set` works on any page, the
+pattern page too, and finds the setting as `:lock` does: the instrument's, an effect's
+(`delay.mix`, or `2.mix` for the second effect), or a macro by its name. It sets it on the
+cursor's track, or on the track named after the value, by its number from 1 or its name in any
+case:
+
+```
+:set glide 0            the cursor's track's glide
+:set glide 0 1          track 1's
+:set voices legato lead the LEAD track's voices, by the choice's name
+:set delay.mix 0.3 2    the mix of track 2's delay
+:set wail 0.8 lead      LEAD's macro called wail
+```
+
+The status line says what it set (`LEAD glide 0s`), and a setting the track hasn't got is
+answered with the ones it has. It's what to put on a key when a song wants a setting changed in
+a hurry, from the config (`F5 = ":set voices mono lead"` under `[keys.normal]`, see the chapter
+on files and config) or a recorded keyboard macro: then one key switches a solo from legato to
+mono as you play.
+
 ### Mix commands
 
 These work on the pattern page too, on every track the selections reach, so you can set a

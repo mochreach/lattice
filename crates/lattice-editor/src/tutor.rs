@@ -689,7 +689,8 @@ const LESSONS: &[Lesson] = &[
         text: "{goto_mixer} opens the mixer on the cursor's track, and {goto_pattern} comes \
                back. There, {left} {right} move between strips, {down} goes into the \
                detail, and {note_up} {note_down} turn what's under the cursor. `:level -6`, \
-               `:pan 20` and `:send -12` set them by number, and `:set` the setting under the cursor.\n\n\
+               `:pan 20` and `:send -12` set them by number, and `:set` the setting under the cursor; \
+               `:set glide 0.1 LEAD` sets one by name, on any page, on a track by name or number.\n\n\
                Turn the BASS track's level down, then come back to the pattern.",
         teaches: &[Action::GotoMixer, Action::GotoPattern],
         commands: &["level", "pan", "send", "set"],

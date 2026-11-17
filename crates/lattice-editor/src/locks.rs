@@ -233,6 +233,64 @@ pub(crate) fn value(info: &ParamInfo, word: &str) -> Result<f32, String> {
 }
 
 impl Editor {
+    /// `:set NAME VALUE [TRACK]`: sets a setting found by name, as `:lock` finds it, on the
+    /// track numbered or named, else the cursor's, from any page.
+    pub(crate) fn set_named(
+        &mut self,
+        name: &str,
+        word: &str,
+        track: Option<&str>,
+    ) -> Result<Vec<Effect>, String> {
+        let t = match track {
+            Some(track) => self.track_called(track)?,
+            None => self.preset_track()?,
+        };
+        let track = self.grid.tracks.get(t).ok_or("no such track")?;
+        let setting = find(track, name).ok_or_else(|| {
+            let names: Vec<String> = settings(track).iter().map(|s| s.name(track)).collect();
+            format!("{} has no {name}: try {}", track.name, names.join(", "))
+        })?;
+        let value = value(setting.info, word)?;
+        let (id, param) = (u32::from(setting.param), usize::from(setting.param));
+        self.message = Some(format!(
+            "{} {} {}",
+            track.name,
+            setting.name(track),
+            setting.info.format(value)
+        ));
+        let old = match setting.fx {
+            Some(MACRO) => return Ok(self.set_macro(t, param, value)),
+            Some(fx) => (track.effects.get(usize::from(fx))).and_then(|e| e.values.get(param)),
+            None => track.instrument.values.get(param),
+        };
+        if old == Some(&value) {
+            return Ok(vec![]);
+        }
+        self.checkpoint();
+        let track = self.grid.tracks.get_mut(t).ok_or("no such track")?;
+        let set = match setting.fx {
+            Some(fx) => (track.effects.get_mut(usize::from(fx))).is_some_and(|e| e.set(id, value)),
+            None => track.instrument.set(id, value),
+        };
+        if !set {
+            return Err(format!("{} has no {name}", track.name));
+        }
+        Ok(vec![Effect::TrackChanged(t)])
+    }
+
+    /// The track `word` means: its number, from 1, or its name, in any case.
+    pub(crate) fn track_called(&self, word: &str) -> Result<usize, String> {
+        let tracks = &self.grid.tracks;
+        if let Ok(n) = word.parse::<usize>() {
+            return (n.checked_sub(1))
+                .filter(|&t| t < tracks.len())
+                .ok_or_else(|| format!("there are tracks 1 to {}", tracks.len()));
+        }
+        (tracks.iter())
+            .position(|track| track.name.eq_ignore_ascii_case(word))
+            .ok_or_else(|| format!("no track called {word}"))
+    }
+
     /// `:lock PARAM VALUE`, or `:lock PARAM FROM..TO` to sweep across each selection, evenly
     /// on the setting's own curve. `~VALUE` slides there from the setting's lock before, and
     /// `--` puts it back to the mixer's. With no value, it gives the tracks a column for the
@@ -947,6 +1005,47 @@ mod tests {
 
     fn locks(e: &Editor, step: usize) -> Vec<String> {
         e.describe_locks(0, step)
+    }
+
+    #[test]
+    fn set_names_a_setting_and_a_track_from_any_page() {
+        use lattice_core::instrument::{switched, synth};
+        let mut e = editor();
+        e.grid.tracks.push(Track {
+            name: "LEAD".into(),
+            instrument: lattice_core::Instrument::new(lattice_core::InstKind::Switched),
+            ..Track::default()
+        });
+        let undo = e.undo.len();
+        run(&mut e, "set cutoff 800Hz").unwrap();
+        assert_eq!(e.grid.tracks[0].instrument.get(synth::CUTOFF), 800.0);
+        assert_eq!(e.undo.len(), undo + 1);
+        assert_eq!(e.message.as_deref(), Some("acid cutoff 800Hz"));
+
+        // A track by number, from 1, or by name in any case; a choice by its name.
+        run(&mut e, "set glide 0.2 2").unwrap();
+        run(&mut e, "set voices legato lead").unwrap();
+        let lead = &e.grid.tracks[1].instrument;
+        assert_eq!(lead.get(switched::GLIDE), 0.2);
+        assert_eq!(lead.get(switched::VOICES), 2.0);
+        assert_eq!(e.grid.tracks[0].instrument.get(synth::CUTOFF), 800.0);
+
+        // An effect's setting, as :lock names it.
+        run(&mut e, "set delay.mix 0.5").unwrap();
+        assert_eq!(e.grid.tracks[0].effects.first().unwrap().values[3], 0.5);
+
+        assert!(
+            run(&mut e, "set glide 0.2")
+                .unwrap_err()
+                .contains("acid has no glide")
+        );
+        assert!(run(&mut e, "set glide 0.2 3").is_err());
+        assert!(run(&mut e, "set glide 0.2 bass").is_err());
+        assert!(
+            run(&mut e, "set glide 9 lead")
+                .unwrap_err()
+                .contains("goes from")
+        );
     }
 
     #[test]

@@ -257,7 +257,8 @@ is answered with the choices (`stack is one of one, pair, swarm, stops, fifths`)
 the range is refused with the range, as `cutoff goes from 20Hz to 16000Hz`; a macro takes 0 to
 1. `:set` works on the mixer, fx and instrument pages
 (`set works on the mixer (gm), fx (gf) and instrument (gi) pages`, it says elsewhere), and the
-chapter on the mixer covers it there.
+chapter on the mixer covers it there. With the setting named first, `:set glide 0.1 lead`, it
+works on any page and any track.
 
 Every change is a step of undo, and with record armed and the song playing, a turn is recorded
 as a lock on the step playing instead (see chapter 8).
