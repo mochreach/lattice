@@ -495,7 +495,7 @@ pub const COMMANDS: &[Spec] = &[
         name: "scale",
         alias: None,
         params: &[text("NAME [ROOT]", "scale")],
-        describe: "the scale the pads play outside a group: major, minor, dorian, mixolydian, pentatonic, minor-pentatonic, blues, chromatic; and its root",
+        describe: "the scale the pads play outside a group, and its root: the modes, harmonic and melodic minor, harmonic major, pentatonics, blues, hirajoshi, whole-tone, octatonic and more",
     },
     Spec {
         name: "keys",

@@ -26,8 +26,9 @@ const MAJOR: Scale = Scale {
     steps: &[0, 2, 4, 5, 7, 9, 11],
 };
 
-pub const SCALES: [Scale; 8] = [
+pub const SCALES: [Scale; 22] = [
     MAJOR,
+    // The church modes, brightest first, after major.
     Scale {
         name: "minor",
         steps: &[0, 2, 3, 5, 7, 8, 10],
@@ -37,9 +38,49 @@ pub const SCALES: [Scale; 8] = [
         steps: &[0, 2, 3, 5, 7, 9, 10],
     },
     Scale {
+        name: "phrygian",
+        steps: &[0, 1, 3, 5, 7, 8, 10],
+    },
+    Scale {
+        name: "lydian",
+        steps: &[0, 2, 4, 6, 7, 9, 11],
+    },
+    Scale {
         name: "mixolydian",
         steps: &[0, 2, 4, 5, 7, 9, 10],
     },
+    Scale {
+        name: "locrian",
+        steps: &[0, 1, 3, 5, 6, 8, 10],
+    },
+    // Minor and major with a raised or lowered note: the harmonic ones each hold an augmented
+    // triad and a diminished seventh.
+    Scale {
+        name: "harmonic-minor",
+        steps: &[0, 2, 3, 5, 7, 8, 11],
+    },
+    Scale {
+        name: "melodic-minor",
+        steps: &[0, 2, 3, 5, 7, 9, 11],
+    },
+    Scale {
+        name: "harmonic-major",
+        steps: &[0, 2, 4, 5, 7, 8, 11],
+    },
+    // The augmented second's scales, of flamenco, klezmer, the Balkans and the Middle East.
+    Scale {
+        name: "phrygian-dominant",
+        steps: &[0, 1, 4, 5, 7, 8, 10],
+    },
+    Scale {
+        name: "hungarian-minor",
+        steps: &[0, 2, 3, 6, 7, 8, 11],
+    },
+    Scale {
+        name: "double-harmonic",
+        steps: &[0, 1, 4, 5, 7, 8, 11],
+    },
+    // Five notes, and so few to clash.
     Scale {
         name: "pentatonic",
         steps: &[0, 2, 4, 7, 9],
@@ -51,6 +92,28 @@ pub const SCALES: [Scale; 8] = [
     Scale {
         name: "blues",
         steps: &[0, 3, 5, 6, 7, 10],
+    },
+    Scale {
+        name: "hirajoshi",
+        steps: &[0, 2, 3, 7, 8],
+    },
+    Scale {
+        name: "in",
+        steps: &[0, 1, 5, 7, 8],
+    },
+    // The symmetrical scales: whole tones, all augmented; alternate whole and half steps, all
+    // diminished; and minor thirds and semitones, two augmented triads a semitone apart.
+    Scale {
+        name: "whole-tone",
+        steps: &[0, 2, 4, 6, 8, 10],
+    },
+    Scale {
+        name: "octatonic",
+        steps: &[0, 2, 3, 5, 6, 8, 9, 11],
+    },
+    Scale {
+        name: "augmented",
+        steps: &[0, 3, 4, 7, 8, 11],
     },
     Scale {
         name: "chromatic",
@@ -364,8 +427,13 @@ mod tests {
         command(&mut e, "scale major");
         assert_eq!(e.scale_name(), "A# major", "the root stays");
 
-        command(&mut e, "scale lydian");
-        assert!(e.message.as_deref().unwrap().contains("no scale lydian"));
+        // A minor with its seventh raised: the G# that makes C E G# augmented.
+        command(&mut e, "scale harmonic-minor A");
+        let pitches: Vec<_> = (1..=8).map(|n| pad(&mut e, n)).collect();
+        assert_eq!(pitches, [69, 71, 72, 74, 76, 77, 80, 81].map(Some));
+
+        command(&mut e, "scale mystic");
+        assert!(e.message.as_deref().unwrap().contains("no scale mystic"));
         command(&mut e, "scale major H");
         assert!(e.message.as_deref().unwrap().contains("no note H"));
     }

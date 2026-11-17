@@ -758,7 +758,11 @@ track stays a real track, with its own rules, length and strip; the group adds:
   any page, so `[` `]` are notes too, ending the piano's top row on G, with its B below C on `\`.
   `:layout scale` is the same grid in the steps of the pads' scale rather than semitones, from
   its root: a step to the right, and a row up the number of steps nearest a fourth (3 of seven
-  notes, 2 of five or six). Setting `:scale` lays the keys out again.
+  notes, 2 of five or six, 3 of eight). Setting `:scale` lays the keys out again. `SCALES` has
+  22: the modes, the harmonic and melodic minors and harmonic major (each with an augmented
+  triad and a diminished seventh), the augmented-second scales, pentatonics and the Japanese
+  ones, and the symmetrical whole-tone, octatonic and augmented. It isn't saved with a song, so
+  its order is free to change.
 - **Note repeat (done).** Holding the numpad's `0` makes the pads played meanwhile repeat, every
   1, 2 or 4 steps (`.`), as on an MPC. The editor emits `Effect::Repeat`, held like a note key's
   preview, and the engine's `Command::Repeat` is a preview with an `every`: it plays it again on

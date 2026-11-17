@@ -1053,16 +1053,20 @@ mod tests {
     #[test]
     fn the_scale_layout_plays_only_the_scale() {
         // A minor: A B C D E F G, then up a row is three steps, a fourth.
-        let minor = NoteLayout::Scale.keys(&SCALES[1], 9);
+        let named = |name| SCALES.iter().find(|s| s.name == name).unwrap();
+        let minor = NoteLayout::Scale.keys(named("minor"), 9);
         let row: Vec<_> = "zxcvbnm,".chars().map(|c| minor[&c]).collect();
         assert_eq!(row, [9, 11, 12, 14, 16, 17, 19, 21]);
         assert_eq!(minor[&'a'], 14);
         // Pentatonic: up a row is two steps.
-        let pentatonic = NoteLayout::Scale.keys(&SCALES[4], 0);
+        let pentatonic = NoteLayout::Scale.keys(named("pentatonic"), 0);
         assert_eq!(
             [pentatonic[&'z'], pentatonic[&'a'], pentatonic[&'q']],
             [0, 4, 9]
         );
+        // Eight notes, as the octatonic has: up a row is three steps, still a fourth.
+        let octatonic = NoteLayout::Scale.keys(named("octatonic"), 0);
+        assert_eq!([octatonic[&'z'], octatonic[&'a']], [0, 5]);
     }
 
     #[test]

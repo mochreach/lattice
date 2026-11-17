@@ -139,24 +139,44 @@ chapter](03-tracks.md)), so `1` is the kick and `2` the snare in a kit laid out 
 On any other track, pads `1`–`9` play the notes of a **scale** up from the keyboard octave, `1`
 the scale's root. `:scale NAME [ROOT]` chooses it:
 
-| Scale              | Steps, in semitones from the root |
-|--------------------|-----------------------------------|
-| `major`            | 0 2 4 5 7 9 11                    |
-| `minor`            | 0 2 3 5 7 8 10                    |
-| `dorian`           | 0 2 3 5 7 9 10                    |
-| `mixolydian`       | 0 2 4 5 7 9 10                    |
-| `pentatonic`       | 0 2 4 7 9                         |
-| `minor-pentatonic` | 0 3 5 7 10                        |
-| `blues`            | 0 3 5 6 7 10                      |
-| `chromatic`        | every semitone                    |
+| Scale               | Steps from the root | What it is                                         |
+|---------------------|---------------------|----------------------------------------------------|
+| `major`             | 0 2 4 5 7 9 11      | bright: the Ionian mode                            |
+| `minor`             | 0 2 3 5 7 8 10      | natural minor, the Aeolian mode                    |
+| `dorian`            | 0 2 3 5 7 9 10      | minor, bright sixth: *So What*, *Scarborough Fair* |
+| `phrygian`          | 0 1 3 5 7 8 10      | minor, dark second: Spanish-sounding               |
+| `lydian`            | 0 2 4 6 7 9 11      | major, sharp fourth: floating, film-score wonder   |
+| `mixolydian`        | 0 2 4 5 7 9 10      | major, flat seventh: rock, folk, bagpipes          |
+| `locrian`           | 0 1 3 5 6 8 10      | the darkest mode; its home chord is diminished     |
+| `harmonic-minor`    | 0 2 3 5 7 8 11      | minor, raised seventh: augmented and diminished    |
+| `melodic-minor`     | 0 2 3 5 7 9 11      | minor below, major above: jazz's minor             |
+| `harmonic-major`    | 0 2 4 5 7 8 11      | major, flat sixth: augmented and diminished too    |
+| `phrygian-dominant` | 0 1 4 5 7 8 10      | flamenco, klezmer: harmonic minor from its fifth   |
+| `hungarian-minor`   | 0 2 3 6 7 8 11      | two augmented seconds: the gypsy minor             |
+| `double-harmonic`   | 0 1 4 5 7 8 11      | two augmented seconds: Byzantine, Arabic           |
+| `pentatonic`        | 0 2 4 7 9           | no semitones: folk songs the world over            |
+| `minor-pentatonic`  | 0 3 5 7 10          | the rock guitarist's first scale                   |
+| `blues`             | 0 3 5 6 7 10        | minor pentatonic and the flat fifth, the blue note |
+| `hirajoshi`         | 0 2 3 7 8           | Japanese, a tuning of the koto                     |
+| `in`                | 0 1 5 7 8           | Japanese: miyako-bushi, of koto and shamisen       |
+| `whole-tone`        | 0 2 4 6 8 10        | no semitones, no home: Debussy's haze              |
+| `octatonic`         | 0 2 3 5 6 8 9 11    | whole, half: all diminished; Stravinsky, Bartók    |
+| `augmented`         | 0 3 4 7 8 11        | two augmented triads a semitone apart              |
+| `chromatic`         | every semitone      | every note                                         |
 
 The root is a note name, `C`, `F#` or `Bb`, in either case (`:scale minor A`); left out, the
 root stays as it was. It starts at C major. Past the scale's last note the pads go on into the
 next octave, so in C major pad `8` is the C above pad `1`. The status line confirms:
 `pads play A minor-pentatonic`. A scale is a set of notes that sound right together; with the pads
-on one,
-there are no wrong notes, which makes them good for finding a melody. `:layout scale` lays the
-computer keyboard out on the same scale.
+on one, there are no wrong notes, which makes them good for finding a melody. `:layout scale` lays
+the computer keyboard out on the same scale.
+
+The harmonic scales are worth knowing for their chords. A minor's own chords are major, minor
+and one diminished; raise its seventh, G to G♯, and `harmonic-minor` holds an augmented triad
+(C E G♯) and a full diminished seventh (G♯ B D F) as well, with nothing outside the scale to
+land on by mistake. `harmonic-major` does the same in a major key. The symmetrical scales go
+further, the same all the way up: in `whole-tone` every triad is augmented, and `octatonic` is
+two diminished sevenths interlocked.
 
 In insert mode a pad also enters its note on the cursor's step, without moving on, so one step
 can take several drums: `1` then `3` puts a kick and a hat on the same row. With record armed
