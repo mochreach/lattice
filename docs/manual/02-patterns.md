@@ -557,6 +557,7 @@ of the keyboard, `z` (the keyboard octave's C) at the bottom left to `=` at the 
 | `wicki`   | a whole tone     | fourth left, fifth right | 37 semitones | a concertina           |
 | `fourths` | a semitone       | a fourth                 | 26 semitones | a guitar, Linnstrument |
 | `scale`   | the scale's next | about a fourth           | scale notes  | Push's in-key mode     |
+| `tonnetz` | a fifth down     | a major third up         | one octave   | Euler's Tonnetz        |
 | `duet`    | split for two hands, below                                                    |
 
 The `wicki`, `fourths` and `scale` layouts are **isomorphic**: an interval is the same shape
@@ -585,31 +586,24 @@ nothing is out of key. `:scale minor A` then `:layout scale` puts A minor under 
 the modes and the harmonic minor to whole-tone and octatonic; [chapter 9](09-recording.md) lists
 them, with more on the pads.
 
-### Two hands: `:layout duet` and `:hand`
+### Chords in a net: `:layout tonnetz`
 
-A typing keyboard is two hands wide, and the bumps on `f` and `j` say where each index finger
-lives. `:layout duet` gives each hand a job there, as a pianist's have: chords under the left,
-a tune under the right, each index finger on the scale's root. In C, with the keyboard octave
-at 4:
+`:layout tonnetz` lays the twelve notes out as a **Tonnetz**, a "tone network". Euler drew it
+in 1739 to show which notes sound well together, and Hugo Riemann's followers later used it to
+map how Romantic harmony moves. Each key's neighbours are a consonance away: a fifth up to the
+left, a major third up-left, a minor third down, up-right. With `:scale` in C, C sits under the left
+index finger:
 
 ```
- 1:F-4  2:A#4  3:D#4  4:G#4  5:C#4    6:A-5  7:B-5  8:C-6  9:D-6  0:E-6  -:F-6  =:G-6
-  q:C#4  w:F#4  e:B-4  r:E-4  t:A-4    y:E-5  u:F-5  i:G-5  o:A-5  p:B-5  [:C-6  ]:D-6
-   a:A-4  s:D-4  d:G-4  f:C-4  g:F-4    h:B-4  j:C-5  k:D-5  l:E-5  ;:F-5  ':G-5
-    z:F-4  x:A#4  c:D#4  v:G#4  b:C#4    n:F-4  m:G-4  ,:A-4  .:B-4  /:C-5
+ 1:F-4  2:A#4  3:D#4  4:G#4  5:C#4  6:F#4  7:B-4  8:E-4  9:A-4  0:D-4  -:G-4  =:C-4
+  q:C#4  w:F#4  e:B-4  r:E-4  t:A-4  y:D-4  u:G-4  i:C-4  o:F-4  p:A#4  [:D#4  ]:G#4
+   a:A-4  s:D-4  d:G-4  f:C-4  g:F-4  h:A#4  j:D#4  k:G#4  l:C#4  ;:F#4  ':B-4
+    z:F-4  x:A#4  c:D#4  v:G#4  b:C#4  n:F#4  m:B-4  ,:E-4  .:A-4  /:D-4
 ```
 
-The **right hand**, from `y` `h` `n` across, is the scale layout an octave up, with its root on
-`j`: `j` `k` `l` `;` are the first four notes of the scale, `h` under the index finger's stretch
-the note below, and each row up a fourth, as in `:layout scale`. Whatever `:scale` is, there's
-no note outside it to hit, so you can solo without looking.
-
-The **left hand**, up to `t` `g` `b`, is a **Tonnetz**, a "tone network". Euler drew it in 1739
-to show which notes sound well together, and Hugo Riemann's followers later used it to map how
-Romantic harmony moves. Each key's neighbours are a consonance away: a fifth up to the left, a
-major third up-left, a minor third down up-right. So any three keys that touch are a triad, and
-nothing next door is a semitone or a tritone away: the clashes are always two keys off. In C,
-all six of the key's chords lie in the home and top rows, as shapes for the hand:
+So any three keys that touch are a triad, and nothing next door is a semitone or a tritone
+away: the clashes are always two keys off. In C, all six of the key's chords lie around `f`, as
+shapes for the hand:
 
 | Chord   | Keys      |     | Chord   | Keys      |
 |---------|-----------|-----|---------|-----------|
@@ -617,26 +611,71 @@ all six of the key's chords lie in the home and top rows, as shapes for the hand
 | A minor | `f` `r` `t` |   | G       | `d` `s` `e` |
 | E minor | `d` `e` `r` |   | D minor | `a` `s` `z` |
 
-Rows run round the circle of fifths: the top row, A E B F# C#, is the bright side, towards the
-sharp keys, and the bottom row, F A# D# G# C# (B♭ E♭ A♭ D♭), the dark side, the chords borrowed
-from the minor key (F minor is `g` `f` `v`). Three major thirds make an octave, so the number row
-is the bottom row again, the dark chords within reach above as well as below. The odd chords lie
-in straight lines: up-left from `f` is augmented (`f` `r` `4`, C E G#), and up-right from `z` a
-diminished seventh (`z` `s` `e` `4`, F D B G#), the leading note's chord that pulls home to C, or
-in A harmonic minor to A. Moving from one triangle to the one beside it changes just one note,
-the smooth step Romantic harmony is built of; and the left hand's notes are kept in the octave
-from the root, so every chord comes out close together, as a pianist would voice it.
+Rows run round the circle of fifths: the top row, towards the sharp keys, is the bright side,
+and the bottom row, F A# D# G# C# (B♭ E♭ A♭ D♭), the dark side, the chords borrowed from the
+minor key (F minor is `g` `f` `v`). Three major thirds make an octave, so the number row is the
+bottom row again. The odd chords lie in straight lines: up-left from `f` is augmented (`f` `r`
+`4`, C E G#), and up-right from `z` a diminished seventh (`z` `s` `e` `4`, F D B G#), the leading
+note's chord that pulls home to C. Moving from one triangle to the one beside it changes just
+one note, the smooth step Romantic harmony is built of. Every note is in the octave from the
+root, so the chords come out close together, as a pianist would voice them; `{` and `}` move
+the octave.
 
-On its own, each hand plays the cursor's track, as any layout does. **`:hand left`** gives the
-left hand the selected tracks instead, and **`:hand right`** the right: they then play there
-wherever the cursor is, heard as you play and recorded when recording is armed. A track holds
-one note on a step, so for chords give a hand several tracks, three of the same pad, say
-(`mig` selects a group's): each note goes to a track no other key is holding, so a chord's three
-notes go in on one step across the three. Then select a lead track, `:hand right`, and play
-chords with one hand while the other screams over the top. `:hand off` puts both hands back on
-the cursor's track; `:hand left` and `:hand right` switch to the duet layout if you weren't in
-it. Which tracks the hands play isn't saved, as the layout isn't; a track deleted leaves its
-hand.
+### Two hands: `:layout duet` and `:hand`
+
+The Tonnetz still asks for three fingers a chord. I wanted something for a weak left hand: one
+key, one chord, so that the left can keep the harmony going while the right plays a tune over
+it. A typing keyboard is two hands wide, and the bumps on `f` and `j` say where each index
+finger lives. `:layout duet` gives each hand a job there, as a pianist's have. In C major, with
+the keyboard octave at 4:
+
+```
+ 1:E7    2:A7    3:D7    4:G7    5:C7      6:A-5  7:B-5  8:C-6  9:D-6  0:E-6  -:F-6  =:G-6
+  q:Am7   w:Dm7   e:G7    r:Cmaj7 t:Fmaj7   y:E-5  u:F-5  i:G-5  o:A-5  p:B-5  [:C-6  ]:D-6
+   a:Am    s:Dm    d:G     f:C     g:F       h:B-4  j:C-5  k:D-5  l:E-5  ;:F-5  ':G-5
+    z:Em    x:B°    c:B♭    v:A♭    b:Fm      n:F-4  m:G-4  ,:A-4  .:B-4  /:C-5
+```
+
+The **left hand**, up to `t` `g` `b`, plays a whole chord a key, built from `:scale`:
+
+- **The home row**, `a` `s` `d` `f` `g`, holds the chords on the sixth, second, fifth and first
+  notes of the scale, and the fourth: Am Dm G C F in C. Read from the little finger in, they
+  fall in fifths to the key's own chord under the index finger, the most common progression
+  there is, the one under "Autumn Leaves" and half of jazz. `g` beside it is the IV.
+- **The top row** is the same chords with their sevenths: Am7 Dm7 G7 Cmaj7 Fmaj7, the opening of
+  "Fly Me to the Moon" played left to right.
+- **The bottom row** starts with the scale's two chords left over, the iii and vii (Em, B°), then
+  three borrowed from the key next door for colour. In a major key they're from the minor, B♭ A♭
+  Fm, the bittersweet turn at the end of so many Beatles songs; in a minor key they're from the
+  major, E D A in A minor, the bright V that the minor scale's own notes don't give.
+- **The number row** holds, over each home-row chord, the dominant seventh that leads into it:
+  G7 over C, E7 over Am. Reach up, then down, and the chord resolves.
+
+The chords take their notes from the scale, stacking every other note, so they change with it.
+In A harmonic minor, `d` is E major, with the raised seventh, G#, and the bottom row starts
+with C augmented and G# diminished, the chords that scale exists for; in pentatonic and blues
+scales, which haven't a third on every note, a chord takes the nearest notes that sound, a
+suspended fourth, say. Each chord is voiced close, its notes in the octave
+from the scale's root, with its root again an octave down as a bass.
+
+The **right hand**, from `y` `h` `n` across, is the scale layout an octave up, with its root on
+`j`: `j` `k` `l` `;` are the first four notes of the scale, `h` under the index finger's stretch
+the note below, and each row up about a fourth, as in `:layout scale`. Whatever `:scale` is,
+there's no note outside it to hit, so you can solo without looking.
+
+A track holds one note on a step, so a chord needs a track a note. On its own, each hand plays
+the cursor's track, as any layout does: a chord key puts its root in and you hear the rest. (If
+there are cursors on several tracks, it deals its notes out over them, root first.) On the
+instrument page, you hear the whole chord and the root is recorded.
+
+**`:hand left`** gives the left hand the selected tracks instead, and **`:hand right`** the
+right: they then play there wherever the cursor is, heard as you play and recorded when
+recording is armed. Give the left hand three or four tracks of the same pad, say (`mig` selects
+a group's): each note goes to a track no other key is holding, so a chord's notes spread over
+them. Then select a lead track, `:hand right`, and play chords with one hand while the other
+screams over the top. `:hand off` puts both hands back on the cursor's track; `:hand left` and
+`:hand right` switch to the duet layout if you weren't in it. Which tracks the hands play isn't
+saved, as the layout isn't; a track deleted leaves its hand.
 
 `:layout piano` goes back. In every layout, `{` and `}` change the octave, and the status line
 in insert mode says which layout you're in (`z–] notes`, `wicki notes`, `A minor notes`,

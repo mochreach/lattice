@@ -707,10 +707,14 @@ pub enum NoteLayout {
     /// Only the notes of the pads' scale (`:scale`), from its root, as in Push's "in key" mode:
     /// the next note of the scale to the right, and about a fourth in its steps a row up.
     Scale,
-    /// Split for two hands, each index finger on the scale's root: the left five columns are a
-    /// Tonnetz, a fifth up to the left, a major third up-left and a minor third down up-right,
-    /// so every three keys together are a triad; the rest are the scale layout an octave up,
-    /// from J. `:hand` gives each hand tracks of its own.
+    /// A Tonnetz, Euler's tone network, the scale's root on F: a fifth up to the left, a major
+    /// third up-left and a minor third down up-right, so any three keys that touch are a triad,
+    /// and the clashes are two keys away. Every note is folded into the octave from the root, so
+    /// chords come out close together.
+    Tonnetz,
+    /// Accompaniment, for two hands, each index finger on the scale's root: under the left, a
+    /// whole chord to a key ([`chords`]); under the right, the scale layout an octave up, from J.
+    /// `:hand` gives each hand tracks of its own.
     Duet,
 }
 
@@ -748,12 +752,98 @@ pub fn hand(c: char) -> Option<Hand> {
     })
 }
 
+/// Each key's place from a home key's: rows up, columns right.
+fn places(home: (usize, usize)) -> impl Iterator<Item = (char, i16, i16)> {
+    ROWS.iter().enumerate().flat_map(move |(row, keys)| {
+        keys.chars()
+            .enumerate()
+            .map(move |(col, c)| (c, row as i16 - home.0 as i16, col as i16 - home.1 as i16))
+    })
+}
+
+/// The home row's chords, in fifths, as in "Autumn Leaves" or "Fly Me to the Moon": the sixth,
+/// second, fifth and root, rolling down to the index finger, and the fourth beyond it. In
+/// semitones above the root, before fitting them to the scale.
+const HOME_ROOTS: [i16; 5] = [9, 2, 7, 0, 5];
+
+/// The chords under the left hand in the duet layout, by key: each a root, third, fifth and
+/// perhaps seventh, close together in the octave from the scale's root, then the root again an
+/// octave down as a bass. Semitones above the keyboard octave's C.
+///
+/// - The home row, `a` to `g`, is the scale's own triads on [`HOME_ROOTS`]: in C, Am Dm G C F.
+/// - The row above is the same with their sevenths, as the scale has them.
+/// - The row below has the scale's other two, its third and seventh (Em and B° in C), then
+///   three borrowed from the parallel key: in a major key, minor's flat seventh, flat sixth and
+///   minor fourth (B♭ A♭ Fm in C); in a minor one, major's fifth, fourth and root (E D A in A).
+/// - The number row is the dominant seventh of the chord below, leading into it (E7 over Am).
+pub fn chords(scale: &Scale, root: u8) -> HashMap<char, Vec<i16>> {
+    let has = |n: i16| scale.steps.contains(&(n.rem_euclid(12) as u8));
+    // The scale's note at `n`, or just under or over it, as minor's sixth is under major's.
+    let fit = |n: i16| [n, n - 1, n + 1].into_iter().find(|&m| has(m)).unwrap_or(n);
+    // The first of `options` above `from` that's in the scale.
+    let pick = |from: i16, options: &[i16]| options.iter().map(|o| from + o).find(|&n| has(n));
+    // The scale's note `n` steps above `r`, if `r` is one of its notes.
+    let steps: Vec<i16> = scale.steps.iter().map(|&s| i16::from(s)).collect();
+    let above = |r: i16, n: usize| -> Option<i16> {
+        let i = steps.iter().position(|&s| s == r.rem_euclid(12))?;
+        let j = i + n;
+        let s = *steps.get(j % steps.len())?;
+        Some(r - r.rem_euclid(12) + s + 12 * (j / steps.len()) as i16)
+    };
+    // A chord's note `n` steps above `r`, as a seven-note scale stacks them, if that's within
+    // `range` semitones; else the first of `options` in the scale.
+    let stack = |r: i16, n: usize, range: std::ops::RangeInclusive<i16>, options: &[i16]| {
+        (above(r, n).filter(|&m| range.contains(&(m - r)))).or_else(|| pick(r, options))
+    };
+    // The scale's own chord on `r`: its third, or a fourth or second if it has none, and fifth.
+    let triad = |r: i16| -> Vec<i16> {
+        let third = stack(r, 2, 3..=4, &[4, 3, 5, 2]).unwrap_or(r + 4);
+        let fifth = stack(r, 4, 6..=8, &[7, 6, 8]).unwrap_or(r + 7);
+        vec![r, third, fifth]
+    };
+    let seventh = |r: i16| -> Vec<i16> {
+        let mut chord = triad(r);
+        chord.extend(stack(r, 6, 9..=11, &[10, 11]));
+        chord
+    };
+    let major = |r: i16| vec![r, r + 4, r + 7];
+    let minor = |r: i16| vec![r, r + 3, r + 7];
+    let dominant = |r: i16| vec![r + 7, r + 11, r + 14, r + 17];
+    let major_key = has(4) || !has(3);
+    let borrowed: [Vec<i16>; 3] = if major_key {
+        [major(10), major(8), minor(5)]
+    } else {
+        [major(7), major(5), major(0)]
+    };
+    let home = HOME_ROOTS.map(fit);
+    let rows: [Vec<Vec<i16>>; 4] = [
+        [triad(fit(4)), triad(fit(11))]
+            .into_iter()
+            .chain(borrowed)
+            .collect(),
+        home.iter().map(|&r| triad(r)).collect(),
+        home.iter().map(|&r| seventh(r)).collect(),
+        home.iter().map(|&r| dominant(r)).collect(),
+    ];
+    let root = i16::from(root);
+    let voice = |chord: &Vec<i16>| -> Vec<i16> {
+        let mut notes: Vec<i16> = chord.iter().map(|n| root + n.rem_euclid(12)).collect();
+        notes.extend(chord.first().map(|n| root + n.rem_euclid(12) - 12));
+        notes
+    };
+    ROWS.iter()
+        .zip(&rows)
+        .flat_map(|(keys, row)| keys.chars().zip(row.iter().map(voice)))
+        .collect()
+}
+
 impl NoteLayout {
-    pub const ALL: [NoteLayout; 5] = [
+    pub const ALL: [NoteLayout; 6] = [
         NoteLayout::Piano,
         NoteLayout::Wicki,
         NoteLayout::Fourths,
         NoteLayout::Scale,
+        NoteLayout::Tonnetz,
         NoteLayout::Duet,
     ];
 
@@ -763,12 +853,14 @@ impl NoteLayout {
             NoteLayout::Wicki => "wicki",
             NoteLayout::Fourths => "fourths",
             NoteLayout::Scale => "scale",
+            NoteLayout::Tonnetz => "tonnetz",
             NoteLayout::Duet => "duet",
         }
     }
 
-    /// Key → semitones above the keyboard octave's C. Only [`NoteLayout::Scale`] uses `scale`
-    /// and its `root` (semitones above C).
+    /// Key → semitones above the keyboard octave's C. The scale, tonnetz and duet layouts use
+    /// `scale` and its `root` (semitones above C); in the duet, a chord key's is its chord's
+    /// root, the whole chord being in [`chords`].
     pub fn keys(self, scale: &Scale, root: u8) -> HashMap<char, i16> {
         let grid = |up: usize, across: usize, pitch: &dyn Fn(usize) -> i16| -> HashMap<char, i16> {
             ROWS.iter()
@@ -802,28 +894,16 @@ impl NoteLayout {
             NoteLayout::Wicki => grid(5, 2, &semitones),
             NoteLayout::Fourths => grid(5, 1, &semitones),
             NoteLayout::Scale => grid(up, 1, &|degree| in_scale(degree as i16)),
+            NoteLayout::Tonnetz => places(LEFT_HOME)
+                .map(|(c, up, right)| (c, i16::from(root) + (4 * up - 7 * right).rem_euclid(12)))
+                .collect(),
             NoteLayout::Duet => {
-                let place = |(row, col): (usize, usize), home: (usize, usize)| {
-                    (row as i16 - home.0 as i16, col as i16 - home.1 as i16)
-                };
-                ROWS.iter()
-                    .enumerate()
-                    .flat_map(|(row, keys)| {
-                        keys.chars().enumerate().map(move |(col, c)| (c, row, col))
-                    })
-                    .map(|(c, row, col)| {
-                        let pitch = if col < LEFT_COLUMNS {
-                            // The Tonnetz, folded into the octave from the root, so every
-                            // chord is close together and moves smoothly to the next.
-                            let (up, right) = place((row, col), LEFT_HOME);
-                            i16::from(root) + (4 * up - 7 * right).rem_euclid(12)
-                        } else {
-                            let (rows, right) = place((row, col), RIGHT_HOME);
-                            12 + in_scale(rows * up as i16 + right)
-                        };
-                        (c, pitch)
-                    })
-                    .collect()
+                let chords = chords(scale, root);
+                let right = places(RIGHT_HOME)
+                    .filter(|&(c, ..)| hand(c) == Some(Hand::Right))
+                    .map(|(c, rows, right)| (c, 12 + in_scale(rows * up as i16 + right)));
+                let left = (chords.iter()).filter_map(|(&c, notes)| Some((c, *notes.first()?)));
+                right.chain(left).collect()
             }
         }
     }
@@ -836,6 +916,8 @@ pub struct Keymap {
     pub insert: HashMap<Key, Action>,
     /// Insert mode and `r`: key → semitones above the keyboard octave's C, laid out as `layout`.
     pub piano: HashMap<char, i16>,
+    /// The duet layout's left hand: key → its chord, as [`Keymap::piano`]'s semitones.
+    pub chords: HashMap<char, Vec<i16>>,
     pub layout: NoteLayout,
 }
 
@@ -1022,6 +1104,7 @@ impl Default for Keymap {
             normal,
             insert,
             piano: NoteLayout::Piano.keys(&SCALES[0], 0),
+            chords: HashMap::new(),
             layout: NoteLayout::Piano,
         }
     }

@@ -306,11 +306,12 @@ const LESSONS: &[Lesson] = &[
     Lesson {
         title: "Two hands",
         text: "`:layout` changes how notes lie on the keyboard: `piano`, `wicki` and `fourths` \
-               are grids where a chord is the same shape in every key, and `scale` plays only \
-               the notes of the scale `:scale` sets. `:layout duet` splits the keyboard \
-               between your hands, each index finger on the scale's root: under the left, up \
-               to `t` `g` `b`, a Tonnetz, where any three keys together are a chord, `f` `d` `r` \
-               the root's own; under the right, from `j`, the scale an octave up, for a tune. \
+               are grids where a chord is the same shape in every key, `scale` plays only the \
+               notes of the scale `:scale` sets, and in `tonnetz` any three keys that touch are \
+               a chord. `:layout duet` is for accompanying yourself, each index finger on the \
+               scale's root: every key under the left hand, up to `t` `g` `b`, plays a whole \
+               chord in the scale, `f` the root's own, with sevenths above and more below; \
+               under the right, from `j`, is the scale an octave up, for a tune over them. \
                `:hand left` gives the left hand the selected tracks to play wherever the \
                cursor is, a chord's notes dealt out one to a track, and `:hand right` the \
                right; `:hand off` puts both back on the cursor's track.\n\nGive the left \

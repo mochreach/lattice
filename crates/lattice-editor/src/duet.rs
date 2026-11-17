@@ -1,11 +1,14 @@
-//! Two hands on one keyboard. In the duet layout (`:layout duet`) the left five columns are a
-//! Tonnetz, for chords, and the rest the pads' scale, for a tune over them. `:hand left` and
-//! `:hand right` give a hand the selection's tracks to play wherever the cursor is, so chords
-//! can go to a pad while a lead screams over the top. A hand with several tracks deals the
-//! notes of a chord out across them, one each, as a track holds one note on a step.
+//! Two hands on one keyboard. In the duet layout (`:layout duet`) each of the left five
+//! columns' keys plays a whole chord in the pads' scale, and the rest the scale itself, for a
+//! tune over them. `:hand left` and `:hand right` give a hand the selection's tracks to play
+//! wherever the cursor is, so chords can go to a pad while a lead screams over the top. A track
+//! holds one note on a step, so a chord's notes are dealt out across the hand's tracks, or,
+//! without them, across the cursors'.
+
+use lattice_core::Note;
 
 use crate::keymap::{Hand, hand};
-use crate::{Editor, Effect, Key, NoteLayout, TrackId};
+use crate::{Cursor, Editor, Effect, Key, NoteLayout, TrackId, changed};
 
 impl Editor {
     /// `:hand left|right|off`: the selection's tracks become the hand's, or with `off`, both
@@ -62,28 +65,106 @@ impl Editor {
             .collect()
     }
 
-    /// Plays `pitch`, on `key`, with a hand that has tracks of its own, if it does: on one no
-    /// other of the hand's keys is holding, or, all held, the one held longest. It's recorded
-    /// when recording, and otherwise only heard, wherever the cursor is.
-    pub(crate) fn play_with_hand(&mut self, key: Key, pitch: u8) -> Option<Vec<Effect>> {
+    /// The notes `key` plays at the keyboard octave: its chord under the left hand in the duet
+    /// layout, or its one note.
+    pub(crate) fn key_pitches(&self, key: Key) -> Vec<u8> {
+        if let Key::Char(c) = key
+            && let Some(chord) = self.keymap.chords.get(&c)
+        {
+            return chord.iter().filter_map(|&n| self.octave_pitch(n)).collect();
+        }
+        self.piano_pitch(key).into_iter().collect()
+    }
+
+    /// Plays what `key` plays with a hand that has tracks of its own, if it does: each note on
+    /// a track none of the hand's other keys is holding, or, all held, the one held longest; a
+    /// note with no track left isn't played. It's recorded when recording, and otherwise only
+    /// heard, wherever the cursor is.
+    pub(crate) fn play_with_hand(&mut self, key: Key) -> Option<Vec<Effect>> {
         let tracks = self.hand_tracks(key);
+        if tracks.is_empty() {
+            return None;
+        }
+        // Pressed again without its release, it lets go of what it held.
+        self.voices.retain(|&(k, _)| k != key);
+        let mut effects = vec![];
+        for pitch in self.key_pitches(key) {
+            let Some(track) = self.take_voice(key, &tracks) else {
+                break;
+            };
+            effects.extend(
+                (self.record_note(key, &[track], pitch, 0))
+                    .unwrap_or_else(|| vec![Effect::Preview { track, pitch }]),
+            );
+        }
+        Some(effects)
+    }
+
+    /// One of `tracks` for a note of `key`'s: a free one, or the one another key has held
+    /// longest.
+    fn take_voice(&mut self, key: Key, tracks: &[usize]) -> Option<usize> {
         let id_of = |t: usize| self.ids.get(t).copied();
-        let free = tracks.iter().copied().find(|&t| {
-            let id = id_of(t);
-            !self.voices.iter().any(|&(k, v)| k != key && Some(v) == id)
-        });
+        let free = (tracks.iter().copied())
+            .find(|&t| !self.voices.iter().any(|&(_, v)| Some(v) == id_of(t)));
         let oldest = || {
             (self.voices.iter())
+                .filter(|&&(k, _)| k != key)
                 .find_map(|&(_, v)| tracks.iter().copied().find(|&t| id_of(t) == Some(v)))
         };
-        let track = free.or_else(oldest).or(tracks.first().copied())?;
+        let track = free.or_else(oldest)?;
         let id = id_of(track)?;
-        self.voices.retain(|&(k, v)| k != key && v != id);
+        self.voices.retain(|&(_, v)| v != id);
         self.voices.push((key, id));
-        if let Some(effects) = self.record_note(key, &[track], pitch, 0) {
-            return Some(effects);
+        Some(track)
+    }
+
+    /// A chord key in insert mode, with no hand of its own: its notes dealt out to the cursors'
+    /// tracks, one each, the root to the primary's, and entered on their steps, or at the
+    /// playhead when recording. Notes beyond the cursors are only heard, on the primary's track;
+    /// with one cursor, that's all but the root.
+    pub(crate) fn insert_chord(&mut self, key: Key, chord: &[u8]) -> Vec<Effect> {
+        let primary = self.cursor().track;
+        let mut cursors: Vec<Cursor> = self.selections.iter().map(|s| s.cursor).collect();
+        cursors.sort_by_key(|c| (c.track != primary, c.track));
+        cursors.dedup_by_key(|c| c.track);
+        let dealt: Vec<(Cursor, u8)> = cursors.into_iter().zip(chord.iter().copied()).collect();
+        let mut effects = vec![];
+        if self.recording() {
+            for &(c, pitch) in &dealt {
+                // Recording, a note always goes in somewhere, so there's always an answer.
+                effects.extend(
+                    self.record_note(key, &[c.track], pitch, 0)
+                        .unwrap_or_default(),
+                );
+            }
+        } else {
+            self.checkpoint();
+            let velocity = self.touch.unwrap_or(self.velocity);
+            for &(c, pitch) in &dealt {
+                if let Some(step) =
+                    (self.grid.tracks.get_mut(c.track)).and_then(|t| t.steps.get_mut(c.step))
+                {
+                    step.note = Some(Note {
+                        pitch,
+                        velocity,
+                        length: 1,
+                    });
+                }
+            }
+            self.advance();
+            effects.extend(changed(dealt.iter().map(|(c, _)| c.track)));
+            effects.extend((dealt.iter()).map(|&(c, pitch)| Effect::Preview {
+                track: c.track,
+                pitch,
+            }));
         }
-        Some(vec![Effect::Preview { track, pitch }])
+        effects.extend(
+            (chord.iter().skip(dealt.len())).map(|&pitch| Effect::Preview {
+                track: primary,
+                pitch,
+            }),
+        );
+        effects
     }
 
     /// A key's come up, so the hand's track it was holding is free for the next note.
@@ -95,9 +176,12 @@ impl Editor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Mode;
+    use crate::keymap::chords;
+    use crate::pads::{SCALES, Scale};
     use crate::record::Transport;
-    use crate::{Mode, pads::SCALES};
     use lattice_core::{Grid, Step, Track};
+    use std::collections::HashMap;
 
     fn editor() -> Editor {
         let track = |name: &str| Track {
@@ -142,9 +226,13 @@ mod tests {
             .collect()
     }
 
+    fn named(name: &str) -> &'static Scale {
+        SCALES.iter().find(|s| s.name == name).unwrap()
+    }
+
     #[test]
-    fn every_three_keys_together_on_the_left_are_a_triad() {
-        let keys = NoteLayout::Duet.keys(&SCALES[0], 0);
+    fn every_three_keys_together_in_the_tonnetz_are_a_triad() {
+        let keys = NoteLayout::Tonnetz.keys(named("major"), 0);
         let chord = |k: &str| {
             let mut notes: Vec<i16> = k.chars().map(|c| keys[&c]).collect();
             notes.sort_unstable();
@@ -157,40 +245,154 @@ mod tests {
         assert_eq!(chord("dse"), [2, 7, 11], "G");
         assert_eq!(chord("der"), [4, 7, 11], "E minor");
         assert_eq!(chord("asz"), [2, 5, 9], "D minor");
-        // The darker side below, the brighter above, and the odd chords in straight lines.
         assert_eq!(chord("gfv"), [0, 5, 8], "F minor");
+        // The odd chords lie in straight lines.
         assert_eq!(chord("fr4"), [0, 4, 8], "augmented, up-left");
         assert_eq!(chord("zse4"), [2, 5, 8, 11], "diminished, up-right");
         // Three major thirds are an octave, so the number row is the bottom row again.
         for (low, high) in "zxcvb".chars().zip("12345".chars()) {
             assert_eq!(keys[&low], keys[&high]);
         }
-        // Neighbours are never a semitone, a whole tone or a tritone apart.
+        // Across the whole keyboard, neighbours are never a semitone, tone or tritone apart.
         for (c, n) in [
             ('f', 'd'),
             ('f', 'r'),
             ('f', 't'),
             ('f', 'c'),
             ('f', 'v'),
-            ('f', 'g'),
+            ('j', 'k'),
         ] {
-            let gap = (keys[&c] - keys[&n])
-                .rem_euclid(12)
-                .min((keys[&n] - keys[&c]).rem_euclid(12));
-            assert!(gap >= 3, "{c}{n}: {gap}");
+            let gap = (keys[&c] - keys[&n]).rem_euclid(12);
+            assert!((3..=9).contains(&gap), "{c}{n}: {gap}");
+        }
+    }
+
+    /// A chord key's notes, as pitch classes from C, the bass last.
+    fn chord_of(chords: &HashMap<char, Vec<i16>>, c: char) -> Vec<i16> {
+        chords[&c].iter().map(|n| n.rem_euclid(12)).collect()
+    }
+
+    #[test]
+    fn each_key_on_the_left_is_a_chord_in_the_scale() {
+        let chords = chords(named("major"), 0);
+        let row =
+            |keys: &str| -> Vec<Vec<i16>> { keys.chars().map(|c| chord_of(&chords, c)).collect() };
+        // Am Dm G C F, rolling down in fifths to C under the index finger, each with its bass.
+        assert_eq!(
+            row("asdfg"),
+            [
+                vec![9, 0, 4, 9],
+                vec![2, 5, 9, 2],
+                vec![7, 11, 2, 7],
+                vec![0, 4, 7, 0],
+                vec![5, 9, 0, 5]
+            ]
+        );
+        // Their sevenths: "Fly Me to the Moon"'s Am7 Dm7 G7 Cmaj7 Fmaj7.
+        assert_eq!(chord_of(&chords, 'r'), [0, 4, 7, 11, 0], "Cmaj7");
+        assert_eq!(chord_of(&chords, 'e'), [7, 11, 2, 5, 7], "G7");
+        // Em and B°, then borrowed from C minor: B♭, A♭, Fm.
+        assert_eq!(
+            row("zxcvb"),
+            [
+                vec![4, 7, 11, 4],
+                vec![11, 2, 5, 11],
+                vec![10, 2, 5, 10],
+                vec![8, 0, 3, 8],
+                vec![5, 8, 0, 5]
+            ]
+        );
+        // Over each chord, the dominant seventh leading into it: G7 over C, E7 over Am.
+        assert_eq!(chord_of(&chords, '4'), [7, 11, 2, 5, 7]);
+        assert_eq!(chord_of(&chords, '1'), [4, 8, 11, 2, 4]);
+        // Close together in the octave from the root, with the bass an octave under.
+        assert_eq!(chords[&'d'], [7, 11, 2, -5]);
+        // The root goes first, as the one note a lone cursor takes.
+        assert_eq!(NoteLayout::Duet.keys(named("major"), 0)[&'d'], 7);
+    }
+
+    #[test]
+    fn harmonic_minor_brings_its_augmented_and_diminished_chords() {
+        let chords = chords(named("harmonic-minor"), 9);
+        // In A: F, B°, E major (the raised seventh's), Am, Dm.
+        let home: Vec<_> = "asdfg".chars().map(|c| chord_of(&chords, c)).collect();
+        assert_eq!(home[2], [4, 8, 11, 4], "E major");
+        assert_eq!(home[1], [11, 2, 5, 11], "B diminished");
+        // C augmented and G# diminished, the scale's third and seventh, below.
+        assert_eq!(chord_of(&chords, 'z'), [0, 4, 8, 0]);
+        assert_eq!(chord_of(&chords, 'x'), [8, 11, 2, 8]);
+        // A minor key borrows the bright chords of A major: E, D, A.
+        assert_eq!(chord_of(&chords, 'b'), [9, 1, 4, 9]);
+        // E7 with G#, the diminished seventh's leading note.
+        assert_eq!(chord_of(&chords, 'e'), [4, 8, 11, 2, 4]);
+    }
+
+    #[test]
+    fn scales_without_thirds_on_every_note_still_make_chords() {
+        // C pentatonic has no F: D and G get suspended fourths.
+        let pentatonic = chords(named("pentatonic"), 0);
+        assert_eq!(chord_of(&pentatonic, 's'), [2, 7, 9, 2], "Dsus4");
+        assert_eq!(chord_of(&pentatonic, 'f'), [0, 4, 7, 0], "C");
+        // Every key of every scale has a chord of three notes at least, and a bass.
+        for scale in SCALES {
+            let keys = chords(&scale, 0);
+            assert_eq!(keys.len(), 20, "{}", scale.name);
+            assert!(keys.values().all(|c| c.len() >= 4), "{}", scale.name);
         }
     }
 
     #[test]
     fn the_right_hand_plays_the_scale_an_octave_up_from_j() {
-        let minor = SCALES.iter().find(|s| s.name == "minor").unwrap();
-        let keys = NoteLayout::Duet.keys(minor, 9);
+        let keys = NoteLayout::Duet.keys(named("minor"), 9);
         let row: Vec<_> = "hjkl;'".chars().map(|c| keys[&c]).collect();
-        // G# isn't in A minor: the leading note below is G.
+        // G# isn't in A minor: the note below is G.
         assert_eq!(row, [19, 21, 23, 24, 26, 28]);
         // A row up is a fourth, three steps; down, three steps under.
         assert_eq!([keys[&'u'], keys[&'m']], [26, 16]);
-        assert_eq!(keys[&'f'], 9, "the left's tonic, an octave under");
+    }
+
+    #[test]
+    fn a_chord_key_with_no_hand_deals_its_notes_out_to_the_cursors() {
+        let mut e = editor();
+        e.releases = true;
+        e.run_command("layout duet");
+        // One cursor, on pad3: the whole chord's heard, and its root goes in.
+        keys(&mut e, "tltli");
+        let chord = keys(&mut e, "f");
+        assert_eq!(heard(&chord), [(2, 60), (2, 64), (2, 67), (2, 48)]);
+        assert_eq!(e.grid.tracks[2].steps[0].note.map(|n| n.pitch), Some(60));
+        assert_eq!(e.cursor().step, 1, "moved on once, for the chord");
+        // The right hand plays the cursor's track, a note at a time.
+        assert_eq!(heard(&keys(&mut e, "j")), [(2, 72)]);
+
+        // Three cursors, one on each pad: a note each, the bass heard on the primary's.
+        e.handle(Key::Esc);
+        e.selections = (0..3)
+            .map(|track| crate::Selection::point(Cursor { track, step: 0 }))
+            .collect();
+        e.primary = 0;
+        let primary = e.cursor().track;
+        keys(&mut e, "i");
+        let chord = keys(&mut e, "d");
+        let at = |e: &Editor, t: usize| e.grid.tracks[t].steps[0].note.map(|n| n.pitch);
+        let mut placed: Vec<_> = (0..3).filter_map(|t| at(&e, t)).collect();
+        placed.sort_unstable();
+        assert_eq!(placed, [62, 67, 71], "G's root, third and fifth, D G B");
+        assert!(heard(&chord).contains(&(primary, 55)), "the bass, heard");
+    }
+
+    #[test]
+    fn the_instrument_page_plays_a_whole_chord_on_one_key() {
+        let mut e = editor();
+        e.run_command("layout duet");
+        keys(&mut e, "gii");
+        let before = e.grid.tracks.clone();
+        assert_eq!(
+            heard(&keys(&mut e, "f")),
+            [(0, 60), (0, 64), (0, 67), (0, 48)]
+        );
+        assert_eq!(heard(&keys(&mut e, "j")), [(0, 72)]);
+        assert_eq!(e.grid.tracks, before, "heard, not entered");
     }
 
     #[test]
@@ -210,24 +412,20 @@ mod tests {
         e.run_command("hand right");
         assert_eq!(e.message.as_deref(), Some("right hand plays lead"));
 
-        // Wherever the cursor is, a chord goes to a pad each and the tune to the lead.
+        // Wherever the cursor is, a chord's notes go a pad each, the bass left out for want
+        // of a fourth, and the tune to the lead.
         keys(&mut e, "thi");
-        let chord = keys(&mut e, "fdr");
-        assert_eq!(heard(&chord), [(0, 60), (1, 67), (2, 64)]);
+        assert_eq!(heard(&keys(&mut e, "f")), [(0, 60), (1, 64), (2, 67)]);
         assert_eq!(heard(&keys(&mut e, "j")), [(3, 72)]);
         assert!(
-            e.grid
-                .tracks
-                .iter()
-                .all(|t| t.steps.iter().all(|s| s.note.is_none())),
+            (e.grid.tracks.iter()).all(|t| t.steps.iter().all(|s| s.note.is_none())),
             "only heard, stopped"
         );
-        // Let go of the root, and the next note takes its track.
-        e.release(Key::Char('f'));
-        assert_eq!(heard(&keys(&mut e, "t")), [(0, 69)]);
+        // The next chord, the old one still held, takes the pads it held longest.
+        assert_eq!(heard(&keys(&mut e, "d")), [(0, 67), (1, 71), (2, 62)]);
 
-        // Recording, the chord goes in on one step across the pads.
-        for k in "fdrtj".chars() {
+        // Recording, a chord goes in on one step across the pads.
+        for k in "fdj".chars() {
             e.release(Key::Char(k));
         }
         e.record = true;
@@ -237,16 +435,17 @@ mod tests {
             count_in: 0,
         }));
         assert_eq!(e.mode, Mode::Insert);
-        keys(&mut e, "gftk");
+        keys(&mut e, "gk");
         let at = |t: usize| e.grid.tracks[t].steps[4].note.map(|n| n.pitch);
         assert_eq!(
             [at(0), at(1), at(2), at(3)],
-            [Some(65), Some(60), Some(69), Some(74)]
+            [Some(65), Some(69), Some(60), Some(74)],
+            "F A C, and the lead's D"
         );
 
         // Off, the keys play the cursor's track again, pad3.
         e.run_command("hand off");
         e.set_transport(None);
-        assert_eq!(heard(&keys(&mut e, "d")), [(2, 67)]);
+        assert_eq!(heard(&keys(&mut e, "j")), [(2, 72)]);
     }
 }

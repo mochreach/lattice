@@ -342,7 +342,10 @@ impl Editor {
         };
         self.scale = scale;
         self.root = root;
-        if matches!(self.keymap.layout, NoteLayout::Scale | NoteLayout::Duet) {
+        if matches!(
+            self.keymap.layout,
+            NoteLayout::Scale | NoteLayout::Tonnetz | NoteLayout::Duet
+        ) {
             self.lay_out_keys(self.keymap.layout);
         }
         self.message = Some(format!("pads play {} {name}", note_name(root)));
@@ -352,6 +355,10 @@ impl Editor {
     /// Lays the notes out on the keyboard for insert mode.
     pub(crate) fn lay_out_keys(&mut self, layout: NoteLayout) {
         self.keymap.piano = layout.keys(&self.scale(), self.root);
+        self.keymap.chords = match layout {
+            NoteLayout::Duet => crate::keymap::chords(&self.scale(), self.root),
+            _ => Default::default(),
+        };
         self.keymap.layout = layout;
     }
 

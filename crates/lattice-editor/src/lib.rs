@@ -1375,7 +1375,11 @@ impl Editor {
             Key::Note(pitch) => return Some(pitch).filter(|&p| p <= 127),
             _ => return None,
         };
-        let semitone = *self.keymap.piano.get(&c)?;
+        self.octave_pitch(*self.keymap.piano.get(&c)?)
+    }
+
+    /// The pitch `semitone`s above the keyboard octave's C, if there's a MIDI note there.
+    fn octave_pitch(&self, semitone: i16) -> Option<u8> {
         let pitch = (i16::from(self.octave) + 1) * 12 + semitone;
         u8::try_from(pitch).ok().filter(|&p| p <= 127)
     }
@@ -1394,8 +1398,12 @@ impl Editor {
             return self.act(action, 1);
         }
         if let Some(pitch) = self.piano_pitch(key) {
-            if let Some(effects) = self.play_with_hand(key, pitch) {
+            if let Some(effects) = self.play_with_hand(key) {
                 return effects;
+            }
+            let chord = self.key_pitches(key);
+            if chord.len() > 1 {
+                return self.insert_chord(key, &chord);
             }
             let track = self.cursor().track;
             let cursors: Vec<Cursor> = self.selections.iter().map(|s| s.cursor).collect();

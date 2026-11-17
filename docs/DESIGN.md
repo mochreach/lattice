@@ -763,18 +763,26 @@ track stays a real track, with its own rules, length and strip; the group adds:
   triad and a diminished seventh), the augmented-second scales, pentatonics and the Japanese
   ones, and the symmetrical whole-tone, octatonic and augmented. It isn't saved with a song, so
   its order is free to change.
+- **Tonnetz (done).** `:layout tonnetz` puts each key `4 * up - 7 * right` semitones from F,
+  folded into the octave above the scale's root, so neighbours are fifths and thirds, every
+  triangle of keys a triad in close voicing, and the clashes two keys away; the rows repeat
+  every third, as three major thirds are an octave.
 - **Two hands (done).** `:layout duet` splits the four rows at the touch typist's hands
-  (`keymap::hand`: the first five columns are the left's), each index finger's home key on the
-  scale's root. The left is a mirrored Tonnetz, `4 * up - 7 * right` semitones from F's root,
-  folded into the octave above it, so neighbours are fifths and thirds, every triangle a triad
-  in close voicing, and the clashes two keys away; the rows repeat every third, as three major
-  thirds are an octave. The right is the scale layout an octave up, J its root. `:hand left` /
-  `right` binds a hand to the selection's tracks, as `TrackId`s, so moving or deleting tracks
-  can't leave it pointing at the wrong one (`duet.rs`). A bound hand plays there wherever the
-  cursor is, heard or recorded but never typed at the cursor; with several tracks it deals
-  notes out to the first its other keys aren't holding (`Editor::voices`, freed on key-up),
-  else the one held longest, which without key releases makes a round robin. That's how a chord
-  records, one note to a track on one step.
+  (`keymap::hand`: the first five columns are the left's), for a weak left hand: each left key
+  plays a whole chord (`keymap::chords`, kept in `Keymap::chords`). The home row is the
+  scale's vi ii V I IV, falling in fifths to F; the top row the same with sevenths; the bottom
+  the iii and vii, then three borrowed from the parallel key (♭VII ♭VI iv in major, V IV I
+  major in minor); the number row the dominant seventh of the chord below. Chords stack every
+  other scale degree, so harmonic minor gets its augmented and diminished chords, with a search
+  by interval where the scale has no third or fifth (pentatonics get sus4s). Each is voiced in
+  the octave from the root, plus the root an octave down. The right hand is the scale layout an
+  octave up, J its root. A track holds one note a step, so a chord is dealt out: unbound, over
+  the insert cursors' tracks, primary first, the rest only heard; on the instrument page heard
+  whole, its root recorded. `:hand left` / `right` binds a hand to the selection's tracks, as
+  `TrackId`s, so moving or deleting tracks can't leave it pointing at the wrong one (`duet.rs`).
+  A bound hand plays there wherever the cursor is, heard or recorded but never typed at the
+  cursor; each note goes to the first track its other keys aren't holding (`Editor::voices`,
+  freed on key-up), else the one held longest, and notes beyond the tracks are dropped.
 - **Note repeat (done).** Holding the numpad's `0` makes the pads played meanwhile repeat, every
   1, 2 or 4 steps (`.`), as on an MPC. The editor emits `Effect::Repeat`, held like a note key's
   preview, and the engine's `Command::Repeat` is a preview with an `every`: it plays it again on

@@ -167,11 +167,20 @@ impl Editor {
     /// records it at the playhead; the rest move and turn, with `C-a` `C-x` as in normal mode.
     pub(crate) fn play_key(&mut self, key: Key) -> Vec<Effect> {
         let track = self.inst_cursor().track;
-        if let Some(pitch) = self.piano_pitch(key)
-            && !self.keymap.insert.contains_key(&key)
-        {
-            return (self.record_note(key, &[track], pitch, 0))
-                .unwrap_or_else(|| vec![Effect::Preview { track, pitch }]);
+        if self.piano_pitch(key).is_some() && !self.keymap.insert.contains_key(&key) {
+            if let Some(effects) = self.play_with_hand(key) {
+                return effects;
+            }
+            // A chord's notes all sound, but its root alone is recorded: a track holds one
+            // note on a step.
+            let mut pitches = self.key_pitches(key).into_iter();
+            let Some(root) = pitches.next() else {
+                return vec![];
+            };
+            let mut effects = (self.record_note(key, &[track], root, 0))
+                .unwrap_or_else(|| vec![Effect::Preview { track, pitch: root }]);
+            effects.extend(pitches.map(|pitch| Effect::Preview { track, pitch }));
+            return effects;
         }
         let action = self.keymap.insert.get(&key).copied().or_else(|| {
             match (key, self.keymap.normal.get(&key)) {
