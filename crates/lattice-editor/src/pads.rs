@@ -342,8 +342,8 @@ impl Editor {
         };
         self.scale = scale;
         self.root = root;
-        if self.keymap.layout == NoteLayout::Scale {
-            self.lay_out_keys(NoteLayout::Scale);
+        if matches!(self.keymap.layout, NoteLayout::Scale | NoteLayout::Duet) {
+            self.lay_out_keys(self.keymap.layout);
         }
         self.message = Some(format!("pads play {} {name}", note_name(root)));
         Ok(())

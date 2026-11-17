@@ -183,6 +183,7 @@ impl Editor {
         if repeats {
             self.repeat = false;
         }
+        self.release_voice(key);
         let mut effects = self.release_previews(key, repeats);
         effects.extend(self.release_recorded(key));
         effects

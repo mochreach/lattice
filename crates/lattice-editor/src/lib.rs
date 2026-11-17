@@ -26,6 +26,7 @@
 mod chains;
 mod command;
 mod devices;
+mod duet;
 mod export;
 mod fields;
 mod fx_page;
@@ -538,6 +539,11 @@ pub struct Editor {
     take: Option<u64>,
     /// Recorded notes whose keys are still down.
     held: Vec<Held>,
+    /// The tracks each hand plays in the duet layout (`:hand`), left then right; none plays the
+    /// cursor's.
+    hands: [Vec<TrackId>; 2],
+    /// Which key is holding which of a hand's tracks, held longest first.
+    voices: Vec<(Key, TrackId)>,
     /// Whether the frontend reports key releases, so previews are held until their key comes up.
     pub releases: bool,
     /// A fill's playing: while the fill key's held, or until it's pressed again.
@@ -692,6 +698,8 @@ impl Editor {
             transport: None,
             take: None,
             held: Vec::new(),
+            hands: Default::default(),
+            voices: Vec::new(),
             releases: false,
             fill: false,
             sounding: Vec::new(),
@@ -1386,6 +1394,9 @@ impl Editor {
             return self.act(action, 1);
         }
         if let Some(pitch) = self.piano_pitch(key) {
+            if let Some(effects) = self.play_with_hand(key, pitch) {
+                return effects;
+            }
             let track = self.cursor().track;
             let cursors: Vec<Cursor> = self.selections.iter().map(|s| s.cursor).collect();
             let mut tracks: Vec<usize> = cursors.iter().map(|c| c.track).collect();

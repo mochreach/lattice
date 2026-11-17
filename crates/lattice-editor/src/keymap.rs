@@ -707,14 +707,54 @@ pub enum NoteLayout {
     /// Only the notes of the pads' scale (`:scale`), from its root, as in Push's "in key" mode:
     /// the next note of the scale to the right, and about a fourth in its steps a row up.
     Scale,
+    /// Split for two hands, each index finger on the scale's root: the left five columns are a
+    /// Tonnetz, a fifth up to the left, a major third up-left and a minor third down up-right,
+    /// so every three keys together are a triad; the rest are the scale layout an octave up,
+    /// from J. `:hand` gives each hand tracks of its own.
+    Duet,
+}
+
+/// Which hand plays a key in [`NoteLayout::Duet`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Hand {
+    Left,
+    Right,
+}
+
+impl Hand {
+    pub fn name(self) -> &'static str {
+        match self {
+            Hand::Left => "left",
+            Hand::Right => "right",
+        }
+    }
+}
+
+/// The columns under the left hand, as touch typists play them: up to T, G and B.
+const LEFT_COLUMNS: usize = 5;
+/// The home keys' places in [`ROWS`]: the left index finger's F and the right's J.
+const LEFT_HOME: (usize, usize) = (1, 3);
+const RIGHT_HOME: (usize, usize) = (1, 6);
+
+/// The hand that plays `c` in [`NoteLayout::Duet`], if it's a note key there.
+pub fn hand(c: char) -> Option<Hand> {
+    ROWS.iter().find_map(|keys| {
+        let col = keys.chars().position(|k| k == c)?;
+        Some(if col < LEFT_COLUMNS {
+            Hand::Left
+        } else {
+            Hand::Right
+        })
+    })
 }
 
 impl NoteLayout {
-    pub const ALL: [NoteLayout; 4] = [
+    pub const ALL: [NoteLayout; 5] = [
         NoteLayout::Piano,
         NoteLayout::Wicki,
         NoteLayout::Fourths,
         NoteLayout::Scale,
+        NoteLayout::Duet,
     ];
 
     pub fn name(self) -> &'static str {
@@ -723,6 +763,7 @@ impl NoteLayout {
             NoteLayout::Wicki => "wicki",
             NoteLayout::Fourths => "fourths",
             NoteLayout::Scale => "scale",
+            NoteLayout::Duet => "duet",
         }
     }
 
@@ -741,25 +782,48 @@ impl NoteLayout {
                 .collect()
         };
         let semitones = |n: usize| n as i16;
+        // The scale's `degree`th note above its root, any octave.
+        let in_scale = |degree: i16| -> i16 {
+            let len = scale.steps.len() as i16;
+            // Every scale has steps; one without plays semitones.
+            if len == 0 {
+                return i16::from(root) + degree;
+            }
+            let step =
+                (scale.steps.get(degree.rem_euclid(len) as usize).copied()).unwrap_or_default();
+            i16::from(root) + i16::from(step) + 12 * degree.div_euclid(len)
+        };
+        // A row up: the number of the scale's steps nearest a fourth, 5 of 12 semitones (3 of
+        // seven notes, 2 of five or six, rounding a half down, as blues' third step is a
+        // tritone).
+        let up = (scale.steps.len() * 5 + 5) / 12;
         match self {
             NoteLayout::Piano => PIANO.into_iter().collect(),
             NoteLayout::Wicki => grid(5, 2, &semitones),
             NoteLayout::Fourths => grid(5, 1, &semitones),
-            NoteLayout::Scale => {
-                // A fourth is 5 of 12 semitones: 3 steps of a seven-note scale, 2 of five or six
-                // (rounding a half down, as blues' third step is a tritone).
-                let steps = scale.steps;
-                // Every scale has steps, but one without would have nothing to lay out.
-                if steps.is_empty() {
-                    return grid(5, 1, &semitones);
-                }
-                let up = (steps.len() * 5 + 5) / 12;
-                grid(up, 1, &|degree| {
-                    let octave = (degree / steps.len()) as i16;
-                    // In range: the remainder is less than the length.
-                    let step = steps.get(degree % steps.len()).copied().unwrap_or_default();
-                    i16::from(root) + i16::from(step) + 12 * octave
-                })
+            NoteLayout::Scale => grid(up, 1, &|degree| in_scale(degree as i16)),
+            NoteLayout::Duet => {
+                let place = |(row, col): (usize, usize), home: (usize, usize)| {
+                    (row as i16 - home.0 as i16, col as i16 - home.1 as i16)
+                };
+                ROWS.iter()
+                    .enumerate()
+                    .flat_map(|(row, keys)| {
+                        keys.chars().enumerate().map(move |(col, c)| (c, row, col))
+                    })
+                    .map(|(c, row, col)| {
+                        let pitch = if col < LEFT_COLUMNS {
+                            // The Tonnetz, folded into the octave from the root, so every
+                            // chord is close together and moves smoothly to the next.
+                            let (up, right) = place((row, col), LEFT_HOME);
+                            i16::from(root) + (4 * up - 7 * right).rem_euclid(12)
+                        } else {
+                            let (rows, right) = place((row, col), RIGHT_HOME);
+                            12 + in_scale(rows * up as i16 + right)
+                        };
+                        (c, pitch)
+                    })
+                    .collect()
             }
         }
     }

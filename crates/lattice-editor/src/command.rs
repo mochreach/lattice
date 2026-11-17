@@ -483,7 +483,13 @@ pub const COMMANDS: &[Spec] = &[
         name: "layout",
         alias: None,
         params: &[text("LAYOUT", "layout")],
-        describe: "how notes lie on the keyboard in insert mode: piano, wicki (Wicki-Hayden), fourths, or scale (only the notes of :scale)",
+        describe: "how notes lie on the keyboard in insert mode: piano, wicki (Wicki-Hayden), fourths, scale (only the notes of :scale), or duet (chords on the left, the scale on the right)",
+    },
+    Spec {
+        name: "hand",
+        alias: None,
+        params: &[text("left|right|off", "hand")],
+        describe: "in the duet layout, give the left or right hand the selected tracks to play wherever the cursor is, a chord's notes dealt across them; off, both play the cursor's",
     },
     Spec {
         name: "vel",
@@ -1495,12 +1501,22 @@ pub(crate) fn run(editor: &mut Editor, line: &str) -> Result<Vec<Effect>, String
             let layout = NoteLayout::ALL
                 .into_iter()
                 .find(|l| l.name() == name)
-                .ok_or_else(|| format!("no layout {name}: try piano, wicki, fourths or scale"))?;
+                .ok_or_else(|| {
+                    format!("no layout {name}: try piano, wicki, fourths, scale or duet")
+                })?;
             editor.lay_out_keys(layout);
             editor.message = Some(match layout {
                 NoteLayout::Scale => format!("notes laid out in {}", editor.scale_name()),
+                NoteLayout::Duet => format!(
+                    "duet in {}: chords on the left from F, the scale on the right from J",
+                    editor.scale_name()
+                ),
                 _ => format!("notes laid out as {name}"),
             });
+            Ok(vec![])
+        }
+        "hand" => {
+            editor.set_hand(command.text(0)?)?;
             Ok(vec![])
         }
         "vel" => {

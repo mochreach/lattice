@@ -15,7 +15,7 @@ use lattice_core::{
 use lattice_core::instrument::chop;
 
 use crate::keymap::{Action, Binding, Key, Keymap};
-use crate::{Cursor, Editor, Effect, Mode, Page, Selection};
+use crate::{Cursor, Editor, Effect, Mode, Page, Selection, TrackId};
 
 /// One lesson.
 struct Lesson {
@@ -97,7 +97,6 @@ pub const COMMANDS_NOT_TAUGHT: &[&str] = &[
     "click",
     "rec",
     "count",
-    "layout",
     "vel",
     "scale",
     "keys",
@@ -303,6 +302,35 @@ const LESSONS: &[Lesson] = &[
         watch: |e| e.record,
         done: |e, t| t.seen && !e.record,
         solution: "R<esc>R",
+    },
+    Lesson {
+        title: "Two hands",
+        text: "`:layout` changes how notes lie on the keyboard: `piano`, `wicki` and `fourths` \
+               are grids where a chord is the same shape in every key, and `scale` plays only \
+               the notes of the scale `:scale` sets. `:layout duet` splits the keyboard \
+               between your hands, each index finger on the scale's root: under the left, up \
+               to `t` `g` `b`, a Tonnetz, where any three keys together are a chord, `f` `d` `r` \
+               the root's own; under the right, from `j`, the scale an octave up, for a tune. \
+               `:hand left` gives the left hand the selected tracks to play wherever the \
+               cursor is, a chord's notes dealt out one to a track, and `:hand right` the \
+               right; `:hand off` puts both back on the cursor's track.\n\nGive the left \
+               hand the BASS track and the right hand the LEAD.",
+        teaches: &[],
+        commands: &["layout", "hand"],
+        setup: nothing,
+        watch: never,
+        done: |e, _| {
+            let is = |ids: &[TrackId], name| {
+                ids.iter().any(|id| {
+                    let t = e.ids.iter().position(|i| i == id);
+                    t.and_then(|t| e.grid.tracks.get(t))
+                        .is_some_and(|t| t.name == name)
+                })
+            };
+            let [left, right] = &e.hands;
+            is(left, "BASS") && is(right, "LEAD")
+        },
+        solution: "ghtltl:hand left<ret>tl:hand right<ret>",
     },
     Lesson {
         title: "Selecting and deleting",

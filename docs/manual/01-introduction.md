@@ -352,8 +352,8 @@ mode, so that letters can be both commands and notes.
 Some keys work in every mode: the arrows, `pageup` `pagedown` `home` `end`, `esc`, the transport
 (`space`, `C-space`, `A-space`, `C-k`, backtick), `{` `}` for the keyboard's octave, `tab`, `R`
 to arm recording, the loop pedal (right Alt tapped alone, or `!`), and `C-c` to quit. Insert
-mode's piano layout can be changed with `:layout` (`piano`, `wicki`, `fourths` or `scale`),
-explained in [Recording](09-recording.md).
+mode's piano layout can be changed with `:layout` (`piano`, `wicki`, `fourths`, `scale` or
+`duet`, for two hands), explained in [Patterns](02-patterns.md).
 
 ## Pages
 

@@ -172,6 +172,7 @@ impl Editor {
                     .collect()
             }
             ("layout", 0) => words(&NoteLayout::ALL.map(NoteLayout::name)),
+            ("hand", 0) => words(&["left", "right", "off"]),
             ("scale", 0) => words(&SCALES.map(|s| s.name)),
             ("tutor", 0) => words(&["next", "back", "end"]),
             ("bars", 0) => words(&["auto"]),
