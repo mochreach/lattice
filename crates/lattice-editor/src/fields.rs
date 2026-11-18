@@ -395,19 +395,44 @@ impl Editor {
             ),
             _ => return None,
         };
-        // Typed as it's written, so `r` and `R` differ; `1:4` begins with any digit.
+        // Typed as it's written, so `r` and `R` differ; `1:4` begins with any digit. After the
+        // first, a letter goes on where the example has one, and a number where it has one:
+        // `MI` might be `Min`, not `M2`; `KF` might be `KG`.
         let typed = &self.typing.gesture;
-        let begins = |example: &str| match (typed.chars().next(), example.chars().next()) {
-            (None, _) => true,
-            (Some(a), Some(b)) => a == b || (a.is_ascii_digit() && b.is_ascii_digit()),
-            (Some(_), None) => false,
+        let begins = |example: &str| {
+            let first = match (typed.chars().next(), example.chars().next()) {
+                (None, _) => return true,
+                (Some(a), Some(b)) => a == b || (a.is_ascii_digit() && b.is_ascii_digit()),
+                (Some(_), None) => false,
+            };
+            let second = match (typed.chars().nth(1), example.chars().nth(1)) {
+                (Some(a), Some(b)) => a.is_ascii_alphabetic() == b.is_ascii_alphabetic(),
+                (Some(_), None) => false,
+                (None, _) => true,
+            };
+            first && second
         };
+        let mut items: Vec<(String, String)> = (forms.into_iter())
+            .filter(|(example, _)| begins(example))
+            .map(|(example, what)| (example.to_string(), what.to_string()))
+            .collect();
+        // Once a scale's begun, every scale it might be, narrowed by all that's typed, in
+        // place of the one example.
+        let conductor = matches!(self.field_edited_on(t), Some(StepField::Conductor(_)));
+        let scales = (lattice_core::scale::SCALES.iter()).filter(|s| {
+            s.short.len() >= typed.len()
+                && s.short
+                    .get(..typed.len())
+                    .is_some_and(|p| p.eq_ignore_ascii_case(typed))
+        });
+        if conductor && !typed.is_empty() {
+            let scale = |e: &str| matches!(e.parse(), Ok(SongGesture::Scale(_)));
+            items.retain(|(example, _)| !scale(example));
+            items.extend(scales.map(|s| (s.short.to_string(), format!("scale: {}", s.name))));
+        }
         Some(Infobox {
             title: title.into(),
-            items: (forms.into_iter())
-                .filter(|(example, _)| begins(example))
-                .map(|(example, what)| (example.to_string(), what.to_string()))
-                .collect(),
+            items,
         })
     }
 
@@ -1357,6 +1382,24 @@ mod tests {
             e.grid.tracks[0].steps[0].gestures[1],
             Some(Gesture::Invert(1))
         );
+    }
+
+    #[test]
+    fn typing_a_scale_in_the_conductor_lists_the_scales_it_might_be() {
+        let mut e = editor();
+        let keys_of = |e: &Editor| -> Vec<String> {
+            (e.infobox().unwrap().items.into_iter())
+                .map(|(k, _)| k)
+                .collect()
+        };
+        keys(&mut e, "fCi");
+        assert!(keys_of(&e).contains(&"Dor".to_string()));
+        keys(&mut e, "m");
+        assert_eq!(keys_of(&e), ["M2", "Maj", "Min", "Mix", "Mmi", "Mpe"]);
+        keys(&mut e, "i");
+        assert_eq!(keys_of(&e), ["Min", "Mix"]);
+        keys(&mut e, "\x1bfCih");
+        assert_eq!(keys_of(&e), ["Hmi", "Hma", "Hun", "Hir"]);
     }
 
     #[test]

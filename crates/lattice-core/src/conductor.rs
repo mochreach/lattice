@@ -32,7 +32,7 @@ pub const FORMS: &[(&str, &str)] = &[
     ("S2", "solo track 2; S-2 unsolos"),
     ("KG", "key: G from here, the scale as it was"),
     ("K+2", "key: 1 to 11 semitones up, or down"),
-    ("Dor", "scale: dorian from here, the key as it was"),
+    ("Dor", "scale from here, the key as it was: Dor, Min…"),
 ];
 
 /// Something the conductor does once, on a step. Written as it's typed: `T140`, `~140`, `T--`,

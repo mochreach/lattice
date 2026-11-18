@@ -501,7 +501,9 @@ In insert mode, type a gesture in either case (`t140` is `T140`). It goes in onc
 (`T140`, `X`, `T--`, `M-16`, `KF#`, `Dor`), or with enter or `esc` (`P3`, which might have been
 `P31`; `M2`, which might have been `M12`; `KF`, which might have been `KF#`). A letter that
 can't follow puts in what was there before it. As on a track, a window lists the conductor's
-gestures while you type, narrowing to those that begin with the key typed.
+gestures while you type, narrowing to those that begin with the key typed. Begin a scale and it
+lists every scale it might be, narrowing as you go: `m` gives `Maj`, `Min`, `Mix`, `Mmi` and
+`Mpe` (and `M2`), and `mi` just `Min` and `Mix`.
 
 `^a` and `^x` nudge a tempo by 1 BPM, and `>` and `<` by 10. `&` fills tempos evenly between a
 selection's ends, both of which need a tempo. `d`, `y` and `p` work as in any field.
