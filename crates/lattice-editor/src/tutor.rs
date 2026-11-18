@@ -1332,6 +1332,24 @@ const LESSONS: &[Lesson] = &[
         solution: "gpfCggit140<esc>",
     },
     Lesson {
+        title: "Chords in numerals",
+        text: "A chord track can be written in numerals instead, as a lead sheet does to say \
+               how the chords sit in the key: {toggle_numerals} makes one, and \
+               {toggle_chords} goes back to names. `I` `IV` `V` are major, `ii` `vi` minor, \
+               `vii°` diminished, and `bVII` is a chord borrowed from outside the scale. \
+               They play in the key in force, so `I V vi IV` written once goes into G with \
+               the conductor's `KG`, or `:scale G`. Switching keeps every chord sounding as \
+               it did, and works out its numeral from the key at its step. The keys and \
+               `:chord vi` enter them in the key at the cursor.\n\n\
+               Make LEAD a chord track in numerals.",
+        teaches: &[Action::ToggleNumerals],
+        commands: &[],
+        setup: chord_on_lead,
+        watch: never,
+        done: |e, _| track(e, "LEAD").is_some_and(|t| t.chords && t.numerals),
+        solution: "gpgltC",
+    },
+    Lesson {
         title: "Finding more",
         text: "That's the tutor. `:help` lists every key and command, as they're bound; \
                `:manual` explains everything in full, and `:manual delay` goes to what it says \

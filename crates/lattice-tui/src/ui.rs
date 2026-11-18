@@ -1170,8 +1170,12 @@ fn header_lines(
                     let len = c.track.steps.len();
                     // A chord track says so, in its colour, as it looks like any other while
                     // it's empty.
+                    let kind = match c.track.numerals {
+                        true => "numerals",
+                        false => "chords",
+                    };
                     match c.track.chords && c.width != FOLDED {
-                        true => cell(c, format!("{len} chords{pass}"), Style::new().fg(c.colour)),
+                        true => cell(c, format!("{len} {kind}{pass}"), Style::new().fg(c.colour)),
                         false => cell(c, format!("{len}{pass}"), theme.dim),
                     }
                 })
@@ -1507,6 +1511,11 @@ fn grid_row(
                         style = style.add_modifier(Modifier::DIM);
                     }
                     let text = match c.note_width {
+                        // A numeral track's notes are in the key on C, so named in numerals.
+                        CHORDS if c.track.chords && c.track.numerals => {
+                            let name = lattice_core::chord::numeral_label(&note);
+                            format!(" {} {length:>3} ", shortened(&name, CHORD_NAME))
+                        }
                         CHORDS => {
                             let name = lattice_core::chord::label(&note)
                                 .unwrap_or_else(|| note_name(note.pitch));

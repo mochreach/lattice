@@ -1488,11 +1488,12 @@ impl Editor {
             }
             self.checkpoint();
             for c in &cursors {
+                let kept = self.kept(c.track, c.step, pitch);
                 if let Some(step) =
                     (self.grid.tracks.get_mut(c.track)).and_then(|t| t.steps.get_mut(c.step))
                 {
                     step.note = Some(Note {
-                        pitch,
+                        pitch: kept,
                         velocity: self.touch.unwrap_or(self.velocity),
                         length: 1,
                         chord,
@@ -2083,7 +2084,8 @@ impl Editor {
             Action::ToggleGroup => return self.toggle_group(),
             Action::ToggleFold => return self.toggle_fold(),
             Action::ToggleOpen => self.toggle_open(),
-            Action::ToggleChords => self.toggle_chords(),
+            Action::ToggleChords => return self.toggle_chords(false),
+            Action::ToggleNumerals => return self.toggle_chords(true),
             Action::InvertUp => return self.invert(n as i32),
             Action::InvertDown => return self.invert(-(n as i32)),
             Action::GotoMixer => {
@@ -2599,9 +2601,11 @@ impl Editor {
             return vec![];
         };
         let velocity = self.velocity;
+        let Cursor { track, step } = self.cursor();
+        let kept = self.kept(track, step, pitch);
         let mut effects = self.edit(|s| {
             s.note = Some(Note {
-                pitch,
+                pitch: kept,
                 velocity,
                 length: 1,
                 chord: Default::default(),
@@ -2623,11 +2627,8 @@ impl Editor {
             }
         });
         if let Some(note) = last {
-            effects.extend(chords::previews(
-                self.cursor().track,
-                note.pitch,
-                note.chord,
-            ));
+            let Cursor { track, step } = self.cursor();
+            effects.extend(self.previews_of(track, step, note));
         }
         effects
     }
@@ -2869,6 +2870,7 @@ mod tests {
             rules: vec![],
             looper: None,
             chords: false,
+            numerals: false,
         };
         let grid = Grid {
             name: "test".into(),

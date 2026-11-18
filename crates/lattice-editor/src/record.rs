@@ -127,6 +127,7 @@ impl Editor {
         let all = self.releases;
         let releases = |k: Key| all || matches!(k, Key::Note(_));
         for &(track, step, _, from) in &notes {
+            let pitch = self.kept(track, step, pitch);
             let Some(s) = (self.grid.tracks.get_mut(track)).and_then(|t| t.steps.get_mut(step))
             else {
                 continue;
@@ -288,6 +289,7 @@ mod tests {
             rules: vec![],
             looper: None,
             chords: false,
+            numerals: false,
         };
         let grid = Grid {
             name: "test".into(),

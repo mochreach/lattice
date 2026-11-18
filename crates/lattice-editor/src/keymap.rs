@@ -314,6 +314,9 @@ pub enum Action {
     ToggleOpen,
     /// Make the tracks the selections reach chord tracks, or tracks of notes again.
     ToggleChords,
+    /// Make the tracks the selections reach chord tracks written in numerals, or tracks of
+    /// notes again.
+    ToggleNumerals,
     /// Voice the selected chords an inversion up, their lowest note raised an octave, or down,
     /// their highest lowered.
     InvertUp,
@@ -440,6 +443,7 @@ impl Action {
         Action::ToggleFold,
         Action::ToggleOpen,
         Action::ToggleChords,
+        Action::ToggleNumerals,
         Action::InvertUp,
         Action::InvertDown,
         Action::TogglePlay,
@@ -602,6 +606,7 @@ impl Action {
             Action::ToggleFold => "fold / unfold group",
             Action::ToggleOpen => "keep tracks open / close them",
             Action::ToggleChords => "chord track / track of notes",
+            Action::ToggleNumerals => "chord track in numerals / track of notes",
             Action::InvertUp => "voice the chords an inversion up",
             Action::InvertDown => "voice the chords an inversion down",
             Action::TogglePlay => "play / stop",
@@ -1146,6 +1151,7 @@ impl Default for Keymap {
                 (Char('z'), ToggleFold),
                 (Char('e'), ToggleOpen),
                 (Char('c'), ToggleChords),
+                (Char('C'), ToggleNumerals),
             ],
         );
 

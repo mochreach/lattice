@@ -914,7 +914,21 @@ their place, a part each, but they made harmony hard to read back.
   comes first; a roll overrides a strum. `Gesture::is_chord` dims them on a step without a
   chord, and lists them in the infobox only on a track with chords.
 
-Still to come: scale-degree rules (`deg+1`) and Roman numerals.
+- **Numerals.** `Track::numerals`, with `chords`, toggled by `tC`, keeps a track's notes in the
+  key on C: the grid names them with `chord::numeral` (the root's degree on the major scale,
+  flats between but `#IV`, case for the third, the kind's suffix less its `m`, the bass's place
+  after a slash), and the engine adds `scale::key_shift` of the key in force as each note
+  starts. That's the song's root (`Command::SetKey`, from `:scale`) changed by the conductor's
+  `K` gestures, reset on stopping, as the editor's `conducted_key` is. The shift is the shorter
+  way from C, -5 to +6, so a progression stays near where it was written; the scale doesn't
+  move them, as a numeral names its chord's quality. Storing transposed rather than as degrees
+  keeps a numeral a note, so voicings, inversions, gestures and rules need nothing new; the
+  editor's `kept` and `heard` convert at the edges (typing, `:chord`, recording, the duet, pads,
+  previews, lights) by the key at the step. `tC` / `tc` move every pattern's lane by
+  `key_in(pattern, step)`, so a chord sounds the same either side. `:chord` reads numerals on
+  any track, in the key at each step.
+
+Still to come: scale-degree rules (`deg+1`).
 
 ## Live recording (done)
 

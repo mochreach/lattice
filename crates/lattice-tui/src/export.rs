@@ -164,6 +164,7 @@ pub fn render(export: &Export, buses: Buses, bpm: f64, sample_rate: f32) -> Resu
     let [mutes, first_cue] = cue();
     for command in [
         Command::SetClick(false),
+        Command::SetKey(editor.root),
         Command::SetLength(first.steps),
         Command::SetConductor {
             conductor: Box::new(first.conductor.clone()),
@@ -296,6 +297,7 @@ mod tests {
             rules: vec![],
             looper: None,
             chords: false,
+            numerals: false,
         };
         track.steps[0].note = Some(Note {
             pitch: 60,

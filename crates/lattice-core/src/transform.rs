@@ -168,6 +168,7 @@ mod tests {
             rules,
             looper: None,
             chords: false,
+            numerals: false,
         }
     }
 

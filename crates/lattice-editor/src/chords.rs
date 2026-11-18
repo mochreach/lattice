@@ -1,5 +1,6 @@
 //! Chords on the grid: a note that plays more notes with it, written by name with `:chord`.
 
+use lattice_core::scale::{key_shift, shifted};
 use lattice_core::{Chord, Note, chord};
 
 use crate::pads::Scale;
@@ -17,10 +18,18 @@ pub(crate) struct Chording {
     root: u8,
 }
 
-/// The chord called `name` at `octave`: its root there, its notes close above, and a bass
-/// after a slash just below the root. The root's the note's pitch, the rest its chord.
-pub(crate) fn voiced(name: &str, octave: u8) -> Result<(u8, Chord), String> {
-    let (root, intervals, bass) = chord::parse(name)?;
+/// The chord called `name` at `octave`, by its name or as a numeral in the key on `key`: its
+/// root there, its notes close above, and a bass after a slash just below the root. The root's
+/// the note's pitch, the rest its chord.
+pub(crate) fn voiced(name: &str, octave: u8, key: u8) -> Result<(u8, Chord), String> {
+    let (root, intervals, bass) = match chord::parse_numeral(name) {
+        Some(numeral) => {
+            let (degree, intervals, bass) = numeral?;
+            let from_key = |degree: u8| (key + degree) % 12;
+            (from_key(degree), intervals, bass.map(from_key))
+        }
+        None => chord::parse(name)?,
+    };
     let pitch = octave_pitch(octave, i16::from(root))
         .ok_or_else(|| format!("{name} is off the top at octave {octave}"))?;
     let mut offsets: Vec<i8> = intervals.iter().copied().filter(|&i| i != 0).collect();
@@ -76,29 +85,117 @@ impl Editor {
         self.grid.tracks.get(t).is_some_and(|t| t.chords)
     }
 
+    /// Whether track `t` is a chord track written in numerals.
+    pub(crate) fn is_numeral_track(&self, t: usize) -> bool {
+        self.grid
+            .tracks
+            .get(t)
+            .is_some_and(|t| t.chords && t.numerals)
+    }
+
+    /// The root of the key in force at step `step` of the pattern: while the song plays, the
+    /// key it's reached, wherever the step is.
+    pub(crate) fn root_at(&self, step: usize) -> u8 {
+        match self.transport.is_some() {
+            true => self.root(),
+            false => self.key_at(step).1,
+        }
+    }
+
+    /// How far the notes kept on track `t` at `step` are from what plays: a numeral track's
+    /// are kept in the key on C, and play in the key in force.
+    fn numeral_shift(&self, t: usize, step: usize) -> i8 {
+        match self.is_numeral_track(t) {
+            true => key_shift(self.root_at(step)),
+            false => 0,
+        }
+    }
+
+    /// `pitch`, played on track `t` at `step`, as the track keeps it.
+    pub(crate) fn kept(&self, t: usize, step: usize, pitch: u8) -> u8 {
+        shifted(pitch, -self.numeral_shift(t, step))
+    }
+
+    /// `pitch`, kept on track `t` at `step`, as it plays.
+    pub(crate) fn heard(&self, t: usize, step: usize, pitch: u8) -> u8 {
+        shifted(pitch, self.numeral_shift(t, step))
+    }
+
+    /// What sounds `note`, kept on track `t` at `step`, as it's changed: each of its notes.
+    pub(crate) fn previews_of(&self, t: usize, step: usize, note: Note) -> Vec<Effect> {
+        previews(t, self.heard(t, step, note.pitch), note.chord).collect()
+    }
+
+    /// `note` on track `t` as the grid names it: a numeral track's as a numeral.
+    pub(crate) fn chord_label(&self, t: usize, note: &Note) -> Option<String> {
+        match self.is_numeral_track(t) {
+            true => Some(chord::numeral_label(note)),
+            false => chord::label(note),
+        }
+    }
+
     /// The scale's chord on `pitch`, from `:scale`.
     pub(crate) fn scale_chord(&self, pitch: u8) -> Chord {
         scale_chord(&self.scale(), self.root(), pitch)
     }
 
-    /// `tc`: the tracks the selections reach become chord tracks, or, if they all are, tracks
-    /// of notes again. Their notes stay as they are either way.
-    pub(crate) fn toggle_chords(&mut self) {
+    /// `tc` and `tC`: the tracks the selections reach become chord tracks, named or, with
+    /// `numerals`, in numerals; or, if they all are already, tracks of notes again. Their
+    /// chords sound as they did: a track's notes go into the key on C as it takes up numerals,
+    /// and out as it leaves them, by the key at each step of each pattern.
+    pub(crate) fn toggle_chords(&mut self, numerals: bool) -> Vec<Effect> {
         let tracks = self.selected_tracks();
-        let on = !tracks.iter().all(|&t| self.is_chord_track(t));
+        let already = tracks.iter().all(|&t| {
+            (self.grid.tracks.get(t)).is_some_and(|t| t.chords && t.numerals == numerals)
+        });
+        let (chords, numerals) = (!already, !already && numerals);
         self.checkpoint();
         let mut names = vec![];
         for &t in &tracks {
+            if self.is_numeral_track(t) != numerals {
+                self.move_numerals(t, numerals);
+            }
             if let Some(track) = self.grid.tracks.get_mut(t) {
-                track.chords = on;
+                (track.chords, track.numerals) = (chords, numerals);
                 names.push(track.name.clone());
             }
         }
         let names = names.join(", ");
-        self.message = Some(match on {
-            true => format!("{names}: chords, the piano keys playing the scale's"),
-            false => format!("{names}: notes again"),
+        self.message = Some(match (chords, numerals) {
+            (true, false) => format!("{names}: chords, the piano keys playing the scale's"),
+            (true, true) => format!("{names}: chords in numerals, played in the key in force"),
+            (false, _) => format!("{names}: notes again"),
         });
+        changed(tracks)
+    }
+
+    /// Moves track `t`'s notes in every pattern into the key on C, for a numeral track, or out
+    /// of it, by the key at each step.
+    fn move_numerals(&mut self, t: usize, into: bool) {
+        let sign = if into { -1 } else { 1 };
+        let current = self.arrangement.current;
+        for p in 0..self.arrangement.patterns.len() {
+            let len = match p == current {
+                true => self.grid.tracks.get(t).map(|t| t.steps.len()),
+                false => (self.arrangement.patterns.get(p))
+                    .and_then(|p| p.lanes.get(t))
+                    .map(|l| l.steps.len()),
+            };
+            let shifts: Vec<i8> = (0..len.unwrap_or(0))
+                .map(|s| sign * key_shift(self.key_in(p, s).1))
+                .collect();
+            let steps = match p == current {
+                true => self.grid.tracks.get_mut(t).map(|t| &mut t.steps),
+                false => (self.arrangement.patterns.get_mut(p))
+                    .and_then(|p| p.lanes.get_mut(t))
+                    .map(|l| &mut l.steps),
+            };
+            for (step, by) in steps.into_iter().flatten().zip(shifts) {
+                if let Some(note) = &mut step.note {
+                    note.pitch = shifted(note.pitch, by);
+                }
+            }
+        }
     }
 
     /// Each of `tracks` whose every note is a chord becomes a chord track: a whole chord
@@ -148,8 +245,9 @@ impl Editor {
             last = Some(*note);
         });
         if let Some(note) = last {
-            effects.extend(previews(self.cursor().track, note.pitch, note.chord));
-            self.message = lattice_core::chord::label(&note);
+            let Cursor { track, step } = self.cursor();
+            effects.extend(self.previews_of(track, step, note));
+            self.message = self.chord_label(track, &note);
         }
         effects
     }
@@ -163,7 +261,7 @@ impl Editor {
         let name = (self.grid.tracks.get(track))
             .and_then(|t| t.steps.get(self.cursor().step))
             .and_then(|s| s.note)
-            .and_then(|n| lattice_core::chord::label(&n))
+            .and_then(|n| self.chord_label(track, &n))
             .unwrap_or_default();
         self.open_command(&format!("chord {name}"));
     }
@@ -193,12 +291,13 @@ impl Editor {
         }
         let chording = self.chording.as_mut()?;
         chording.keys.push(key);
-        let root = chording.root;
+        let (root, steps) = (chording.root, chording.steps.clone());
         let mut tracks = vec![];
-        for &(id, step) in &chording.steps {
+        for (id, step) in steps {
             let Some(t) = self.ids.iter().position(|&i| i == id) else {
                 continue;
             };
+            let (root, pitch) = (self.kept(t, step, root), self.kept(t, step, pitch));
             // Changed since some other way, it's left as it is.
             let note = (self.grid.tracks.get_mut(t))
                 .and_then(|track| track.steps.get_mut(step))
@@ -230,39 +329,40 @@ impl Editor {
     }
 
     /// `:chord NAME`: every selected step plays the chord, voiced at its track's octave,
-    /// keeping a note's velocity and length if it had one.
+    /// keeping a note's velocity and length if it had one. A numeral is in the key at its step.
     pub(crate) fn set_chord(&mut self, name: &str) -> Result<Vec<Effect>, String> {
         let columns: Vec<_> = (self.selections.iter())
             .flat_map(|s| self.columns(s.region()))
             .collect();
-        let voicings = (columns.iter())
-            .map(|(t, _)| voiced(name, self.octave_of(*t)))
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut writes = vec![];
+        for (t, steps) in &columns {
+            for step in steps.clone() {
+                let (pitch, chord) = voiced(name, self.octave_of(*t), self.root_at(step))?;
+                writes.push((*t, step, self.kept(*t, step, pitch), chord));
+            }
+        }
         self.checkpoint();
         let mut last = None;
-        for ((t, steps), (pitch, chord)) in columns.iter().zip(voicings) {
-            let Some(steps) =
-                (self.grid.tracks.get_mut(*t)).and_then(|track| track.steps.get_mut(steps.clone()))
+        for (t, s, pitch, chord) in writes {
+            let Some(step) = (self.grid.tracks.get_mut(t)).and_then(|track| track.steps.get_mut(s))
             else {
                 continue;
             };
-            for step in steps {
-                let note = Note {
-                    pitch,
-                    velocity: step.note.map_or(self.velocity, |n| n.velocity),
-                    length: step.note.map_or(1, |n| n.length),
-                    chord,
-                };
-                step.note = Some(note);
-                last = Some(note);
-            }
+            let note = Note {
+                pitch,
+                velocity: step.note.map_or(self.velocity, |n| n.velocity),
+                length: step.note.map_or(1, |n| n.length),
+                chord,
+            };
+            step.note = Some(note);
+            last = Some((t, s, note));
         }
         let tracks: Vec<usize> = columns.iter().map(|(t, _)| *t).collect();
         self.mark_chord_tracks(&tracks);
         let mut effects = changed(tracks);
-        if let Some(note) = last {
-            effects.extend(previews(self.cursor().track, note.pitch, note.chord));
-            self.message = chord::label(&note);
+        if let Some((t, s, note)) = last {
+            effects.extend(self.previews_of(t, s, note));
+            self.message = self.chord_label(t, &note);
         }
         Ok(effects)
     }
@@ -276,13 +376,13 @@ mod tests {
 
     #[test]
     fn a_chord_is_voiced_above_its_root_with_a_slash_bass_below() {
-        let (pitch, chord) = voiced("Am7", 4).unwrap();
+        let (pitch, chord) = voiced("Am7", 4, 0).unwrap();
         assert_eq!(pitch, 69);
         assert_eq!(chord.offsets(), [3, 7, 10]);
-        let (pitch, chord) = voiced("C/E", 4).unwrap();
+        let (pitch, chord) = voiced("C/E", 4, 0).unwrap();
         assert_eq!(pitch, 60);
         assert_eq!(chord.offsets(), [4, 7, -8]);
-        assert!(voiced("Cnope", 4).is_err());
+        assert!(voiced("Cnope", 4, 0).is_err());
     }
 
     fn label_at(e: &Editor, track: usize, step: usize) -> Option<String> {
@@ -340,6 +440,55 @@ mod tests {
         e.stopped();
         e.set_transport(None);
         assert_eq!(e.scale_name(), "G dorian", "the cursor's again");
+    }
+
+    #[test]
+    fn a_numeral_track_keeps_its_chords_in_the_key_and_converts_both_ways() {
+        let mut e = editor();
+        // G from step 2.
+        keys(&mut e, "fCjjiKG");
+        e.handle(Key::Esc);
+        // `x` is D: ii in C, then V in G.
+        keys(&mut e, "ggfntcixxxx");
+        e.handle(Key::Esc);
+        keys(&mut e, "tC");
+        assert!(e.grid.tracks[0].chords && e.grid.tracks[0].numerals);
+        let numerals = |e: &Editor, n| -> Vec<String> {
+            (0..n)
+                .map(|s| {
+                    e.chord_label(0, &e.grid.tracks[0].steps[s].note.unwrap())
+                        .unwrap()
+                })
+                .collect()
+        };
+        assert_eq!(numerals(&e, 4), ["ii", "ii", "V", "V"]);
+        // Kept in the key on C: G's V is C's, G, the shorter way down.
+        assert_eq!(e.grid.tracks[0].steps[2].note.unwrap().pitch, 67);
+        // Entered in numerals, by key or by name, in the key at the step.
+        keys(&mut e, "ix");
+        e.handle(Key::Esc);
+        keys(&mut e, "gg");
+        e.run_command("chord vi");
+        assert_eq!(numerals(&e, 5), ["vi", "ii", "V", "V", "V"]);
+        // It sounds in the key in force: G's vi, Em, kept as C's, Am.
+        keys(&mut e, "2j");
+        let heard: Vec<_> = (e.run_command("chord vi").into_iter())
+            .filter_map(|effect| match effect {
+                Effect::Preview { pitch, .. } => Some(pitch),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(heard, [64, 67, 71]);
+        // Back to names, by the key at each step.
+        keys(&mut e, "tc");
+        assert!(!e.grid.tracks[0].numerals);
+        let names: Vec<_> = (0..5).map(|s| label_at(&e, 0, s).unwrap()).collect();
+        assert_eq!(names, ["Am", "Dm", "Em", "D", "D"]);
+        assert_eq!(e.grid.tracks[0].steps[3].note.unwrap().pitch, 62);
+        // And from numerals to notes.
+        keys(&mut e, "tCtC");
+        assert!(!e.grid.tracks[0].chords);
+        assert_eq!(e.grid.tracks[0].steps[3].note.unwrap().pitch, 62);
     }
 
     #[test]

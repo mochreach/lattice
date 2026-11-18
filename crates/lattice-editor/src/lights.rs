@@ -159,14 +159,14 @@ impl Editor {
 
     /// The keys that play the note sounding on the cursor's track, as it's playing this pass.
     fn sounding(&self, playhead: Option<&Playhead>) -> Vec<(Key, Glow)> {
-        let track = match self.page {
+        let index = match self.page {
             Page::Instrument => self.inst_cursor().track,
             _ if self.in_conductor() => return vec![],
             _ => self.cursor().track,
         };
         let (Some((step, pass)), Some(track)) = (
-            playhead.and_then(|p| p.tracks.get(track).copied().flatten()),
-            self.grid.tracks.get(track),
+            playhead.and_then(|p| p.tracks.get(index).copied().flatten()),
+            self.grid.tracks.get(index),
         ) else {
             return vec![];
         };
@@ -181,6 +181,7 @@ impl Editor {
         let Some(Some(pitch)) = pitch else {
             return vec![];
         };
+        let pitch = self.heard(index, step % len.max(1), pitch);
         let keys = self.note_keys().filter(|&(_, p)| p == pitch);
         by_key(keys.map(|(key, _)| (key, Glow::Sounding)))
     }
@@ -249,7 +250,7 @@ fn kind(action: Action) -> Kind {
         | KeyboardOctaveUp | KeyboardOctaveDown | Quit => Kind::Mode,
         ToggleMute | TogglePatternMute | ToggleSolo | AddTrack | RemoveTrack | YankTracks
         | PasteTracksAfter | PasteTracksBefore | MoveTrackLeft | MoveTrackRight | ToggleGroup
-        | ToggleChords => Kind::Track,
+        | ToggleChords | ToggleNumerals => Kind::Track,
         TogglePlay | PlaySong | PlayFromHere | Hush | PlayFill | ToggleRecord | LoopPedal
         | LoopSelection => Kind::Play,
     }

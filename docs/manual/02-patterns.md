@@ -855,6 +855,68 @@ I'd thought a chord track might be a different kind of track. But a chord is onl
 company, and keeping it one track with a switch means everything that works on notes, from
 copying to rules to gestures, works on chords without another set of keys to learn.
 
+#### Chords in numerals: `tC`
+
+A chord track can be written in **numerals** instead of names, as a lead sheet does when what
+matters is how the chords sit in the key rather than which they are: `I IV V`, `ii V I`, the
+`I V vi IV` of a thousand pop songs. **`tC`** (`toggle_numerals`) makes the tracks the selections
+reach chord tracks in numerals, and again, tracks of notes; **`tc`** turns a numeral track back
+to names. The header says `numerals` where it said `chords`, and the song saves `numerals: true`.
+
+```
+      CHORDS               NUMERALS
+ 00   C           4        I           4
+ 04   G/B         4        V/3         4
+ 08   Am          4        vi          4
+ 12   F           4        IV          4
+```
+
+They're written the way analysis writes them:
+
+- The numeral is the chord's root, counted up the major scale from the key's root: `I` on the
+  key's own note, `V` a fifth up. A root between two of its notes flattens the one above, `bIII`,
+  `bVI`, `bVII`, but for the one between the fourth and fifth, `#IV`.
+- Its case is the chord's third: upper case major, `IV`, lower case minor, `vi`.
+- After it comes the rest of the chord's kind, as its name would have it, without the `m` the
+  case has said already: `°` diminished, `+` augmented, `7`, `maj7`, `6`, `9`, `sus4` and the
+  others, so `ii7` is a minor seventh, `V7` a dominant one, `viiø7` half-diminished and `vii°7`
+  diminished.
+- A bass that isn't the root goes after a slash as its place in the chord: `I/3` has its third
+  in the bass, `V7/7` its seventh. Notes that aren't a chord Lattice knows are listed as degrees,
+  `1,b2,#4`, and a note on its own is its degree, `5`.
+
+So in a minor key the chords read as they're spelled against the major scale on the same root:
+A minor's own are `i ii° bIII iv v bVI bVII`. That's how pop and jazz analysis writes it, and
+it means a numeral says the same chord whatever the scale: `bVII` is the chord a tone below the
+key's root, in a major key or a minor one.
+
+**They play in the key in force.** A numeral track keeps its chords in the key on C, and plays
+them in the key the song's in at each step: `:scale`'s, and the conductor's once a `K` gesture
+changes it ([chapter 6](06-song.md#the-conductor)). Write `I V vi IV` once, and `:scale G major`
+or a `KG` on the conductor plays it in G. A numeral track goes to the new key the shorter way, up
+to six semitones up or five down, so G's chords sit a fourth below C's rather than a fifth above,
+and a progression stays about where you wrote it. The scale doesn't move them: a numeral says
+what chord it is, `vi` minor in any scale, and only the key's root moves it.
+
+**Switching keeps every chord as it sounds.** `tC` works each chord's numeral out from the key
+at its step, `:scale` changed by the conductor up to there, in every pattern, so an Am in C
+becomes `vi` and an Em after a `KG` becomes `vi` too. `tc` puts them back by the same keys, so
+going one way and back changes nothing. On a numeral track:
+
+- The piano keys enter the scale's chords in the key at the cursor, as on any chord track, and
+  they're written as numerals: `x` in C major is `ii`.
+- **`:chord`** reads numerals as well as names, in the key at each step: `:chord vi`,
+  `:chord bVII7`, `:chord V/3`. `°` can be typed `o`, and `vii°` and `VII°` read the same. Names
+  work too, `:chord Am`, written as whatever numeral Am is in the key there. Numerals read on a
+  track of names as well, as the chord they are in the key at the step.
+- `ret` opens `:chord` with the cursor's numeral, to change it.
+
+I'd been writing progressions out, then wanting them a tone higher for the last chorus, or
+in a key that suited a singer. With names that's rewriting every chord, or transposing and
+hoping; with numerals it's one `K+2` on the conductor. And numerals are how I think about a
+progression anyway: what makes a ii–V–I sound like one is where it sits in the key, not its
+letters.
+
 ### Auto-step: `:step`
 
 `:step N` sets how many steps the cursor moves on after each note, 0 to 64; it starts at 1 and is

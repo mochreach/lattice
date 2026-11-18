@@ -139,11 +139,12 @@ impl Editor {
         let mut effects = vec![];
         let mut chord = chord;
         for &(track, pitch) in dealt {
+            let kept = self.kept(track, step, pitch);
             if let Some(slot) =
                 (self.grid.tracks.get_mut(track)).and_then(|t| t.steps.get_mut(step))
             {
                 slot.note = Some(Note {
-                    pitch,
+                    pitch: kept,
                     velocity,
                     length: 1,
                     chord,
@@ -213,11 +214,12 @@ impl Editor {
             self.checkpoint();
             let velocity = self.touch.unwrap_or(self.velocity);
             for &(c, pitch, chord) in &notes {
+                let kept = self.kept(c.track, c.step, pitch);
                 if let Some(step) =
                     (self.grid.tracks.get_mut(c.track)).and_then(|t| t.steps.get_mut(c.step))
                 {
                     step.note = Some(Note {
-                        pitch,
+                        pitch: kept,
                         velocity,
                         length: 1,
                         chord,
@@ -268,6 +270,7 @@ mod tests {
             rules: vec![],
             looper: None,
             chords: false,
+            numerals: false,
         };
         let grid = Grid {
             name: "test".into(),

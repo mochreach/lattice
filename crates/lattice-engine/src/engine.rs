@@ -31,6 +31,7 @@ use crate::processor::{Event, EventKind, Processor, Shape, frames};
 use crate::routing::Routing;
 use crate::sampler::Sample;
 use lattice_core::macros;
+use lattice_core::scale::{key_shift, shifted};
 
 /// Largest block rendered in one go. Longer host buffers are split.
 pub(crate) const MAX_BLOCK: usize = 256;
@@ -72,6 +73,9 @@ pub enum Command {
     Stop,
     SetBpm(f64),
     SetClick(bool),
+    /// The song's key, as its root in semitones above C (`:scale`'s), that numeral tracks play
+    /// in until the conductor changes it.
+    SetKey(u8),
     /// Steps in a beat, beats in a bar and the beats that start a group (a bit each), for the
     /// tempo and the click. Send the tempo after: until then, steps keep their length.
     SetMeter {
@@ -1378,6 +1382,10 @@ pub struct Engine {
     bpm: f64,
     /// Whether the tempo playing is the conductor's, rather than the song's.
     conducted_tempo: bool,
+    /// The song's key, as its root, and the one the conductor's `K` gestures have it in while
+    /// it plays: what numeral tracks play in.
+    song_key: u8,
+    conducted_key: Option<u8>,
     /// Whether an `X` has stopped the song at the end of the step playing.
     stopping: bool,
 }
@@ -1471,6 +1479,8 @@ impl Engine {
             song_bpm: bpm,
             bpm,
             conducted_tempo: false,
+            song_key: 0,
+            conducted_key: None,
             stopping: false,
         };
         let handle = Handle {
@@ -1547,6 +1557,7 @@ impl Engine {
         self.stopping = false;
         // The conductor's tempo lasts while the song plays.
         self.conducted_tempo = false;
+        self.conducted_key = None;
         self.set_tempo(self.song_bpm, false);
         self.status.set_stopped();
     }
@@ -1599,6 +1610,7 @@ impl Engine {
                     }
                 }
                 Command::SetClick(on) => self.click_enabled = on,
+                Command::SetKey(root) => self.song_key = root % 12,
                 Command::SetMeter {
                     steps_per_beat,
                     beats_per_bar,
@@ -2406,6 +2418,7 @@ impl Engine {
         let muted = self.mutes >> index & 1 == 1;
         let fill = self.fill;
         let song_step = self.clock.samples_per_step();
+        let key = self.conducted_key.unwrap_or(self.song_key);
         let Some(t) = self.tracks.get_mut(index) else {
             return false;
         };
@@ -2514,6 +2527,10 @@ impl Engine {
         // time.
         let mut started = 0;
         if let Some(mut note) = step.note {
+            // A numeral track's notes are in the key on C: they play in the key in force.
+            if t.track.chords && t.track.numerals {
+                note.pitch = shifted(note.pitch, key_shift(key));
+            }
             if step.gestures().any(|g| g == Gesture::Accent) {
                 note.velocity = 127;
             }
@@ -2698,6 +2715,8 @@ impl Engine {
                     let _ = self.conducted.push(Conducted::Pattern(pattern));
                 }
                 SongGesture::Key(key) => {
+                    let now = self.conducted_key.unwrap_or(self.song_key);
+                    self.conducted_key = Some(key.from(now));
                     let _ = self.conducted.push(Conducted::Key(key));
                 }
                 SongGesture::Scale(scale) => {
@@ -3098,6 +3117,7 @@ mod tests {
             }],
             looper: None,
             chords: false,
+            numerals: false,
         }
     }
 
@@ -3998,6 +4018,28 @@ mod tests {
         // Inverted first, then strummed from the new lowest note.
         let strummed = [(0, 64), (500, 67), (1_000, 72)];
         assert_eq!(chord_played(&["S2", "V1"], 1, 2, 5_000), strummed);
+    }
+
+    #[test]
+    fn a_numeral_track_plays_in_the_key_in_force() {
+        let played_in = |numerals: bool| {
+            let (mut engine, notes) = gesturing(&[60, 60], &[]);
+            let track = &mut engine.tracks[0].track;
+            (track.chords, track.numerals) = (true, numerals);
+            for step in &mut track.steps {
+                step.note.as_mut().unwrap().chord = lattice_core::Chord::new(&[4, 7]).unwrap();
+            }
+            engine.conductor = conductor(&[(1, "KG")], 2);
+            // In A, then G, conducted: the way down from C is the shorter to each.
+            engine.song_key = 9;
+            render(&mut engine, 250, 7_000);
+            let mut pitches: Vec<u8> = played(&notes).iter().map(|n| n.1).collect();
+            pitches[..3].sort_unstable();
+            pitches[3..].sort_unstable();
+            pitches
+        };
+        assert_eq!(played_in(true), [57, 61, 64, 55, 59, 62]);
+        assert_eq!(played_in(false), [60, 64, 67, 60, 64, 67]);
     }
 
     #[test]

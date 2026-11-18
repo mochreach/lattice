@@ -10,6 +10,20 @@ pub struct Scale {
     pub steps: &'static [u8],
 }
 
+/// How far a numeral track's notes move to play in the key on `root`: they're kept in the key
+/// on C, and go to the root the shortest way, up to six semitones up or five down, so its
+/// chords stay about where they were written.
+pub fn key_shift(root: u8) -> i8 {
+    // Under 12, so it fits.
+    let up = (root % 12) as i8;
+    if up <= 6 { up } else { up - 12 }
+}
+
+/// `pitch` moved `by` semitones, kept within MIDI's range.
+pub fn shifted(pitch: u8, by: i8) -> u8 {
+    (i16::from(pitch) + i16::from(by)).clamp(0, 127) as u8
+}
+
 pub const MAJOR: Scale = Scale {
     name: "major",
     short: "Maj",

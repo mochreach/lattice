@@ -20,6 +20,8 @@ pub struct Sequencer {
     looped: Option<Option<(u64, u64)>>,
     /// The song's mutes sent, now and next.
     mutes: Option<(u32, u32)>,
+    /// The song's key sent, as its root.
+    key: Option<u8>,
     playing: bool,
 }
 
@@ -63,6 +65,9 @@ impl Sequencer {
             if handle.send(command) {
                 self.conductor = Some(conductor.clone());
             }
+        }
+        if self.key != Some(editor.root) && handle.send(Command::SetKey(editor.root)) {
+            self.key = Some(editor.root);
         }
         let looped = editor.step_loop(current);
         if self.looped != Some(looped) {

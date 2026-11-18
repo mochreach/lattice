@@ -204,6 +204,17 @@ fn shape(intervals: &[i8]) -> u16 {
 /// isn't the root; `None` if they aren't a chord Lattice knows. A seventh or ninth with its
 /// fifth left out, as players often leave it, is still named.
 pub fn name(pitches: &[u8]) -> Option<String> {
+    let (root, suffix, bass) = identify(pitches)?;
+    let slash = match bass == root {
+        true => String::new(),
+        false => format!("/{}", pc_name(bass)),
+    };
+    Some(format!("{}{suffix}{slash}", pc_name(root)))
+}
+
+/// The chord `pitches` make: its root's pitch class, what follows the root in its name, and
+/// the bass's pitch class.
+fn identify(pitches: &[u8]) -> Option<(u8, &'static str, u8)> {
     let bass = *pitches.iter().min()?;
     let notes = classes(pitches.iter().copied());
     // Each root the notes have, the bass first; each chord, the simplest first. An exact match
@@ -227,11 +238,181 @@ pub fn name(pitches: &[u8]) -> Option<String> {
         }
     }
     let (_, root, suffix) = best?;
-    let slash = match bass % 12 == root {
-        true => String::new(),
-        false => format!("/{}", pc_name(bass)),
+    Some((root, suffix, bass % 12))
+}
+
+/// Each degree's numeral, in semitones above the key's root, counted from its major scale, as
+/// lead sheets write them: a note between two of its degrees flattens the one above, but for
+/// the sharpened fourth.
+const NUMERALS: [&str; 12] = [
+    "I", "bII", "II", "bIII", "III", "IV", "#IV", "V", "bVI", "VI", "bVII", "VII",
+];
+
+/// Each degree as a number, for notes a numeral can't name: in semitones above the key's root.
+const DEGREES: [&str; 12] = [
+    "1", "b2", "2", "b3", "3", "4", "#4", "5", "b6", "6", "b7", "7",
+];
+
+/// The degrees of the major scale, in semitones above its root.
+const MAJOR_DEGREES: [i8; 7] = [0, 2, 4, 5, 7, 9, 11];
+
+/// How a chord's kind is written after a numeral, its case saying whether it's minor: each of
+/// [`CHORDS`]' suffixes, whether its numeral's lower case, and what follows it.
+const QUALITIES: [(&str, bool, &str); 22] = [
+    ("", false, ""),
+    ("m", true, ""),
+    ("dim", true, "°"),
+    ("+", false, "+"),
+    ("sus4", false, "sus4"),
+    ("sus2", false, "sus2"),
+    ("5", false, "5"),
+    ("7", false, "7"),
+    ("maj7", false, "maj7"),
+    ("m7", true, "7"),
+    ("6", false, "6"),
+    ("m6", true, "6"),
+    ("m7b5", true, "ø7"),
+    ("dim7", true, "°7"),
+    ("mmaj7", true, "maj7"),
+    ("+7", false, "+7"),
+    ("7sus4", false, "7sus4"),
+    ("add9", false, "add9"),
+    ("madd9", true, "add9"),
+    ("9", false, "9"),
+    ("maj9", false, "maj9"),
+    ("m9", true, "9"),
+];
+
+/// Other ways of writing what follows a numeral, and the way Lattice writes it.
+const NUMERAL_ALIASES: [(&str, &str); 5] = [
+    ("o", "°"),
+    ("o7", "°7"),
+    ("ø", "ø7"),
+    ("dim", "°"),
+    ("dim7", "°7"),
+];
+
+/// A degree's number within a chord, for the bass after a numeral's slash: `3` for its third,
+/// from the semitones it is above the chord's root.
+fn interval_number(semitones: i8) -> &'static str {
+    match semitones.rem_euclid(12) {
+        1 | 2 => "9",
+        3 | 4 => "3",
+        5 => "4",
+        6..=8 => "5",
+        9 => "6",
+        _ => "7",
+    }
+}
+
+/// The chord `pitches` make as a numeral, `vi`, `V7` or `bVII`, its root's degree in the key
+/// on C, and its bass's place in the chord after a slash when it isn't the root: `I/3` has its
+/// third in the bass. `None` if they aren't a chord Lattice knows.
+pub fn numeral(pitches: &[u8]) -> Option<String> {
+    let (root, suffix, bass) = identify(pitches)?;
+    let &(_, lower, after) = QUALITIES.iter().find(|(s, _, _)| *s == suffix)?;
+    let numeral = NUMERALS.get(usize::from(root))?;
+    let numeral = match lower {
+        true => numeral.to_lowercase(),
+        false => (*numeral).to_string(),
     };
-    Some(format!("{}{suffix}{slash}", pc_name(root)))
+    let slash = match bass == root {
+        true => String::new(),
+        // Both pitch classes, under 12.
+        false => {
+            let above = (bass + 12 - root) as i8;
+            let number = match (above, suffix) {
+                (9, "dim7") => "7",
+                (2, s) if s.contains('2') => "2",
+                (a, _) => interval_number(a),
+            };
+            format!("/{number}")
+        }
+    };
+    Some(format!("{numeral}{after}{slash}"))
+}
+
+/// `note` as a numeral track shows it, in the key on C: a chord as a numeral, or its notes'
+/// degrees listed if it's none Lattice knows; a note on its own as its degree.
+pub fn numeral_label(note: &crate::Note) -> String {
+    let pitches: Vec<u8> = note.chord.pitches(note.pitch).collect();
+    let degree = |p: u8| DEGREES.get(usize::from(p % 12)).copied().unwrap_or("?");
+    if note.chord.is_empty() {
+        return degree(note.pitch).to_string();
+    }
+    numeral(&pitches).unwrap_or_else(|| {
+        let mut sorted = pitches.clone();
+        sorted.sort_unstable();
+        let mut seen = 0u16;
+        let mut names = vec![];
+        for p in sorted {
+            if seen & 1 << (p % 12) == 0 {
+                seen |= 1 << (p % 12);
+                names.push(degree(p));
+            }
+        }
+        names.join(",")
+    })
+}
+
+/// A chord read as a numeral, `vi`, `bVII7`, `vii°`, `I/3`: its root in semitones above the
+/// key's, its notes as semitones up from the root, close together, and the bass's in semitones
+/// above the key's root after a slash. `None` if it doesn't start as a numeral does, so it can
+/// be read as a chord's name instead.
+pub fn parse_numeral(text: &str) -> Option<Result<Parsed, String>> {
+    let (chord, bass) = match text.split_once('/') {
+        Some((chord, bass)) => (chord, Some(bass)),
+        None => (text, None),
+    };
+    let (accidental, rest) = match chord.chars().next()? {
+        'b' | '♭' => (-1, chord.get(chord.chars().next()?.len_utf8()..)?),
+        '#' | '♯' => (1, chord.get(chord.chars().next()?.len_utf8()..)?),
+        _ => (0, chord),
+    };
+    let letters = rest.len() - rest.trim_start_matches(['I', 'V', 'i', 'v']).len();
+    let (roman, after) = rest.split_at_checked(letters)?;
+    let lower = roman.chars().all(|c| c.is_ascii_lowercase());
+    if !lower && !roman.chars().all(|c| c.is_ascii_uppercase()) {
+        return None;
+    }
+    let after = (NUMERAL_ALIASES.iter())
+        .find(|(alias, _)| *alias == after)
+        .map_or(after, |&(_, own)| own);
+    // Diminished chords are minor, however they're written.
+    let lower = lower || after.starts_with(['°', 'ø']);
+    let degree = ["I", "II", "III", "IV", "V", "VI", "VII"]
+        .iter()
+        .position(|n| n.eq_ignore_ascii_case(roman))?;
+    Some((|| {
+        // `degree` is a position in a list of seven.
+        let root = (MAJOR_DEGREES.get(degree).copied().unwrap_or(0) + accidental).rem_euclid(12);
+        let suffix = (QUALITIES.iter())
+            .find(|&&(_, l, a)| l == lower && a == after)
+            .map(|&(s, _, _)| s)
+            .ok_or_else(|| format!("no chord {text}: try vi, V7, bVII or vii°"))?;
+        let intervals = (CHORDS.iter())
+            .find(|(s, _)| *s == suffix)
+            .map(|&(_, intervals)| intervals)
+            .ok_or_else(|| format!("no chord {text}"))?;
+        let bass = match bass {
+            Some(number) => {
+                let found = intervals.iter().copied().find(|&i| {
+                    let named = match (i, suffix) {
+                        (9, "dim7") => "7",
+                        (2 | 14, s) if s.contains('2') => "2",
+                        (i, _) => interval_number(i),
+                    };
+                    i != 0 && named == number
+                });
+                let Some(i) = found else {
+                    return Err(format!("{text}'s chord has no {number}: try I/3 or V7/7"));
+                };
+                Some(((root + i).rem_euclid(12)) as u8)
+            }
+            None => None,
+        };
+        Ok((root as u8, intervals, bass))
+    })())
 }
 
 /// `note`'s chord as the grid shows it: by name if Lattice knows it, else its notes listed;
@@ -259,9 +440,13 @@ pub fn listed(pitches: &[u8]) -> String {
     names.join(",")
 }
 
+/// A chord as it's read: its root's pitch class, its notes as semitones up from the root, close
+/// together, and the bass's pitch class after a slash, if it has one.
+pub type Parsed = (u8, &'static [i8], Option<u8>);
+
 /// A chord read from its name, `Am7`, `F#dim`, `C/E`: its root's pitch class, its notes as
 /// semitones up from the root, close together, and the bass's pitch class after a slash.
-pub fn parse(name: &str) -> Result<(u8, &'static [i8], Option<u8>), String> {
+pub fn parse(name: &str) -> Result<Parsed, String> {
     let (chord, bass) = match name.split_once('/') {
         Some((chord, bass)) => (chord, Some(bass)),
         None => (name, None),
@@ -350,6 +535,59 @@ mod tests {
         for (suffix, intervals) in CHORDS {
             let pitches: Vec<u8> = intervals.iter().map(|&i| (62 + i) as u8).collect();
             assert_eq!(named(&pitches), Some(format!("D{suffix}")), "{suffix}");
+        }
+    }
+
+    #[test]
+    fn names_chords_as_numerals_in_the_key_on_c() {
+        let numeral = |p: &[u8]| numeral(p).unwrap();
+        assert_eq!(numeral(&[60, 64, 67]), "I");
+        assert_eq!(numeral(&[57, 60, 64]), "vi");
+        assert_eq!(numeral(&[59, 62, 65]), "vii°");
+        assert_eq!(numeral(&[67, 71, 74, 77]), "V7");
+        assert_eq!(numeral(&[62, 65, 69, 72]), "ii7");
+        assert_eq!(numeral(&[58, 62, 65]), "bVII");
+        assert_eq!(numeral(&[66, 69, 72]), "#iv°");
+        assert_eq!(numeral(&[59, 62, 65, 69]), "viiø7");
+        assert_eq!(numeral(&[64, 67, 72]), "I/3");
+        assert_eq!(numeral(&[65, 67, 71, 74]), "V7/7");
+        let note = |pitch, offsets: &[i8]| crate::Note {
+            pitch,
+            velocity: 100,
+            length: 1,
+            chord: Chord::new(offsets).unwrap(),
+        };
+        assert_eq!(numeral_label(&note(63, &[])), "b3");
+        assert_eq!(numeral_label(&note(60, &[1, 6])), "1,b2,#4");
+    }
+
+    #[test]
+    fn reads_numerals_and_every_numeral_written_reads_back() {
+        let read = |t: &str| parse_numeral(t).unwrap();
+        assert_eq!(read("vi"), Ok((9, &[0, 3, 7][..], None)));
+        assert_eq!(read("bVII7"), Ok((10, &[0, 4, 7, 10][..], None)));
+        assert_eq!(read("viio"), Ok((11, &[0, 3, 6][..], None)));
+        assert_eq!(read("VII°"), Ok((11, &[0, 3, 6][..], None)));
+        assert_eq!(read("I/3"), Ok((0, &[0, 4, 7][..], Some(4))));
+        assert!(read("I/7").is_err());
+        assert!(read("vsus4").is_err());
+        // Not numerals, so read as names.
+        assert_eq!(parse_numeral("Am"), None);
+        assert_eq!(parse_numeral("Bb7"), None);
+        assert_eq!(parse_numeral("bdim"), None);
+        assert_eq!(parse_numeral("Iv"), None);
+        for root in 0..12 {
+            for (_, intervals) in CHORDS {
+                let pitches: Vec<u8> = intervals.iter().map(|&i| (60 + root + i) as u8).collect();
+                let written = numeral(&pitches).unwrap();
+                let (r, i, _) = read(&written).unwrap();
+                let back: Vec<u8> = i.iter().map(|&i| (60 + r as i8 + i) as u8).collect();
+                assert_eq!(
+                    classes(back.into_iter()),
+                    classes(pitches.into_iter()),
+                    "{written}"
+                );
+            }
         }
     }
 

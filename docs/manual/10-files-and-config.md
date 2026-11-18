@@ -679,6 +679,7 @@ Insert mode shares the arrows, `pageup` `pagedown` `home` `end`, `esc`, the play
 | `tz` | `toggle_fold`         | fold or unfold the groups             |
 | `te` | `toggle_open`         | keep the tracks open, or close them   |
 | `tc` | `toggle_chords`       | chord tracks, or tracks of notes      |
+| `tC` | `toggle_numerals`     | chord tracks in numerals, or notes    |
 
 ### The song page
 

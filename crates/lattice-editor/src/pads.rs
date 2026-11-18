@@ -96,11 +96,12 @@ impl Editor {
             if there {
                 self.checkpoint();
                 let velocity = self.velocity;
+                let kept = self.kept(track, step, pitch);
                 if let Some(s) =
                     (self.grid.tracks.get_mut(track)).and_then(|t| t.steps.get_mut(step))
                 {
                     s.note = Some(Note {
-                        pitch,
+                        pitch: kept,
                         velocity,
                         length: 1,
                         chord: Default::default(),
@@ -182,8 +183,14 @@ impl Editor {
     /// The song's key changed by the pattern's conductor, from its top to step `at`, going
     /// round the conductor as playing does if it's shorter.
     pub(crate) fn key_at(&self, at: usize) -> (usize, u8) {
+        self.key_in(self.arrangement.current, at)
+    }
+
+    /// The song's key changed by pattern `pattern`'s conductor, from its top to step `at`.
+    pub(crate) fn key_in(&self, pattern: usize, at: usize) -> (usize, u8) {
         let song = (self.scale, self.root);
-        let Some(conductor) = self.conductor().filter(|c| !c.steps.is_empty()) else {
+        let conductor = self.arrangement.conductor(pattern);
+        let Some(conductor) = conductor.filter(|c| !c.steps.is_empty()) else {
             return song;
         };
         (0..=at)
@@ -332,6 +339,7 @@ mod tests {
             rules: vec![],
             looper: None,
             chords: false,
+            numerals: false,
         };
         let grid = Grid {
             name: "test".into(),

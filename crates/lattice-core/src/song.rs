@@ -307,6 +307,10 @@ pub struct Track {
     /// A chord track: its notes are chords, drawn by name in a wide column even while it's
     /// empty, and the piano keys enter the scale's chords on it. Shared by every pattern.
     pub chords: bool,
+    /// A chord track written in numerals (`vi`, `bVII`) rather than chord names: its notes
+    /// are kept in the key on C and played in the key in force, `:scale`'s as the conductor
+    /// changes it. Shared by every pattern.
+    pub numerals: bool,
 }
 
 /// How the looper records a loop track, shown in its header.
@@ -455,6 +459,8 @@ struct SparseTrack {
     looper: Option<Looping>,
     #[serde(default, skip_serializing_if = "is_false")]
     chords: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    numerals: bool,
 }
 
 fn is_zero_u8(n: &u8) -> bool {
@@ -486,6 +492,7 @@ impl From<Track> for SparseTrack {
             columns: track.columns,
             looper: track.looper,
             chords: track.chords,
+            numerals: track.numerals,
         }
     }
 }
@@ -527,6 +534,7 @@ impl TryFrom<SparseTrack> for Track {
             columns: sparse.columns,
             looper: sparse.looper,
             chords: sparse.chords,
+            numerals: sparse.numerals,
         })
     }
 }

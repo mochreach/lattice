@@ -480,7 +480,7 @@ gesture changes the scale and keeps the key, written short to fit the field:
 
 So `KA` and `Min` together, on one step's two fields, go to A minor.
 
-The notes in the song are written as pitches, so a key change doesn't move them: what it moves is
+Notes in the song are written as pitches, so a key change doesn't move them: what it moves is
 everything that plays *in* a key, the keyboard. While the song plays, the key the conductor has
 reached is what the pads, `:layout scale`, the tonnetz and the duet's chord keys play, and what a
 chord track's keys enter, as if you'd typed `:scale` at that moment; stopping goes back to the
@@ -489,6 +489,10 @@ song's `:scale`, changed by the pattern's conductor from its first step to the c
 chord track, `x` enters Dm before a `KG` and D after it, and the status line's `pads` shows
 the key you're in. A pattern starts in the song's key while you write, so a pattern in
 another key says so on its first step.
+
+The one kind of track a key change does move is a chord track in numerals
+([chapter 2](02-patterns.md#chords-in-numerals-tc)): its `I V vi IV` plays in the key in force,
+so a `K+2` before the last chorus lifts its chords a tone with the keyboard.
 
 I'd been changing `:scale` by hand halfway through writing a progression that modulates, then
 forgetting to change it back. A key that's part of the song, where it changes, is how a score
