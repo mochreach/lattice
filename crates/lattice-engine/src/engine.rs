@@ -14,8 +14,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 use lattice_core::{
-    Change, Conductor, Gesture, Grid, Lane, Lock, Locks, MACRO, MAX_LOCKS, MAX_PARAMS, MAX_STEPS,
-    Mix, ParamInfo, SongGesture, Step, TICKS, Track, db_to_gain, realise_into,
+    Change, Chord, Conductor, Gesture, Grid, Lane, Lock, Locks, MACRO, MAX_CHORD, MAX_LOCKS,
+    MAX_PARAMS, MAX_STEPS, Mix, ParamInfo, SongGesture, Step, TICKS, Track, db_to_gain,
+    realise_into,
 };
 pub use lattice_core::{MAX_EFFECTS, MAX_GROUPS, MAX_TRACKS};
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
@@ -791,8 +792,66 @@ struct Held {
     steps_left: u16,
     /// An arpeggio it goes round each step: its root, and the two steps above it.
     arpeggio: Option<(u8, u8, u8)>,
+    /// A chord it plays a note at a time (`U4`), going on each step.
+    roll: Option<Roll>,
     /// How it plays, each time it's played again too.
     shape: Shape,
+}
+
+/// A chord played a note at a time, as `U4`, `u4` and `U?4` play it.
+#[derive(Debug, Clone, Copy)]
+struct Roll {
+    /// Its notes, low to high, and how many.
+    notes: [u8; MAX_CHORD + 1],
+    len: u8,
+    order: Order,
+    /// How many it plays a step.
+    per_step: u8,
+    /// How many it's played, to say which is next.
+    played: u32,
+    /// What picks its notes in any order, the same each time the song plays.
+    seed: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Order {
+    Up,
+    Down,
+    Any,
+}
+
+impl Roll {
+    /// Its `k`th note.
+    fn note(&self, k: u32) -> u8 {
+        let len = u32::from(self.len.max(1));
+        let i = match self.order {
+            Order::Up => k % len,
+            Order::Down => len - 1 - k % len,
+            Order::Any => (scatter(k, self.seed as usize, 0, 3) % u64::from(len)) as u32,
+        };
+        self.notes.get(i as usize).copied().unwrap_or(0)
+    }
+
+    /// Queues its notes for the step from `start` to `end`, from the `first`th, each played
+    /// over the held note before it, starting from `from`.
+    fn queue(
+        &mut self,
+        due: &mut Vec<Due>,
+        from: u8,
+        first: u64,
+        (start, end): (u64, u64),
+        velocity: u8,
+    ) {
+        let per_step = u64::from(self.per_step.max(1));
+        let mut from = from;
+        for k in first..per_step {
+            let to = self.note(self.played);
+            self.played += 1;
+            let at = start + (end.saturating_sub(start)) * k / per_step;
+            queue(due, at, Later::Change { from, to, velocity });
+            from = to;
+        }
+    }
 }
 
 /// Something a track's gestures play later in a step, at a frame counted from the engine's
@@ -2396,6 +2455,8 @@ impl Engine {
                 push(events, note_off(offset, h.pitch));
             } else if let Some(arpeggio) = h.arpeggio {
                 arpeggiate(due, h.pitch, arpeggio, 0, (at, ends), h.velocity);
+            } else if let Some(roll) = &mut h.roll {
+                roll.queue(due, h.pitch, 0, (at, ends), h.velocity);
             }
             h.steps_left > 0
         });
@@ -2439,14 +2500,51 @@ impl Engine {
         }
         let mut hit = false;
         // How many notes this step starts: a chord's all, its root last, so an instrument
-        // that plays one note at a time plays the root.
+        // that plays one note at a time plays the root; or one, playing a chord a note at a
+        // time.
         let mut started = 0;
         if let Some(mut note) = step.note {
             if step.gestures().any(|g| g == Gesture::Accent) {
                 note.velocity = 127;
             }
-            let others = note.chord.pitches(note.pitch).skip(1);
-            for pitch in others.chain(std::iter::once(note.pitch)) {
+            // The chord's gestures: inverted, then strummed or played a note at a time.
+            for gesture in step.gestures() {
+                if let Gesture::Invert(n) = gesture {
+                    for _ in 0..n.unsigned_abs() {
+                        (note.pitch, note.chord) = note.chord.inverted(note.pitch, n > 0);
+                    }
+                }
+            }
+            let mut voiced = Voiced::new(note.pitch, note.chord);
+            let strum = (step.gestures()).find_map(|g| match g {
+                Gesture::StrumUp(n) => Some((n, Order::Up)),
+                Gesture::StrumDown(n) => Some((n, Order::Down)),
+                _ => None,
+            });
+            let roll = match note.chord.is_empty() {
+                true => None,
+                false => step.gestures().find_map(|g| match g {
+                    Gesture::RollUp(n) => Some((n, Order::Up)),
+                    Gesture::RollDown(n) => Some((n, Order::Down)),
+                    Gesture::RollAny(n) => Some((n, Order::Any)),
+                    _ => None,
+                }),
+            };
+            let mut roll = roll.map(|(per_step, order)| Roll {
+                notes: voiced.low_to_high,
+                len: voiced.len,
+                order,
+                per_step,
+                played: 0,
+                seed: scatter(t.pass, t.playhead, index, 2),
+            });
+            if let Some(roll) = &mut roll {
+                voiced.only(roll.note(0));
+                roll.played = 1;
+            } else if let Some((_, order)) = strum {
+                voiced.strum(order);
+            }
+            for (k, pitch) in voiced.iter().enumerate() {
                 // Retriggering a held pitch, or out of room: end the old note first.
                 let existing = t.held.iter().position(|h| h.pitch == pitch);
                 let full = (t.held.len() == MAX_HELD).then_some(0);
@@ -2457,9 +2555,12 @@ impl Engine {
                     t.held.remove(i);
                 }
                 let velocity = note.velocity;
-                match delay {
-                    Some(_) => queue(&mut t.due, starts, Later::Start { pitch, velocity }),
-                    None => start(&mut t.events, offset, pitch, velocity, shape),
+                // A strum's notes, each so many 24ths after the last.
+                let later = strum.map_or(0, |(n, _)| u32::from(n) * k as u32);
+                let starts = starts + (length * f64::from(later) / f64::from(TICKS)).round() as u64;
+                match delay.is_some() || later > 0 {
+                    true => queue(&mut t.due, starts, Later::Start { pitch, velocity }),
+                    false => start(&mut t.events, offset, pitch, velocity, shape),
                 }
                 started += 1;
                 t.held.push(Held {
@@ -2467,8 +2568,14 @@ impl Engine {
                     velocity,
                     steps_left: note.length.max(1),
                     arpeggio: None,
+                    roll,
                     shape,
                 });
+            }
+            if let Some(h) = t.held.last_mut()
+                && let Some(roll) = &mut h.roll
+            {
+                roll.queue(&mut t.due, h.pitch, 1, (starts, ends), h.velocity);
             }
             self.status.started_note(index, note.pitch, note.velocity);
             hit = true;
@@ -2722,6 +2829,60 @@ impl Engine {
 fn queue(due: &mut Vec<Due>, at: u64, what: Later) {
     if due.len() < due.capacity() {
         due.push(Due { at, what });
+    }
+}
+
+/// The notes a step's chord starts, in the order it starts them: the root last, so an
+/// instrument that plays one note at a time plays the root; or as strummed, or the one a chord
+/// played a note at a time begins on. Fixed in size, so it doesn't allocate.
+struct Voiced {
+    /// The chord's notes, low to high, and how many.
+    low_to_high: [u8; MAX_CHORD + 1],
+    len: u8,
+    /// The notes it starts, in order.
+    order: [u8; MAX_CHORD + 1],
+    starts: u8,
+}
+
+impl Voiced {
+    fn new(root: u8, chord: Chord) -> Voiced {
+        let mut voiced = Voiced {
+            low_to_high: [0; MAX_CHORD + 1],
+            len: 0,
+            order: [0; MAX_CHORD + 1],
+            starts: 0,
+        };
+        let others = chord.pitches(root).skip(1);
+        for (slot, pitch) in (voiced.order.iter_mut()).zip(others.chain(std::iter::once(root))) {
+            *slot = pitch;
+            voiced.len += 1;
+        }
+        voiced.starts = voiced.len;
+        voiced.low_to_high = voiced.order;
+        if let Some(notes) = voiced.low_to_high.get_mut(..usize::from(voiced.len)) {
+            notes.sort_unstable();
+        }
+        voiced
+    }
+
+    /// Starts its notes low to high, or high to low.
+    fn strum(&mut self, order: Order) {
+        self.order = self.low_to_high;
+        if order == Order::Down
+            && let Some(notes) = self.order.get_mut(..usize::from(self.len))
+        {
+            notes.reverse();
+        }
+    }
+
+    /// Starts just `pitch`.
+    fn only(&mut self, pitch: u8) {
+        self.order = [pitch; MAX_CHORD + 1];
+        self.starts = 1;
+    }
+
+    fn iter(&self) -> impl Iterator<Item = u8> + use<> {
+        self.order.into_iter().take(usize::from(self.starts))
     }
 }
 
@@ -3759,6 +3920,81 @@ mod tests {
                 on(6_000, 62),
             ]
         );
+    }
+
+    /// The notes started playing a C major chord, its step's gestures `gestures`, over
+    /// `frames`, the chord `length` steps long on a track of `steps`.
+    fn chord_played(gestures: &[&str], length: u16, steps: usize, frames: usize) -> Vec<(u64, u8)> {
+        let at_start: Vec<(usize, &str)> = gestures.iter().map(|&g| (0, g)).collect();
+        let (mut engine, notes) = gesturing(&vec![60; steps], &at_start);
+        let track = &mut engine.tracks[0].track;
+        for step in track.steps.iter_mut().skip(1) {
+            step.note = None;
+        }
+        let note = track.steps[0].note.as_mut().unwrap();
+        note.chord = lattice_core::Chord::new(&[4, 7]).unwrap();
+        note.length = length;
+        render(&mut engine, 250, frames);
+        played(&notes)
+    }
+
+    #[test]
+    fn a_chord_inverts_and_strums_on_its_step() {
+        assert_eq!(
+            chord_played(&["V1"], 1, 2, 5_000),
+            [(0, 64), (0, 67), (0, 72)]
+        );
+        assert_eq!(
+            chord_played(&["V-1"], 1, 2, 5_000),
+            [(0, 64), (0, 55), (0, 60)]
+        );
+        assert_eq!(
+            chord_played(&["V2"], 1, 2, 5_000),
+            [(0, 76), (0, 67), (0, 72)]
+        );
+        // A 24th of a step is 250 frames.
+        assert_eq!(
+            chord_played(&["S2"], 1, 2, 5_000),
+            [(0, 60), (500, 64), (1_000, 67)]
+        );
+        assert_eq!(
+            chord_played(&["s3"], 1, 2, 5_000),
+            [(0, 67), (750, 64), (1_500, 60)]
+        );
+        // Inverted first, then strummed from the new lowest note.
+        let strummed = [(0, 64), (500, 67), (1_000, 72)];
+        assert_eq!(chord_played(&["S2", "V1"], 1, 2, 5_000), strummed);
+    }
+
+    #[test]
+    fn a_chord_plays_a_note_at_a_time_for_as_long_as_it_is_held() {
+        let up = [
+            (0, 60),
+            (3_000, 64),
+            (6_000, 67),
+            (9_000, 60),
+            (12_000, 64),
+            (15_000, 67),
+        ];
+        assert_eq!(chord_played(&["U2"], 3, 4, 17_000), up);
+        let down: Vec<u8> = chord_played(&["u4"], 1, 2, 6_000)
+            .iter()
+            .map(|n| n.1)
+            .collect();
+        assert_eq!(down, [67, 64, 60, 67]);
+        // Any order, the chord's notes, the same each time it's played.
+        let any = chord_played(&["U?8"], 2, 3, 12_000);
+        assert_eq!(any.len(), 16);
+        assert!(any.iter().all(|n| [60, 64, 67].contains(&n.1)));
+        assert_eq!(any, chord_played(&["U?8"], 2, 3, 12_000));
+        // Its notes end with it.
+        let (mut engine, notes) = gesturing(&[60, 62], &[(0, "U2")]);
+        engine.tracks[0].track.steps[0].note.as_mut().unwrap().chord =
+            lattice_core::Chord::new(&[4, 7]).unwrap();
+        render(&mut engine, 250, 7_000);
+        let notes = notes.lock().unwrap();
+        let sounding = notes.iter().fold(0, |n, e| if e.1 { n + 1 } else { n - 1 });
+        assert_eq!(sounding, 1, "{notes:?}");
     }
 
     /// The pitches played, in order, on a track whose step `i` plays pitch `i`.

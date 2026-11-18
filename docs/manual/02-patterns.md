@@ -843,6 +843,11 @@ pianist keeps a progression's notes close together, moving each as little as it 
 chord to the next instead of jumping the whole hand: C to F is smoother as C E G to C F A, F's
 second inversion, than as C E G to F A C.
 
+The **chord gestures** play a step's chord another way without writing it again, on that step
+only: `V1` inverted, `S2` and `s2` strummed up and down, `U4` and `u4` a note at a time, rising
+or falling, as an arpeggiator does, and `U?4` in any order. On a chord track they're listed when
+you type a gesture. [Chapter 5](05-gestures.md#chord-gestures) has them in full.
+
 I'd thought a chord track might be a different kind of track. But a chord is only a note with
 company, and keeping it one track with a switch means everything that works on notes, from
 copying to rules to gestures, works on chords without another set of keys to learn.

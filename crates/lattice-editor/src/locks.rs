@@ -866,8 +866,12 @@ impl Editor {
             return vec![];
         };
         let kind = track.instrument.kind;
+        let chord = step.note.is_some_and(|n| !n.chord.is_empty());
         (step.gestures())
             .map(|g| match g.works_on(kind) {
+                true if g.is_chord() && !chord => {
+                    format!("{} (nothing without a chord on the step)", g.describe())
+                }
                 true => g.describe(),
                 false => format!("{} (nothing on a {})", g.describe(), kind.name()),
             })

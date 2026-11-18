@@ -36,34 +36,10 @@ pub(crate) fn voiced(name: &str, octave: u8) -> Result<(u8, Chord), String> {
 /// octave lower; as it is where that would leave MIDI's range. The root stays the note's pitch
 /// wherever it goes.
 fn inverted(note: Note, up: bool) -> Note {
-    let mut pitches: Vec<u8> = note.chord.pitches(note.pitch).collect();
-    let outer = match up {
-        true => (pitches.iter().enumerate()).min_by_key(|&(_, p)| p),
-        false => (pitches.iter().enumerate()).max_by_key(|&(_, p)| p),
-    };
-    let Some((i, &from)) = outer else {
-        return note;
-    };
-    // An octave on, or further if a note's doubled there already, so none is lost.
-    let octaves = (1..=10).map(|n| match up {
-        true => i16::from(from) + 12 * n,
-        false => i16::from(from) - 12 * n,
-    });
-    let Some(to) = octaves
-        .filter_map(|p| u8::try_from(p).ok().filter(|&p| p <= 127))
-        .find(|p| !pitches.contains(p))
-    else {
-        return note;
-    };
-    if let Some(p) = pitches.get_mut(i) {
-        *p = to;
-    }
-    let Some((&root, rest)) = pitches.split_first() else {
-        return note;
-    };
+    let (pitch, chord) = note.chord.inverted(note.pitch, up);
     Note {
-        pitch: root,
-        chord: Chord::of(root, rest.iter().copied()),
+        pitch,
+        chord,
         ..note
     }
 }

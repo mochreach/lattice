@@ -115,8 +115,8 @@ A37            whole at three characters
 In insert mode on a gesture field, a window lists the gestures you can type there, each with an
 example and what it does, so you needn't remember them: those the track's instrument plays (`<`
 and `O8` only on a sampler or chop, `G6` on a synth, Switched or Monochord, `P12` on a MIDI
-track). Type a key and it narrows to the gestures that begin with it: after `J`, `J12` and `J?`.
-It goes when you leave insert mode.
+track), and the chord gestures only on a track with chords. Type a key and it narrows to the
+gestures that begin with it: after `J`, `J12` and `J?`. It goes when you leave insert mode.
 
 ```
  ┌ gestures ────────────────────────────────┐
@@ -135,7 +135,8 @@ can't follow what's typed puts in what was there before it, if that's a gesture,
 anew, so `P3` followed by `X` is two gestures. Something out of range is refused with what's
 allowed: `retriggers go from 2 to 9`, `24ths of a step go from 1 to 23`.
 
-Letters may be typed in either case, but for `r`, which fades where `R` doesn't. Each gesture is
+Letters may be typed in either case, but for `r`, `s` and `u`, which go the other way from `R`,
+`S` and `U`: a retrigger that fades, a strum and a chord played downwards. Each gesture is
 written one way only: `J0`, not `J00`.
 
 In normal mode, the status line describes the gestures and locks under the cursor, and `^a` and
@@ -246,6 +247,51 @@ notes after it. Most gear numbers its programs from 1, so `P0` is its first.
 
 A held note carries its shape to its later hits: `<` with `R3` plays three hits backwards, and
 `G3` with `A37` slides round the chord.
+
+### Chord gestures
+
+A step can hold a whole chord ([chapter 2](02-patterns.md#chords-on-one-step-chord)), and these
+play it another way, on that step alone, leaving what's written as it is. On a step
+without a chord they do nothing, and show dimmed.
+
+| Gesture | Range      | What it does                                                    |
+|---------|------------|-----------------------------------------------------------------|
+| `V1`    | -7 to 7    | plays the chord inverted once: its lowest note an octave up     |
+| `S2`    | 1–23 24ths | strums it from the lowest note up, a note each 2/24 of a step   |
+| `s2`    | 1–23 24ths | strums it from the highest note down                            |
+| `U4`    | 1–8 a step | plays it a note at a time, lowest up, 4 a step, while it's held |
+| `u4`    | 1–8 a step | likewise from the highest down                                  |
+| `U?4`   | 1–8 a step | likewise in any order, the same each time the song plays        |
+
+**Inversion, `V1` to `V7`, `V-1` to `V-7`.** As `V` does to what's written, but only as the step
+plays: `V1` takes the lowest note up an octave, `V2` does it twice, and `V-1` takes the highest
+down. C E G with `V1` plays E G C; with `V-1`, G C E. I wanted this as a gesture as well as a
+key so a chord can move about without being written again: the same chord on every bar, with
+`V1` on every other one, climbs and falls back, and with `?50` it changes its shape now and
+then.
+
+**Strum, `S1` to `S23` and `s1` to `s23`.** The chord's notes start one after another, the
+lowest first for `S` and the highest first for `s`, each so many 24ths of a step after the last,
+as a pick crosses a guitar's strings. `S1` and `S2` are quick strums that just soften a chord's
+attack; `S6` is a slow harp roll. A guitarist strums down on the beat and up off it, so
+alternating `s2` and `S2` sounds played rather than programmed: down across the strings is `s`
+here, from the top note, as the strings are drawn on a page. The last notes of a long strum can
+fall into the next step; they start only if the chord's still held.
+
+**Note at a time, `U1` to `U8`, `u1` to `u8` and `U?1` to `U?8`.** The chord plays as an
+arpeggiator plays it: one note at a time, low to high (`U`), high to low (`u`) or in any order
+(`U?`), so many a step, round and round for as long as the chord is held. At four steps a beat,
+`U1` plays sixteenth notes and `U2` thirty-seconds. The note
+holds for its length (`+` and `-`), so a chord four steps long with `U4` plays sixteen notes. Any
+order is the same each time the song plays, as `?` is, so a run you like stays.
+
+Unlike `A37`, which retunes one note, each note here starts afresh: on a piano or a pluck you
+hear every one. An instrument that plays one note at a time plays it just as well, which makes
+`U` the quickest way to a bass or lead line out of a chord track.
+
+Inversion comes first, so `V1` with `S2` strums the inverted chord from its new lowest note. A
+step strums or plays a note at a time, not both; the note at a time wins. Note gestures carry on
+as before: `D8` delays the strum's first note, `X12` cuts every note, and `!` accents them all.
 
 ### Conditions
 

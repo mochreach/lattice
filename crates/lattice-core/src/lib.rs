@@ -46,7 +46,7 @@ pub use conductor::{Conductor, ConductorStep, GESTURES, MAX_BPM, MIN_BPM, SongGe
 pub use device::{Curve, Device, Kind, ParamInfo};
 pub use file::{FileError, from_ron, to_ron};
 pub use fx::{Bus, Buses, Fx, FxKind, MAX_EFFECTS};
-pub use gesture::{Gesture, MAX_SPEED, TICKS};
+pub use gesture::{Gesture, MAX_ROLL, MAX_SPEED, TICKS};
 pub use group::{Group, MAX_GROUPS};
 pub use instrument::{DRUM_ROOT, InstKind, Instrument};
 pub use knob::{KNOB_MARK, Knob};

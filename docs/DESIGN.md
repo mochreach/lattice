@@ -904,8 +904,17 @@ their place, a part each, but they made harmony hard to read back.
   note up an octave or highest down (further if that note's doubled there), the root staying
   the note's pitch.
 
-Still to come: chord gestures (inversion, strum, arpeggiate), scale-degree rules (`deg+1`) and
-Roman numerals.
+- **Chord gestures** play a step's chord another way on that step, leaving it as written:
+  `V1` / `V-1` invert it (`Chord::inverted`, shared with `V`, with no allocation so the engine
+  can call it), `S2` / `s2` strum it up or down, each note queued a `Later::Start` so many 24ths
+  after the last, and `U4` / `u4` / `U?4` play it a note at a time. That last is a `Roll` on the
+  one `Held` note: the chord low to high in a fixed array, its order, its rate and a count, which
+  queues `Later::Change`s each step it's held, as `A37` queues retunes; any order picks each note
+  from `scatter`, seeded from the pass, step and track, so it's the same each play. Inversion
+  comes first; a roll overrides a strum. `Gesture::is_chord` dims them on a step without a
+  chord, and lists them in the infobox only on a track with chords.
+
+Still to come: scale-degree rules (`deg+1`) and Roman numerals.
 
 ## Live recording (done)
 
@@ -1455,6 +1464,8 @@ smallest shift that's felt, and 24 divides into halves, thirds, quarters, sixths
   retriggers it 3 times within the step, `r3` fading; `D8` starts it 8/24 late; `X6` cuts it
   6/24 in; `A37` goes round it and 3 and 7 semitones up, a sixth of a step each, for as long as
   it's held; `!` plays it at full velocity.
+- **Chord gestures** play the step's chord another way: `V1` inverted, `S2` / `s2` strummed,
+  `U4` / `u4` / `U?4` a note at a time (see Chords).
 - **Sound gestures** change how that one note sounds: `<` plays a sampler's or chop's note the
   other way round from its `direction`, `O8` starts it 8/16 of the way into its sound, or its
   piece, and `G6` slides a synth's or string's note from the last one's pitch over 6/24 of a

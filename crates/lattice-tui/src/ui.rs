@@ -1613,11 +1613,12 @@ fn grid_row(
                 cursor(StepField::Velocity, c.style()),
             ));
             // Gestures: on the note in the track's colour, on the playhead in the accent, and
-            // dimmed where the instrument can't play them.
+            // dimmed where the instrument can't play them, or there's no chord to play.
             let kind = c.track.instrument.kind;
+            let chord = step.note.is_some_and(|n| !n.chord.is_empty());
             for (g, gesture) in step.gestures.iter().enumerate() {
                 let (text, own) = match gesture {
-                    Some(gesture) if !gesture.works_on(kind) => {
+                    Some(gesture) if !gesture.works_on(kind) || gesture.is_chord() && !chord => {
                         (format!(" {gesture}"), c.style().add_modifier(Modifier::DIM))
                     }
                     Some(gesture) if gesture.is_playhead() => {

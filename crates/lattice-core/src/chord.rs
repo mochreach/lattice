@@ -75,6 +75,46 @@ impl Chord {
     }
 }
 
+impl Chord {
+    /// The chord over `root` an inversion up, its lowest note an octave higher, or down, its
+    /// highest an octave lower: further if a note's there already, so none is lost. The root
+    /// stays the note's pitch wherever it goes, so this gives the root with the chord. As it is
+    /// where that would leave MIDI's range. Doesn't allocate, so the engine can play one.
+    pub fn inverted(self, root: u8, up: bool) -> (u8, Chord) {
+        let mut pitches = [0; MAX_CHORD + 1];
+        let mut len = 0;
+        for (slot, pitch) in pitches.iter_mut().zip(self.pitches(root)) {
+            *slot = pitch;
+            len += 1;
+        }
+        let played = pitches.get(..len).unwrap_or(&[]);
+        let outer = match up {
+            true => (played.iter().enumerate()).min_by_key(|&(_, p)| p),
+            false => (played.iter().enumerate()).max_by_key(|&(_, p)| p),
+        };
+        let Some((i, &from)) = outer else {
+            return (root, self);
+        };
+        let octaves = (1..=10).map(|n| match up {
+            true => i16::from(from) + 12 * n,
+            false => i16::from(from) - 12 * n,
+        });
+        let Some(to) = octaves
+            .filter_map(|p| u8::try_from(p).ok().filter(|&p| p <= 127))
+            .find(|p| !played.contains(p))
+        else {
+            return (root, self);
+        };
+        if let Some(p) = pitches.get_mut(i) {
+            *p = to;
+        }
+        let Some((&root, rest)) = pitches.get(..len).and_then(<[u8]>::split_first) else {
+            return (root, self);
+        };
+        (root, Chord::of(root, rest.iter().copied()))
+    }
+}
+
 impl TryFrom<Vec<i8>> for Chord {
     type Error = String;
 

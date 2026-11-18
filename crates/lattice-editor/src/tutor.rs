@@ -155,6 +155,25 @@ fn fill_run(e: &mut Editor) {
     }
 }
 
+/// An A minor chord on LEAD's first step, for the chord gestures, unless there's one there.
+fn chord_on_lead(e: &mut Editor) {
+    let Some(first) =
+        (index(e, "LEAD").and_then(|t| e.grid.tracks.get_mut(t))).and_then(|t| t.steps.first_mut())
+    else {
+        return;
+    };
+    if first.note.is_none_or(|n| n.chord.is_empty()) {
+        let mut step = Step::note(57);
+        if let Some(note) = &mut step.note {
+            note.chord = lattice_core::Chord::of(57, [60, 64]);
+        }
+        *first = Step {
+            note: step.note,
+            ..*first
+        };
+    }
+}
+
 /// The tutor's sections, each named with the title of its first lesson.
 const SECTIONS: &[(&str, &str)] = &[
     ("Basics", "Moving around"),
@@ -1255,6 +1274,31 @@ const LESSONS: &[Lesson] = &[
             })
         },
         solution: "gpghggfGi?50<esc>",
+    },
+    Lesson {
+        title: "Chord gestures",
+        text: "Three more gestures play a step's chord another way, on that step alone, and \
+               are listed on a track with chords. `V1` plays it inverted, its lowest note an \
+               octave up, and `V-1` its highest an octave down. `S2` strums it from the lowest \
+               note up, a note each 2/24 of a step, and `s2` from the highest down, as a \
+               guitarist strums down on the beat and up off it. `U4` plays it a note at a \
+               time, lowest up, four a step, round and round while it's held, `u4` highest \
+               down, and `U?4` in any order, the same each time the song plays; {longer} on \
+               the note makes it longer, so it goes on. `s` and `u` stay small as they go the \
+               other way. On a step with no chord they're dimmed and do nothing.\n\n\
+               LEAD's first step has a chord. Strum it, or play it a note at a time.",
+        teaches: &[],
+        commands: &[],
+        setup: chord_on_lead,
+        watch: never,
+        done: |e, _| {
+            (track(e, "LEAD").and_then(|t| t.steps.first())).is_some_and(|s| {
+                s.note.is_some_and(|n| !n.chord.is_empty())
+                    && s.gestures()
+                        .any(|g| g.is_chord() && !matches!(g, Gesture::Invert(_)))
+            })
+        },
+        solution: "gpglggfgiS2<ret><esc>",
     },
     Lesson {
         title: "The conductor",

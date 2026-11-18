@@ -2,7 +2,8 @@
 //! fields. Note gestures act on the step's note, or the one still sounding: retrigger it, delay
 //! it, cut it, arpeggiate it or accent it, and on some instruments reverse it, start it part way
 //! in or glide to it. Conditions decide whether the step plays at all: some passes, or only
-//! during a fill. Playhead gestures act on the track's playback: jump,
+//! during a fill. Chord gestures play a step's chord another way: inverted, strummed, or a note
+//! at a time. Playhead gestures act on the track's playback: jump,
 //! wait, turn backwards, or change speed. On a MIDI track, a program change picks the sound
 //! the gear plays. Times are in 24ths of a step.
 
@@ -10,6 +11,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::chord::MAX_CHORD;
 use crate::instrument::InstKind;
 use crate::song::MAX_STEPS;
 
@@ -28,6 +30,9 @@ pub const MAX_SPEED: u8 = 4;
 /// The longest a step waits, in steps' time.
 pub const MAX_WAIT: u8 = 99;
 
+/// Most notes a chord's arpeggio (`U4`) plays in a step.
+pub const MAX_ROLL: u8 = 8;
+
 /// The sixteenths of a sound file, or a chop's piece, an offset starts a note in.
 pub const OFFSETS: u8 = 16;
 
@@ -43,6 +48,12 @@ pub const FORMS: &[(&str, &str)] = &[
     ("<", "reverse the sample"),
     ("O8", "start 0 to 15 16ths into the sample"),
     ("G6", "glide from the last note, in 24ths"),
+    ("V1", "chord inverted: -7 to 7 times"),
+    ("S2", "strum up: 1 to 23 24ths a note"),
+    ("s2", "strum down"),
+    ("U4", "chord a note at a time up: 1 to 8 a step"),
+    ("u4", "a note at a time down"),
+    ("U?4", "a note at a time, any order"),
     ("?50", "chance: plays on 1 to 99% of passes"),
     ("1:4", "plays on pass 1 of every 4"),
     ("F", "plays only in a fill"),
@@ -57,7 +68,8 @@ pub const FORMS: &[(&str, &str)] = &[
 ];
 
 /// Something a track does once, on a step. Written as it's typed: `R3`, `r3`, `D8`, `X6`, `A37`,
-/// `!`, `<`, `O8`, `G6`, `?50`, `1:4`, `F`, `F-`, `J12`, `J?`, `W2`, `B`, `*2`, `/2`, `P12`. Steps are numbered from 0, as they're shown.
+/// `!`, `<`, `O8`, `G6`, `V1`, `S2`, `s2`, `U4`, `u4`, `U?4`, `?50`, `1:4`, `F`, `F-`, `J12`,
+/// `J?`, `W2`, `B`, `*2`, `/2`, `P12`. Steps are numbered from 0, as they're shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Gesture {
     /// `R3`: plays the note 3 times, evenly, within the step.
@@ -80,6 +92,21 @@ pub enum Gesture {
     Offset(u8),
     /// `G6`: slides a synth's or string's note from the last one's pitch over 6 24ths of a step.
     Glide(u8),
+    /// `V1`: plays the step's chord inverted once, its lowest note an octave up; `V-1` its
+    /// highest an octave down. As written, on this step only.
+    Invert(i8),
+    /// `S2`: strums the step's chord from its lowest note up, each 2 24ths of a step after the
+    /// last.
+    StrumUp(u8),
+    /// `s2`: strums it from its highest note down.
+    StrumDown(u8),
+    /// `U4`: plays the step's chord a note at a time, from its lowest up and round again, 4 to
+    /// a step, for as long as it's held.
+    RollUp(u8),
+    /// `u4`: likewise from its highest down.
+    RollDown(u8),
+    /// `U?4`: likewise in any order, the same each time the song plays.
+    RollAny(u8),
     /// `?50`: the step plays on half its passes, the same ones each time the song plays.
     Chance(u8),
     /// `1:4`: the step plays on the first of every 4 passes.
@@ -128,6 +155,19 @@ impl Gesture {
         )
     }
 
+    /// Whether it plays a chord another way, so does nothing on a step of one note.
+    pub fn is_chord(self) -> bool {
+        matches!(
+            self,
+            Gesture::Invert(_)
+                | Gesture::StrumUp(_)
+                | Gesture::StrumDown(_)
+                | Gesture::RollUp(_)
+                | Gesture::RollDown(_)
+                | Gesture::RollAny(_)
+        )
+    }
+
     /// Whether it does anything on an instrument of `kind`: `<` on a synth doesn't.
     pub fn works_on(self, kind: InstKind) -> bool {
         match self {
@@ -167,6 +207,15 @@ impl Gesture {
             Gesture::Reverse => "reverse, played the other way round".into(),
             Gesture::Offset(n) => format!("offset, from {n}/16 of the way in"),
             Gesture::Glide(n) => format!("glide, from the last pitch over {n}/24 of a step"),
+            Gesture::Invert(1) => "chord inverted, its lowest note an octave up".into(),
+            Gesture::Invert(-1) => "chord inverted down, its highest note an octave down".into(),
+            Gesture::Invert(n) if n < 0 => format!("chord inverted down {} times", -n),
+            Gesture::Invert(n) => format!("chord inverted {n} times"),
+            Gesture::StrumUp(n) => format!("strum up, a note each {n}/24 of a step"),
+            Gesture::StrumDown(n) => format!("strum down, a note each {n}/24 of a step"),
+            Gesture::RollUp(n) => format!("chord a note at a time up, {n} a step"),
+            Gesture::RollDown(n) => format!("chord a note at a time down, {n} a step"),
+            Gesture::RollAny(n) => format!("chord a note at a time in any order, {n} a step"),
             Gesture::Chance(n) => format!("chance, plays {n}% of passes"),
             Gesture::Every(1, n) => format!("plays the first of every {n} passes"),
             Gesture::Every(k, n) => format!("plays pass {k} of every {n}"),
@@ -192,9 +241,17 @@ impl Gesture {
         };
         match self {
             Gesture::Retrigger(n) | Gesture::Fade(n) => within(n, 2, MAX_HITS, "retriggers"),
-            Gesture::Delay(n) | Gesture::Cut(n) | Gesture::Glide(n) => {
-                within(n, 1, TICKS - 1, "24ths of a step")
+            Gesture::Invert(n) if n == 0 || n.unsigned_abs() > MAX_CHORD as u8 => Err(format!(
+                "inversions go from -{MAX_CHORD} to {MAX_CHORD}, but not 0"
+            )),
+            Gesture::RollUp(n) | Gesture::RollDown(n) | Gesture::RollAny(n) => {
+                within(n, 1, MAX_ROLL, "notes a step")
             }
+            Gesture::Delay(n)
+            | Gesture::Cut(n)
+            | Gesture::Glide(n)
+            | Gesture::StrumUp(n)
+            | Gesture::StrumDown(n) => within(n, 1, TICKS - 1, "24ths of a step"),
             Gesture::Offset(n) => within(n, 0, OFFSETS - 1, "sixteenths"),
             Gesture::Chance(n) => within(n, 1, 99, "chances"),
             Gesture::Every(k, n) => {
@@ -228,6 +285,12 @@ impl fmt::Display for Gesture {
             Gesture::Reverse => write!(f, "<"),
             Gesture::Offset(n) => write!(f, "O{n}"),
             Gesture::Glide(n) => write!(f, "G{n}"),
+            Gesture::Invert(n) => write!(f, "V{n}"),
+            Gesture::StrumUp(n) => write!(f, "S{n}"),
+            Gesture::StrumDown(n) => write!(f, "s{n}"),
+            Gesture::RollUp(n) => write!(f, "U{n}"),
+            Gesture::RollDown(n) => write!(f, "u{n}"),
+            Gesture::RollAny(n) => write!(f, "U?{n}"),
             Gesture::Chance(n) => write!(f, "?{n}"),
             Gesture::Every(k, n) => write!(f, "{k}:{n}"),
             Gesture::Fill => write!(f, "F"),
@@ -246,19 +309,19 @@ impl fmt::Display for Gesture {
 impl std::str::FromStr for Gesture {
     type Err = String;
 
-    /// Reads a gesture as it's written, and checks it. Letters may be either case but `r`,
-    /// which fades where `R` doesn't.
+    /// Reads a gesture as it's written, and checks it. Letters may be either case but `r`, `s`
+    /// and `u`, which go the other way from `R`, `S` and `U`.
     fn from_str(text: &str) -> Result<Self, String> {
         let unknown = || {
             format!(
-                "{text:?} isn't a gesture: R3, r3, D8, X6, A37, !, <, O8, G6, ?50, 1:4, F, F-, J12, J?, W2, B, *2, /2 or P12"
+                "{text:?} isn't a gesture: R3, r3, D8, X6, A37, !, <, O8, G6, V1, S2, s2, U4, u4, U?4, ?50, 1:4, F, F-, J12, J?, W2, B, *2, /2 or P12"
             )
         };
         let mut chars = text.chars();
         let first = chars.next().ok_or_else(unknown)?;
         let rest = chars.as_str();
         let first = match first {
-            'r' => 'r',
+            'r' | 's' | 'u' => first,
             c => c.to_ascii_uppercase(),
         };
         let number = |example: &str| -> Result<u8, String> {
@@ -290,6 +353,24 @@ impl std::str::FromStr for Gesture {
             '<' if rest.is_empty() => Gesture::Reverse,
             'O' => Gesture::Offset(number("O8")?),
             'G' => Gesture::Glide(number("G6")?),
+            'V' => {
+                let (sign, digits) = match rest.strip_prefix('-') {
+                    Some(digits) => (-1, digits),
+                    None => (1, rest),
+                };
+                match digits.parse::<i8>() {
+                    Ok(n) if digits.len() == 1 => Gesture::Invert(sign * n),
+                    _ => return Err(format!("{text:?}: a number after V, as in V1 or V-1")),
+                }
+            }
+            'S' => Gesture::StrumUp(number("S2")?),
+            's' => Gesture::StrumDown(number("s2")?),
+            'U' if rest.starts_with('?') => match rest.get(1..).map(str::parse::<u8>) {
+                Some(Ok(n)) if rest.len() == 2 => Gesture::RollAny(n),
+                _ => return Err(format!("{text:?}: a number after U?, as in U?4")),
+            },
+            'U' => Gesture::RollUp(number("U4")?),
+            'u' => Gesture::RollDown(number("u4")?),
             '?' => Gesture::Chance(number("?50")?),
             k @ '1'..='9' => match rest.strip_prefix(':').map(str::parse::<u8>) {
                 Some(Ok(n)) if !rest.starts_with(":0") => Gesture::Every(k as u8 - b'0', n),
@@ -380,7 +461,8 @@ mod tests {
     fn gestures_read_as_they_are_written() {
         let all = [
             "R3", "r9", "D8", "X23", "A37", "A05", "!", "<", "O0", "O15", "G6", "J12", "J?", "W2",
-            "B", "*2", "/4", "*1", "?50", "?5", "1:4", "3:3", "F", "F-", "P0", "P127",
+            "B", "*2", "/4", "*1", "?50", "?5", "1:4", "3:3", "F", "F-", "P0", "P127", "V1", "V-3",
+            "S2", "s23", "U4", "u1", "U?8",
         ];
         for text in all {
             let gesture: Gesture = text.parse().unwrap();
@@ -413,6 +495,14 @@ mod tests {
         assert_eq!("f-".parse(), Ok(Gesture::NoFill));
         assert!("P128".parse::<Gesture>().unwrap_err().contains("0 to 127"));
         assert!(Gesture::Program(3).works_on(InstKind::Midi));
+        assert_eq!("v-1".parse(), Ok(Gesture::Invert(-1)));
+        assert_eq!("u?4".parse::<Gesture>().ok(), None);
+        assert!("V0".parse::<Gesture>().is_err());
+        assert!("V8".parse::<Gesture>().unwrap_err().contains("-7 to 7"));
+        assert!("V-".parse::<Gesture>().unwrap_err().contains("as in V1"));
+        assert!("U9".parse::<Gesture>().unwrap_err().contains("1 to 8"));
+        assert!("U?".parse::<Gesture>().unwrap_err().contains("as in U?4"));
+        assert!("S24".parse::<Gesture>().is_err());
         assert!(!Gesture::Program(3).works_on(InstKind::Synth));
     }
 
@@ -420,13 +510,13 @@ mod tests {
     fn typing_goes_on_until_a_gesture_is_whole() {
         for text in [
             "R", "D", "D2", "X1", "A", "A3", "J", "J1", "J25", "W", "W9", "*", "O", "O1", "G2",
-            "?", "?5", "1", "1:", "F",
+            "?", "?5", "1", "1:", "F", "V", "V-", "S", "s1", "U", "U?", "u",
         ] {
             assert!(Gesture::could_go_on(text), "{text}");
         }
         for text in [
             "R3", "D3", "D23", "A37", "!", "J0", "J?", "J26", "J255", "W99", "B", "*2", "<", "O2",
-            "O15", "G3", "?50", "1:4", "F-",
+            "O15", "G3", "?50", "1:4", "F-", "V1", "V-2", "S3", "s23", "U4", "u8", "U?4",
         ] {
             assert!(!Gesture::could_go_on(text), "{text}");
         }

@@ -7,8 +7,8 @@
 use std::str::FromStr;
 
 use lattice_core::{
-    Change, Conductor, GESTURES, Gesture, Lock, MAX_BPM, MAX_SPEED, MAX_STEPS, MIN_BPM, ParamInfo,
-    SongGesture, Step, TICKS, Track,
+    Change, Conductor, GESTURES, Gesture, Lock, MAX_BPM, MAX_CHORD, MAX_ROLL, MAX_SPEED, MAX_STEPS,
+    MIN_BPM, ParamInfo, SongGesture, Step, TICKS, Track,
 };
 
 use crate::keymap::Key;
@@ -79,10 +79,10 @@ impl Typed for Gesture {
         Gesture::could_go_on(text)
     }
 
-    /// Capitals, but `r`, which fades where `R` doesn't.
+    /// Capitals, but `r`, `s` and `u`, which go the other way from `R`, `S` and `U`.
     fn written(c: char) -> char {
         match c {
-            'r' => 'r',
+            'r' | 's' | 'u' => c,
             c => c.to_ascii_uppercase(),
         }
     }
@@ -211,6 +211,20 @@ fn nudge_gesture(gesture: Gesture, by: i32) -> Gesture {
         Gesture::Faster(n) => Gesture::Faster(within(n, 1, MAX_SPEED)),
         Gesture::Slower(n) => Gesture::Slower(within(n, 1, MAX_SPEED)),
         Gesture::Program(n) => Gesture::Program(within(n, 0, 127)),
+        Gesture::StrumUp(n) => Gesture::StrumUp(within(n, 1, TICKS - 1)),
+        Gesture::StrumDown(n) => Gesture::StrumDown(within(n, 1, TICKS - 1)),
+        Gesture::RollUp(n) => Gesture::RollUp(within(n, 1, MAX_ROLL)),
+        Gesture::RollDown(n) => Gesture::RollDown(within(n, 1, MAX_ROLL)),
+        Gesture::RollAny(n) => Gesture::RollAny(within(n, 1, MAX_ROLL)),
+        Gesture::Invert(n) => {
+            // Past 0, as there's no inversion 0: up from V-1 is V1.
+            let most = MAX_CHORD as i32;
+            let mut to = (i32::from(n) + by).clamp(-most, most);
+            if to == 0 {
+                to = by.signum();
+            }
+            Gesture::Invert(to as i8)
+        }
         other => other,
     }
 }
@@ -352,7 +366,8 @@ impl Editor {
     }
 
     /// In insert mode in a gesture field, the gestures that can be typed there: those the
-    /// track's instrument plays, and once a key's typed, those it starts.
+    /// track's instrument plays, the chord gestures only where there are chords, and once a
+    /// key's typed, those it starts.
     pub(crate) fn gesture_infobox(&self) -> Option<Infobox> {
         if self.mode != Mode::Insert {
             return None;
@@ -360,9 +375,14 @@ impl Editor {
         let t = self.cursor().track;
         let (title, forms) = match self.field_edited_on(t)? {
             StepField::Gesture(_) => {
-                let kind = self.grid.tracks.get(t)?.instrument.kind;
-                let plays =
-                    |example: &str| (example.parse::<Gesture>()).is_ok_and(|g| g.works_on(kind));
+                let track = self.grid.tracks.get(t)?;
+                let kind = track.instrument.kind;
+                let chords = track.chords
+                    || (track.steps.iter()).any(|s| s.note.is_some_and(|n| !n.chord.is_empty()));
+                let plays = |example: &str| {
+                    (example.parse::<Gesture>())
+                        .is_ok_and(|g| g.works_on(kind) && (chords || !g.is_chord()))
+                };
                 let forms = lattice_core::gesture::FORMS.iter();
                 (
                     "gestures",
@@ -1304,6 +1324,39 @@ mod tests {
         // On the notes, the keys play notes, so there's nothing to list.
         keys(&mut e, "fni");
         assert!(e.infobox().is_none());
+    }
+
+    #[test]
+    fn chord_gestures_are_typed_and_listed_where_there_are_chords() {
+        let mut e = editor();
+        let listed = |e: &Editor, gesture: &str| {
+            (e.infobox().unwrap().items.iter()).any(|(k, _)| k == gesture)
+        };
+        keys(&mut e, "fgi");
+        assert!(!listed(&e, "V1"), "no chords on the track");
+        keys(&mut e, "\x1btc");
+        keys(&mut e, "fgi");
+        assert!(listed(&e, "V1") && listed(&e, "s2") && listed(&e, "U?4"));
+        // `s` and `u` stay small, as they go the other way.
+        keys(&mut e, "s2\r");
+        assert_eq!(
+            e.grid.tracks[0].steps[0].gestures[0],
+            Some(Gesture::StrumDown(2))
+        );
+        keys(&mut e, "\x1bgg");
+        keys(&mut e, "fgli");
+        keys(&mut e, "v-1\r\x1b");
+        assert_eq!(
+            e.grid.tracks[0].steps[0].gestures[1],
+            Some(Gesture::Invert(-1))
+        );
+        // Nudged past 0, as there's no inversion 0.
+        keys(&mut e, "gg");
+        e.handle(Key::Ctrl('a'));
+        assert_eq!(
+            e.grid.tracks[0].steps[0].gestures[1],
+            Some(Gesture::Invert(1))
+        );
     }
 
     #[test]
