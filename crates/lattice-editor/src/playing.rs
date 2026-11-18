@@ -150,7 +150,7 @@ impl Editor {
         let [left, right] = &self.hands;
         Playing {
             layout: self.keymap.layout.name().into(),
-            scale: self.scale().name.into(),
+            scale: (SCALES.get(self.scale)).map_or("major", |s| s.name).into(),
             root: self.root,
             octaves: (self.ids.iter().enumerate())
                 .filter_map(|(t, id)| Some((t, *self.octaves.get(id)?)))

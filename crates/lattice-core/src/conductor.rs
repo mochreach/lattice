@@ -1,7 +1,8 @@
 //! The conductor: a lane of each pattern for what belongs to the whole song rather than one
 //! track. Each step has two gesture fields, things that happen once on it: set the tempo or slide
-//! to one, stop, cue a pattern, mute or solo a track. A tempo holds until the next, as a lock
-//! column's value does, but it's the song's only such value, so it's a gesture.
+//! to one, stop, cue a pattern, mute or solo a track, change key or scale. A tempo holds until
+//! the next, as a lock column's value does, but it's the song's only such value, so it's a
+//! gesture; a key or scale holds likewise.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -9,6 +10,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::arrangement::MAX_PATTERNS;
+use crate::scale::{SCALES, key_name, parse_root};
 use crate::song::{MAX_STEPS, MAX_TRACKS};
 
 /// The slowest and fastest tempos, in BPM, as `:bpm` allows.
@@ -28,10 +30,14 @@ pub const FORMS: &[(&str, &str)] = &[
     ("P3", "cue pattern 3 for the next bar"),
     ("M2", "mute track 2; M-2 unmutes"),
     ("S2", "solo track 2; S-2 unsolos"),
+    ("KG", "key: G from here, the scale as it was"),
+    ("K+2", "key: 1 to 11 semitones up, or down"),
+    ("Dor", "scale: dorian from here, the key as it was"),
 ];
 
 /// Something the conductor does once, on a step. Written as it's typed: `T140`, `~140`, `T--`,
-/// `X`, `P3`, `M2` `M-2`, `S2` `S-2`. Patterns and tracks are numbered from 1, as they're shown.
+/// `X`, `P3`, `M2` `M-2`, `S2` `S-2`, `KG` `K+2`, `Dor`. Patterns and tracks are numbered from 1,
+/// as they're shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SongGesture {
     /// `T140`: this tempo from this step, until the next.
@@ -48,6 +54,29 @@ pub enum SongGesture {
     Mute { track: u8, on: bool },
     /// `S2`: solos track 2 (from 1); `S-2` unsolos it. Only while the song plays.
     Solo { track: u8, on: bool },
+    /// `KG`, `K+2`: the key from here, until the next, keeping the scale.
+    Key(KeyChange),
+    /// `Dor`: the scale from here, by its place in [`SCALES`], keeping the key.
+    Scale(u8),
+}
+
+/// What a `K` gesture does to the key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyChange {
+    /// `KG`: this root, in semitones above C.
+    Root(u8),
+    /// `K+2`, `K-3`: the root so many semitones up or down from where it was.
+    Shift(i8),
+}
+
+impl KeyChange {
+    /// The root it leaves `root` at.
+    pub fn from(self, root: u8) -> u8 {
+        match self {
+            KeyChange::Root(r) => r % 12,
+            KeyChange::Shift(by) => (i16::from(root) + i16::from(by)).rem_euclid(12) as u8,
+        }
+    }
 }
 
 impl SongGesture {
@@ -78,9 +107,21 @@ impl SongGesture {
         match first {
             Some('T' | 't') if rest.starts_with('-') => rest.len() < 2,
             Some('T' | 't' | '~') => digits(rest, 3),
-            Some('P' | 'p') => digits(rest, 2),
-            Some('M' | 'm' | 'S' | 's') => digits(rest.strip_prefix('-').unwrap_or(rest), 2),
-            _ => false,
+            Some('P' | 'p') if digits(rest, 2) => true,
+            Some('K' | 'k') if rest.starts_with(['+', '-']) => {
+                digits(rest.get(1..).unwrap_or(""), 2)
+            }
+            // A root, then perhaps a sharp or flat.
+            Some('K' | 'k') => rest.is_empty() || (rest.len() == 1 && parse_root(rest).is_some()),
+            Some('M' | 'm' | 'S' | 's') if digits(rest.strip_prefix('-').unwrap_or(rest), 2) => {
+                true
+            }
+            _ => SCALES.iter().any(|s| {
+                s.short.len() > text.len()
+                    && s.short
+                        .get(..text.len())
+                        .is_some_and(|p| p.eq_ignore_ascii_case(text))
+            }),
         }
     }
 
@@ -99,6 +140,12 @@ impl SongGesture {
             {
                 Err(format!("tracks go from 1 to {MAX_TRACKS}"))
             }
+            SongGesture::Key(KeyChange::Shift(by)) if by == 0 || by.unsigned_abs() > 11 => {
+                Err("keys move from 1 to 11 semitones up or down".into())
+            }
+            SongGesture::Scale(s) if usize::from(s) >= SCALES.len() => {
+                Err(format!("there are {} scales", SCALES.len()))
+            }
             _ => Ok(()),
         }
     }
@@ -114,6 +161,12 @@ impl fmt::Display for SongGesture {
             SongGesture::Pattern(p) => write!(f, "P{p}"),
             SongGesture::Mute { track, on } => write!(f, "M{}{track}", if *on { "" } else { "-" }),
             SongGesture::Solo { track, on } => write!(f, "S{}{track}", if *on { "" } else { "-" }),
+            SongGesture::Key(KeyChange::Root(root)) => write!(f, "K{}", key_name(*root)),
+            SongGesture::Key(KeyChange::Shift(by)) => write!(f, "K{by:+}"),
+            SongGesture::Scale(s) => {
+                let short = SCALES.get(usize::from(*s)).map_or("?", |s| s.short);
+                write!(f, "{short}")
+            }
         }
     }
 }
@@ -125,9 +178,14 @@ impl std::str::FromStr for SongGesture {
     fn from_str(text: &str) -> Result<Self, String> {
         let unknown = || {
             format!(
-                "{text:?} isn't a conductor's gesture: T140, ~140, T--, X, P3, M2, M-2, S2 or S-2"
+                "{text:?} isn't a conductor's gesture: T140, ~140, T--, X, P3, M2, M-2, S2, S-2, KG, \
+                 K+2 or a scale, as Dor"
             )
         };
+        // A scale by its short name, `Dor`; whole names don't fit.
+        if let Some(found) = (SCALES.iter()).position(|s| s.short.eq_ignore_ascii_case(text)) {
+            return Ok(SongGesture::Scale(found as u8));
+        }
         let mut chars = text.chars();
         let first = chars.next().ok_or_else(unknown)?.to_ascii_uppercase();
         let rest = chars.as_str();
@@ -153,6 +211,18 @@ impl std::str::FromStr for SongGesture {
             'T' => SongGesture::Tempo(number("a tempo")?),
             '~' => SongGesture::Slide(number("a tempo")?),
             'X' if rest.is_empty() => SongGesture::Stop,
+            'K' if rest.starts_with(['+', '-']) => match rest.parse::<i8>() {
+                Ok(by) => SongGesture::Key(KeyChange::Shift(by)),
+                Err(_) => return Err(format!("{text:?}: a number after K+ or K-, as in K+2")),
+            },
+            // Typed in capitals, so `KBB` is B flat.
+            'K' => match parse_root(&rest.get(..1).zip(rest.get(1..)).map_or_else(
+                || rest.to_string(),
+                |(letter, accidental)| format!("{letter}{}", accidental.to_ascii_lowercase()),
+            )) {
+                Some(root) => SongGesture::Key(KeyChange::Root(root)),
+                None => return Err(format!("{text:?}: a key after K, as in KG, KF# or KBb")),
+            },
             'P' => SongGesture::Pattern(small(number("a pattern")?)?),
             'M' => SongGesture::Mute {
                 track: small(number("a track")?)?,
@@ -281,7 +351,10 @@ mod tests {
 
     #[test]
     fn gestures_read_as_they_are_written() {
-        for text in ["T140", "~96", "T--", "X", "P3", "M2", "M-2", "S16", "S-16"] {
+        for text in [
+            "T140", "~96", "T--", "X", "P3", "M2", "M-2", "S16", "S-16", "KC", "KF#", "KBb", "K+2",
+            "K-11", "Dor", "Maj", "Hmi", "In", "Chr",
+        ] {
             let gesture: SongGesture = text.parse().unwrap();
             assert_eq!(gesture.to_string(), text);
         }
@@ -297,6 +370,25 @@ mod tests {
         assert!("P0".parse::<SongGesture>().is_err());
         assert!("Q1".parse::<SongGesture>().is_err());
         assert!("T".parse::<SongGesture>().is_err());
+        // As typed, in capitals.
+        assert_eq!("KBB".parse(), Ok(SongGesture::Key(KeyChange::Root(10))));
+        assert_eq!("DOR".parse(), Ok(SongGesture::Scale(2)));
+        assert_eq!("kf#".parse(), Ok(SongGesture::Key(KeyChange::Root(6))));
+        assert!(
+            "K+12"
+                .parse::<SongGesture>()
+                .unwrap_err()
+                .contains("1 to 11")
+        );
+        assert!("K+0".parse::<SongGesture>().is_err());
+        assert!(
+            "KH".parse::<SongGesture>()
+                .unwrap_err()
+                .contains("as in KG")
+        );
+        assert!("Dorian".parse::<SongGesture>().is_err());
+        assert_eq!(KeyChange::Shift(-3).from(1), 10);
+        assert_eq!(KeyChange::Root(7).from(1), 7);
     }
 
     #[test]
@@ -312,6 +404,12 @@ mod tests {
         assert!(SongGesture::could_go_on("M-"));
         assert!(SongGesture::could_go_on("M-1"));
         assert!(!SongGesture::could_go_on("M-16"));
+        for text in ["K", "KF", "K+", "K-1", "D", "DO", "MI", "P", "PE", "H", "I"] {
+            assert!(SongGesture::could_go_on(text), "{text}");
+        }
+        for text in ["KF#", "K+11", "DOR", "MIX", "PEN", "IN", "Q"] {
+            assert!(!SongGesture::could_go_on(text), "{text}");
+        }
         assert_eq!(
             "m-3".parse(),
             Ok(SongGesture::Mute {

@@ -116,6 +116,8 @@ impl Sequencer {
                 Conducted::Solo { track, soloed } => {
                     editor.conducted_mix(track, None, Some(soloed));
                 }
+                Conducted::Key(key) => editor.conducted_key(Some(key), None),
+                Conducted::Scale(scale) => editor.conducted_key(None, Some(scale)),
             }
         }
 

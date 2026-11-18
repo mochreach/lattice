@@ -56,6 +56,7 @@ impl Editor {
             self.live_lock = None;
         }
         self.transport = transport;
+        self.follow_key();
     }
 
     /// Whether the notes played now are recorded at the playhead.

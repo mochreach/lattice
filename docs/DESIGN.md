@@ -1421,6 +1421,14 @@ gestures are written as they're typed:
 - `P3` cues pattern 3 for the next bar, as `]p` does, leaving the arrangement.
 - `M2` mutes track 2 from this step and `M-2` unmutes it; `S2` `S-2` solo and unsolo it. Set
   rather than toggled, so a step says what's heard whichever way the track was.
+- `KG` and `K+2` set or move the key, keeping the scale; `Dor` (`Scale::short`, three letters
+  at most to fit) sets the scale, keeping the key. The song's notes are pitches, so only the
+  keyboard plays in a key: the engine passes them on (`Conducted::Key`, `Conducted::Scale`) and
+  the editor lays the keys out again (`Editor::follow_key`). Playing, the key is the song's
+  `:scale` as the conductor has changed it, an overlay dropped on stop like mutes; stopped,
+  it's `Editor::key_at` the cursor's step, the song's changed by the pattern's conductor from
+  its top, so a chord track enters the chords of the key it's in. The scales moved to
+  `lattice-core/src/scale.rs` for the conductor to name them.
 
 Patterns and tracks are numbered from 1, as shown, and renumbered as patterns and tracks are added,
 removed and moved, so a gesture names the same one (`Arrangement::renumber`); one naming a pattern

@@ -384,10 +384,10 @@ pattern takes over at the next bar and loops, and the header no longer says `son
 ## The conductor
 
 Some things belong to the whole song rather than a track: its tempo, stopping, going to another
-pattern, bringing a part in or out. They're gestures, things that happen once on a step, in the
-**conductor**: a lane of each pattern drawn left of the first track, beside the step numbers,
-with two fields on each step and no notes. It's named for an orchestra's conductor, who sets the
-tempo, slows the players into a cadence, and brings sections in and cuts them off.
+pattern, bringing a part in or out, changing key. They're gestures, things that happen once on a
+step, in the **conductor**: a lane of each pattern drawn left of the first track, beside the step
+numbers, with two fields on each step and no notes. It's named for an orchestra's conductor, who
+sets the tempo, slows the players into a cadence, and brings sections in and cuts them off.
 
 ```
                ╭─ RIGHT HAND ──────────────────
@@ -428,6 +428,9 @@ back out.
 | `M-2`   | track 1–16   | unmutes track 2                                               |
 | `S2`    | track 1–16   | solos track 2                                                 |
 | `S-2`   | track 1–16   | unsolos track 2                                               |
+| `KG`    | a note       | the key from this step: G, keeping the scale                  |
+| `K+2`   | ±1–11        | the key from this step, 2 semitones up, keeping the scale     |
+| `Dor`   | a scale      | the scale from this step: dorian, keeping the key             |
 
 Patterns and tracks are numbered from 1, as the song page and the grid show them.
 
@@ -459,13 +462,46 @@ until the song stops, laid over the song's own mix, which is left as it was: the
 mixer show them while they hold. Muting or soloing the track yourself (`tm`, `ts`, a pad) takes
 over from the conductor's.
 
+**Key and scale.** `KG` puts the song in G from its step, and `KF#` and `KBb` work as `:scale`'s
+roots do; `K+2` and `K-3` move the key from wherever it was, so the same gesture can lift a
+chorus a tone however it started. Each keeps the scale: in A minor, `KD` is D minor. A scale
+gesture changes the scale and keeps the key, written short to fit the field:
+
+| Short | Scale          | Short | Scale             | Short | Scale            |
+|-------|----------------|-------|-------------------|-------|------------------|
+| `Maj` | major          | `Hmi` | harmonic-minor    | `Mpe` | minor-pentatonic |
+| `Min` | minor          | `Mmi` | melodic-minor     | `Blu` | blues            |
+| `Dor` | dorian         | `Hma` | harmonic-major    | `Hir` | hirajoshi        |
+| `Phr` | phrygian       | `Pdo` | phrygian-dominant | `In`  | in               |
+| `Lyd` | lydian         | `Hun` | hungarian-minor   | `Who` | whole-tone       |
+| `Mix` | mixolydian     | `Dbl` | double-harmonic   | `Oct` | octatonic        |
+| `Loc` | locrian        | `Pen` | pentatonic        | `Aug` | augmented        |
+|       |                |       |                   | `Chr` | chromatic        |
+
+So `KA` and `Min` together, on one step's two fields, go to A minor.
+
+The notes in the song are written as pitches, so a key change doesn't move them: what it moves is
+everything that plays *in* a key, the keyboard. While the song plays, the key the conductor has
+reached is what the pads, `:layout scale`, the tonnetz and the duet's chord keys play, and what a
+chord track's keys enter, as if you'd typed `:scale` at that moment; stopping goes back to the
+song's own `:scale`, as with mutes and solos. While you write, it's the key at the cursor: the
+song's `:scale`, changed by the pattern's conductor from its first step to the cursor's. So on a
+chord track, `x` enters Dm before a `KG` and D after it, and the status line's `pads` shows
+the key you're in. A pattern starts in the song's key while you write, so a pattern in
+another key says so on its first step.
+
+I'd been changing `:scale` by hand halfway through writing a progression that modulates, then
+forgetting to change it back. A key that's part of the song, where it changes, is how a score
+writes it: a new key signature at the double bar. When the scale-degree rules come, they'll read
+the same key, so a melody can follow the song into its new key.
+
 ### Typing and editing
 
 In insert mode, type a gesture in either case (`t140` is `T140`). It goes in once it can't go on
-(`T140`, `X`, `T--`, `M-16`), or with enter or `esc` (`P3`, which might have been `P31`; `M2`,
-which might have been `M12`). A letter that can't follow puts in what was there before it.
-As on a track, a window lists the conductor's gestures while you type, narrowing to those that
-begin with the key typed.
+(`T140`, `X`, `T--`, `M-16`, `KF#`, `Dor`), or with enter or `esc` (`P3`, which might have been
+`P31`; `M2`, which might have been `M12`; `KF`, which might have been `KF#`). A letter that
+can't follow puts in what was there before it. As on a track, a window lists the conductor's
+gestures while you type, narrowing to those that begin with the key typed.
 
 `^a` and `^x` nudge a tempo by 1 BPM, and `>` and `<` by 10. `&` fills tempos evenly between a
 selection's ends, both of which need a tempo. `d`, `y` and `p` work as in any field.

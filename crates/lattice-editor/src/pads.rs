@@ -5,7 +5,10 @@
 //! the pads played while it's down, in time, every 16th, 8th or quarter (`.` chooses), as on a
 //! drum machine; this needs key releases.
 
-use lattice_core::{DRUM_ROOT, Note};
+use lattice_core::conductor::KeyChange;
+use lattice_core::scale::{MAJOR, key_name, parse_root};
+pub use lattice_core::scale::{SCALES, Scale};
+use lattice_core::{DRUM_ROOT, Note, SongGesture};
 
 use crate::{Editor, Effect, Key, Mode, NoteLayout};
 
@@ -14,139 +17,13 @@ pub const SOFT: u8 = 60;
 pub const MEDIUM: u8 = 100;
 pub const HARD: u8 = 127;
 
-/// A scale the pads play, as semitones above its root.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Scale {
-    pub name: &'static str,
-    pub steps: &'static [u8],
-}
-
-const MAJOR: Scale = Scale {
-    name: "major",
-    steps: &[0, 2, 4, 5, 7, 9, 11],
-};
-
-pub const SCALES: [Scale; 22] = [
-    MAJOR,
-    // The church modes, brightest first, after major.
-    Scale {
-        name: "minor",
-        steps: &[0, 2, 3, 5, 7, 8, 10],
-    },
-    Scale {
-        name: "dorian",
-        steps: &[0, 2, 3, 5, 7, 9, 10],
-    },
-    Scale {
-        name: "phrygian",
-        steps: &[0, 1, 3, 5, 7, 8, 10],
-    },
-    Scale {
-        name: "lydian",
-        steps: &[0, 2, 4, 6, 7, 9, 11],
-    },
-    Scale {
-        name: "mixolydian",
-        steps: &[0, 2, 4, 5, 7, 9, 10],
-    },
-    Scale {
-        name: "locrian",
-        steps: &[0, 1, 3, 5, 6, 8, 10],
-    },
-    // Minor and major with a raised or lowered note: the harmonic ones each hold an augmented
-    // triad and a diminished seventh.
-    Scale {
-        name: "harmonic-minor",
-        steps: &[0, 2, 3, 5, 7, 8, 11],
-    },
-    Scale {
-        name: "melodic-minor",
-        steps: &[0, 2, 3, 5, 7, 9, 11],
-    },
-    Scale {
-        name: "harmonic-major",
-        steps: &[0, 2, 4, 5, 7, 8, 11],
-    },
-    // The augmented second's scales, of flamenco, klezmer, the Balkans and the Middle East.
-    Scale {
-        name: "phrygian-dominant",
-        steps: &[0, 1, 4, 5, 7, 8, 10],
-    },
-    Scale {
-        name: "hungarian-minor",
-        steps: &[0, 2, 3, 6, 7, 8, 11],
-    },
-    Scale {
-        name: "double-harmonic",
-        steps: &[0, 1, 4, 5, 7, 8, 11],
-    },
-    // Five notes, and so few to clash.
-    Scale {
-        name: "pentatonic",
-        steps: &[0, 2, 4, 7, 9],
-    },
-    Scale {
-        name: "minor-pentatonic",
-        steps: &[0, 3, 5, 7, 10],
-    },
-    Scale {
-        name: "blues",
-        steps: &[0, 3, 5, 6, 7, 10],
-    },
-    Scale {
-        name: "hirajoshi",
-        steps: &[0, 2, 3, 7, 8],
-    },
-    Scale {
-        name: "in",
-        steps: &[0, 1, 5, 7, 8],
-    },
-    // The symmetrical scales: whole tones, all augmented; alternate whole and half steps, all
-    // diminished; and minor thirds and semitones, two augmented triads a semitone apart.
-    Scale {
-        name: "whole-tone",
-        steps: &[0, 2, 4, 6, 8, 10],
-    },
-    Scale {
-        name: "octatonic",
-        steps: &[0, 2, 3, 5, 6, 8, 9, 11],
-    },
-    Scale {
-        name: "augmented",
-        steps: &[0, 3, 4, 7, 8, 11],
-    },
-    Scale {
-        name: "chromatic",
-        steps: &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-    },
-];
-
-const NOTE_NAMES: [&str; 12] = [
-    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
-];
-
-/// A root note's semitone above C: `C`, `F#`, `Bb`, any case.
-fn parse_root(text: &str) -> Option<u8> {
-    let mut chars = text.chars();
-    let letter = chars.next()?.to_ascii_uppercase();
-    let letter = b"CDEFGAB".iter().position(|&c| c == letter as u8)?;
-    let natural = *MAJOR.steps.get(letter)?;
-    let semitone = match chars.as_str() {
-        "" => natural + 12,
-        "#" => natural + 13,
-        "b" => natural + 11,
-        _ => return None,
-    };
-    Some(semitone % 12)
-}
-
-/// A root note's name, from its semitone above C.
-fn note_name(root: u8) -> &'static str {
-    // Always there: a root is a semitone, below 12.
-    NOTE_NAMES
-        .get(usize::from(root % 12))
-        .copied()
-        .unwrap_or("C")
+/// `key`, a scale and root, as the conductor's `gesture` changes it, if it does.
+fn changed_key((scale, root): (usize, u8), gesture: SongGesture) -> (usize, u8) {
+    match gesture {
+        SongGesture::Key(key) => (scale, key.from(root)),
+        SongGesture::Scale(s) => (usize::from(s), root),
+        _ => (scale, root),
+    }
 }
 
 /// What the pads do.
@@ -261,7 +138,7 @@ impl Editor {
         let steps = self.scale().steps;
         let octave = u16::from(self.octave()) + 1 + degree.checked_div(steps.len())? as u16;
         let step = *steps.get(degree.checked_rem(steps.len())?)?;
-        let pitch = octave * 12 + u16::from(self.root) + u16::from(step);
+        let pitch = octave * 12 + u16::from(self.root()) + u16::from(step);
         u8::try_from(pitch).ok().filter(|&p| p <= 127)
     }
 
@@ -281,10 +158,65 @@ impl Editor {
             .collect()
     }
 
-    /// The scale the pads play.
+    /// The scale in force: the pads, the scale layouts and a chord track's keys play in it.
     pub(crate) fn scale(&self) -> Scale {
-        // Only `:scale` sets it, to one of these; major is where it starts.
-        SCALES.get(self.scale).copied().unwrap_or(MAJOR)
+        // Only `:scale` and the conductor set it, to one of these; major is where it starts.
+        SCALES.get(self.key().0).copied().unwrap_or(MAJOR)
+    }
+
+    /// The root in force, in semitones above C.
+    pub(crate) fn root(&self) -> u8 {
+        self.key().1
+    }
+
+    /// The scale, as an index into [`SCALES`], and root in force: while the song plays, the
+    /// song's (`:scale`) as the conductor's `K` and scale gestures have changed it so far;
+    /// otherwise, as they change it from the top of the pattern to the cursor's step.
+    pub(crate) fn key(&self) -> (usize, u8) {
+        if self.transport.is_some() {
+            return self.conducted_key.unwrap_or((self.scale, self.root));
+        }
+        self.key_at(self.cursor().step)
+    }
+
+    /// The song's key changed by the pattern's conductor, from its top to step `at`, going
+    /// round the conductor as playing does if it's shorter.
+    pub(crate) fn key_at(&self, at: usize) -> (usize, u8) {
+        let song = (self.scale, self.root);
+        let Some(conductor) = self.conductor().filter(|c| !c.steps.is_empty()) else {
+            return song;
+        };
+        (0..=at)
+            .filter_map(|s| conductor.steps.get(s % conductor.steps.len()))
+            .flatten()
+            .flatten()
+            .fold(song, |key, gesture| changed_key(key, *gesture))
+    }
+
+    /// The conductor changed the key or scale as the song plays: the keyboard follows until
+    /// the song stops.
+    pub fn conducted_key(&mut self, key: Option<KeyChange>, scale: Option<u8>) {
+        let mut now = self.conducted_key.unwrap_or((self.scale, self.root));
+        if let Some(key) = key {
+            now = changed_key(now, SongGesture::Key(key));
+        }
+        if let Some(scale) = scale {
+            now = changed_key(now, SongGesture::Scale(scale));
+        }
+        self.conducted_key = Some(now);
+        self.follow_key();
+    }
+
+    /// Lays the keyboard out again if the key in force has changed since it was laid out.
+    pub(crate) fn follow_key(&mut self) {
+        if self.key() != self.keyed
+            && matches!(
+                self.keymap.layout,
+                NoteLayout::Scale | NoteLayout::Tonnetz | NoteLayout::Duet
+            )
+        {
+            self.lay_out_keys(self.keymap.layout);
+        }
     }
 
     /// The numpad's other keys: velocity, and the pads' mode.
@@ -351,23 +283,31 @@ impl Editor {
         ) {
             self.lay_out_keys(self.keymap.layout);
         }
-        self.message = Some(format!("pads play {} {name}", note_name(root)));
+        let mut message = format!("pads play {} {name}", key_name(root));
+        if self.key() != (scale, root) {
+            message.push_str(&format!(
+                ", but the conductor has {} here",
+                self.scale_name()
+            ));
+        }
+        self.message = Some(message);
         Ok(())
     }
 
     /// Lays the notes out on the keyboard for insert mode.
     pub(crate) fn lay_out_keys(&mut self, layout: NoteLayout) {
-        self.keymap.piano = layout.keys(&self.scale(), self.root);
+        self.keyed = self.key();
+        self.keymap.piano = layout.keys(&self.scale(), self.root());
         self.keymap.chords = match layout {
-            NoteLayout::Duet => crate::keymap::chords(&self.scale(), self.root),
+            NoteLayout::Duet => crate::keymap::chords(&self.scale(), self.root()),
             _ => Default::default(),
         };
         self.keymap.layout = layout;
     }
 
-    /// The scale the pads play, as `C major`.
+    /// The scale in force, as `C major`.
     pub fn scale_name(&self) -> String {
-        format!("{} {}", note_name(self.root), self.scale().name)
+        format!("{} {}", key_name(self.root()), self.scale().name)
     }
 }
 
@@ -436,7 +376,7 @@ mod tests {
         command(&mut e, "scale blues bb");
         assert_eq!(pad(&mut e, 1), Some(70));
         command(&mut e, "scale major");
-        assert_eq!(e.scale_name(), "A# major", "the root stays");
+        assert_eq!(e.scale_name(), "Bb major", "the root stays");
 
         // A minor with its seventh raised: the G# that makes C E G# augmented.
         command(&mut e, "scale harmonic-minor A");

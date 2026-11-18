@@ -78,7 +78,7 @@ impl Editor {
 
     /// The scale's chord on `pitch`, from `:scale`.
     pub(crate) fn scale_chord(&self, pitch: u8) -> Chord {
-        scale_chord(&self.scale(), self.root, pitch)
+        scale_chord(&self.scale(), self.root(), pitch)
     }
 
     /// `tc`: the tracks the selections reach become chord tracks, or, if they all are, tracks
@@ -303,6 +303,43 @@ mod tests {
         assert_eq!(name(0, 66).as_deref(), Some("F#"));
         // In G major, F# is the scale's.
         assert_eq!(name(7, 66).as_deref(), Some("F#dim"));
+    }
+
+    #[test]
+    fn the_conductor_changes_the_key_chords_go_in_and_the_keyboard_plays() {
+        let mut e = editor();
+        // G from step 2, and dorian from step 4.
+        keys(&mut e, "fCjjiKG");
+        e.handle(Key::Esc);
+        // Putting one in moves the cursor on, so this is step 4.
+        keys(&mut e, "jiDor");
+        e.handle(Key::Esc);
+        assert_eq!(e.conductor().unwrap().get(2, 0).unwrap().to_string(), "KG");
+        assert_eq!(e.conductor().unwrap().get(4, 0).unwrap().to_string(), "Dor");
+        // `x` is D: the scale's chord on D in C major, G major, then G dorian.
+        keys(&mut e, "ggfntcixxxxxx");
+        e.handle(Key::Esc);
+        let names: Vec<_> = (0..6).map(|s| label_at(&e, 0, s)).collect();
+        let written = ["Dm", "Dm", "D", "D", "Dm", "Dm"].map(|n| Some(n.to_string()));
+        assert_eq!(names, written);
+        keys(&mut e, "gg");
+        assert_eq!(e.scale_name(), "C major");
+        keys(&mut e, "4j");
+        assert_eq!(e.scale_name(), "G dorian");
+
+        // Playing, the keyboard follows the conductor as it goes, until the song stops.
+        e.set_transport(Some(crate::Transport {
+            positions: vec![],
+            into_step: 0.0,
+            count_in: 0,
+        }));
+        assert_eq!(e.scale_name(), "C major");
+        e.conducted_key(Some(lattice_core::conductor::KeyChange::Shift(2)), None);
+        e.conducted_key(None, Some(1));
+        assert_eq!(e.scale_name(), "D minor");
+        e.stopped();
+        e.set_transport(None);
+        assert_eq!(e.scale_name(), "G dorian", "the cursor's again");
     }
 
     #[test]

@@ -626,6 +626,8 @@ impl Editor {
     pub fn stopped(&mut self) {
         self.cue = None;
         self.conducted.clear();
+        self.conducted_key = None;
+        self.follow_key();
         self.song_position = None;
         self.fill = false;
     }

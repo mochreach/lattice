@@ -514,6 +514,11 @@ pub struct Editor {
     /// The conductor's mutes and solos (`M2`, `S-2`) over the tracks' own while the song plays:
     /// shown, but not the song's.
     conducted: Vec<(TrackId, Option<bool>, Option<bool>)>,
+    /// The conductor's key and scale (`KG`, `Dor`) while the song plays, as a scale index and
+    /// root: the keyboard's, not the song's.
+    conducted_key: Option<(usize, u8)>,
+    /// The key the keyboard was last laid out in, to lay it out again when the key changes.
+    keyed: (usize, u8),
     /// What's been typed into a field so far.
     typing: fields::Typing,
     /// The lock last recorded from the mixer, and its track, to nudge on from.
@@ -699,6 +704,8 @@ impl Editor {
             field: StepField::Note,
             field_home: None,
             conducted: vec![],
+            conducted_key: None,
+            keyed: (0, 0),
             typing: Default::default(),
             live_lock: None,
             tutor: None,
@@ -1129,6 +1136,8 @@ impl Editor {
         self.stop_turning();
         self.listing = None;
         let mut effects = self.handle_key(key);
+        // The cursor may have moved past a key change.
+        self.follow_key();
         // Only the very next key can be the second `C-c`.
         if warned {
             self.quit_warned = false;

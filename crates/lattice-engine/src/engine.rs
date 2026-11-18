@@ -534,9 +534,19 @@ pub enum Conducted {
     /// as it doesn't hold the patterns.
     Pattern(usize),
     /// An `M` gesture muted the track at this index, or unmuted it, until the song stops.
-    Mute { track: usize, muted: bool },
+    Mute {
+        track: usize,
+        muted: bool,
+    },
     /// An `S` gesture soloed it, or unsoloed it, until the song stops.
-    Solo { track: usize, soloed: bool },
+    Solo {
+        track: usize,
+        soloed: bool,
+    },
+    /// A `K` gesture changed the key, or a scale gesture the scale, until the next or the song
+    /// stops. Only the keyboard plays in a key, so the engine passes it on.
+    Key(lattice_core::conductor::KeyChange),
+    Scale(u8),
 }
 
 /// A lock in one atomic: a present bit, the effect (255 for the instrument), the setting and the
@@ -2687,6 +2697,12 @@ impl Engine {
                     // Full, the UI thread's fallen behind; it'll miss this cue.
                     let _ = self.conducted.push(Conducted::Pattern(pattern));
                 }
+                SongGesture::Key(key) => {
+                    let _ = self.conducted.push(Conducted::Key(key));
+                }
+                SongGesture::Scale(scale) => {
+                    let _ = self.conducted.push(Conducted::Scale(scale));
+                }
                 SongGesture::Mute { track, on } => {
                     let track = usize::from(track).saturating_sub(1);
                     if let Some(player) = self.tracks.get_mut(track) {
@@ -3475,6 +3491,24 @@ mod tests {
         assert_eq!(onsets(&audio), [0, 24_000, 72_000]);
         // Step 8 is round again to the conductor's first.
         assert_eq!(engine.status.conductor_step(), Some(0));
+    }
+
+    #[test]
+    fn the_conductor_passes_key_and_scale_changes_on() {
+        let (mut engine, mut handle) = with_synth(48_000.0);
+        engine.conductor = conductor(&[(0, "KG"), (1, "Dor"), (1, "K-2")], 8);
+        let step = (48_000.0 * 60.0 / (133.0 * 4.0)) as usize;
+        render(&mut engine, 256, step + 10);
+        use lattice_core::conductor::KeyChange;
+        assert_eq!(
+            [(); 4].map(|()| handle.conducted()),
+            [
+                Some(Conducted::Key(KeyChange::Root(7))),
+                Some(Conducted::Scale(2)),
+                Some(Conducted::Key(KeyChange::Shift(-2))),
+                None
+            ]
+        );
     }
 
     #[test]

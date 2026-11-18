@@ -29,6 +29,7 @@ pub mod instrument;
 pub mod knob;
 pub mod macros;
 pub mod preset;
+pub mod scale;
 pub mod song;
 pub mod transform;
 pub mod tuning;

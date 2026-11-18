@@ -167,9 +167,10 @@ the scale's root. `:scale NAME [ROOT]` chooses it:
 The root is a note name, `C`, `F#` or `Bb`, in either case (`:scale minor A`); left out, the
 root stays as it was. It starts at C major. Past the scale's last note the pads go on into the
 next octave, so in C major pad `8` is the C above pad `1`. The status line confirms:
-`pads play A minor-pentatonic`. A scale is a set of notes that sound right together; with the pads
-on one, there are no wrong notes, which makes them good for finding a melody. `:layout scale` lays
-the computer keyboard out on the same scale.
+`pads play A minor-pentatonic`. The conductor can change the key and scale as the song goes
+(`KG`, `Dor`; see [its gestures](06-song.md#conductor-gestures)). A scale is a set of notes that
+sound right together; with the pads on one, there are no wrong notes, which makes them good for
+finding a melody. `:layout scale` lays the computer keyboard out on the same scale.
 
 The harmonic scales are worth knowing for their chords. A minor's own chords are major, minor
 and one diminished; raise its seventh, G to G♯, and `harmonic-minor` holds an augmented triad

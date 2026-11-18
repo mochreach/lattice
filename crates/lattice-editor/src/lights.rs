@@ -137,7 +137,7 @@ impl Editor {
     fn notes(&self) -> Vec<(Key, Glow)> {
         let scale = self.scale();
         let notes = self.note_keys().map(|(key, pitch)| {
-            let degree = (pitch + 12 - self.root % 12) % 12;
+            let degree = (pitch + 12 - self.root() % 12) % 12;
             let glow = match degree {
                 0 => Glow::Root,
                 d if scale.steps.contains(&d) => Glow::InScale,
