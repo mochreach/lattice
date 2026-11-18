@@ -700,10 +700,11 @@ recording is armed. In insert mode with the cursor on one of a hand's own tracks
 on the cursor's step, a chord dealt across the hand's tracks, and the cursor moves on; with the
 cursor anywhere else, they're only heard, so you can play along while writing the drums. Give
 the left hand three or four tracks of the same pad, say (`mig` selects a group's): each note goes
-to a track no other key is holding, so a chord's notes spread over them. Notes beyond the hand's tracks join the root's chord on the track it went to, so one
-track of a polyphonic synth plays and records whole chords. Then select a lead track,
-`:hand right`, and play chords with one hand while the other screams over the top. A mono lead
-on the right and a poly pad on the left is two tracks, one hand each.
+to a track no other key is holding, so a chord's notes spread over them. Notes beyond the hand's
+tracks join the root's chord on the track it went to, so one track of a polyphonic synth plays and
+records whole chords. Then select a lead track, `:hand right`, and play chords with one hand while
+the other screams over the top. A mono lead on the right and a poly pad on the left is two tracks,
+one hand each.
 
 Name the tracks after the hand and you needn't go to them: **`:hand right 1`**, or
 **`:hand left pad1, pad2, pad3`**, numbers from 1 or names, between commas. I wanted it for
