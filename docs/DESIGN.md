@@ -813,7 +813,7 @@ track stays a real track, with its own rules, length and strip; the group adds:
   binds a hand to the selection's tracks (or `TRACKS`, numbers or names between commas, from
   anywhere), as `TrackId`s, so moving or deleting tracks can't leave it
   pointing at the wrong one (`duet.rs`). A bound hand plays there wherever the cursor is, heard or
-  recorded but never typed at the cursor; each note goes to the first track its other keys aren't
+  recorded, and entered at the cursor's step only when the cursor's on one of its tracks; each note goes to the first track its other keys aren't
   holding (`Editor::voices`, freed on key-up), else the one held longest, and notes beyond the
   tracks join the root's chord on its track, so a hand of one poly track plays whole chords.
 - **Note repeat (done).** Holding the numpad's `0` makes the pads played meanwhile repeat, every

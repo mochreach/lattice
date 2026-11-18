@@ -87,9 +87,10 @@ impl Editor {
 
     /// Plays what `key` plays with a hand that has tracks of its own, if it does: each note on
     /// a track none of the hand's other keys is holding, or, all held, the one held longest.
-    /// It's recorded when recording, and otherwise only heard, wherever the cursor is. Notes
-    /// beyond the tracks join the root's chord, on the track it went to, so a hand of one
-    /// polyphonic track plays and records whole chords.
+    /// It's recorded when recording; entered on the cursor's step in insert mode, if the cursor
+    /// is on one of the hand's tracks; and otherwise only heard, so a hand can play along while
+    /// other tracks are written. Notes beyond the tracks join the root's chord, on the track
+    /// it went to, so a hand of one polyphonic track plays and records whole chords.
     pub(crate) fn play_with_hand(&mut self, key: Key) -> Option<Vec<Effect>> {
         let tracks = self.hand_tracks(key);
         let first = *tracks.first()?;
@@ -110,6 +111,14 @@ impl Editor {
             return Some(heard.collect());
         };
         let mut chord = Chord::of(root, rest);
+        let cursor = self.cursor();
+        if !self.recording()
+            && self.mode == crate::Mode::Insert
+            && self.page == crate::Page::Pattern
+            && tracks.contains(&cursor.track)
+        {
+            return Some(self.enter_dealt(&dealt, chord, cursor.step));
+        }
         let mut effects = vec![];
         for (track, pitch) in dealt {
             effects.extend(
@@ -120,6 +129,35 @@ impl Editor {
             chord = Chord::default();
         }
         Some(effects)
+    }
+
+    /// Enters a hand's notes, `dealt` a track each, on `step`, the root's with `chord`, and
+    /// moves the cursor on, as typing a note does.
+    fn enter_dealt(&mut self, dealt: &[(usize, u8)], chord: Chord, step: usize) -> Vec<Effect> {
+        self.checkpoint();
+        let velocity = self.touch.unwrap_or(self.velocity);
+        let mut effects = vec![];
+        let mut chord = chord;
+        for &(track, pitch) in dealt {
+            if let Some(slot) =
+                (self.grid.tracks.get_mut(track)).and_then(|t| t.steps.get_mut(step))
+            {
+                slot.note = Some(Note {
+                    pitch,
+                    velocity,
+                    length: 1,
+                    chord,
+                });
+            }
+            effects.extend(crate::chords::previews(track, pitch, chord));
+            // Only the root's.
+            chord = Chord::default();
+        }
+        self.advance();
+        let tracks: Vec<usize> = dealt.iter().map(|&(t, _)| t).collect();
+        self.mark_chord_tracks(&tracks);
+        effects.extend(changed(tracks));
+        effects
     }
 
     /// One of `tracks` for a note of `key`'s: a free one, or the one another key has held
@@ -564,17 +602,19 @@ mod tests {
         e.run_command("hand right");
         assert_eq!(e.message.as_deref(), Some("right hand plays lead"));
 
-        // Wherever the cursor is, a chord's notes go a pad each, the bass, for want of a
-        // fourth, with the root, and the tune to the lead.
+        // A chord's notes go a pad each, the bass, for want of a fourth, with the root, and
+        // the tune to the lead.
         keys(&mut e, "thi");
         assert_eq!(
             heard(&keys(&mut e, "a")),
             [(0, 60), (0, 48), (1, 64), (2, 67)]
         );
         assert_eq!(heard(&keys(&mut e, "k")), [(3, 72)]);
+        // The cursor's on pad3, the left hand's, so its chord went in; the tune's only heard.
+        assert!(e.grid.tracks[0].steps[0].note.is_some());
         assert!(
-            (e.grid.tracks.iter()).all(|t| t.steps.iter().all(|s| s.note.is_none())),
-            "only heard, stopped"
+            (e.grid.tracks[3].steps.iter()).all(|s| s.note.is_none()),
+            "only heard, stopped, the cursor not on the lead"
         );
         // The next chord, the old one still held, takes the pads it held longest.
         assert_eq!(
@@ -605,6 +645,34 @@ mod tests {
         e.run_command("hand off");
         e.set_transport(None);
         assert_eq!(heard(&keys(&mut e, "k")), [(2, 72)]);
+    }
+
+    #[test]
+    fn a_hand_s_keys_go_in_with_the_cursor_on_one_of_its_tracks() {
+        let mut e = editor();
+        e.releases = true;
+        keys(&mut e, "vtltl");
+        e.run_command("hand left");
+        e.handle(Key::Esc);
+        keys(&mut e, "tl");
+        e.run_command("hand right");
+        // On a pad, a chord goes in across the pads on the cursor's step, and the cursor moves on.
+        keys(&mut e, "ggthi");
+        keys(&mut e, "a");
+        let at = |e: &Editor, t: usize, s: usize| e.grid.tracks[t].steps[s].note.map(|n| n.pitch);
+        assert_eq!(
+            [at(&e, 0, 0), at(&e, 1, 0), at(&e, 2, 0)],
+            [Some(60), Some(64), Some(67)]
+        );
+        assert_eq!(e.cursor().step, 1);
+        // The right hand's tune is only heard from here; on the lead, it goes in.
+        e.release(Key::Char('a'));
+        keys(&mut e, "k");
+        assert_eq!(at(&e, 3, 1), None);
+        e.handle(Key::Esc);
+        keys(&mut e, "ggtlgg");
+        keys(&mut e, "ik");
+        assert_eq!(at(&e, 3, 0), Some(72));
     }
 
     #[test]

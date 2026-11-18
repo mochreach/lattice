@@ -340,7 +340,9 @@ const LESSONS: &[Lesson] = &[
                `:hand left` gives the left hand the selected tracks to play wherever the \
                cursor is, a chord's notes dealt out one to a track (with one track, the rest \
                are heard on it), and `:hand right` the \
-               right; `:hand off` puts both back on the cursor's track. Tracks can be \
+               right. In insert mode, with the cursor on one of a hand's tracks, its keys go \
+               in there; elsewhere they're only heard. `:hand off` puts both back on the \
+               cursor's track. Tracks can be \
                named instead, from anywhere: `:hand left 2,3,4`, `:hand right LEAD`. The \
                layout, scale, octave, hands and F keys' recorded keys are saved with the \
                song, so it opens ready to play over.\n\nGive the left \
